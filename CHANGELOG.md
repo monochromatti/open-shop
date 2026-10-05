@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Added aggregate minimum-flow observations to dispatch, commitment proposals, replay, serialization and restart.
+- Imported the current Tokke–Vinje seasonal minimum-flow and storage rules, with dated normal and seasonal benchmark inputs.
+- Added experimental conservative network domains, proven tunnel directions, table-cell pruning and exact turbine cell bounds.
+- Added an experimental table graph with commitment coupling, scaled cell coordinates and direct affine segments.
+- Added native SCIP diagnostics, conservative certificate checks and paired benchmarks with frozen cases and shared audited starts.
+
 ## 0.1.0
 
 - Added named-object hydropower cases with reservoirs, shared plants, signed tunnels and delayed river networks.

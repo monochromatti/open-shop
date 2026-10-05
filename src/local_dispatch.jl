@@ -154,6 +154,7 @@ function _build_dispatch(
     GQ=50 .* gq
     P=40 .* p
     RQ=100 .* rq
+    constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=storage_bounds(c, r, c.grid[t])

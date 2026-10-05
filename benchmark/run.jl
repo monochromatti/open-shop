@@ -16,6 +16,7 @@ for name in ("distributed-rivers", "turbine-tables")
             k => get(result, k, nothing) for k in (
                 "case",
                 "status",
+                "formulation",
                 "accepted",
                 "global_certificate",
                 "objective",

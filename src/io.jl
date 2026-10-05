@@ -68,6 +68,8 @@ function _read_object(T, x)
             v=_read_turbine(v)
         elseif fieldtype(T, f)==Vector{Float64}
             v=Float64.(v)
+        elseif fieldtype(T, f)==Vector{Symbol}
+            v=Symbol.(v)
         end
         vals[f]=v
     end
@@ -90,7 +92,7 @@ function case_from_dict(d)
         d,
         vcat(
             string.(collect(keys(objects))),
-            ["schema_version", "name", "grid", "prices", "operations"],
+            ["schema_version", "name", "grid", "prices", "operations", "flow_requirements"],
         ),
         "case",
     )
@@ -107,6 +109,7 @@ function case_from_dict(d)
         grid = Float64.(d["grid"]),
         prices = Float64.(d["prices"]),
         operations = [_read_object(OperationalSeries, x) for x in get(d, "operations", [])],
+        flow_requirements = [_read_object(FlowRequirement, x) for x in get(d, "flow_requirements", [])],
     )
     validate_inputs(c)
     c
@@ -132,6 +135,7 @@ function case_dict(c)
         "grid"=>c.grid,
         "prices"=>c.prices,
         "operations"=>component_dict.(c.operations),
+        "flow_requirements"=>component_dict.(c.flow_requirements),
     )
     for f in fieldnames(HydroSystem)
         d[string(f)]=component_dict.(getfield(c.system, f))
@@ -176,7 +180,7 @@ end
 
 """Identify cases requiring operational and tabulated-physics audit handling."""
 function has_operational_data(c)
-    !isempty(c.operations) ||
+    !isempty(c.operations) || !isempty(c.flow_requirements) ||
         any(r.level_curve!==nothing for r in c.system.reservoirs) ||
         any(
             g.turbine_table!==nothing ||

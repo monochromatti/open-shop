@@ -2,7 +2,7 @@
 
 OpenSHOP reads a JSON case with `readcase(path)` or a dictionary with `case_from_dict(data)`. `case_dict(case)` produces the public profile and `writejson(path, data)` writes it. Object names connect the watercourse; JSON arrays do not determine hydraulic connectivity.
 
-The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, and `operations`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
+The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
 
 ## Objects
 
@@ -19,6 +19,7 @@ The fields below are the accepted object attributes. Fields marked “required�
 | River junction | `name` | None |
 | River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
+| Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 
 Reservoir head is `z0 + slope * V + curvature * V²`, unless `level_curve` supplies the volume-to-head relationship. The relationship must increase over the storage domain. Hydraulic junctions have no storage; signed tunnel and generation flows satisfy continuity. Boundaries have fixed heads and represent external water exchange.
 
@@ -63,10 +64,23 @@ An operation names an existing object and one supported attribute:
 | Plant | `pmax` |
 | Tunnel | `capacity`, `opening` |
 | River | `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty` |
+| Flow requirement | `inflow`, `min_flow` |
 
 `times` are strictly increasing absolute-hour knots and `values` are piecewise constant. Before the first knot the object's default applies; the last value is held afterward. Ordinary dispatch interval data use time averages. Storage edges and pointwise arrival requirements retain their corresponding endpoint/event semantics. Place knots on scheduling edges when a commitment or outage transition must occur at a particular time.
 
 Operating minimum/maximum restrictions tighten their static object bounds. Gate and opening values lie in `[0,1]`; `forced_on` is `-1` for free commitment, `0` for off, or `1` for on. Duplicate series for one object/attribute are rejected. `min_release` is a hard requirement unless a positive `release_penalty` declares a soft shortfall cost. Soft shortfalls are measured in Mm³ and reported explicitly; they are not silently dropped.
+
+## Flow observations
+
+A `flow_requirements` entry records a hard minimum at an operating measurement point. Its `generators` list names unit discharges; its `rivers` list names river releases. The constraint is
+
+```math
+\sum_{g\in G_o} q_{g,t}+\sum_{r\in R_o} Q^{release}_{r,t}+I_{o,t}\ge Q^{min}_{o,t}.
+```
+
+All terms are in m³/s. `inflow` and `min_flow` default to zero and accept time-dependent operations. The measurement adds no hydraulic node or water balance term. The physical network must already account for the observed water. Contributions must be unique existing names, and observation names must be globally unique. River contributions denote releases, not delayed arrivals; constrain a River’s `min_arrival` when travel time matters.
+
+Refinement retains these rules and their physical input times. Independent equation validation and finer replay check the aggregate minimum. Flow requirements are hard constraints; conditional waivers and soft shortfall penalties are not supplied by this observation profile.
 
 ## Units and errors
 

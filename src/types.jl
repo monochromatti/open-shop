@@ -102,12 +102,26 @@ Base.@kwdef struct OperationalSeries
     times::Vector{Float64}
     values::Vector{Float64}
 end
+"""Hard minimum of a named flow observation, in m³/s.
+
+Contributions are generator discharge and river release at the observation;
+this records an operating rule and adds no water or hydraulic node. Delayed
+arrivals must be constrained on the corresponding River instead.
+"""
+Base.@kwdef struct FlowRequirement
+    name::Symbol
+    generators::Vector{Symbol}=Symbol[]
+    rivers::Vector{Symbol}=Symbol[]
+    inflow::Float64=0.0
+    min_flow::Float64=0.0
+end
 Base.@kwdef struct ScheduleCase
     name::String
     system::HydroSystem
     grid::Vector{Float64}
     prices::Vector{Float64}
     operations::Vector{OperationalSeries}=OperationalSeries[]
+    flow_requirements::Vector{FlowRequirement}=FlowRequirement[]
 end
 nodes(s) = vcat(
     [r.name for r in s.reservoirs],

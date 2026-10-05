@@ -317,6 +317,15 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         end
     end
     requirements=release_requirements(c, RQ)
+    for rule in c.flow_requirements
+        gs, rs=flow_requirement_indices(c, rule)
+        bound("flow_requirement_$(rule.name)", [
+            opinterval(c, rule.name, :min_flow, t, rule.min_flow)-
+            opinterval(c, rule.name, :inflow, t, rule.inflow)-
+            sum(GQ[i, t] for i in gs; init=0.0)-
+            sum(RQ[i, t] for i in rs; init=0.0) for t in 1:T
+        ])
+    end
     bound("hard_release_requirements", requirements.hard)
     if any(opinterval(c, r.name, :release_penalty, t, 0.0)>0 for r in s.rivers, t in 1:T)
         if !haskey(result, "shortfall_release") ||

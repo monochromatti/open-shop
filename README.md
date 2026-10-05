@@ -65,6 +65,11 @@ Construction and first-call compilation consume the time allowance; extraction
 and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 `fixed_u` restricts both the search and its certificate to that commitment.
 
+The default formulation is `:baseline`. Experimental `:domains` and
+`:tightened` options retain the physical equations but change bounds and table
+graphs. Their smaller models regressed on the operating Tokke–Vinje comparison,
+so they are opt-in. See the benchmark results before selecting one.
+
 For larger cases, a feasible initial schedule can help the global search:
 
 ```julia
@@ -94,15 +99,16 @@ guarantee. SCIP always uses the original case restrictions.
 - Turbine tables, electrical efficiency curves and aggregate plant limits.
 - Unit on/off states, minimum up/down times and transition costs.
 - River confluences, release laws, finite travel times and environmental limits.
-- Time-dependent operating restrictions and restart state.
+- Time-dependent operating restrictions, aggregate flow observations and restart state.
 
 See [input objects and units](docs/input.md), [equations and certificate scope](docs/model.md)
 and [benchmark results](docs/benchmarks.md).
 
 The [Tokke–Vinje example](examples/tokke_vinje/README.md) fetches SINTEF's public
-source dataset and reconstructs a documented generation benchmark. Its mapping
-report identifies the supported attributes and exclusions. Upstream data are
-not bundled with this repository.
+source dataset and reconstructs a documented generation benchmark. The default
+profile includes supplied seasonal minimum-flow and reservoir storage rules. Its
+mapping report identifies supported attributes, conditional waivers and exclusions.
+Upstream data are not bundled with this repository.
 
 ## Why Julia and SCIP.jl?
 

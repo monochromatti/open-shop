@@ -1,5 +1,48 @@
 include("starts.jl")
 
+# Native SCIP statistics do not supply the audited incumbent. A conservative
+# unresolved-root guard may withhold a certificate. Bound values use physical
+# objective units; the optional logfile retains the progress trajectory.
+function _scip_bound_value(optimizer, value; scale=10000.)
+    isfinite(value) && !Bool(SCIP.SCIPisInfinity(optimizer, abs(value))) ? value*scale : nothing
+end
+
+function _scip_diagnostics(model)
+    result=Dict{String,Any}("source"=>"SCIP native statistics; objective bounds in physical units")
+    try
+        optimizer=JuMP.unsafe_backend(model)
+        optimizer isa SCIP.Optimizer || return merge(result,Dict("available"=>false))
+        stage=SCIP.SCIPgetStage(optimizer)
+        result["stage"]=string(stage)
+        result["raw_status"]=string(SCIP.SCIPgetStatus(optimizer))
+        # Native bound/statistic APIs are queried only after transformation.
+        if Int(stage) in 3:10
+            result["available"]=true
+            result["nodes"]=MOI.get(optimizer,MOI.NodeCount())
+            result["total_nodes"]=SCIP.SCIPgetNTotalNodes(optimizer)
+            result["lp_iterations"]=SCIP.SCIPgetNLPIterations(optimizer)
+            result["solutions_stored"]=SCIP.SCIPgetNSols(optimizer)
+            result["solutions_found"]=SCIP.SCIPgetNSolsFound(optimizer)
+            result["native_solve_seconds"]=SCIP.SCIPgetSolvingTime(optimizer)
+            result["final_upper_bound"]=_scip_bound_value(optimizer,SCIP.SCIPgetDualbound(optimizer))
+            result["native_incumbent_objective"]=_scip_bound_value(optimizer,SCIP.SCIPgetPrimalbound(optimizer))
+            if Int(stage)>=5
+                root=SCIP.SCIPgetDualboundRoot(optimizer)
+                result["root_upper_bound"]=_scip_bound_value(optimizer,root)
+                first=SCIP.SCIPgetFirstLPDualboundRoot(optimizer)
+                result["first_root_lp_upper_bound"]=_scip_bound_value(optimizer,first)
+            end
+            result["root_bound_note"]="SCIP original-problem root bound; unavailable/sentinel is null, not a proof"
+        else
+            result["available"]=false
+        end
+    catch error
+        result["error"]=sprint(showerror,error)
+    end
+    result
+end
+
+
 function _remove_constant_constraints!(model)
     count = 0
     for ref in all_constraints(model; include_variable_in_set_constraints = false)
@@ -26,6 +69,13 @@ function _remove_constant_constraints!(model)
         count += 1
     end
     count
+end
+
+function _unresolved_root_certificate(diagnostics, status)
+    status=="OPTIMAL" && get(diagnostics,"available",false) &&
+    get(diagnostics,"lp_iterations",0)>0 &&
+    haskey(diagnostics,"first_root_lp_upper_bound") &&
+    diagnostics["first_root_lp_upper_bound"]===nothing
 end
 
 function _reconstruct_candidate(c, raw; transport = nothing)
@@ -67,7 +117,11 @@ end
 """
     solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0, initial=nothing, fixed_u=nothing)
 
-Optimize generation and binary unit commitment with native SCIP. The objective
+Optimize generation and binary unit commitment with native SCIP.
+`formulation` selects `:baseline` (default), `:domains` or `:tightened`; all retain the
+same physical equations. `diagnostics_path` optionally writes a native SCIP
+progress log. Returned `scip_diagnostics` are observational statistics, not
+independent feasibility or certificate evidence. The objective
 is revenue minus transition costs and release penalties, plus changes in stored
 water value. `initial` may supply a physical schedule on the same control grid.
 
@@ -89,6 +143,8 @@ function solve(
     initial = nothing,
     fixed_u = nothing,
     replay = true,
+    formulation = :baseline,
+    diagnostics_path = nothing,
 )
     isfinite(time_limit) && time_limit > 0 ||
         throw(ArgumentError("positive finite time_limit required"))
@@ -96,10 +152,13 @@ function solve(
         throw(ArgumentError("relative_gap must lie in [0,1)"))
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
+    formulation in (:baseline, :domains, :tightened) || throw(ArgumentError("formulation must be :baseline, :domains, or :tightened"))
+    diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(
         "case" => c.name,
         "solver" => "SCIP",
+        "formulation" => string(formulation),
         "status" => "CONSTRUCTION_BUDGET_EXHAUSTED",
         "accepted" => false,
         "global_certificate" => false,
@@ -128,7 +187,7 @@ function solve(
             throw(ArgumentError("initial controls fail reconstruction audit"))
         result["initial_objective"] = best["objective"]
     end
-    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u)
+    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u, formulation)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
@@ -143,17 +202,37 @@ function solve(
         end
     end
     validated_initial = best
+    variables=all_variables(b.m)
+    binary_names=[name(v) for v in variables if is_binary(v)]
+    result["model_profile"]=Dict(
+        "binary_vars"=>length(binary_names),
+        "tunnel_direction_binaries"=>count(n->startswith(n,"tunnel_direction_"),binary_names),
+        "turbine_cell_binaries"=>count(n->startswith(n,"turbine_") && occursin("_cell[",n),binary_names),
+        "river_table_cell_binaries"=>count(n->startswith(n,"river_law_") && occursin("_cell[",n),binary_names),
+        "bounds_seconds"=>b.bounds_seconds,
+        "tightening_passes"=>b.domains!==nothing && hasproperty(b.domains,:tightening_passes) ? b.domains.tightening_passes : 0,
+        "shared_head_entries"=>length(b.shared_heads),
+        "head_variables_saved"=>length(c.system.generators)*length(c.prices)-length(b.shared_heads))
     result["variable_count"] = num_variables(b.m)
     result["constraint_count"] =
         num_constraints(b.m; count_variable_in_set_constraints = false)
     result["construction_seconds"] = time() - began
     remaining = time_limit - result["construction_seconds"]
     if remaining > 0
+        factory=SCIP.Optimizer
+        if diagnostics_path!==nothing
+            # The builder's cached MOI.Silent would otherwise override verbosity.
+            unset_silent(b.m)
+            mkpath(dirname(diagnostics_path))
+            isfile(diagnostics_path) && rm(diagnostics_path)
+            result["diagnostics_path"]=diagnostics_path
+        end
         set_optimizer(
             b.m,
             optimizer_with_attributes(
-                SCIP.Optimizer,
-                "display/verblevel" => 0,
+                factory,
+                "display/verblevel" => (diagnostics_path===nothing ? 0 : 4),
+                "display/freq" => 1,
                 "limits/time" => remaining,
                 "limits/gap" => relative_gap,
                 "limits/absgap" => absolute_gap / 10000,
@@ -162,18 +241,37 @@ function solve(
             ),
         )
         result["solve_seconds"] = @elapsed try
+            # Copy resets SCIP's native instance; attach before installing its log.
+            JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
+            remaining_after_copy=max(0.,time_limit-(time()-began))
+            set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
+            if diagnostics_path!==nothing
+                SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),diagnostics_path)
+            end
             optimize!(b.m)
         catch error
             result["solver_error"] = sprint(showerror, error)
         end
         result["status"] = string(termination_status(b.m))
         result["primal_status"] = string(primal_status(b.m))
-        upper = try
-            objective_bound(b.m) * 10000
-        catch
-            NaN
+        result["scip_diagnostics"]=_scip_diagnostics(b.m)
+        if diagnostics_path!==nothing
+            try
+                SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),C_NULL)
+            catch error
+                result["diagnostics_close_error"]=sprint(showerror,error)
+            end
         end
-        result["global_bound"] = isfinite(upper) ? upper : nothing
+        upper = try
+            _scip_bound_value(JuMP.unsafe_backend(b.m),objective_bound(b.m))
+        catch
+            nothing
+        end
+        if _unresolved_root_certificate(result["scip_diagnostics"],result["status"])
+            result["bound_rejection"]="SCIP terminated without a finite first root LP bound despite LP iterations; native bound is retained only in diagnostics"
+            upper=nothing
+        end
+        result["global_bound"] = upper
         if result_count(b.m) > 0
             try
                 raw = _dispatch_values(b)

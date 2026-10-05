@@ -72,8 +72,8 @@ mixing and finer replay remain separate modeling checks.
 ## Reproducing the selected backend
 
 The packaged implementation repeats the two replay-valid comparison cases
-three times each. Median elapsed times are 0.247 seconds for the six-unit
-two-hour case and 0.723 seconds for the tabulated eight-hour case. All six runs
+three times each. With the baseline default, median elapsed times are 0.240 seconds for the six-unit
+two-hour case and 0.727 seconds for the tabulated eight-hour case. All six runs
 pass the equation audit, finer replay and requested 0.1% gap. Their objectives
 and bounds reproduce the original SCIP comparison. Records are in
 [native_reproduction.json](../benchmark/results/native_reproduction.json).
@@ -81,6 +81,13 @@ and bounds reproduce the original SCIP comparison. Records are in
 ```sh
 ./scripts/julia.sh benchmark/run.jl
 ```
+
+The experimental tightened graph also passes all six synthetic runs. Its median
+is 0.306 seconds for distributed rivers and 0.327 seconds for turbine tables;
+the latter's gap is 0.000229%, versus the baseline's 0.00701%. The table case
+improves, while distributed rivers become slower. All twelve scalar records are
+retained in the same file, including a first-run elapsed-time outlier. The
+operating Tokke–Vinje regression below prevents making this option the default.
 
 Run the analytic example and tests with the pinned environment. The tests include
 independently known off-state, on-state, interior-flow and negative-objective
@@ -98,12 +105,103 @@ The final external-data test uses the
 ./scripts/julia.sh benchmark/tokke_vinje.jl
 ```
 
-It records preparation, model construction, global search, certificates and
-replay outcomes for the same documented profile at two, six and 24 hours.
+It freezes each operating case and one audited seed, then compares the baseline and tightened formulations with free and fixed commitment. The fourth argument sets the global allowance and the fifth sets repetitions. The records include preparation, construction, root/final bounds, search statistics, certificates and replay outcomes. To reproduce the earlier restricted input scope, import with `--profile hydraulic`.
 
-## Tokke–Vinje results
+## Operating Tokke–Vinje profile
 
-The final external-data test uses 17 reservoirs, 14 physical units, 19 tunnels
+The current importer adds nine source rules: five minimum river releases,
+three seasonal minimum-storage schedules and the aggregate Vest flow minimum.
+The normal cases begin at 2024-09-01 00:00 UTC. A separate 24-hour case begins
+at 2024-09-29 12:00 UTC and crosses the September 30 rule changes. These inputs
+have a different feasible set from the earlier hydraulic profile below.
+
+The experiment freezes one case and one independently audited seed per horizon.
+Baseline, network-domain and tightened-table formulations receive the same
+controls and global allowance. The two-hour baseline and tightened pairs repeat
+twice in alternating order. Other comparisons run once. Preparation, an
+independent fixed-commitment dispatch probe and compilation warmups are excluded
+from the scored times and recorded separately. The probe never replaces the
+submitted seed; it checks that the solver bound encloses another known feasible
+schedule. Fixed-commitment bounds apply only to the selected on/off decisions.
+They still include tunnel-direction and table-cell choices where required; this
+is a dispatch diagnostic, not a continuous convex subproblem.
+
+The two-hour results did not justify promoting either experimental formulation.
+With free commitment, the baseline gap was 52.13%, network domains 1,575.61%,
+and tightened tables 2,466.94% after 60 seconds. All retained the same audited
+objective, 72,191.373. Fixing commitment reduced the baseline gap to 13.95%;
+tightened tables reached 23.82%. Both repetitions reproduced those bounds.
+
+The smaller formulations performed more LP iterations but had difficulty
+resolving the root relaxation. The first root LP bound was unavailable in both
+experimental free-commitment runs. Variable count alone was a misleading
+performance indicator: the baseline had 5,159 variables, network domains 4,363,
+and tightened tables 4,229. This evidence supports retaining the baseline as
+the default and keeping the two alternatives explicitly experimental.
+
+At six hours, the baseline free/fixed gaps were 56.02% and 47.91% with a
+120-second allowance. Network domains reached 55.99% with free commitment;
+tightened-table gaps exceeded 1,200%. Fixing commitment therefore does not
+resolve the longer case's dispatch-bound weakness.
+
+The 24-hour baseline contains 336 unit on/off variables and 14,061 turbine-cell
+selectors. Its exact piecewise data representation creates substantially more
+search choices than physical unit commitment alone. A promising next experiment
+must improve this representation and root-relaxation conditioning without
+replacing the supplied physical curves or restricting the feasible set around
+a local schedule.
+
+The selected baseline delivered these operating schedules:
+
+| Horizon | Preparation | SCIP + audit elapsed | Feasible objective L | Upper bound U | Free-commitment gap |
+|---|---:|---:|---:|---:|---:|
+| 2h | 33.71 s | 60.33 s median | 72,191.373 | 109,823.901 | 52.13% |
+| 6h | 44.40 s | 121.06 s | 217,701.664 | 339,655.226 | 56.02% |
+| 24h | 107.09 s | 123.12 s | 738,775.327 | 1,170,270.011 | 58.41% |
+
+All pass the original equations and finer chronological replay. None closes the
+requested 0.1% gap. The separate normal-case dispatch probe costs 18–20 seconds and is an
+experimental diagnostic, not a required scheduling step. The two-hour seed is
+reused from an earlier preparation; its original cost is shown above.
+
+At 24 hours, network domains and tightened tables both reach an 866.53%
+free-commitment gap. The baseline fixed-commitment run reaches 1,107.04%, versus
+852.86% for tightened tables. Both lack a finite first root LP bound. These
+unstable restricted runs cannot cleanly quantify the mathematical cost of
+commitment; their poor bounds are retained as numerical performance evidence.
+
+Construction costs approximately 0.2 seconds at two hours and 4 seconds at
+24 hours; network-domain propagation itself takes only milliseconds. SCIP's
+relaxation and search dominate elapsed time. Further Julia allocation tuning
+would not address the main measured bottleneck.
+
+The seasonal 24-hour baseline delivers an audited objective of 453,194.141,
+with upper bound 743,920.105 and gap 64.15%. Seed preparation costs 92.56
+seconds; the scored repeat takes 129.85 seconds with a 120-second allowance.
+The dated case crosses reductions in three flow minima and the Ståvatn storage
+minimum. An interrupted first pair is retained with `timing_usable=false`:
+its driver and solver elapsed clocks disagree substantially. The scored repeat
+inhibits idle sleep and reuses the same case and controls. No storage clipping,
+conditional waiver or relaxed environmental rule is used.
+
+Scalar records, case/control fingerprints, native root/final statistics and
+start-audit summaries are in
+[operating_formulations.json](../benchmark/results/operating_formulations.json).
+Each comparison passed its formulation explicitly; the shipped default retains
+the baseline. Upstream raw inputs and generated schedules remain external.
+These measurements do not establish full SHOP compatibility or fast full-day
+optimality.
+
+An earlier numerical failure returned an apparent optimal bound below a
+separately audited feasible fixed-commitment dispatch. The library now withholds
+an optimality claim when LP iterations occurred without a finite first root LP
+bound. The benchmark also rejects any bound below its independent probe.
+These safeguards are conservative numerical checks, not rigorous arithmetic
+certificates.
+
+## Earlier hydraulic Tokke–Vinje profile
+
+The original external-data test uses 17 reservoirs, 14 physical units, 19 tunnels
 (including explicit intake/penstock loss branches), 36 retained rivers and
 15 hydraulic junctions. The zero-delay mixing reach removed by the importer
 is equivalent within the declared profile. All runs use hourly decision

@@ -11,6 +11,7 @@ const OPERATION_ATTRIBUTES=Dict(
         :min_release,
         :release_penalty,
     )),
+    FlowRequirement=>Set((:inflow, :min_flow)),
 )
 
 """Piecewise-constant operating data at absolute physical time. Before a series'
@@ -72,6 +73,7 @@ function validate_operations(c)
             c.system.plants,
             c.system.tunnels,
             c.system.rivers,
+            c.flow_requirements,
         ) for x in xs
     )
     seen=Set{Tuple{Symbol,Symbol}}()
@@ -152,6 +154,26 @@ function validate_operations(c)
                 "river operating capacity cannot exceed routing calibration capacity",
             ),
         )
+    end
+    nothing
+end
+
+function flow_requirement_indices(c, requirement)
+    generators=Dict(g.name=>i for (i, g) in enumerate(c.system.generators))
+    rivers=Dict(r.name=>i for (i, r) in enumerate(c.system.rivers))
+    ([generators[n] for n in requirement.generators], [rivers[n] for n in requirement.rivers])
+end
+
+"""Add the same linear operating observation to local, proposal and global models."""
+function constrain_flow_requirements!(m, c, generator_q, release)
+    for rule in c.flow_requirements
+        gs, rs=flow_requirement_indices(c, rule)
+        for t in eachindex(c.prices)
+            observed=sum(generator_q[i, t] for i in gs; init=0.0)+
+                     sum(release[i, t] for i in rs; init=0.0)+
+                     opinterval(c, rule.name, :inflow, t, rule.inflow)
+            @constraint(m, observed>=opinterval(c, rule.name, :min_flow, t, rule.min_flow))
+        end
     end
     nothing
 end

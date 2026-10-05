@@ -46,6 +46,7 @@ function propose_commitment(
     @variable(m, gq[1:G, 1:T]>=0)
     @variable(m, rq[1:D, 1:T]>=0)
     @variable(m, release_shortfall[1:D, 1:T]>=0)
+    constrain_flow_requirements!(m, c, gq, rq)
     alpha=zeros(G, T)
     for (j, g) in enumerate(s.generators), t in 1:T
         h=g.hbest

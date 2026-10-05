@@ -19,12 +19,27 @@ import hashlib
 import json
 import math
 import pathlib
+import platform
 import re
 import subprocess
 
 SOURCE_URL = "https://gitlab.sintef.no/energy/open-modelling-tools/open-datasets/tokke-vinje-watercourse"
 PINNED_COMMIT = "ba2f2fc1f95d18978a04dd2c658aeef79126981b"
 UTC = dt.timezone.utc
+RIVER_MINIMUM_FILES = {
+    "b_Bandak": "qfomin_7870.csv",
+    "b_Vinjevatn": "qfomin_7871.csv",
+    "b_Hyljelihyl": "qfomin_7876.csv",
+    "b_Kjelavatn": "qfomin_7883.csv",
+    "b_Byrtevatn": "qfomin_7895.csv",
+}
+RESERVOIR_MINIMUM_FILES = {
+    "Totak": "mamin_7874.csv",
+    "Staavatn": "mamin_7885.csv",
+    "Byrtevatn": "mamin_7895.csv",
+}
+VEST_NAME = "r_Vest_Vassdraget"
+VEST_RIVERS = ("s_Byrtevatn", "b_Byrtevatn", "s_Botnedalsvatn", "b_Botnedalsvatn")
 
 
 def yaml_data(path):
@@ -500,6 +515,172 @@ def historical_inputs(source, at, hours):
     return selected_prices, inflows, factors, sum(next_week) / 168
 
 
+def read_seasonal_rule(path):
+    """Read the source's annually recurring UTC step rule, without execution.
+
+    The public procedure treats a December 31 row as the January 1 baseline.
+    Storage values in mamin files are Mm³; they are not water levels.
+    """
+    result = []
+    with path.open() as stream:
+        reader = csv.DictReader(stream)
+        if reader.fieldnames != ["tid", "verdi"]:
+            raise ValueError(f"unsupported environmental rule schema: {path}")
+        for row in reader:
+            date = dt.date.fromisoformat(row["tid"])
+            month_day = (date.month, date.day)
+            if month_day == (12, 31):
+                month_day = (1, 1)
+            value = float(row["verdi"])
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"invalid environmental rule value: {path}")
+            result.append(
+                {
+                    "month": month_day[0],
+                    "day": month_day[1],
+                    "value": value,
+                    "source_date": row["tid"],
+                }
+            )
+    dates = [(r["month"], r["day"]) for r in result]
+    if not dates or dates[0] != (1, 1) or any(a >= b for a, b in zip(dates, dates[1:])):
+        raise ValueError(
+            f"environmental rules need an ordered January baseline: {path}"
+        )
+    return result
+
+
+def seasonal_value(rule, time):
+    time = time.astimezone(UTC)
+    dates = [(r["month"], r["day"]) for r in rule]
+    index = bisect.bisect_right(dates, (time.month, time.day)) - 1
+    return rule[index]["value"]
+
+
+def seasonal_series(rule, at, hours):
+    """Keep the initial value and every interior UTC midnight change."""
+    end = at + dt.timedelta(hours=hours)
+    knots = [(0.0, seasonal_value(rule, at))]
+    for year in range(at.year, end.year + 1):
+        for row in rule:
+            changed = dt.datetime(year, row["month"], row["day"], tzinfo=UTC)
+            if at < changed < end:
+                knots.append(((changed - at).total_seconds() / 3600, row["value"]))
+    knots.sort()
+    return [t for t, _ in knots], [value for _, value in knots]
+
+
+def apply_operating_rules(case, source, at, hours, inflows):
+    """Attach hard current rules; observations never add a second water flow."""
+    folder = source / "data/input_data/SEnDHub"
+    rivers = {r["name"] for r in case["rivers"]}
+    reservoirs = {r["name"]: r for r in case["reservoirs"]}
+    coverage = []
+    for name, filename in RIVER_MINIMUM_FILES.items():
+        if name not in rivers:
+            raise ValueError(f"missing environmentally constrained river: {name}")
+        rule = read_seasonal_rule(folder / filename)
+        times, values = seasonal_series(rule, at, hours)
+        case["operations"].append(
+            {
+                "object": name,
+                "attribute": "min_release",
+                "times": times,
+                "values": values,
+            }
+        )
+        coverage.append(
+            {
+                "object": name,
+                "attribute": "min_release",
+                "unit": "m3/s",
+                "source_file": f"data/input_data/SEnDHub/{filename}",
+                "annual_rule": rule,
+                "times": times,
+                "values": values,
+            }
+        )
+    for name, filename in RESERVOIR_MINIMUM_FILES.items():
+        reservoir = reservoirs[name]
+        rule = read_seasonal_rule(folder / filename)
+        times, raw_values = seasonal_series(rule, at, hours)
+        values = [max(reservoir["vmin"], value) for value in raw_values]
+        if any(value > reservoir["vmax"] for value in values):
+            raise ValueError(f"environmental minimum exceeds physical maximum: {name}")
+        if reservoir["v0"] < values[0]:
+            raise ValueError(
+                f"{name}: preserved historical initial storage {reservoir['v0']} "
+                f"is below environmental minimum {values[0]}; no waiver applied"
+            )
+        case["operations"].append(
+            {"object": name, "attribute": "vmin", "times": times, "values": values}
+        )
+        coverage.append(
+            {
+                "object": name,
+                "attribute": "vmin",
+                "unit": "Mm3",
+                "source_file": f"data/input_data/SEnDHub/{filename}",
+                "annual_rule": rule,
+                "times": times,
+                "raw_values": raw_values,
+                "values": values,
+                "physical_minimum": reservoir["vmin"],
+            }
+        )
+    missing = set(VEST_RIVERS) - rivers
+    units = [g["name"] for g in case["generators"] if g["plant"] == "Lio"]
+    if missing or units != ["Lio_G1"]:
+        raise ValueError(
+            f"unexpected Vest observation terms: {units}, missing {missing}"
+        )
+    rule = read_seasonal_rule(folder / "qmin_7891.csv")
+    times, values = seasonal_series(rule, at, hours)
+    rates = inflows.get(VEST_NAME, [])[:hours]
+    if len(rates) != hours or any(not math.isfinite(x) or x < 0 for x in rates):
+        raise ValueError("missing or invalid dated Vest local inflow")
+    case["flow_requirements"] = [
+        {
+            "name": VEST_NAME,
+            "generators": units,
+            "rivers": list(VEST_RIVERS),
+            "inflow": rates[0],
+            "min_flow": values[0],
+        }
+    ]
+    case["operations"].extend(
+        [
+            {
+                "object": VEST_NAME,
+                "attribute": "min_flow",
+                "times": times,
+                "values": values,
+            },
+            {
+                "object": VEST_NAME,
+                "attribute": "inflow",
+                "times": list(map(float, range(hours))),
+                "values": rates,
+            },
+        ]
+    )
+    coverage.append(
+        {
+            "object": VEST_NAME,
+            "attribute": "min_flow",
+            "unit": "m3/s",
+            "source_file": "data/input_data/SEnDHub/qmin_7891.csv",
+            "annual_rule": rule,
+            "times": times,
+            "values": values,
+            "observation": case["flow_requirements"][0],
+            "local_inflow": "same dated local inflow already added to Bandak; observation only",
+        }
+    )
+    case["name"] = f"tokke_vinje_operating_{hours}h"
+    return coverage
+
+
 def compile_case(data, params, levels, prices, inflows, terminal_price, hours, source):
     model = data["model"]
     edges = data["connections"]
@@ -954,8 +1135,22 @@ def main():
     parser.add_argument("--output", type=pathlib.Path, default=root / "generated")
     parser.add_argument("--start", default="2024-09-01T00:00:00+00:00")
     parser.add_argument("--hours", type=int, nargs="+", default=[2, 6, 24])
+    parser.add_argument(
+        "--profile",
+        choices=("operating", "hydraulic"),
+        default="operating",
+        help="operating includes current hard environmental rules; hydraulic reproduces the earlier restricted profile",
+    )
     args = parser.parse_args()
     at = timestamp(args.start)
+    if at.minute or at.second or at.microsecond:
+        raise ValueError("historical benchmark start must be an exact UTC hour")
+    if (
+        not args.hours
+        or any(h <= 0 for h in args.hours)
+        or len(set(args.hours)) != len(args.hours)
+    ):
+        raise ValueError("horizons must be distinct positive integer hours")
     commit = subprocess.check_output(
         ["git", "-C", str(args.source), "rev-parse", "HEAD"], text=True
     ).strip()
@@ -994,6 +1189,7 @@ def main():
         "profile": "restricted hydraulic-generation benchmark; not full SHOP equivalence",
         "source_license": "no explicit LICENSE/COPYING/NOTICE found; external data not bundled with published library",
         "start_utc": at.isoformat(),
+        "input_generator_python": platform.python_version(),
         "source_draft_inventory": original,
         "documented_final_inventory": {k: len(v) for k, v in data["model"].items()},
         "historical_level_provenance": level_provenance,
@@ -1091,6 +1287,38 @@ def main():
         "terminal_water_value": "explicit next-week historical mean × public global energy-equivalent benchmark policy",
         "reserves": "excluded from this profile",
     }
+    if args.profile == "operating":
+        metadata["profile"] = (
+            "restricted hydraulic-generation with current hard operating rules; not full SHOP equivalence"
+        )
+        metadata["declarations"] = [
+            text.replace(
+                "Environmental constraints, reserves, river flow costs and source soft-bound penalty semantics are excluded from this generation/hydraulic profile.",
+                "Current raw environmental minimum flows and storage thresholds are hard constraints; reserves, river flow costs and source soft-bound penalty semantics remain excluded.",
+            )
+            for text in metadata["declarations"]
+        ]
+        metadata["declarations"].extend(
+            [
+                "Annual environmental steps use UTC month/day recurrence from the current qfomin, qmin and mamin files; the source December 31 baseline is mapped to January 1. The notebook's Old version schedules are not imported.",
+                "Current source annual rule tables are applied to historical benchmark dates; historical rule revisions are not reconstructed.",
+                "Raw mamin values are storage in Mm3. They are retained directly, combined with physical storage minima; rounded prose elevations are not substituted for raw thresholds.",
+                "Vest minimum flow observes Lio discharge, four incoming river releases and the same dated local inflow already delivered to Bandak; this adds no water or hydraulic state.",
+                "Conditional extraordinary-inflow waivers are unsupported and never applied automatically. Historical initial states are preserved; a violated initial minimum causes an error.",
+                "No current extra environmental maximum-storage schedule is supplied in the reviewed raw inputs; physical nominal maxima remain in force.",
+            ]
+        )
+        metadata["time_series_coverage"][
+            "environmental_constraints"
+        ] = "included: five bypass minimum-flow schedules, three minimum-storage schedules and the Vest aggregate minimum flow; conditional waivers and soft semantics excluded"
+    metadata["operating_rule_policy"] = {
+        "enabled": args.profile == "operating",
+        "hard_minimum_semantics": True,
+        "recurrence": "annual UTC month/day steps, inclusive from 00:00 on each effective date",
+        "storage_units": "raw mamin values are Mm3, not water levels",
+        "conditional_waivers": "unsupported; none applied",
+        "maximum_storage": "no current additional raw environmental maximum rule supplied",
+    }
     tracked = (
         subprocess.check_output(
             ["git", "-C", str(args.source), "ls-files", "-z"], text=True
@@ -1106,6 +1334,10 @@ def main():
         case, coverage = compile_case(
             data, params, levels, prices, inflows, terminal_price, hours, args.source
         )
+        if args.profile == "operating":
+            coverage["operating_rules"] = apply_operating_rules(
+                case, args.source, at, hours, inflows
+            )
         path = args.output / f"tokke_vinje_{hours}h.json"
         text = json.dumps(case, indent=2, allow_nan=False) + "\n"
         path.write_text(text)

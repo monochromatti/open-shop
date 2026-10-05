@@ -26,7 +26,7 @@ o_t(H_{a,t}-H_{b,t})=kQ_t|Q_t|.
 
 Opening zero fixes its flow to zero. Capacity bounds both directions. The global
 model expresses signed flow using positive and negative parts and a direction
-binary, retaining the exact quadratic loss law.
+binary, retaining the exact quadratic loss law. Conservative head and continuity bounds can prove a direction; in that case the model uses its signed quadratic directly and omits the direction binary. Reversible links retain both directions.
 
 ## Generation and operation
 
@@ -48,7 +48,7 @@ Efficiency can be an analytic function or a turbine table. Turbine tables are
 linear in head and linear or shape-preserving cubic in discharge. The global
 model uses exact polynomial expressions within selected table cells, including
 their off-state continuation; it does not substitute a linear power curve.
-Head-dependent turbine flow envelopes apply to running units.
+Head-dependent turbine flow envelopes apply to running units. The experimental tightened graph uses isolated zero-discharge cells for off operation; on-cell selectors sum to unit commitment. The experimental tightened table graph bounds efficiency using endpoint and cubic stationary values, including declared extrapolation. It scales clipped cell coordinates to `[0,1]`, uses only the active branch when commitment is fixed, and represents single-segment one-dimensional tables with their exact affine graph.
 
 Aggregate plant capacity and production ramp limits apply to interval-average
 power. Start/stop allowances use each unit's minimum power. If previous plant
@@ -65,7 +65,7 @@ For deterministic delays, transport compilation preserves original release
 pulses through successive confluences. Zero and sub-interval delays are allowed;
 same-interval arrivals remain coupled to hydraulic and storage equations.
 Environmental minima can apply to interval averages or exact instantaneous
-breakpoints.
+breakpoints. A named aggregate flow observation can additionally constrain the sum of unit discharges, river releases and exogenous inflow without adding a hydraulic node or counting the water twice.
 
 Distributed travel-time curves blend distributions according to the release
 flow. Each original cohort retains its chosen distribution. Downstream mixing
@@ -112,6 +112,8 @@ for the discrete model, rather than an interval-arithmetic proof. When
 its certificate is conditional on those on/off decisions. `commitment_fixed`
 and `certificate_scope` identify this restriction in the returned result.
 
+A native `OPTIMAL` result is withheld as a certificate when SCIP performed LP iterations but returned no finite first root LP bound. An observed numerical failure produced this combination and an upper bound below a separately audited feasible schedule. The native result remains in diagnostics. This conservative guard is not a general proof against floating-point solver errors.
+
 Finer chronological replay is a separate acceptance test. An optimal discrete
 schedule can fail replay when its grid is too coarse. The library reports this
 failure rather than attaching the discrete certificate to different controls
@@ -125,3 +127,9 @@ When a better discrete candidate fails replay, a supplied replay-valid initial
 schedule can be retained. Its objective and gap are recomputed against the same
 global bound. The rejected candidate remains in `discrete_candidate` for
 diagnostics; its certificate is never transferred to the retained controls.
+
+## Formulation diagnostics
+
+The default `solve(...; formulation=:baseline)` uses capacity-based network domains and the original exact table graphs. The experimental `:domains` and `:tightened` alternatives propagate conservative flow, head and storage intervals through conservation, river laws and signed tunnel losses before constructing the bounded model. Both prune unreachable table cells; `:tightened` also changes table graphs and strengthens turbine on/off selection. Neither uses a candidate trajectory to restrict the feasible set. Floating-point outward slack protects numerical enclosures; the certificate remains a numerical solver certificate. Matched operating Tokke–Vinje runs regressed with these alternatives, so they remain opt-in.
+
+`formulation=:domains` applies network domains and cell pruning with the original table graphs, separating those effects in an ablation. `formulation=:baseline` reproduces the earlier capacity-based domains and table graphs for matched experiments on the same physical case. `diagnostics_path="scip.log"` enables native SCIP progress logging. Returned `scip_diagnostics` include native root/final bounds, node counts, LP iterations and solution counts. Root or displayed log bounds are diagnostic observations; only the enclosing final bound and independently audited objective determine the reported gap. Native infinity sentinels are reported as missing bounds.

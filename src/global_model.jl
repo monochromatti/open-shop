@@ -31,8 +31,12 @@ function _build_global_dispatch(
     transport = nothing,
     reachable_bounds = true,
     share_plant_heads = true,
+    formulation = :baseline,
 )
     starttime=time()
+    formulation in (:baseline, :domains, :tightened) || throw(ArgumentError("unknown global formulation"))
+    tightened=formulation!=:baseline
+    tightened_tables=formulation==:tightened
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
     isfinite(operational_margin) && operational_margin>=0 ||
@@ -91,7 +95,7 @@ function _build_global_dispatch(
             ),
         )
     rd=exact ? nothing : routing_data(c)
-    domains=reachable_bounds ? _global_reachable_bounds(c, nd, rd) : nothing
+    domains=reachable_bounds ? _global_reachable_bounds(c, nd, rd; tightened) : nothing
     bounds_seconds=time()-bound_start
     m=Model()
     set_silent(m)
@@ -127,12 +131,14 @@ function _build_global_dispatch(
     for z in s.boundaries, t in 1:T
         node_bounds[(z.name, t)]=(z.head, z.head)
     end
+    tightened && domains!==nothing && merge!(node_bounds,domains.node_head_bounds)
     V=[s.reservoirs[i].vmax*v[i, t] for i in 1:R, t in 1:(T + 1)]
     H=250 .* h
     Q=50 .* q
     GQ=50 .* gq
     P=40 .* p
     RQ=100 .* rq
+    constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=domains===nothing ? storage_bounds(c, r, c.grid[t]) :
@@ -158,13 +164,14 @@ function _build_global_dispatch(
                 midlo,
                 midhi;
                 name = Symbol("level_", i, "_", t),
+                tightened = tightened_tables,
             )
             @constraint(m, (H[i, t]-level)/250==0)
         end
     end
     for (i, j) in enumerate(s.junctions), t in 1:T
-        set_lower_bound(h[R + i, t], j.hmin/250)
-        set_upper_bound(h[R + i, t], j.hmax/250)
+        set_lower_bound(h[R + i, t], node_bounds[(j.name,t)][1]/250)
+        set_upper_bound(h[R + i, t], node_bounds[(j.name,t)][2]/250)
         set_start_value(h[R + i, t], (j.hmin+j.hmax)/500)
     end
     for (i, b) in enumerate(s.boundaries), t in 1:T
@@ -173,10 +180,14 @@ function _build_global_dispatch(
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=opinterval(c, e.name, :opening, t, e.opening)
-        set_lower_bound(q[i, t], -cap/50)
-        set_upper_bound(q[i, t], cap/50)
+        qlo,qhi=tightened && domains!==nothing ? (domains.tunnel_lower[i,t],domains.tunnel_upper[i,t]) : (-cap,cap)
+        set_lower_bound(q[i, t], qlo/50)
+        set_upper_bound(q[i, t], qhi/50)
         if opening==0
             fix(q[i, t], 0; force = true)
+        elseif tightened && (qlo>=0 || qhi<=0)
+            sign=qlo>=0 ? 1.0 : -1.0
+            @constraint(m,(opening*(H[ix[e.source],t]-H[ix[e.target],t])-e.resistance*sign*Q[i,t]^2)/100==0)
         else
             qp=@variable(
                 m,
@@ -211,7 +222,7 @@ function _build_global_dispatch(
         else
             totalq=sum(GQ[j, t] for j in plant_generators[plant.name])
             aggregate_max=sum(
-                s.generators[j].qmax for j in plant_generators[plant.name];
+                (tightened ? opinterval(c,s.generators[j].name,:qmax,t,s.generators[j].qmax) : s.generators[j].qmax) for j in plant_generators[plant.name];
                 init = 0.0,
             )
             tail=plant.tailwater_curve===nothing ? 0.0 :
@@ -222,6 +233,7 @@ function _build_global_dispatch(
                 0.0,
                 aggregate_max;
                 name = Symbol("tailwater_", i, "_", t),
+                tightened = tightened_tables,
             )
             tail_lo=plant.tailwater_curve===nothing ? 0.0 : minimum(plant.tailwater_curve.y)
             tail_hi=plant.tailwater_curve===nothing ? 0.0 : maximum(plant.tailwater_curve.y)
@@ -239,6 +251,7 @@ function _build_global_dispatch(
                     dst[1],
                     dst[2];
                     name = Symbol("outlet_head_", i, "_", t),
+                tightened = tightened_tables,
                 )
                 dst=(max(dst[1], floor), max(dst[2], floor))
             end
@@ -253,8 +266,15 @@ function _build_global_dispatch(
             @constraint(m, hd==H[ix[plant.source], t]-receiver-tail)
             shared_heads[key]=hd
         end
+        flowmax=tightened && domains!==nothing ? domains.generator_upper[i,t] : g.qmax
+        powmax=tightened ? opinterval(c,g.name,:pmax,t,g.pmax) : g.pmax
+        # Fixed states need only their physical branch; retaining a redundant
+        # off/on disjunction creates degenerate table equations in presolve.
+        known_state=joint ? (is_fixed(u[i,t]) ? fix_value(u[i,t]) : nothing) : u[i,t]
+        flowmin=tightened && known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
+        tightened && known_state==0 && (flowmax=0.0)
         eta=if g.turbine_table===nothing
-            emin, emax=_global_analytic_eta_bounds(g, 0.0, g.qmax, hlo, hhi)
+            emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
             @constraint(
                 m,
@@ -269,11 +289,14 @@ function _build_global_dispatch(
                 g.turbine_table,
                 GQ[i, t],
                 hd,
-                0.0,
-                g.qmax,
+                flowmin,
+                flowmax,
                 hlo,
                 hhi;
                 name = Symbol("turbine_", i, "_", t),
+                tightened = tightened_tables,
+                commitment = joint && known_state===nothing ? u[i,t] : nothing,
+                min_on_flow = opinterval(c,g.name,:qmin,t,g.qmin),
             )
         end
         electrical=g.generator_efficiency_curve===nothing ? 1.0 :
@@ -282,16 +305,18 @@ function _build_global_dispatch(
             g.generator_efficiency_curve,
             P[i, t],
             0.0,
-            g.pmax;
+            powmax;
             name = Symbol("electrical_", i, "_", t),
+                tightened = tightened_tables,
         )
         qmin=opinterval(c, g.name, :qmin, t, g.qmin)
         qmax=opinterval(c, g.name, :qmax, t, g.qmax)
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
         pmax=opinterval(c, g.name, :pmax, t, g.pmax)
         if joint
-            set_upper_bound(gq[i, t], g.qmax/50)
-            set_upper_bound(p[i, t], g.pmax/40)
+            tightened && known_state==1 && set_lower_bound(gq[i,t],flowmin/50)
+            set_upper_bound(gq[i, t], flowmax/50)
+            set_upper_bound(p[i, t], powmax/40)
             if (fixed_u!==nothing && fixed_u[i, t]==0) ||
                (free_mask!==nothing && !free_mask[i, t] && ustart[i, t]==0)
                 fix(gq[i, t], 0.0; force = true)
@@ -341,6 +366,7 @@ function _build_global_dispatch(
                 hlo,
                 hhi;
                 name = Symbol("qlo_", i, "_", t),
+                tightened = tightened_tables,
             )
             qhi=_global_table!(
                 m,
@@ -349,6 +375,7 @@ function _build_global_dispatch(
                 hlo,
                 hhi;
                 name = Symbol("qhi_", i, "_", t),
+                tightened = tightened_tables,
             )
             flow_margin=operational_margin/(
                 0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))
@@ -424,7 +451,8 @@ function _build_global_dispatch(
         B=exact ? nothing : rd["B"][i]
         for t in 1:T
             cap=opinterval(c, r.name, :capacity, t, r.capacity)
-            set_upper_bound(rq[i, t], cap/100)
+            set_upper_bound(rq[i, t], (tightened && domains!==nothing ? domains.release_upper[i,t] : cap)/100)
+            tightened && domains!==nothing && set_lower_bound(rq[i,t],domains.release_lower[i,t]/100)
             set_lower_bound(a[i, t], opinterval(c, r.name, :gate_min, t, r.gate_min))
             set_upper_bound(a[i, t], opinterval(c, r.name, :gate_max, t, 1.0))
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
@@ -472,13 +500,16 @@ function _build_global_dispatch(
                 r.law==:weir && fix(a[i, t], 1.0; force = true)
                 level=H[ix[r.source], t]
                 @constraint(m, first(r.discharge_curve.x)<=level<=last(r.discharge_curve.x))
+                lawlo,lawhi=tightened ? (max(first(r.discharge_curve.x),node_bounds[(r.source,t)][1]),min(last(r.discharge_curve.x),node_bounds[(r.source,t)][2])) : (first(r.discharge_curve.x),last(r.discharge_curve.x))
+                lawlo<=lawhi || throw(ArgumentError("river law outside reachable domain for $(r.name)"))
                 discharge=_global_table!(
                     m,
                     r.discharge_curve,
                     level,
-                    first(r.discharge_curve.x),
-                    last(r.discharge_curve.x);
+                    lawlo,
+                    lawhi;
                     name = Symbol("river_law_", i, "_", t),
+                tightened = tightened_tables,
                 )
                 @constraint(m, (RQ[i, t]-a[i, t]*discharge)/100==0)
             elseif r.law==:controlled
@@ -750,5 +781,7 @@ function _build_global_dispatch(
         domains,
         bounds_seconds,
         shared_heads,
+        node_bounds,
+        formulation,
     )
 end

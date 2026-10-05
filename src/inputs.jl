@@ -31,6 +31,18 @@ function validate_inputs(c)
     ]
     length(unique(objectnames))==length(objectnames) ||
         error("Names must be globally unique")
+    for rule in c.flow_requirements
+        rule.name in objectnames && throw(ArgumentError("duplicate flow observation name $(rule.name)"))
+        push!(objectnames, rule.name)
+        isfinite(rule.inflow) && rule.inflow>=0 && isfinite(rule.min_flow) && rule.min_flow>=0 ||
+            throw(ArgumentError("flow observation rates must be finite and nonnegative"))
+        length(unique(rule.generators))==length(rule.generators) &&
+        length(unique(rule.rivers))==length(rule.rivers) ||
+            throw(ArgumentError("duplicate flow observation contribution"))
+        all(n->any(g.name==n for g in s.generators), rule.generators) &&
+        all(n->any(r.name==n for r in s.rivers), rule.rivers) ||
+            throw(ArgumentError("unknown flow observation contribution"))
+    end
     ns=nodes(s)
     allnames=vcat(ns, [j.name for j in s.river_junctions])
     length(unique(allnames))==length(allnames)||error("Duplicate node")

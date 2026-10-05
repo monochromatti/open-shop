@@ -106,6 +106,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         grid = Float64.(c.grid[edge:end]),
         prices = Float64.(c.prices[edge:end]),
         operations = c.operations,
+        flow_requirements = c.flow_requirements,
     )
     validate_inputs(result)
     result
