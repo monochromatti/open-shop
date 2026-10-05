@@ -21,9 +21,8 @@ using Pkg
 Pkg.add(url="https://github.com/monochromatti/open-shop")
 ```
 
-The tested toolchain is Julia 1.13 on Apple Silicon macOS. The repository pins
-its Julia packages and provides a Nix development shell and CI configuration
-for macOS and Linux.
+The tested toolchain is Julia 1.13 on macOS and Linux. The repository pins
+its Julia packages and provides a Nix development shell for both platforms.
 
 ```sh
 git clone https://github.com/monochromatti/open-shop.git

@@ -13,13 +13,16 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       JULIA_NUM_THREADS: 1
+      JULIA_NUM_PRECOMPILE_TASKS: 2
       OPENBLAS_NUM_THREADS: 1
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7.0.1
+      - uses: julia-actions/setup-julia@v3.0.2
         with:
           version: '1.13'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3.4.0
+        with:
+          delete-old-caches: false
       - name: Instantiate and test
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test(; julia_args=["--pkgimages=no"])'
       - name: Run the public example
