@@ -1,0 +1,75 @@
+module OpenSHOP
+using JuMP, Ipopt, SCIP, HiGHS, JSON3, LinearAlgebra, Random, SHA, Dates, Statistics
+const MOI=JuMP.MOI
+include("routing.jl")
+using .RiverRouting
+include("curves.jl")
+include("types.jl")
+include("curve_physics.jl")
+include("piecewise.jl")
+include("operations.jl")
+include("inputs.jl")
+include("rivergraph.jl")
+include("transport.jl")
+include("temporal.jl")
+include("forward.jl")
+include("joint_states.jl")
+include("local_dispatch.jl")
+include("validation.jl")
+include("proposal.jl")
+include("io.jl")
+include("dispatch_controls.jl")
+include("verification.jl")
+include("restart.jl")
+include("schedule.jl")
+include("global_bounds.jl")
+include("global_model.jl")
+include("solve.jl")
+export Reservoir,
+    Junction,
+    Boundary,
+    Tunnel,
+    Plant,
+    Generator,
+    RiverJunction,
+    River,
+    HydroSystem,
+    ScheduleCase,
+    OperationalSeries,
+    TableCurve,
+    TurbineTable,
+    CompiledTransport,
+    nodes,
+    nodeindex,
+    head,
+    plantof,
+    efficiency,
+    power,
+    RiverRouting,
+    simulate,
+    forward_step,
+    routing_data,
+    route_network,
+    admissible,
+    solve_case,
+    validate,
+    writejson,
+    case_dict,
+    readcase,
+    case_from_dict,
+    curve_samples,
+    with_grid,
+    solve_verified,
+    replay_audit,
+    point_arrival,
+    minimum_arrival,
+    release_history,
+    restart_case,
+    schedule_case,
+    dispatch_from_controls,
+    normalize_river_connections,
+    public_river_connections,
+    deterministic_network_data,
+    route_network_controlled,
+    transport_audit
+end

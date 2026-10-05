@@ -1,0 +1,7 @@
+.depot
+/results/
+/data/
+examples/tokke_vinje/data/
+examples/tokke_vinje/generated/
+*.ji
+.DS_Store

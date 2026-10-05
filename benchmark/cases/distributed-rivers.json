@@ -1,0 +1,525 @@
+{
+  "reservoirs": [
+    {
+      "curvature": -0.006,
+      "slope": 1,
+      "inflow": 4,
+      "name": "WestA",
+      "v0": 14,
+      "vmax": 22,
+      "level_curve": null,
+      "vmin": 2,
+      "water_value": 17500,
+      "z0": 210
+    },
+    {
+      "curvature": -0.008,
+      "slope": 0.9,
+      "inflow": 3,
+      "name": "WestB",
+      "v0": 11,
+      "vmax": 16,
+      "level_curve": null,
+      "vmin": 1,
+      "water_value": 17500,
+      "z0": 214
+    },
+    {
+      "curvature": -0.01,
+      "slope": 1,
+      "inflow": 5,
+      "name": "East",
+      "v0": 9,
+      "vmax": 14,
+      "level_curve": null,
+      "vmin": 1,
+      "water_value": 14500,
+      "z0": 181
+    },
+    {
+      "curvature": -1,
+      "slope": 6,
+      "inflow": 0,
+      "name": "WestPond",
+      "v0": 0.5,
+      "vmax": 1.2,
+      "level_curve": null,
+      "vmin": 0.05,
+      "water_value": 5200,
+      "z0": 109
+    },
+    {
+      "curvature": -1,
+      "slope": 6,
+      "inflow": 0,
+      "name": "EastPond",
+      "v0": 0.5,
+      "vmax": 1.2,
+      "level_curve": null,
+      "vmin": 0.05,
+      "water_value": 5200,
+      "z0": 104
+    },
+    {
+      "curvature": -0.04,
+      "slope": 2,
+      "inflow": 2,
+      "name": "Lower",
+      "v0": 3,
+      "vmax": 6,
+      "level_curve": null,
+      "vmin": 0.3,
+      "water_value": 5200,
+      "z0": 62
+    }
+  ],
+  "name": "choice_active_distributed_2h",
+  "junctions": [
+    {
+      "name": "WestMerge",
+      "hmin": 190,
+      "hmax": 245
+    },
+    {
+      "name": "WestIntake",
+      "hmin": 180,
+      "hmax": 245
+    },
+    {
+      "name": "EastIntake",
+      "hmin": 160,
+      "hmax": 210
+    },
+    {
+      "name": "LowerIntake",
+      "hmin": 45,
+      "hmax": 80
+    }
+  ],
+  "boundaries": [
+    {
+      "name": "Tailwater",
+      "head": 22
+    }
+  ],
+  "prices": [
+    110,
+    125
+  ],
+  "grid": [
+    0,
+    1,
+    2
+  ],
+  "operations": [],
+  "tunnels": [
+    {
+      "source": "WestA",
+      "name": "FeedA",
+      "resistance": 0.006,
+      "capacity": 50,
+      "opening": 1,
+      "target": "WestMerge"
+    },
+    {
+      "source": "WestB",
+      "name": "FeedB",
+      "resistance": 0.009,
+      "capacity": 45,
+      "opening": 1,
+      "target": "WestMerge"
+    },
+    {
+      "source": "WestMerge",
+      "name": "SharedWest",
+      "resistance": 0.002,
+      "capacity": 55,
+      "opening": 1,
+      "target": "WestIntake"
+    },
+    {
+      "source": "WestA",
+      "name": "Crosslink",
+      "resistance": 0.02,
+      "capacity": 20,
+      "opening": 1,
+      "target": "WestB"
+    },
+    {
+      "source": "East",
+      "name": "EastConduit",
+      "resistance": 0.003,
+      "capacity": 45,
+      "opening": 1,
+      "target": "EastIntake"
+    },
+    {
+      "source": "Lower",
+      "name": "LowerConduit",
+      "resistance": 0.0007,
+      "capacity": 85,
+      "opening": 1,
+      "target": "LowerIntake"
+    }
+  ],
+  "generators": [
+    {
+      "hcurvature": 0.015,
+      "name": "WestPlant_1_1",
+      "hmin": 85,
+      "hbest": 108,
+      "qbest": 20.4,
+      "pmin": 7.297698239999997,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 24,
+      "qcurvature": 0.28,
+      "hmax": 135,
+      "qmin": 8.399999999999999,
+      "startup": 120,
+      "plant": "WestPlant",
+      "pmax": 30.195179999999997,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.015,
+      "name": "WestPlant_2_1",
+      "hmin": 85,
+      "hbest": 108,
+      "qbest": 18.7,
+      "pmin": 6.689556719999999,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 22,
+      "qcurvature": 0.28,
+      "hmax": 135,
+      "qmin": 7.699999999999999,
+      "startup": 120,
+      "plant": "WestPlant",
+      "pmax": 27.678914999999996,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.015,
+      "name": "EastPlant_1_1",
+      "hmin": 60,
+      "hbest": 80,
+      "qbest": 15.299999999999999,
+      "pmin": 4.054276799999999,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 18,
+      "qcurvature": 0.28,
+      "hmax": 100,
+      "qmin": 6.3,
+      "startup": 120,
+      "plant": "EastPlant",
+      "pmax": 16.7751,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.015,
+      "name": "EastPlant_2_1",
+      "hmin": 60,
+      "hbest": 80,
+      "qbest": 13.6,
+      "pmin": 3.6038015999999997,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 16,
+      "qcurvature": 0.28,
+      "hmax": 100,
+      "qmin": 5.6,
+      "startup": 120,
+      "plant": "EastPlant",
+      "pmax": 14.911199999999997,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.015,
+      "name": "LowerPlant_1_1",
+      "hmin": 25,
+      "hbest": 45,
+      "qbest": 32.3,
+      "pmin": 4.8144537,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 38,
+      "qcurvature": 0.28,
+      "hmax": 65,
+      "qmin": 13.299999999999999,
+      "startup": 70,
+      "plant": "LowerPlant",
+      "pmax": 23.019164999999997,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.015,
+      "name": "LowerPlant_2_1",
+      "hmin": 25,
+      "hbest": 45,
+      "qbest": 28.9,
+      "pmin": 4.307669099999999,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": null,
+      "initial_age": 8,
+      "minup": 3,
+      "qmax": 34,
+      "qcurvature": 0.28,
+      "hmax": 65,
+      "qmin": 11.899999999999999,
+      "startup": 70,
+      "plant": "LowerPlant",
+      "pmax": 20.596094999999995,
+      "turbine_table": null,
+      "efficiency": 0.94,
+      "min_efficiency": 0.7
+    }
+  ],
+  "schema_version": 2,
+  "river_junctions": [
+    {
+      "name": "Confluence"
+    }
+  ],
+  "rivers": [
+    {
+      "source": "WestPond",
+      "name": "WestReach",
+      "arrival_policy": "interval_average",
+      "curves": [
+        {
+          "reference_flow": 0,
+          "weights": [
+            0.15,
+            0.35,
+            0.5
+          ],
+          "edges": [
+            1,
+            1.5,
+            2,
+            2.5
+          ]
+        },
+        {
+          "reference_flow": 70,
+          "weights": [
+            0.5,
+            0.35,
+            0.15
+          ],
+          "edges": [
+            1,
+            1.5,
+            2,
+            2.5
+          ]
+        }
+      ],
+      "capacity": 70,
+      "allow_dry": false,
+      "coefficient": 30,
+      "crest": 108,
+      "deterministic_delay": null,
+      "target": "Confluence",
+      "min_arrival": 2,
+      "history_release": [
+        24,
+        24,
+        24,
+        24
+      ],
+      "water_value": 5200,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "orifice",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    },
+    {
+      "source": "EastPond",
+      "name": "EastReach",
+      "arrival_policy": "interval_average",
+      "curves": [
+        {
+          "reference_flow": 0,
+          "weights": [
+            0.15,
+            0.35,
+            0.5
+          ],
+          "edges": [
+            1,
+            1.25,
+            1.5,
+            1.75
+          ]
+        },
+        {
+          "reference_flow": 60,
+          "weights": [
+            0.5,
+            0.35,
+            0.15
+          ],
+          "edges": [
+            1,
+            1.25,
+            1.5,
+            1.75
+          ]
+        }
+      ],
+      "capacity": 60,
+      "allow_dry": false,
+      "coefficient": 4.5,
+      "crest": 103,
+      "deterministic_delay": null,
+      "target": "Confluence",
+      "min_arrival": 2,
+      "history_release": [
+        32.67829698362508,
+        32.67829698362508,
+        32.67829698362508,
+        32.67829698362508
+      ],
+      "water_value": 5200,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "weir",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    },
+    {
+      "source": "Confluence",
+      "name": "MainReach",
+      "arrival_policy": "interval_average",
+      "curves": [
+        {
+          "reference_flow": 0,
+          "weights": [
+            0.15,
+            0.35,
+            0.5
+          ],
+          "edges": [
+            1,
+            1.5,
+            2,
+            2.5
+          ]
+        },
+        {
+          "reference_flow": 130,
+          "weights": [
+            0.5,
+            0.35,
+            0.15
+          ],
+          "edges": [
+            1,
+            1.5,
+            2,
+            2.5
+          ]
+        }
+      ],
+      "capacity": 130,
+      "allow_dry": false,
+      "coefficient": 0,
+      "crest": 0,
+      "deterministic_delay": null,
+      "target": "Lower",
+      "min_arrival": 5,
+      "history_release": [
+        56.67829698362508,
+        56.67829698362508,
+        56.67829698362508,
+        56.67829698362508
+      ],
+      "water_value": 5200,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "junction",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    }
+  ],
+  "plants": [
+    {
+      "source": "WestIntake",
+      "initial_power": null,
+      "name": "WestPlant",
+      "ramp": 18,
+      "tailwater_curve": null,
+      "initial_interval_hours": 1,
+      "pmax": 48,
+      "target": "WestPond"
+    },
+    {
+      "source": "EastIntake",
+      "initial_power": null,
+      "name": "EastPlant",
+      "ramp": 12,
+      "tailwater_curve": null,
+      "initial_interval_hours": 1,
+      "pmax": 26,
+      "target": "EastPond"
+    },
+    {
+      "source": "LowerIntake",
+      "initial_power": null,
+      "name": "LowerPlant",
+      "ramp": 14,
+      "tailwater_curve": null,
+      "initial_interval_hours": 1,
+      "pmax": 32,
+      "target": "Tailwater"
+    }
+  ]
+}

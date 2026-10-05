@@ -1,0 +1,118 @@
+Base.@kwdef struct Reservoir
+    name::Symbol
+    z0::Float64=0.0
+    slope::Float64=1.0
+    curvature::Float64=0.0
+    v0::Float64
+    vmin::Float64
+    vmax::Float64
+    inflow::Float64=0.0
+    water_value::Float64
+    level_curve::Union{Nothing,TableCurve}=nothing
+end
+Base.@kwdef struct Junction
+    name::Symbol
+    hmin::Float64=0.0
+    hmax::Float64=700.0
+end
+Base.@kwdef struct Boundary
+    name::Symbol
+    head::Float64
+end
+Base.@kwdef struct Tunnel
+    name::Symbol
+    source::Symbol
+    target::Symbol
+    resistance::Float64
+    capacity::Float64
+    opening::Float64=1.0
+end
+Base.@kwdef struct Plant
+    name::Symbol
+    source::Symbol
+    target::Symbol
+    pmax::Float64
+    ramp::Float64=100.0 # MW/hour, inter-period aggregate production ramp
+    initial_power::Union{Nothing,Float64}=nothing
+    initial_interval_hours::Float64=1.0
+    tailwater_curve::Union{Nothing,TableCurve}=nothing
+    outlet_head_floor::Union{Nothing,Float64}=nothing
+end
+Base.@kwdef struct Generator
+    name::Symbol
+    plant::Symbol
+    qmin::Float64
+    qmax::Float64
+    pmin::Float64
+    pmax::Float64
+    efficiency::Float64=0.94
+    min_efficiency::Float64=0.0
+    qbest::Float64=1.0
+    qcurvature::Float64=0.28
+    hbest::Float64=1.0
+    hcurvature::Float64=0.015
+    hmin::Float64
+    hmax::Float64
+    initial_on::Int=1
+    initial_age::Float64=8.0
+    minup::Float64=3.0
+    mindown::Float64=2.0
+    startup::Float64=120.0
+    shutdown::Float64=0.0
+    turbine_table::Union{Nothing,TurbineTable}=nothing
+    generator_efficiency_curve::Union{Nothing,TableCurve}=nothing
+end
+Base.@kwdef struct RiverJunction
+    name::Symbol
+end
+Base.@kwdef struct River
+    name::Symbol
+    source::Symbol=:auto
+    target::Symbol
+    curves::Vector{RiverRouting.DelayCurve}
+    capacity::Float64
+    law::Symbol=:junction # :orifice, :weir, or :junction
+    coefficient::Float64=0.0 # q=C*a*sqrt(H-crest), or C*(H-crest)^1.5
+    crest::Float64=0.0
+    min_arrival::Float64=0.0
+    arrival_policy::Symbol=:interval_average # or :pointwise for exact cohort-wave minima
+    arrival_window_grid::Vector{Float64}=Float64[] # empty selects scheduling grid; preserved on refinement
+    deterministic_delay::Union{Nothing,Float64}=nothing
+    gate_min::Float64=0.0 # optional sufficient environmental-release guard
+    water_value::Float64 # inventory value per Mm³, explicit even at river junctions
+    history_grid::Vector{Float64}=[-8.0, -6.0, -4.0, -2.0, 0.0]
+    history_release::Vector{Float64}=zeros(4)
+    discharge_curve::Union{Nothing,TableCurve}=nothing
+    allow_dry::Bool=false
+end
+Base.@kwdef struct HydroSystem
+    reservoirs::Vector{Reservoir}
+    junctions::Vector{Junction}
+    boundaries::Vector{Boundary}
+    tunnels::Vector{Tunnel}
+    plants::Vector{Plant}
+    generators::Vector{Generator}
+    river_junctions::Vector{RiverJunction}=RiverJunction[]
+    rivers::Vector{River}
+end
+"""Piecewise-constant operational input at absolute hour knots; final value is held."""
+Base.@kwdef struct OperationalSeries
+    object::Symbol
+    attribute::Symbol
+    times::Vector{Float64}
+    values::Vector{Float64}
+end
+Base.@kwdef struct ScheduleCase
+    name::String
+    system::HydroSystem
+    grid::Vector{Float64}
+    prices::Vector{Float64}
+    operations::Vector{OperationalSeries}=OperationalSeries[]
+end
+nodes(s) = vcat(
+    [r.name for r in s.reservoirs],
+    [r.name for r in s.junctions],
+    [r.name for r in s.boundaries],
+)
+nodeindex(s) = Dict(n=>i for (i, n) in enumerate(nodes(s)))
+plantof(s, g) = only(p for p in s.plants if p.name==g.plant)

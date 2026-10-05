@@ -1,0 +1,336 @@
+{
+  "reservoirs": [
+    {
+      "curvature": 0,
+      "slope": 2,
+      "inflow": 2,
+      "name": "TributaryA",
+      "v0": 3,
+      "vmax": 4,
+      "level_curve": null,
+      "vmin": 1,
+      "water_value": 5000,
+      "z0": 200
+    },
+    {
+      "curvature": 0,
+      "slope": 2,
+      "inflow": 2,
+      "name": "TributaryB",
+      "v0": 3,
+      "vmax": 4,
+      "level_curve": null,
+      "vmin": 1,
+      "water_value": 5000,
+      "z0": 190
+    },
+    {
+      "curvature": 0,
+      "slope": 2,
+      "inflow": 0,
+      "name": "ReceivingLake",
+      "v0": 2,
+      "vmax": 4,
+      "level_curve": null,
+      "vmin": 0.5,
+      "water_value": 2000,
+      "z0": 80
+    }
+  ],
+  "name": "choice_tables_two_station_8h",
+  "junctions": [
+    {
+      "name": "IntakeA",
+      "hmin": 190,
+      "hmax": 210
+    }
+  ],
+  "boundaries": [],
+  "prices": [
+    -25,
+    -18,
+    45,
+    95,
+    110,
+    -20,
+    -15,
+    105
+  ],
+  "grid": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "operations": [],
+  "tunnels": [
+    {
+      "source": "TributaryA",
+      "name": "SupplyTunnel",
+      "resistance": 0.002,
+      "capacity": 20,
+      "opening": 1,
+      "target": "IntakeA"
+    }
+  ],
+  "generators": [
+    {
+      "hcurvature": 0.005,
+      "name": "Unit1",
+      "hmin": 90,
+      "hbest": 120,
+      "qbest": 12,
+      "pmin": 2,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": {
+        "y": [
+          0.97,
+          0.98
+        ],
+        "x": [
+          0,
+          25
+        ]
+      },
+      "initial_age": 8,
+      "minup": 2,
+      "qmax": 15,
+      "qcurvature": 0.08,
+      "hmax": 135,
+      "qmin": 4,
+      "startup": 40,
+      "plant": "StationA",
+      "pmax": 25,
+      "turbine_table": {
+        "discharge": [
+          0,
+          7.5,
+          15
+        ],
+        "qmax": [
+          15,
+          15
+        ],
+        "heads": [
+          90,
+          135
+        ],
+        "qmin": [
+          4,
+          4
+        ],
+        "interpolation": "pchip_discharge",
+        "efficiency": [
+          [
+            0.8396875,
+            0.839921875
+          ],
+          [
+            0.9084375,
+            0.908671875
+          ],
+          [
+            0.9146875,
+            0.914921875
+          ]
+        ]
+      },
+      "efficiency": 0.92,
+      "min_efficiency": 0.7
+    },
+    {
+      "hcurvature": 0.005,
+      "name": "Unit2",
+      "hmin": 90,
+      "hbest": 110,
+      "qbest": 12,
+      "pmin": 2,
+      "mindown": 2,
+      "initial_on": 1,
+      "generator_efficiency_curve": {
+        "y": [
+          0.97,
+          0.98
+        ],
+        "x": [
+          0,
+          25
+        ]
+      },
+      "initial_age": 8,
+      "minup": 2,
+      "qmax": 15,
+      "qcurvature": 0.08,
+      "hmax": 135,
+      "qmin": 4,
+      "startup": 40,
+      "plant": "StationB",
+      "pmax": 25,
+      "turbine_table": {
+        "discharge": [
+          0,
+          7.5,
+          15
+        ],
+        "qmax": [
+          15,
+          15
+        ],
+        "heads": [
+          90,
+          135
+        ],
+        "qmin": [
+          4,
+          4
+        ],
+        "interpolation": "pchip_discharge",
+        "efficiency": [
+          [
+            0.8398347107438018,
+            0.8397417355371901
+          ],
+          [
+            0.9085847107438018,
+            0.9084917355371901
+          ],
+          [
+            0.9148347107438017,
+            0.9147417355371901
+          ]
+        ]
+      },
+      "efficiency": 0.92,
+      "min_efficiency": 0.7
+    }
+  ],
+  "schema_version": 2,
+  "river_junctions": [
+    {
+      "name": "Meeting"
+    }
+  ],
+  "rivers": [
+    {
+      "source": "TributaryA",
+      "name": "ReachA",
+      "arrival_policy": "pointwise",
+      "curves": [],
+      "capacity": 8,
+      "allow_dry": false,
+      "coefficient": 0,
+      "crest": 0,
+      "deterministic_delay": 0.5,
+      "target": "Meeting",
+      "min_arrival": 0.5,
+      "history_release": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "water_value": 5000,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "controlled",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    },
+    {
+      "source": "TributaryB",
+      "name": "ReachB",
+      "arrival_policy": "pointwise",
+      "curves": [],
+      "capacity": 8,
+      "allow_dry": false,
+      "coefficient": 0,
+      "crest": 0,
+      "deterministic_delay": 1,
+      "target": "Meeting",
+      "min_arrival": 0.5,
+      "history_release": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "water_value": 5000,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "controlled",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    },
+    {
+      "source": "Meeting",
+      "name": "MergedReach",
+      "arrival_policy": "pointwise",
+      "curves": [],
+      "capacity": 16,
+      "allow_dry": false,
+      "coefficient": 0,
+      "crest": 0,
+      "deterministic_delay": 0.25,
+      "target": "ReceivingLake",
+      "min_arrival": 1,
+      "history_release": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "water_value": 3000,
+      "history_grid": [
+        -8,
+        -6,
+        -4,
+        -2,
+        0
+      ],
+      "law": "junction",
+      "arrival_window_grid": [],
+      "gate_min": 0,
+      "discharge_curve": null
+    }
+  ],
+  "plants": [
+    {
+      "source": "IntakeA",
+      "initial_power": null,
+      "name": "StationA",
+      "ramp": 15,
+      "tailwater_curve": null,
+      "initial_interval_hours": 1,
+      "pmax": 25,
+      "target": "ReceivingLake"
+    },
+    {
+      "source": "TributaryB",
+      "initial_power": null,
+      "name": "StationB",
+      "ramp": 15,
+      "tailwater_curve": null,
+      "initial_interval_hours": 1,
+      "pmax": 22,
+      "target": "ReceivingLake"
+    }
+  ]
+}

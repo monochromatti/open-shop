@@ -1,0 +1,26 @@
+name: Tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      JULIA_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate and test
+        run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test(; julia_args=["--pkgimages=no"])'
+      - name: Run the public example
+        run: julia --pkgimages=no --project=. examples/single_reservoir.jl
