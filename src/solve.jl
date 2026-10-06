@@ -84,6 +84,11 @@ function _reconstruct_candidate(c, raw; transport = nothing)
     all(isfinite, q) && all(isfinite, gate) || throw(ArgumentError("nonfinite controls"))
     all(x -> x >= -1e-6, q) || throw(ArgumentError("negative discharge"))
     all(x -> -1e-8 <= x <= 1 + 1e-8, gate) || throw(ArgumentError("gate outside bounds"))
+    for k in eachindex(q,raw["u"])
+        raw["u"][k]==0 || continue
+        abs(q[k])<=1e-6 || throw(ArgumentError("nonzero discharge at an off unit"))
+        q[k]=0.0
+    end
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
     correction = (

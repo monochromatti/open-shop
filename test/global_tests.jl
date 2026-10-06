@@ -142,3 +142,16 @@ end
     @test result["objective"] ≈ 0.0 atol=1e-8
     @test fixture.objective > result["global_bound"]
 end
+
+@testset "Off-state controls have exactly zero physical flow" begin
+    c=analytic_global_fixture(:off).case
+    raw=dispatch_from_controls(c,zeros(Int,1,1),fill(1e-7,1,1),zeros(0,1))
+    @test raw["validation"]["valid"]
+    repaired,correction=OpenSHOP._reconstruct_candidate(c,raw)
+    @test repaired["generator_q"]==zeros(1,1)
+    @test repaired["power"]==zeros(1,1)
+    @test repaired["validation"]["valid"]
+    @test correction.flow==1e-7
+    raw["generator_q"][1]=1e-3
+    @test_throws ArgumentError OpenSHOP._reconstruct_candidate(c,raw)
+end
