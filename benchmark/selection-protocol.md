@@ -5,7 +5,8 @@ is between exact representations of the same physical equations, not fitted
 tables or different operating domains.
 
 1. Screen original graphs, exact Cartesian bounds/cuts, fixed-state pruning and
-   quadratic SOS2 PCHIP. Test an effective-flow lift on the strongest candidates.
+   quadratic SOS2 PCHIP. Test an effective-flow lift and native SOS2 linear tables
+   on the strongest candidates; both refinements are available to both families.
 2. Freeze one candidate from each family. Confirm on normal Tokke–Vinje cases
    at 2, 6 and 24 hours, the seasonal 24-hour case, and both synthetic cases.
 3. Use one CPU thread, silent solver output, warmed construction/solve paths,

@@ -91,7 +91,8 @@ end
         @test !hasproperty(b.domains,:tightening_passes)
         variants=(:baseline,:cartesian_ranges,:cartesian_cuts,:cartesian_refined,
                   :tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
-        for variant in (variants...,Symbol.(string.(variants).*"_flow")...)
+        all_variants=(variants...,Symbol.(string.(variants).*"_all")...)
+        for variant in (all_variants...,Symbol.(string.(all_variants).*"_flow")...)
             candidate=OpenSHOP._build_global_dispatch(c;joint=true,formulation=variant,fixed_u=seed["u"])
             lifted=OpenSHOP._lift_start!(candidate,c,seed)
             @test lifted["valid"]

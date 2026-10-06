@@ -153,6 +153,7 @@ function solve(
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
     base_formulation=endswith(string(formulation),"_flow") ? Symbol(chop(string(formulation);tail=5)) : formulation
+    endswith(string(base_formulation),"_all") && (base_formulation=Symbol(chop(string(base_formulation);tail=4)))
     base_formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown formulation"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()

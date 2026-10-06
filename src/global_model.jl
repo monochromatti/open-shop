@@ -36,6 +36,8 @@ function _build_global_dispatch(
     starttime=time()
     effective_flows=endswith(string(formulation),"_flow")
     effective_flows && (formulation=Symbol(chop(string(formulation);tail=5)))
+    all_tables=endswith(string(formulation),"_all")
+    all_tables && (formulation=Symbol(chop(string(formulation);tail=4)))
     formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown global formulation"))
     tightened=formulation in (:domains, :tightened)
     tensor_tables=formulation in (:tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
@@ -44,6 +46,8 @@ function _build_global_dispatch(
     exact_table_bounds=formulation in (:cartesian_ranges,:cartesian_cuts,:cartesian_refined)
     table_range_cuts=formulation in (:cartesian_cuts,:cartesian_refined)
     tightened_tables=formulation==:tightened
+    curve_graph=(args...;tightened=false,kwargs...)->all_tables ?
+        _global_tensor_table!(args...;kwargs...) : _global_table!(args...;tightened,kwargs...)
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
     isfinite(operational_margin) && operational_margin>=0 ||
@@ -164,7 +168,7 @@ function _build_global_dispatch(
             midhi=domains===nothing ? r.vmax :
                   (domains.upper[i, t]+domains.upper[i, t + 1])/2
             level=r.level_curve===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 :
-                  _global_table!(
+                  curve_graph(
                 m,
                 r.level_curve,
                 mid,
@@ -233,7 +237,7 @@ function _build_global_dispatch(
                 init = 0.0,
             )
             tail=plant.tailwater_curve===nothing ? 0.0 :
-                 _global_table!(
+                 curve_graph(
                 m,
                 plant.tailwater_curve,
                 totalq,
@@ -251,7 +255,7 @@ function _build_global_dispatch(
             if floor!==nothing
                 receiver=dst[2]<=floor ? floor :
                          dst[1]>=floor ? receiver :
-                         _global_table!(
+                         curve_graph(
                     m,
                     TableCurve([dst[1], floor, dst[2]], [floor, floor, dst[2]]),
                     receiver,
@@ -312,7 +316,7 @@ function _build_global_dispatch(
             )
         end
         electrical=g.generator_efficiency_curve===nothing ? 1.0 :
-                   _global_table!(
+                   curve_graph(
             m,
             g.generator_efficiency_curve,
             P[i, t],
@@ -374,7 +378,7 @@ function _build_global_dispatch(
         if g.turbine_table!==nothing
             table=g.turbine_table
             qlo=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
-                name=Symbol("qlo_",i,"_",t)) : _global_table!(
+                name=Symbol("qlo_",i,"_",t)) : curve_graph(
                 m,
                 TableCurve(table.heads, table.qmin),
                 hd,
@@ -384,7 +388,7 @@ function _build_global_dispatch(
                 tightened = tightened_tables,
             )
             qhi=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
-                name=Symbol("qhi_",i,"_",t)) : _global_table!(
+                name=Symbol("qhi_",i,"_",t)) : curve_graph(
                 m,
                 TableCurve(table.heads, table.qmax),
                 hd,
@@ -518,7 +522,7 @@ function _build_global_dispatch(
                 @constraint(m, first(r.discharge_curve.x)<=level<=last(r.discharge_curve.x))
                 lawlo,lawhi=tightened ? (max(first(r.discharge_curve.x),node_bounds[(r.source,t)][1]),min(last(r.discharge_curve.x),node_bounds[(r.source,t)][2])) : (first(r.discharge_curve.x),last(r.discharge_curve.x))
                 lawlo<=lawhi || throw(ArgumentError("river law outside reachable domain for $(r.name)"))
-                discharge=_global_table!(
+                discharge=curve_graph(
                     m,
                     r.discharge_curve,
                     level,
