@@ -89,8 +89,9 @@ end
         tables=b.m.ext[:global_tensor_turbines]
         @test tables["turbine_1_1"].hcoordinate===tables["turbine_2_1"].hcoordinate
         @test !hasproperty(b.domains,:tightening_passes)
-        for variant in (:baseline,:cartesian_ranges,:cartesian_cuts,:cartesian_refined,
-                        :tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
+        variants=(:baseline,:cartesian_ranges,:cartesian_cuts,:cartesian_refined,
+                  :tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
+        for variant in (variants...,Symbol.(string.(variants).*"_flow")...)
             candidate=OpenSHOP._build_global_dispatch(c;joint=true,formulation=variant,fixed_u=seed["u"])
             lifted=OpenSHOP._lift_start!(candidate,c,seed)
             @test lifted["valid"]

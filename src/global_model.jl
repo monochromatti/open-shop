@@ -34,6 +34,8 @@ function _build_global_dispatch(
     formulation = :tensor,
 )
     starttime=time()
+    effective_flows=endswith(string(formulation),"_flow")
+    effective_flows && (formulation=Symbol(chop(string(formulation);tail=5)))
     formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown global formulation"))
     tightened=formulation in (:domains, :tightened)
     tensor_tables=formulation in (:tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
@@ -323,6 +325,8 @@ function _build_global_dispatch(
         qmax=opinterval(c, g.name, :qmax, t, g.qmax)
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
         pmax=opinterval(c, g.name, :pmax, t, g.pmax)
+        effective=effective_flows ? _global_effective_flow!(m,GQ[i,t],eta,flowmax,g.min_efficiency;
+            name=Symbol("effective_flow_",i,"_",t)) : GQ[i,t]*eta
         if joint
             tightened && known_state==1 && set_lower_bound(gq[i,t],flowmin/50)
             set_upper_bound(gq[i, t], flowmax/50)
@@ -336,7 +340,7 @@ function _build_global_dispatch(
             @constraint(m, GQ[i, t]<=qmax*u[i, t])
             @constraint(m, P[i, t]>=(pmin+operational_margin)*u[i, t])
             @constraint(m, P[i, t]<=max(0.0, pmax-operational_margin)*u[i, t])
-            @constraint(m, (P[i, t]-0.00981*GQ[i, t]*hd*eta*electrical)/40==0)
+            @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
             ranges=(
                 head_min = hlo,
                 head_max = hhi,
@@ -361,7 +365,7 @@ function _build_global_dispatch(
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
             else
-                @constraint(m, (P[i, t]-0.00981*GQ[i, t]*hd*eta*electrical)/40==0)
+                @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
                 @constraint(m, g.hmin<=hd<=g.hmax)
                 @constraint(m, g.min_efficiency<=eta<=1.0)
 

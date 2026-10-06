@@ -66,3 +66,4 @@ include("diagnostics_tests.jl")
 include("tensor_table_tests.jl")
 
 include("cartesian_range_tests.jl")
+include("effective_flow_tests.jl")

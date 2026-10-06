@@ -218,6 +218,10 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("wet_root_$(i)_$(t)", sqrt(wet))
             put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
         end
+        for data in values(get(b.m.ext,:global_effective_flows,Dict()))
+            qvalue=JuMP.value(v->assigned[v],data.q)
+            put(name(data.flow),qvalue*assigned[data.eta])
+        end
         missing=[name(v) for v in variables if !haskey(assigned, v)]
         isempty(missing) ||
             return Dict("valid"=>false, "missing"=>missing, "assigned"=>length(assigned))

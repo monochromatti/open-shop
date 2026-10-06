@@ -1,20 +1,32 @@
 name: Table representation contest
 on:
   workflow_dispatch:
+    inputs:
+      phase:
+        type: choice
+        options: [screen, refine, confirm]
+        default: screen
+      variants:
+        description: Comma-separated experimental graphs
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
-  screen:
+  compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
-        case: [operating-2h, pchip]
+        case: ${{ fromJSON(inputs.phase == 'confirm' && '["operating-2h","operating-6h","operating-24h","seasonal-24h","pchip","analytic"]' || '["operating-2h","pchip"]') }}
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 2
       OPENBLAS_NUM_THREADS: 1
+      BENCHMARK_CASE: ${{ matrix.case }}
+      CONTEST_PHASE: ${{ inputs.phase }}
+      CONTEST_VARIANTS: ${{ inputs.variants }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: julia-actions/setup-julia@v3.0.2
@@ -26,17 +38,28 @@ jobs:
       - name: Instantiate
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Construct operating case
-        if: matrix.case == 'operating-2h'
+        if: matrix.case != 'pchip' && matrix.case != 'analytic'
         run: |
           python3 -m pip install PyYAML
           python3 examples/tokke_vinje/fetch.py
-          python3 examples/tokke_vinje/import.py --hours 2 --output results/inputs
-      - name: Screen operating table graphs
-        if: matrix.case == 'operating-2h'
-        run: julia --pkgimages=no --project=. benchmark/contest.jl results/inputs/tokke_vinje_2h.json results/contest screen 60
-      - name: Screen warm and cold PCHIP at two gap targets
-        if: matrix.case == 'pchip'
-        run: julia --pkgimages=no --project=. benchmark/contest.jl benchmark/cases/turbine-tables.json results/contest synthetic 30
+          if [ "$BENCHMARK_CASE" = seasonal-24h ]; then
+            python3 examples/tokke_vinje/import.py --hours 24 --start 2024-09-29T12:00:00+00:00 --output results/inputs
+          else
+            hours="${BENCHMARK_CASE#operating-}"
+            hours="${hours%h}"
+            python3 examples/tokke_vinje/import.py --hours "$hours" --output results/inputs
+          fi
+      - name: Compare exact table graphs
+        run: |
+          profile=screen
+          seconds=60
+          if [ "$CONTEST_PHASE" = confirm ]; then profile=confirm; seconds=300; fi
+          case "$BENCHMARK_CASE" in
+            pchip) input=benchmark/cases/turbine-tables.json; profile=synthetic; seconds=30 ;;
+            analytic) input=benchmark/cases/distributed-rivers.json; profile=synthetic; seconds=30 ;;
+            *) hours="${BENCHMARK_CASE##*-}"; input="results/inputs/tokke_vinje_${hours}.json" ;;
+          esac
+          julia --pkgimages=no --project=. benchmark/contest.jl "$input" results/contest "$profile" "$seconds" "$CONTEST_VARIANTS"
       - name: Upload scalar measurements
         if: always()
         uses: actions/upload-artifact@v4

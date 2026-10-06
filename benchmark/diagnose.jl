@@ -89,6 +89,21 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 initial=preparation["accepted"] ? preparation["solution"] : nothing
                 benchmark_freeze(frozen_seed,initial)
             end
+            # A solver may retain positive tolerance-sized flow at an off unit.
+            # Freeze one physical repair for every graph, never a graph-specific seed.
+            off_flow_correction=0.0
+            if initial!==nothing
+                q=copy(initial["generator_q"])
+                for k in eachindex(q)
+                    initial["u"][k]==0 && (q[k]=0.0)
+                end
+                off_flow_correction=maximum(abs,q-initial["generator_q"];init=0.0)
+                if off_flow_correction>0
+                    initial=dispatch_from_controls(c,initial["u"],q,initial["gate"])
+                    initial["validation"]["valid"] || error("common off-flow repair fails physical/replay audit")
+                    benchmark_freeze(frozen_seed,initial)
+                end
+            end
             seed_hash=bytes2hex(sha256(read(frozen_seed)))
             control_path=joinpath(folder,"seed-controls.json")
             benchmark_freeze(control_path,initial===nothing ? nothing : Dict(k=>initial[k] for k in ("u","generator_q","gate")))
@@ -111,7 +126,9 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 "preparation_seconds_excluded"=>preparation_seconds,"probe_seconds_excluded"=>probe_seconds,
                 "probe_discrete_valid"=>probe_valid,"known_discrete_lower_bound"=>reference_lower,
                 "seed_objective"=>initial===nothing ? nothing : initial["objective"],
+                "seed_off_flow_correction"=>off_flow_correction,
                 "seed_shared_across_all_variants"=>true,"native_start_enabled"=>native_start,"target_relative_gap"=>relative_gap,
+                "cold_initialization"=>"default model guesses without a supplied incumbent",
                 "global_allowance_seconds"=>time_limit,
                 "scope"=>"same frozen discrete equations and audited seed; fixed commitment restricts feasible set")
             writejson(joinpath(folder,"metadata.json"),metadata)
