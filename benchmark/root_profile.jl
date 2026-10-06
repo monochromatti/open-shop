@@ -78,6 +78,7 @@ const ROOT_PROFILES=Dict{String,Vector{Pair{String,Any}}}(
     "hydraulic_domains"=>[],
     "plant_energy"=>[],
     "head_planes"=>[],
+    "lean_head_planes"=>[],
     "static_symmetry"=>["propagating/symmetry/usedynamicprop"=>false],
     "static_hydraulics"=>["propagating/symmetry/usedynamicprop"=>false],
     "no_obbt_hydraulics"=>["propagating/obbt/freq"=>-1],
@@ -126,7 +127,8 @@ function root_profile(input,output;seconds=120.,repeats=1,
         transform=profile in ("power_envelopes","lean_power") ? add_power_envelopes! :
             profile in ("hydraulic_domains","lean_hydraulics","static_hydraulics","no_obbt_hydraulics") ? tighten_network_domains! :
             profile=="plant_energy" ? add_plant_energy_bounds! :
-            profile=="head_planes" ? add_head_planes! : nothing
+            profile=="head_planes" ? add_head_planes! :
+            profile=="lean_head_planes" ? add_lean_head_planes! : nothing
         if repeat==1
             OpenSHOP._solve(c;initial,fixed_u,time_limit=10.,
                 optimizer_setup=setup,model_transform=transform)

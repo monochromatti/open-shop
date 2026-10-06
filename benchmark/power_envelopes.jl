@@ -39,7 +39,7 @@ function power_support(table,qlo,qhi,hlo,hhi,electrical_max,slope,head_slope=0.)
         for (a,b) in segments,(h0,h1) in heads)
 end
 
-function add_power_envelopes!(b,c;head_planes=false)
+function add_power_envelopes!(b,c;head_planes=false,lean=false)
     count=0
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
         g.turbine_table===nothing && continue
@@ -63,7 +63,7 @@ function add_power_envelopes!(b,c;head_planes=false)
             @constraint(b.m,(b.P[i,t]-slope*b.GQ[i,t]-intercept*b.u[i,t])/40<=0)
             count+=1
             if head_planes
-                for qref in (qlo,(qlo+qhi)/2)
+                for qref in (lean ? ((qlo+qhi)/2,) : (qlo,(qlo+qhi)/2))
                     hslope=.00981*electrical_max*.95*qref
                     origin=lower_bound(hd)
                     cut=power_support(table,qlo,qhi,hlo,hhi,electrical_max,slope,hslope)
@@ -78,3 +78,4 @@ function add_power_envelopes!(b,c;head_planes=false)
 end
 
 add_head_planes!(b,c)=add_power_envelopes!(b,c;head_planes=true)
+add_lean_head_planes!(b,c)=add_power_envelopes!(b,c;head_planes=true,lean=true)

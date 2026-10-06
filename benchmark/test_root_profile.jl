@@ -84,7 +84,7 @@ end
 @testset "Native statistics and root capture" begin
     mktempdir() do output
         rows=root_profile(joinpath(@__DIR__,"cases","turbine-tables.json"),output;
-            seconds=30.,profiles=["baseline","hydraulic_domains","plant_energy","static_symmetry","head_planes"],capture=true)
+            seconds=30.,profiles=["baseline","hydraulic_domains","plant_energy","static_symmetry","head_planes","lean_head_planes"],capture=true)
         for row in rows
             @test row["accepted"]
             @test row["diagnostics_close_error"]===nothing
