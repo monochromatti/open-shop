@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: ${{ fromJSON(inputs.phase == 'confirm' && '["operating-2h","operating-6h","operating-24h","seasonal-24h","pchip","analytic"]' || '["operating-2h","pchip"]') }}
+        case: ${{ fromJSON(inputs.phase == 'confirm' && '["operating-2h","operating-6h","operating-24h","seasonal-24h","pchip-6h","pchip","analytic"]' || '["operating-2h","pchip"]') }}
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 2
@@ -45,9 +45,22 @@ jobs:
           if [ "$BENCHMARK_CASE" = seasonal-24h ]; then
             python3 examples/tokke_vinje/import.py --hours 24 --start 2024-09-29T12:00:00+00:00 --output results/inputs
           else
-            hours="${BENCHMARK_CASE#operating-}"
+            hours="${BENCHMARK_CASE##*-}"
             hours="${hours%h}"
             python3 examples/tokke_vinje/import.py --hours "$hours" --output results/inputs
+          fi
+          if [ "$BENCHMARK_CASE" = pchip-6h ]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('results/inputs/tokke_vinje_6h.json')
+          case=json.loads(path.read_text())
+          case['name'] += '_synthetic_pchip'
+          for unit in case['generators']:
+              if unit.get('turbine_table') is not None:
+                  unit['turbine_table']['interpolation']='pchip_discharge'
+          path.write_text(json.dumps(case))
+          PY
           fi
       - name: Compare exact table graphs
         run: |

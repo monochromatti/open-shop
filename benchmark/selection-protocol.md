@@ -8,7 +8,9 @@ tables or different operating domains.
    quadratic SOS2 PCHIP. Test an effective-flow lift and native SOS2 linear tables
    on the strongest candidates; both refinements are available to both families.
 2. Freeze one candidate from each family. Confirm on normal Tokke–Vinje cases
-   at 2, 6 and 24 hours, the seasonal 24-hour case, and both synthetic cases.
+   at 2, 6 and 24 hours, the seasonal 24-hour case, a synthetic PCHIP variant of
+   the 6-hour watercourse, and both synthetic cases. The PCHIP watercourse changes
+   only the declared turbine interpolation; it is not the original SHOP case.
 3. Use one CPU thread, silent solver output, warmed construction/solve paths,
    identical frozen inputs and a common audited seed. Alternate solve order.
    Operating confirmation uses two repetitions, 300-second allowances and a
