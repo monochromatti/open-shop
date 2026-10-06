@@ -23,13 +23,14 @@ elseif profile=="confirm"
     publish_summary(paired_benchmark([input];output=joinpath(output,"confirm"),time_limit=seconds,
         repeats=2,formulations=variants,commitments=(:free,:fixed),diagnostics=false,relative_gap=1e-4))
 elseif profile=="synthetic"
-    common_seed=nothing
-    for target in (1e-3,1e-6), native_start in (true,false)
-        folder=joinpath(output,"gap-$(target)-start-$(native_start)")
-        publish_summary(paired_benchmark([input];output=folder,time_limit=seconds,repeats=3,
-            formulations=variants,commitments=(:free,),diagnostics=false,relative_gap=target,
-            native_start,probe_time_limit=0.,seed_directory=common_seed))
-        common_seed===nothing && (common_seed=folder)
+    let common_seed=nothing
+        for target in (1e-3,1e-6), native_start in (true,false)
+            folder=joinpath(output,"gap-$(target)-start-$(native_start)")
+            publish_summary(paired_benchmark([input];output=folder,time_limit=seconds,repeats=3,
+                formulations=variants,commitments=(:free,),diagnostics=false,relative_gap=target,
+                native_start,probe_time_limit=0.,seed_directory=common_seed))
+            common_seed===nothing && (common_seed=folder)
+        end
     end
 else
     error("unknown screening profile")

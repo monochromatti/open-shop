@@ -10,6 +10,10 @@ on:
         description: Comma-separated experimental graphs
         type: string
         default: ''
+      case_filter:
+        type: choice
+        options: [all, pchip]
+        default: all
 permissions:
   contents: read
 jobs:
@@ -19,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: ${{ fromJSON(inputs.phase == 'confirm' && '["operating-2h","operating-6h","operating-24h","seasonal-24h","pchip-6h","pchip","analytic"]' || '["operating-2h","pchip"]') }}
+        case: ${{ fromJSON(inputs.case_filter == 'pchip' && '["pchip"]' || inputs.phase == 'confirm' && '["operating-2h","operating-6h","operating-24h","seasonal-24h","pchip-6h","pchip","analytic"]' || '["operating-2h","pchip"]') }}
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 2
