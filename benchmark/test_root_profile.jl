@@ -7,11 +7,11 @@ include("root_profile.jl")
             [.70 .75 .79;.91 .95 .93;.85 .92 .96;.73 .81 .86],
             [2.,2.,2.],[16.,16.,16.];interpolation)
         for (qlo,qhi,hlo,hhi) in ((0.,19.,30.,170.),(3.,14.,60.,130.),
-                (5.,5.+1e-8,89.,90.),(7.,7.,100.,100.))
+                (5.,5.0+1e-8,89.,90.),(7.,7.,100.,100.))
             for slope in (-.5,0.,.5,1.5)
                 intercept=power_support(table,qlo,qhi,hlo,hhi,.98,slope)
                 residual=maximum(0.00981*q*h*.98*
-                    turbine_efficiency(table,q,h;extrapolation=:linear)-slope*q-intercept
+                    OpenSHOP.turbine_efficiency(table,q,h;extrapolation=:linear)-slope*q-intercept
                     for q in range(qlo,qhi;length=101),h in range(hlo,hhi;length=37))
                 @test residual<=1e-8
                 @test isfinite(intercept)

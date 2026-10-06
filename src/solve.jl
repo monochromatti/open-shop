@@ -307,6 +307,10 @@ function _solve(
                 statistics_path=diagnostics_path*".statistics.json"
                 result["scip_statistics"]=_write_scip_statistics(b.m, statistics_path)
                 result["statistics_path"]=statistics_path
+            catch error
+                result["statistics_error"]=sprint(showerror,error)
+            end
+            try
                 SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),C_NULL)
             catch error
                 result["diagnostics_close_error"]=sprint(showerror,error)

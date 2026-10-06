@@ -39,6 +39,14 @@ function relaxation_summary(b,c,variables,vals)
     sos=maximum(OpenSHOP._sos2_residual(at.(axis.weights),collect(1.:length(axis.weights)))
         for axis in get(b.m.ext,:global_tensor_coordinates,[]);init=0.)
     generated=0.;physical=0.;worst=0.
+    level_error=maximum(abs(at(b.H[i,t])-OpenSHOP.head(r,
+        (at(b.V[i,t])+at(b.V[i,t+1]))/2)) for (i,r) in enumerate(c.system.reservoirs),
+        t in eachindex(c.prices);init=0.)
+    ix=OpenSHOP.nodeindex(c.system)
+    tunnel_error=maximum(abs(OpenSHOP.opinterval(c,e.name,:opening,t,e.opening)*
+        (at(b.H[ix[e.source],t])-at(b.H[ix[e.target],t]))-
+        e.resistance*at(b.Q[i,t])*abs(at(b.Q[i,t])))
+        for (i,e) in enumerate(c.system.tunnels),t in eachindex(c.prices);init=0.)
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
         q=at(b.GQ[i,t]);p=at(b.P[i,t])
         h=at(b.shared_heads[(OpenSHOP.plantof(c.system,g).name,t)])
@@ -52,6 +60,8 @@ function relaxation_summary(b,c,variables,vals)
     Dict("fractional_commitment_max"=>frac,"sos2_residual_max"=>sos,
         "sum_reported_power_mw"=>generated,"sum_power_from_actual_curves_mw"=>physical,
         "power_equation_residual_max_mw"=>worst,
+        "reservoir_level_residual_max_m"=>level_error,
+        "tunnel_head_loss_residual_max_m"=>tunnel_error,
         "scope"=>"diagnostic LP solution; not a feasible schedule or a certificate")
 end
 
