@@ -38,12 +38,12 @@ function _build_global_dispatch(
     effective_flows && (formulation=Symbol(chop(string(formulation);tail=5)))
     all_tables=endswith(string(formulation),"_all")
     all_tables && (formulation=Symbol(chop(string(formulation);tail=4)))
-    formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown global formulation"))
+    formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_pruned, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown global formulation"))
     tightened=formulation in (:domains, :tightened)
     tensor_tables=formulation in (:tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
     quadratic_tables=formulation in (:tensor_quadratic,:tensor_refined)
-    table_state_pruning=tightened || formulation in (:cartesian_refined,:tensor_pruned,:tensor_refined)
-    exact_table_bounds=formulation in (:cartesian_ranges,:cartesian_cuts,:cartesian_refined)
+    table_state_pruning=tightened || formulation in (:cartesian_pruned,:cartesian_refined,:tensor_pruned,:tensor_refined)
+    exact_table_bounds=formulation in (:cartesian_ranges,:cartesian_pruned,:cartesian_cuts,:cartesian_refined)
     table_range_cuts=formulation in (:cartesian_cuts,:cartesian_refined)
     tightened_tables=formulation==:tightened
     curve_graph=(args...;tightened=false,kwargs...)->all_tables ?

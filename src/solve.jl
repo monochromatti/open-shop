@@ -159,7 +159,7 @@ function solve(
         throw(ArgumentError("nonnegative finite absolute_gap required"))
     base_formulation=endswith(string(formulation),"_flow") ? Symbol(chop(string(formulation);tail=5)) : formulation
     endswith(string(base_formulation),"_all") && (base_formulation=Symbol(chop(string(base_formulation);tail=4)))
-    base_formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("formulation must select a supported exact graph"))
+    base_formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_pruned, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("formulation must select a supported exact graph"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(

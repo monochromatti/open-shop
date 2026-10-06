@@ -89,7 +89,7 @@ end
         tables=b.m.ext[:global_tensor_turbines]
         @test tables["turbine_1_1"].hcoordinate===tables["turbine_2_1"].hcoordinate
         @test !hasproperty(b.domains,:tightening_passes)
-        variants=(:baseline,:cartesian_ranges,:cartesian_cuts,:cartesian_refined,
+        variants=(:baseline,:cartesian_ranges,:cartesian_pruned,:cartesian_cuts,:cartesian_refined,
                   :tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
         all_variants=(variants...,Symbol.(string.(variants).*"_all")...)
         for variant in (all_variants...,Symbol.(string.(all_variants).*"_flow")...)

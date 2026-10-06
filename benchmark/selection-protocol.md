@@ -40,3 +40,27 @@ keep one production implementation and remove public formulation switches.
 This establishes the best measured method after diminishing returns, not a
 proof that no future improvement is possible. Preserve this experimental
 revision and measurements as research evidence.
+
+## Frozen finalists
+
+`cartesian_pruned` uses exact polynomial efficiency ranges and fixed-state
+pruning, without the extra cell-weighted range cuts. Exact ranges give the best
+free-commitment result in the first operating screen; adding cuts regresses it.
+It retains the original linear-table cell graphs.
+
+`tensor_refined_all` uses quadratic PCHIP products, fixed-state pruning and SOS2
+for every linear table. The all-table extension has essentially unchanged small
+case/free operating results, reduces model size, improves the conditional bound,
+and lets production use a single table-coordinate primitive.
+
+Neither finalist includes effective flow: its measured small-case certification
+cost increases and its operating improvements do not justify another variable
+and three constraints per unit-period. Confirmation compares these frozen
+methods without further solver-parameter tuning.
+
+Reference probes are independently reconstructed and fully lifted into each
+graph before their objectives can invalidate a bound. Raw NLP objectives are
+retained as diagnostics only. Sub-0.0001 synthetic objective differences and
+pooled bound reversals at this scale remain unresolved numerical precision;
+they are not evidence of better exact optima. Own certificate guards remain
+unchanged, and a material fully audited counterexample rejects a solver bound.
