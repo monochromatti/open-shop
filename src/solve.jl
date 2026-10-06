@@ -24,6 +24,10 @@ function _scip_diagnostics(model)
             result["solutions_stored"]=SCIP.SCIPgetNSols(optimizer)
             result["solutions_found"]=SCIP.SCIPgetNSolsFound(optimizer)
             result["native_solve_seconds"]=SCIP.SCIPgetSolvingTime(optimizer)
+            result["presolving_seconds"]=SCIP.SCIPgetPresolvingTime(optimizer)
+            result["first_lp_seconds"]=SCIP.SCIPgetFirstLPTime(optimizer)
+            result["separation_rounds"]=SCIP.SCIPgetNSepaRounds(optimizer)
+            result["cuts_applied"]=SCIP.SCIPgetNCutsApplied(optimizer)
             result["final_upper_bound"]=_scip_bound_value(optimizer,SCIP.SCIPgetDualbound(optimizer))
             result["native_incumbent_objective"]=_scip_bound_value(optimizer,SCIP.SCIPgetPrimalbound(optimizer))
             if Int(stage)>=5
@@ -40,6 +44,20 @@ function _scip_diagnostics(model)
         result["error"]=sprint(showerror,error)
     end
     result
+end
+
+
+# Native JSON contains timing and work counters for LPs and individual plugins.
+# Capture only when diagnostics were requested; it does not affect certificates.
+function _write_scip_statistics(model, path)
+    file=ccall(:fopen, Ptr{Cvoid}, (Cstring, Cstring), path, "w")
+    file==C_NULL && error("cannot open SCIP statistics file: $path")
+    try
+        SCIP.@SCIP_CALL SCIP.SCIPprintStatisticsJson(JuMP.unsafe_backend(model), file)
+    finally
+        ccall(:fclose, Cint, (Ptr{Cvoid},), file)
+    end
+    JSON3.read(read(path, String), Dict{String,Any})
 end
 
 
@@ -155,6 +173,24 @@ function solve(
     replay = true,
     diagnostics_path = nothing,
 )
+    _solve(c; time_limit, relative_gap, absolute_gap, initial, fixed_u, replay,
+        diagnostics_path)
+end
+
+# Experiments may configure the same optimizer before solving. Keep this hook
+# internal: the public solver retains one physical model and one configuration.
+function _solve(
+    c::ScheduleCase;
+    time_limit = 60.0,
+    relative_gap = 1e-3,
+    absolute_gap = 0.0,
+    initial = nothing,
+    fixed_u = nothing,
+    replay = true,
+    diagnostics_path = nothing,
+    optimizer_setup = nothing,
+    model_transform = nothing,
+)
     isfinite(time_limit) && time_limit > 0 ||
         throw(ArgumentError("positive finite time_limit required"))
     isfinite(relative_gap) && 0 <= relative_gap < 1 ||
@@ -195,6 +231,7 @@ function solve(
         result["initial_objective"] = best["objective"]
     end
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u)
+    model_transform===nothing || model_transform(b, c)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
@@ -252,6 +289,7 @@ function solve(
         result["solve_seconds"] = @elapsed try
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
+            optimizer_setup===nothing || optimizer_setup(b)
             remaining_after_copy=max(0.,time_limit-(time()-began))
             set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
             if diagnostics_path!==nothing
@@ -266,6 +304,9 @@ function solve(
         result["scip_diagnostics"]=_scip_diagnostics(b.m)
         if diagnostics_path!==nothing
             try
+                statistics_path=diagnostics_path*".statistics.json"
+                result["scip_statistics"]=_write_scip_statistics(b.m, statistics_path)
+                result["statistics_path"]=statistics_path
                 SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),C_NULL)
             catch error
                 result["diagnostics_close_error"]=sprint(showerror,error)

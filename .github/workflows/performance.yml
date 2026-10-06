@@ -1,20 +1,25 @@
-name: Performance
+name: Root performance
 on:
   workflow_dispatch:
     inputs:
       seconds:
-        description: Global allowance per solve, excluding seed preparation
         type: string
-        default: '300'
+        default: '120'
       repeats:
         type: string
-        default: '2'
+        default: '1'
+      profiles:
+        type: string
+        default: 'baseline,no_obbt,root20,lean_obbt,power_envelopes,root20_no_obbt'
+      capture:
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
-  benchmark:
+  profile:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +31,8 @@ jobs:
       BENCHMARK_CASE: ${{ matrix.case }}
       BENCHMARK_SECONDS: ${{ inputs.seconds }}
       BENCHMARK_REPEATS: ${{ inputs.repeats }}
+      BENCHMARK_PROFILES: ${{ inputs.profiles }}
+      BENCHMARK_CAPTURE: ${{ inputs.capture }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: julia-actions/setup-julia@v3.0.2
@@ -47,18 +54,18 @@ jobs:
             hours="${BENCHMARK_CASE##*-}"
             python3 examples/tokke_vinje/import.py --hours "${hours%h}" --output results/inputs
           fi
-      - name: Benchmark the production solver
+      - name: Profile matched interventions
         run: |
           case "$BENCHMARK_CASE" in
             pchip) input=benchmark/cases/turbine-tables.json ;;
             analytic) input=benchmark/cases/distributed-rivers.json ;;
             *) hours="${BENCHMARK_CASE##*-}"; input="results/inputs/tokke_vinje_${hours%h}h.json" ;;
           esac
-          julia --pkgimages=no --project=. benchmark/run.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS"
+          julia --pkgimages=no --project=. benchmark/root_profile.jl "$input" results/root-profile "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS" "$BENCHMARK_PROFILES" "$BENCHMARK_CAPTURE"
       - name: Upload scalar measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-${{ matrix.case }}
-          path: results/benchmarks/summary.json
+          name: root-${{ matrix.case }}
+          path: results/root-profile/summary.json
           if-no-files-found: warn
