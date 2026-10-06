@@ -23,7 +23,7 @@ function SCIP.eventexec(e::RootLP)
     node=SCIP.SCIPgetFocusNode(o)
     node==C_NULL && return
     SCIP.SCIPnodeGetDepth(node)==0 || return
-    SCIP.SCIPinProbing(o) && return
+    Bool(SCIP.SCIPinProbing(o)) && return
     SCIP.SCIPgetLPSolstat(o)==SCIP.SCIP_LPSOLSTAT_OPTIMAL || return
     vals=SCIP.sol_values(o,e.indices)
     if isempty(e.first)
@@ -140,7 +140,7 @@ function root_profile(input,output;seconds=120.,repeats=1,
             e=event[];b=graph[]
             row["first_root_lp"]=relaxation_summary(b,c,vars[],e.first)
             row["first_root_lp_snapshot_seconds"]=e.first_seconds
-            if get(r["scip_diagnostics"],"total_nodes",0)==1 && !SCIP.SCIPinProbing(e.optimizer) &&
+            if get(r["scip_diagnostics"],"total_nodes",0)==1 && !Bool(SCIP.SCIPinProbing(e.optimizer)) &&
                     SCIP.SCIPgetLPSolstat(e.optimizer)==SCIP.SCIP_LPSOLSTAT_OPTIMAL
                 e.last=SCIP.sol_values(e.optimizer,e.indices)
                 e.last_seconds=SCIP.SCIPgetSolvingTime(e.optimizer)
