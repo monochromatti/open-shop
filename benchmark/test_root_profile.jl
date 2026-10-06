@@ -8,10 +8,10 @@ include("root_profile.jl")
             [2.,2.,2.],[16.,16.,16.];interpolation)
         for (qlo,qhi,hlo,hhi) in ((0.,19.,30.,170.),(3.,14.,60.,130.),
                 (5.,5.0+1e-8,89.,90.),(7.,7.,100.,100.))
-            for slope in (-.5,0.,.5,1.5)
-                intercept=power_support(table,qlo,qhi,hlo,hhi,.98,slope)
+            for slope in (-.5,0.,.5,1.5), hslope in (-.02,0.,.05)
+                intercept=power_support(table,qlo,qhi,hlo,hhi,.98,slope,hslope)
                 residual=maximum(0.00981*q*h*.98*
-                    OpenSHOP.turbine_efficiency(table,q,h;extrapolation=:linear)-slope*q-intercept
+                    OpenSHOP.turbine_efficiency(table,q,h;extrapolation=:linear)-slope*q-hslope*h-intercept
                     for q in range(qlo,qhi;length=101),h in range(hlo,hhi;length=37))
                 @test residual<=1e-8
                 @test isfinite(intercept)
@@ -70,6 +70,13 @@ end
             initial=dispatch_from_controls(c,fill(Int(rate>0),2,1),fill(rate/2,2,1),zeros(0,1))
             @test initial["validation"]["valid"]
             @test OpenSHOP._lift_start!(b,c,initial)["valid"]
+            if rate==0. && !reversed
+                perturbed=deepcopy(initial)
+                perturbed["tunnel_q"][1,1]=-1e-10
+                @test OpenSHOP._lift_start!(b,c,perturbed)["valid"]
+                perturbed["tunnel_q"][1,1]=-1.
+                @test !OpenSHOP._lift_start!(b,c,perturbed)["valid"]
+            end
         end
     end
 end
@@ -77,7 +84,7 @@ end
 @testset "Native statistics and root capture" begin
     mktempdir() do output
         rows=root_profile(joinpath(@__DIR__,"cases","turbine-tables.json"),output;
-            seconds=30.,profiles=["baseline","hydraulic_domains","plant_energy","static_symmetry"],capture=true)
+            seconds=30.,profiles=["baseline","hydraulic_domains","plant_energy","static_symmetry","head_planes"],capture=true)
         for row in rows
             @test row["accepted"]
             @test row["diagnostics_close_error"]===nothing
