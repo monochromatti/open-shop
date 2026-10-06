@@ -3,6 +3,8 @@
 include("diagnose.jl")
 using SCIP, JuMP
 include("power_envelopes.jl")
+include("hydraulic_domains.jl")
+include("plant_energy.jl")
 
 mutable struct RootLP <: SCIP.AbstractEventhdlr
     optimizer::SCIP.Optimizer
@@ -73,6 +75,13 @@ const ROOT_PROFILES=Dict{String,Vector{Pair{String,Any}}}(
     "lean_obbt"=>["propagating/obbt/itlimitfactor"=>1.0,"propagating/obbt/minitlimit"=>1000],
     "root20_no_obbt"=>["separating/maxroundsroot"=>20,"propagating/obbt/freq"=>-1],
     "power_envelopes"=>[],
+    "hydraulic_domains"=>[],
+    "plant_energy"=>[],
+    "static_symmetry"=>["propagating/symmetry/usedynamicprop"=>false],
+    "static_hydraulics"=>["propagating/symmetry/usedynamicprop"=>false],
+    "no_obbt_hydraulics"=>["propagating/obbt/freq"=>-1],
+    "lean_power"=>["propagating/obbt/itlimitfactor"=>1.0,"propagating/obbt/minitlimit"=>1000],
+    "lean_hydraulics"=>["propagating/obbt/itlimitfactor"=>1.0,"propagating/obbt/minitlimit"=>1000],
 )
 
 function root_profile(input,output;seconds=120.,repeats=1,
@@ -113,7 +122,9 @@ function root_profile(input,output;seconds=120.,repeats=1,
                 event[]=e
             end
         end
-        transform=profile=="power_envelopes" ? add_power_envelopes! : nothing
+        transform=profile in ("power_envelopes","lean_power") ? add_power_envelopes! :
+            profile in ("hydraulic_domains","lean_hydraulics","static_hydraulics","no_obbt_hydraulics") ? tighten_network_domains! :
+            profile=="plant_energy" ? add_plant_energy_bounds! : nothing
         if repeat==1
             OpenSHOP._solve(c;initial,fixed_u,time_limit=10.,
                 optimizer_setup=setup,model_transform=transform)
@@ -134,6 +145,8 @@ function root_profile(input,output;seconds=120.,repeats=1,
         row["source_sha256"]=bytes2hex(sha256(join(read(p,String) for p in
             sort(filter(p->endswith(p,".jl"),readdir(joinpath(@__DIR__,"..","src");join=true))))))
         row["julia_version"]=string(VERSION)
+        row["experiment_sha256"]=bytes2hex(sha256(join(read(joinpath(@__DIR__,p),String)
+            for p in ("root_profile.jl","power_envelopes.jl","hydraulic_domains.jl","plant_energy.jl"))))
         row["cpu_name"]=Sys.CPU_NAME;row["kernel"]=string(Sys.KERNEL)
         row["progress"]=scip_progress(logpath)
         if capture && event[]!==nothing && graph[]!==nothing
@@ -152,6 +165,8 @@ function root_profile(input,output;seconds=120.,repeats=1,
         writejson(joinpath(output,"summary.json"),rows)
         println(now()," ",profile," ",commitment," ",r["status"]," gap=",r["relative_gap"]);flush(stdout)
         get(r,"accepted",false) && get(get(r,"start_audit",Dict()),"valid",false) || error("unaccepted schedule/start")
+        get(r,"solver_error",nothing)===nothing || error("native solve failed")
+        get(r,"statistics_error",nothing)===nothing || error("native statistics unavailable")
         get(r,"bound_rejection",nothing)===nothing || error("rejected upper bound")
     end
     rows
