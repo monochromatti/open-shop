@@ -98,25 +98,37 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                     initial["u"][k]==0 && (q[k]=0.0)
                 end
                 off_flow_correction=maximum(abs,q-initial["generator_q"];init=0.0)
-                if off_flow_correction>0
-                    initial=dispatch_from_controls(c,initial["u"],q,initial["gate"])
-                    initial["validation"]["valid"] || error("common off-flow repair fails physical/replay audit")
-                    benchmark_freeze(frozen_seed,initial)
-                end
+                initial=dispatch_from_controls(c,initial["u"],q,initial["gate"])
+                initial["validation"]["valid"] || error("common reconstructed seed fails physical/replay audit")
+                benchmark_freeze(frozen_seed,initial)
             end
             seed_hash=bytes2hex(sha256(read(frozen_seed)))
             control_path=joinpath(folder,"seed-controls.json")
             benchmark_freeze(control_path,initial===nothing ? nothing : Dict(k=>initial[k] for k in ("u","generator_q","gate")))
             control_hash=bytes2hex(sha256(read(control_path)))
             reference_lower=initial===nothing ? nothing : initial["objective"]
-            probe_seconds=0.;probe_valid=false
+            probe_seconds=0.;probe_valid=false;probe_raw_objective=nothing;probe_reconstructed_objective=nothing;physical_probe=nothing
             if initial!==nothing && probe_time_limit>0
                 probe_started=time()
                 probe=solve_case(c;u=initial["u"],warm=initial,time_limit=probe_time_limit)
                 probe_seconds=time()-probe_started
                 writejson(joinpath(folder,"discrete-probe.json"),probe)
                 probe_valid=get(get(probe,"validation",Dict()),"valid",false)
-                probe_valid && (reference_lower=max(reference_lower,probe["objective"]))
+                if probe_valid
+                    probe_raw_objective=probe["objective"]
+                    try
+                        physical_probe,_=OpenSHOP._reconstruct_candidate(c,probe)
+                        probe_valid=physical_probe["validation"]["valid"]
+                        if probe_valid
+                            probe_reconstructed_objective=physical_probe["objective"]
+                            reference_lower=max(reference_lower,probe_reconstructed_objective)
+                        end
+                        writejson(joinpath(folder,"reconstructed-probe.json"),physical_probe)
+                    catch error
+                        probe_valid=false
+                        writejson(joinpath(folder,"probe-reconstruction-error.json"),Dict("error"=>sprint(showerror,error)))
+                    end
+                end
             end
             metadata=Dict("case"=>c.name,"case_sha256"=>case_hash,"seed_sha256"=>seed_hash,
                 "seed_controls_sha256"=>control_hash,"source_sha256"=>source_hash,"input_path"=>abspath(case_path),
@@ -125,6 +137,7 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 "julia_version"=>string(VERSION),"threads"=>Threads.nthreads(),
                 "preparation_seconds_excluded"=>preparation_seconds,"probe_seconds_excluded"=>probe_seconds,
                 "probe_discrete_valid"=>probe_valid,"known_discrete_lower_bound"=>reference_lower,
+                "probe_raw_objective"=>probe_raw_objective,"probe_reconstructed_objective"=>probe_reconstructed_objective,
                 "seed_objective"=>initial===nothing ? nothing : initial["objective"],
                 "seed_off_flow_correction"=>off_flow_correction,
                 "seed_shared_across_all_variants"=>true,"native_start_enabled"=>native_start,"target_relative_gap"=>relative_gap,
@@ -132,6 +145,21 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 "global_allowance_seconds"=>time_limit,
                 "scope"=>"same frozen discrete equations and audited seed; fixed commitment restricts feasible set")
             writejson(joinpath(folder,"metadata.json"),metadata)
+            probe_audits=Dict{Tuple{Symbol,Symbol},Any}()
+            if probe_valid && physical_probe!==nothing
+                for formulation in formulations, mode in commitments
+                    audit_began=time()
+                    try
+                        fixed_u=mode==:fixed ? copy(initial["u"]) : nothing
+                        graph=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u,formulation)
+                        audit=OpenSHOP._lift_start!(graph,c,physical_probe)
+                        audit["seconds_excluded"]=time()-audit_began
+                        probe_audits[(formulation,mode)]=audit
+                    catch error
+                        probe_audits[(formulation,mode)]=Dict("valid"=>false,"error"=>sprint(showerror,error),"seconds_excluded"=>time()-audit_began)
+                    end
+                end
+            end
             solve_initial=native_start ? initial : nothing
             if warmup
                 for formulation in formulations, mode in commitments
@@ -156,6 +184,11 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
             for repetition in 1:repeats
                 for (formulation,mode) in (isodd(repetition) ? variants : reverse(variants))
                     row=merge(copy(metadata),Dict("formulation"=>string(formulation),"commitment"=>string(mode),"repeat"=>repetition))
+                    probe_audit=get(probe_audits,(formulation,mode),nothing)
+                    row["probe_model_audit"]=probe_audit
+                    graph_lower=probe_audit!==nothing && get(probe_audit,"valid",false) ? reference_lower :
+                        initial===nothing ? nothing : initial["objective"]
+                    row["known_discrete_lower_bound"]=graph_lower
                     stem="$(formulation)-$(mode)-$(lpad(string(repetition),2,'0'))"
                     if mode==:fixed && initial===nothing
                         row["status"]="SKIPPED_NO_COMMON_FEASIBLE_SEED"
@@ -167,7 +200,7 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                             result=solve(c;initial=solve_initial,fixed_u,time_limit,relative_gap,formulation,diagnostics_path=log_path)
                             row["harness_seconds"]=time()-began
                             upper=get(result,"global_bound",nothing)
-                            consistent=upper===nothing || reference_lower===nothing || upper>=reference_lower-1e-6
+                            consistent=upper===nothing || graph_lower===nothing || upper>=graph_lower-1e-6
                             row["bound_consistent_with_known_schedule"]=consistent
                             if !consistent
                                 result["rejected_global_bound"]=upper
