@@ -9,6 +9,10 @@ initial controls. It changed their algebraic representation. Neither method
 obtained a materially better delivered objective on the operating watercourses;
 the deciding differences were proof progress, robustness and model size.
 
+The architecture comparison below describes version 0.4.0. The subsequent
+[root relaxation study](performance.md) adds the production power bounds and
+reports their matched performance separately.
+
 ## Final matched comparison
 
 These are free-commitment results with a 300-second allowance and a 0.01%
@@ -134,5 +138,6 @@ The remaining free-commitment gaps are substantial. This work establishes one
 measured production architecture, not full SHOP parity or fast global proof on
 large watercourses. Bounds are numerical certificates for the declared discrete
 model; finer replay checks controls but does not certify the continuous-time
-optimum. Future work can improve incumbent search and numerical conditioning
-without maintaining multiple table implementations.
+optimum. The subsequent [performance study](performance.md) identifies continuous
+relaxation errors as the immediate bottleneck and measures equation-preserving
+power bounds without adding another table implementation.

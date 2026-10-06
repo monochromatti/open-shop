@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
 
 - Strengthened the original nonlinear generation equations with head-aware supporting power bounds.
 - Added optional native SCIP JSON statistics for LP and bound-tightening costs.
 - Preserved fixed tunnel direction choices when lifting numerically zero-flow starts.
 - Added regression checks for operating limits, off-state heads, electrical efficiency and polynomial extensions.
+- Published 134 performance measurements, including repeated Tokke–Vinje confirmation and the retained failed-start record.
 
 ## 0.4.0
 
