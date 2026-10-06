@@ -26,7 +26,8 @@ o_t(H_{a,t}-H_{b,t})=kQ_t|Q_t|.
 
 Opening zero fixes its flow to zero. Capacity bounds both directions. The global
 model expresses signed flow using positive and negative parts and a direction
-binary, retaining the exact quadratic loss law. Conservative head and continuity bounds can prove a direction; in that case the model uses its signed quadratic directly and omits the direction binary. Reversible links retain both directions.
+binary, retaining the exact quadratic loss law. SCIP can infer a fixed direction
+during presolve. Reversible links retain both directions.
 
 ## Generation and operation
 
@@ -160,12 +161,30 @@ need no discharge products. Products are shared across head columns. The
 turbine power relation remains nonlinear. SOS2 constraints still require
 integer search; they do not turn this into a continuous convex problem.
 
+The power equation is strengthened with supporting inequalities for the original
+turbine polynomial. For each on-domain, a guarded Bernstein enclosure supplies
+`c >= max(P_upper(Q,H) - a Q - b H)`. The head-aware row is
+
+\[
+P\le aQ+b(H-H_*)+(c+bH_*)u,\qquad H_*=H_{\rm lo},\quad b\ge0.
+\]
+
+On, it is the supporting plane. Off, `P=Q=0` and its right-hand side is
+nonnegative over the full shared-head domain, including negative heads. The
+original interpolation, efficiency and nonlinear power equalities remain in
+the model. These rows strengthen SCIP's relaxation; they do not replace the
+physical functions. Their floating-point guards retain the model's numerical
+certificate scope, rather than supplying a formal rounding-error proof.
+
 Complete starting schedules and returned solver solutions are checked for
 SOS2 adjacency and unit integrality. Tiny solver leakage at an off unit is
 removed before physical reconstruction; larger violations reject the controls.
 Accepted off units therefore have exactly zero flow and power.
 
-`diagnostics_path="scip.log"` enables native SCIP progress logging.
+`diagnostics_path="scip.log"` enables native SCIP progress logging and writes
+`scip.log.statistics.json`. Returned `scip_statistics` includes native LP and
+plugin counters, including optimization-based bound tightening. Timers can
+overlap and must not be summed as exclusive costs.
 `scip_diagnostics` contains native root/final bounds, node counts, LP iterations
 and solution counts. Root and displayed log bounds are observations; only the
 final enclosing bound and independently reconstructed objective determine the

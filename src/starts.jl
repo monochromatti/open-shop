@@ -66,7 +66,12 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("q[$i,$t]", q/50)
             put("tunnel_positive_$(i)_$(t)", max(q, 0.0))
             put("tunnel_negative_$(i)_$(t)", max(-q, 0.0))
-            put("tunnel_direction_$(i)_$(t)", q>=0 ? 1.0 : 0.0)
+            # A zero-flow residual must not overwrite a fixed auxiliary branch.
+            # The physical and split-flow equations are still audited below.
+            direction="tunnel_direction_$(i)_$(t)"
+            choice=haskey(byname,direction) && is_fixed(byname[direction]) ?
+                fix_value(byname[direction]) : (q>=0 ? 1.0 : 0.0)
+            put(direction, choice)
         end
         heads=Dict{Tuple{Symbol,Int},String}()
         for (i, g) in enumerate(s.generators), t in 1:T

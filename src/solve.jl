@@ -24,6 +24,10 @@ function _scip_diagnostics(model)
             result["solutions_stored"]=SCIP.SCIPgetNSols(optimizer)
             result["solutions_found"]=SCIP.SCIPgetNSolsFound(optimizer)
             result["native_solve_seconds"]=SCIP.SCIPgetSolvingTime(optimizer)
+            result["presolving_seconds"]=SCIP.SCIPgetPresolvingTime(optimizer)
+            result["first_lp_seconds"]=SCIP.SCIPgetFirstLPTime(optimizer)
+            result["last_node_separation_rounds"]=SCIP.SCIPgetNSepaRounds(optimizer)
+            result["cuts_applied"]=SCIP.SCIPgetNCutsApplied(optimizer)
             result["final_upper_bound"]=_scip_bound_value(optimizer,SCIP.SCIPgetDualbound(optimizer))
             result["native_incumbent_objective"]=_scip_bound_value(optimizer,SCIP.SCIPgetPrimalbound(optimizer))
             if Int(stage)>=5
@@ -40,6 +44,20 @@ function _scip_diagnostics(model)
         result["error"]=sprint(showerror,error)
     end
     result
+end
+
+
+# Native JSON contains timing and work counters for LPs and individual plugins.
+# Capture only when diagnostics were requested; it does not affect certificates.
+function _write_scip_statistics(model, path)
+    file=ccall(:fopen, Ptr{Cvoid}, (Cstring, Cstring), path, "w")
+    file==C_NULL && error("cannot open SCIP statistics file: $path")
+    try
+        SCIP.@SCIP_CALL SCIP.SCIPprintStatisticsJson(JuMP.unsafe_backend(model), file)
+    finally
+        ccall(:fclose, Cint, (Ptr{Cvoid},), file)
+    end
+    JSON3.read(read(path, String), Dict{String,Any})
 end
 
 
@@ -130,8 +148,10 @@ end
 
 Optimize generation and binary unit commitment with native SCIP.
 `diagnostics_path` optionally writes a native SCIP
-progress log. Returned `scip_diagnostics` are observational statistics, not
-independent feasibility or certificate evidence. The objective
+progress log and an accompanying `.statistics.json` file with native plugin
+and LP counters. Returned `scip_diagnostics` and `scip_statistics` are
+observational statistics, not independent feasibility or certificate evidence.
+The objective
 is revenue minus transition costs and release penalties, plus changes in stored
 water value. `initial` may supply a physical schedule on the same control grid.
 
@@ -265,6 +285,13 @@ function solve(
         result["primal_status"] = string(primal_status(b.m))
         result["scip_diagnostics"]=_scip_diagnostics(b.m)
         if diagnostics_path!==nothing
+            try
+                statistics_path=diagnostics_path*".statistics.json"
+                result["scip_statistics"]=_write_scip_statistics(b.m, statistics_path)
+                result["statistics_path"]=statistics_path
+            catch error
+                result["statistics_error"]=sprint(showerror,error)
+            end
             try
                 SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),C_NULL)
             catch error

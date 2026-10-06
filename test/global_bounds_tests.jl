@@ -225,3 +225,19 @@ end
     @test OpenSHOP._global_polynomial_range((0.5,1.0,-1.0,0.0),0.0,1.0)==(0.5,0.75)
     @test OpenSHOP._global_polynomial_range((0.0,-1.0,0.0,1.0),-1.0,1.0)[2]≈2/(3sqrt(3))
 end
+
+@testset "Fixed tunnel directions preserve audited zero-flow starts" begin
+    c=bounds_only_case(;
+        boundaries=[Boundary(name=:A,head=100.),Boundary(name=:B,head=100.)],
+        tunnels=[Tunnel(name=:Link,source=:A,target=:B,resistance=1.,capacity=5.)])
+    initial=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
+    for direction in (0.,1.)
+        b=OpenSHOP._build_global_dispatch(c;joint=true)
+        OpenSHOP.JuMP.fix(OpenSHOP.JuMP.variable_by_name(b.m,"tunnel_direction_1_1"),direction;force=true)
+        probe=deepcopy(initial)
+        probe["tunnel_q"][1,1]=direction==1 ? -1e-10 : 1e-10
+        @test OpenSHOP._lift_start!(b,c,probe)["valid"]
+        probe["tunnel_q"][1,1]=direction==1 ? -1. : 1.
+        @test !OpenSHOP._lift_start!(b,c,probe)["valid"]
+    end
+end

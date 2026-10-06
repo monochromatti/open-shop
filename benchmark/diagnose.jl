@@ -210,7 +210,7 @@ function benchmark_cases(case_paths;output,time_limit=60.,repeats=1,commitments=
                                 result["relative_gap"]=nothing
                                 result["absolute_gap"]=nothing
                             end
-                            for key in ("status","accepted","global_certificate","feasible_lower_bound","global_bound","absolute_gap","relative_gap","construction_seconds","solve_seconds","total_seconds","budget_overrun_seconds","variable_count","constraint_count","model_profile","incumbent_source","start_audit","raw_integrality_error","raw_sos2_residual","scip_diagnostics","solver_error","candidate_error","bound_rejection")
+                            for key in ("status","accepted","global_certificate","feasible_lower_bound","global_bound","absolute_gap","relative_gap","construction_seconds","solve_seconds","total_seconds","budget_overrun_seconds","variable_count","constraint_count","model_profile","incumbent_source","start_audit","raw_integrality_error","raw_sos2_residual","scip_diagnostics","scip_statistics","statistics_error","solver_error","candidate_error","bound_rejection")
                                 row[key]=get(result,key,nothing)
                             end
                             row["progress"]=log_path===nothing ? Dict("available"=>false,"rows"=>Any[]) : scip_progress(log_path)

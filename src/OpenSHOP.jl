@@ -24,6 +24,7 @@ include("verification.jl")
 include("restart.jl")
 include("schedule.jl")
 include("global_bounds.jl")
+include("power_bounds.jl")
 include("global_model.jl")
 include("solve.jl")
 export Reservoir,

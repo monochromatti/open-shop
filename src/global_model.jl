@@ -714,7 +714,7 @@ function _build_global_dispatch(
             ArgumentError("global solver requires finite bounds for $(name(variable))"),
         )
     end
-    (;
+    b=(;
         m,
         obj,
         V,
@@ -737,4 +737,6 @@ function _build_global_dispatch(
         shared_heads,
         node_bounds,
     )
+    _add_power_bounds!(b,c)
+    b
 end
