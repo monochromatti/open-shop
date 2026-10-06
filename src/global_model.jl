@@ -34,8 +34,9 @@ function _build_global_dispatch(
     formulation = :baseline,
 )
     starttime=time()
-    formulation in (:baseline, :domains, :tightened) || throw(ArgumentError("unknown global formulation"))
-    tightened=formulation!=:baseline
+    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("unknown global formulation"))
+    tightened=formulation in (:domains, :tightened)
+    tensor_tables=formulation==:tensor
     tightened_tables=formulation==:tightened
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
@@ -283,6 +284,9 @@ function _build_global_dispatch(
                 )^2
             )
             z
+        elseif tensor_tables
+            _global_tensor_turbine!(m,g.turbine_table,GQ[i,t],hd,flowmin,flowmax,hlo,hhi;
+                name=Symbol("turbine_",i,"_",t))
         else
             _global_turbine!(
                 m,
@@ -359,7 +363,8 @@ function _build_global_dispatch(
         end
         if g.turbine_table!==nothing
             table=g.turbine_table
-            qlo=_global_table!(
+            qlo=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
+                name=Symbol("qlo_",i,"_",t)) : _global_table!(
                 m,
                 TableCurve(table.heads, table.qmin),
                 hd,
@@ -368,7 +373,8 @@ function _build_global_dispatch(
                 name = Symbol("qlo_", i, "_", t),
                 tightened = tightened_tables,
             )
-            qhi=_global_table!(
+            qhi=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
+                name=Symbol("qhi_",i,"_",t)) : _global_table!(
                 m,
                 TableCurve(table.heads, table.qmax),
                 hd,

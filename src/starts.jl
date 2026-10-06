@@ -1,3 +1,12 @@
+# Distance to the allowed adjacent support; tiny nonadjacent weights remain
+# visible to the same numerical tolerance used for the other constraints.
+function _sos2_residual(x,weights)
+    length(x)<=2 && return 0.0
+    ordered=x[sortperm(weights)]
+    minimum(maximum(abs(ordered[j]) for j in eachindex(ordered) if j!=i && j!=i+1;init=0.0)
+        for i in 1:(length(ordered)-1))
+end
+
 """Lift a physical incumbent into all algebraic variables and audit feasibility."""
 function _lift_start!(b, c, warm; tolerance = 1e-7)
     assigned=Dict{VariableRef,Float64}()
@@ -15,6 +24,15 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
     end
     function table(n, curve, x, lo, hi)
         haskey(byname, n) || return
+        tensor=get(get(b.m.ext,:global_tensor_tables,Dict()),n,nothing)
+        if tensor!==nothing
+            weights=OpenSHOP._global_tensor_coordinate_weights(tensor.coordinate.nodes,x)
+            for (v,z) in zip(tensor.coordinate.weights,weights)
+                v isa VariableRef && put(name(v),z)
+            end
+            put(n,OpenSHOP.table_value(curve,x;extrapolation=:linear))
+            return
+        end
         lo,hi=get(get(b.m.ext,:global_tables,Dict()),n,(lo,hi))
         cells=OpenSHOP._global_intervals(curve.x, lo, hi)
         k=findfirst(pair->pair[1]<=x<=pair[2], cells)
@@ -28,6 +46,15 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         put(n, OpenSHOP.table_value(curve, x; extrapolation = :linear))
     end
     function turbine(n, curve, q, h, hlo, hhi, qmax)
+        tensor=get(get(b.m.ext,:global_tensor_turbines,Dict()),n,nothing)
+        if tensor!==nothing
+            for (v,z) in OpenSHOP._global_tensor_turbine_values(tensor,q,h)
+                put(name(v),z)
+            end
+            # Evaluate the physical table independently of the graph algebra.
+            put(n,OpenSHOP.turbine_efficiency(curve,q,h;extrapolation=:linear))
+            return
+        end
         qlo,qmax,hlo,hhi=get(get(b.m.ext,:global_turbines,Dict()),n,(0.0,qmax,hlo,hhi))
         qc=OpenSHOP._global_intervals(curve.discharge, qlo, qmax)
         hc=OpenSHOP._global_intervals(curve.heads, hlo, hhi)
@@ -207,8 +234,13 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             error("unsupported audit set $(typeof(set))")
         for ref in all_constraints(b.m; include_variable_in_set_constraints = true)
             obj=constraint_object(ref)
-            x=obj.func isa Number ? obj.func : JuMP.value(v->assigned[v], obj.func)
-            e=violation(x, obj.set)
+            e=if obj.set isa MOI.SOS2
+                x=[JuMP.value(v->assigned[v],z) for z in obj.func]
+                _sos2_residual(x,obj.set.weights)
+            else
+                x=obj.func isa Number ? obj.func : JuMP.value(v->assigned[v], obj.func)
+                violation(x,obj.set)
+            end
             isfinite(e) || error("nonfinite constraint residual")
             count+=1
             if e>residual

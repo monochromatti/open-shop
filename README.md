@@ -67,7 +67,9 @@ and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 
 The default formulation is `:baseline`. Experimental `:domains` and
 `:tightened` options retain the physical equations but change bounds and table
-graphs. Their smaller models regressed on the operating Tokke–Vinje comparison,
+graphs. The experimental `:tensor` option uses independent SOS2 axes for exact
+turbine interpolation and shares head weights across units and flow envelopes.
+The domain and tightened variants' smaller models regressed on the operating Tokke–Vinje comparison,
 so they are opt-in. See the benchmark results before selecting one.
 
 For larger cases, a feasible initial schedule can help the global search:

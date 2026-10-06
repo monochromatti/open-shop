@@ -63,7 +63,7 @@ function benchmark_seed(path,c)
 end
 
 function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulations=(:baseline,:tightened),commitments=(:free,:fixed),
-        operational_margin=.1,relative_gap=1e-3,seed_directory=nothing,warmup=true,probe_time_limit=20.)
+        operational_margin=.1,relative_gap=1e-3,seed_directory=nothing,warmup=true,probe_time_limit=20.,diagnostics=true)
     repeats isa Integer && repeats>=1 || throw(ArgumentError("positive repeats required"))
     mkpath(output);records=Any[]
     source_hash=bytes2hex(sha256(join([read(p,String) for p in sort(filter(p->endswith(p,".jl"),readdir(joinpath(@__DIR__,"..","src");join=true)))])))
@@ -105,7 +105,8 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
             end
             metadata=Dict("case"=>c.name,"case_sha256"=>case_hash,"seed_sha256"=>seed_hash,
                 "seed_controls_sha256"=>control_hash,"source_sha256"=>source_hash,"input_path"=>abspath(case_path),
-                "diagnostic_trace_enabled"=>true,"warmup_enabled"=>warmup,
+                "diagnostic_trace_enabled"=>diagnostics,"diagnostic_display_frequency"=>diagnostics ? 100 : nothing,"warmup_enabled"=>warmup,
+                "warmup_commitment_modes"=>string.(commitments),"warmup_allowance_seconds_per_variant"=>10.0,
                 "julia_version"=>string(VERSION),"threads"=>Threads.nthreads(),
                 "preparation_seconds_excluded"=>preparation_seconds,"probe_seconds_excluded"=>probe_seconds,
                 "probe_discrete_valid"=>probe_valid,"known_discrete_lower_bound"=>reference_lower,
@@ -114,13 +115,21 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 "global_allowance_seconds"=>time_limit,
                 "scope"=>"same frozen discrete equations and audited seed; fixed commitment restricts feasible set")
             writejson(joinpath(folder,"metadata.json"),metadata)
-            for formulation in formulations
-                if warmup
+            if warmup
+                for formulation in formulations, mode in commitments
+                    fixed_u=mode==:fixed && initial!==nothing ? copy(initial["u"]) : nothing
+                    stem="warmup-$(formulation)-$(mode)"
                     try
-                        result=solve(c;initial,time_limit=2.,relative_gap,formulation)
-                        writejson(joinpath(folder,"warmup-$(formulation).json"),result)
+                        log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
+                        result=solve(c;initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
+                        # A compilation-heavy construction can exhaust the first
+                        # allowance before exercising native solve and extraction.
+                        if result["status"]=="CONSTRUCTION_BUDGET_EXHAUSTED"
+                            result=solve(c;initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
+                        end
+                        writejson(joinpath(folder,stem*".json"),result)
                     catch error
-                        writejson(joinpath(folder,"warmup-$(formulation).json"),Dict("error"=>sprint(showerror,error)))
+                        writejson(joinpath(folder,stem*".json"),Dict("error"=>sprint(showerror,error)))
                     end
                 end
             end
@@ -134,13 +143,13 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                         row["status"]="SKIPPED_NO_COMMON_FEASIBLE_SEED"
                     else
                         fixed_u=mode==:fixed ? copy(initial["u"]) : nothing
-                        log_path=joinpath(folder,stem*".log")
+                        log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
                         began=time()
                         try
                             result=solve(c;initial,fixed_u,time_limit,relative_gap,formulation,diagnostics_path=log_path)
                             row["harness_seconds"]=time()-began
                             upper=get(result,"global_bound",nothing)
-                            consistent=upper===nothing || reference_lower===nothing || upper>=reference_lower-1e-4
+                            consistent=upper===nothing || reference_lower===nothing || upper>=reference_lower-1e-6
                             row["bound_consistent_with_known_schedule"]=consistent
                             if !consistent
                                 result["rejected_global_bound"]=upper
@@ -150,10 +159,10 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                                 result["relative_gap"]=nothing
                                 result["absolute_gap"]=nothing
                             end
-                            for key in ("status","accepted","global_certificate","feasible_lower_bound","global_bound","absolute_gap","relative_gap","construction_seconds","solve_seconds","total_seconds","budget_overrun_seconds","variable_count","constraint_count","model_profile","incumbent_source","start_audit","scip_diagnostics","solver_error","candidate_error","bound_rejection")
+                            for key in ("status","accepted","global_certificate","feasible_lower_bound","global_bound","absolute_gap","relative_gap","construction_seconds","solve_seconds","total_seconds","budget_overrun_seconds","variable_count","constraint_count","model_profile","incumbent_source","start_audit","raw_integrality_error","raw_sos2_residual","scip_diagnostics","solver_error","candidate_error","bound_rejection")
                                 row[key]=get(result,key,nothing)
                             end
-                            row["progress"]=scip_progress(log_path)
+                            row["progress"]=log_path===nothing ? Dict("available"=>false,"rows"=>Any[]) : scip_progress(log_path)
                             writejson(joinpath(folder,stem*".json"),result)
                         catch error
                             row["status"]="BENCHMARK_ERROR";row["error"]=sprint(showerror,error)

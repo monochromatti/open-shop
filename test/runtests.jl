@@ -62,3 +62,5 @@ include("global_tests.jl")
 include("flow_requirement_tests.jl")
 include("global_bounds_tests.jl")
 include("diagnostics_tests.jl")
+
+include("tensor_table_tests.jl")

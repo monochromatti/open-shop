@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added an experimental exact turbine-table graph with independent SOS2 axes, shared head weights and discharge PCHIP corrections.
+- Added complete start lifting and adjacency audits for SOS2 constraints, plus paired table-graph benchmarks.
+
 ## 0.2.0
 
 - Added aggregate minimum-flow observations to dispatch, commitment proposals, replay, serialization and restart.

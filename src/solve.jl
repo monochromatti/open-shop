@@ -118,7 +118,7 @@ end
     solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0, initial=nothing, fixed_u=nothing)
 
 Optimize generation and binary unit commitment with native SCIP.
-`formulation` selects `:baseline` (default), `:domains` or `:tightened`; all retain the
+`formulation` selects `:baseline` (default), `:domains`, `:tightened` or `:tensor`; all retain the
 same physical equations. `diagnostics_path` optionally writes a native SCIP
 progress log. Returned `scip_diagnostics` are observational statistics, not
 independent feasibility or certificate evidence. The objective
@@ -152,7 +152,7 @@ function solve(
         throw(ArgumentError("relative_gap must lie in [0,1)"))
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
-    formulation in (:baseline, :domains, :tightened) || throw(ArgumentError("formulation must be :baseline, :domains, or :tightened"))
+    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("formulation must be :baseline, :domains, :tightened, or :tensor"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(
@@ -206,6 +206,9 @@ function solve(
     binary_names=[name(v) for v in variables if is_binary(v)]
     result["model_profile"]=Dict(
         "binary_vars"=>length(binary_names),
+        "sos2_constraints"=>count(ref->constraint_object(ref).set isa MOI.SOS2,all_constraints(b.m;include_variable_in_set_constraints=false)),
+        "tensor_axes"=>length(get(b.m.ext,:global_tensor_coordinates,[])),
+        "tensor_axis_knots"=>sum(length(x.nodes) for x in get(b.m.ext,:global_tensor_coordinates,[]);init=0),
         "tunnel_direction_binaries"=>count(n->startswith(n,"tunnel_direction_"),binary_names),
         "turbine_cell_binaries"=>count(n->startswith(n,"turbine_") && occursin("_cell[",n),binary_names),
         "river_table_cell_binaries"=>count(n->startswith(n,"river_law_") && occursin("_cell[",n),binary_names),
@@ -232,7 +235,7 @@ function solve(
             optimizer_with_attributes(
                 factory,
                 "display/verblevel" => (diagnostics_path===nothing ? 0 : 4),
-                "display/freq" => 1,
+                "display/freq" => 100,
                 "limits/time" => remaining,
                 "limits/gap" => relative_gap,
                 "limits/absgap" => absolute_gap / 10000,
@@ -282,7 +285,11 @@ function solve(
                 raw["validation"] = validate(c, raw; transport = b.transport)
                 result["raw_solver_solution"] = raw
                 result["raw_integrality_error"] = error
-                if error <= 1e-6 && (fixed_u === nothing || raw["u"] == fixed_u)
+                sos2_error=maximum((_sos2_residual(JuMP.value.(constraint_object(ref).func),constraint_object(ref).set.weights)
+                    for ref in all_constraints(b.m;include_variable_in_set_constraints=false)
+                    if constraint_object(ref).set isa MOI.SOS2);init=0.0)
+                result["raw_sos2_residual"]=sos2_error
+                if error <= 1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw["u"] == fixed_u)
                     x, correction = _reconstruct_candidate(c, raw; transport = b.transport)
                     result["control_boundary_correction"] =
                         Dict("flow" => correction.flow, "gate" => correction.gate)
