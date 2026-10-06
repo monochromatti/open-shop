@@ -265,7 +265,8 @@ function propose_commitment(
         end
     end
     valuechange=sum(
-        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs)
+        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
+        init = 0.0,
     ) + sum(
         r.water_value*(
             terminal[d]-(exact ? nd.initial_transit[d] : data["history_initial"][d])

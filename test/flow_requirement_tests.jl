@@ -23,11 +23,9 @@
     if haskey(proposal,"u")
         @test proposal["generator_q"][1,1]+proposal["river_release"][1,1]+1>=8-1e-5
     end
-    for mode in (:baseline,:tightened)
-        result=OpenSHOP.solve(c;initial=good,time_limit=15.0,formulation=mode)
-        @test result["accepted"]
-        @test result["start_audit"]["valid"]
-    end
+    result=OpenSHOP.solve(c;initial=good,time_limit=15.0)
+    @test result["accepted"]
+    @test result["start_audit"]["valid"]
     # Refinement and restart retain the observation and its physical input times.
     longer=OpenSHOP._river_replace(c;grid=[0.0,1.0,2.0],prices=[100.0,100.0],operations=[
         OperationalSeries(object=:Reach,attribute=:inflow,times=[0.0,1.0],values=[1.0,2.0]),
@@ -44,37 +42,6 @@
         flow_requirements=[FlowRequirement(name=:Reach,generators=[:AnalyticUnit,:AnalyticUnit])]))
     @test_throws ArgumentError OpenSHOP.validate_inputs(OpenSHOP._river_replace(c;
         flow_requirements=[FlowRequirement(name=:AnalyticUnit)]))
-end
-
-@testset "Exact turbine cell ranges and affine graphs" begin
-    # This polynomial has an interior maximum at discharge coordinate 1/2.
-    @test OpenSHOP._global_polynomial_range((0.5,1.0,-1.0,0.0),0.0,1.0)==(0.5,0.75)
-    @test OpenSHOP._global_polynomial_range((0.0,-1.0,0.0,1.0),-1.0,1.0)[2]≈2/(3sqrt(3))
-    a=(0.6,0.4,-0.5,0.1); b=(0.8,-0.2,0.3,-0.05)
-    lo,hi=OpenSHOP._global_turbine_cell_range(a,b,-0.5,1.5,-0.3,1.2)
-    @test all(range(-0.5,1.5;length=61)) do t
-        all(range(-0.3,1.2;length=31)) do u
-            v=sum((a[k]+u*(b[k]-a[k]))*t^(k-1) for k in 1:4)
-            lo<=v<=hi
-        end
-    end
-    curve=TableCurve([0.0,1.0,2.0],[0.9,0.95,0.8])
-    for (lo,hi) in ((0.2,0.8),(1.0,1.0),(-1.0,0.0))
-        m=Model(); @variable(m,x)
-        y=OpenSHOP._global_table!(m,curve,x,lo,hi)
-        @test num_variables(m)==2
-        @test JuMP.lower_bound(y)<=JuMP.upper_bound(y)
-    end
-    # Isolated off cells and on cells follow commitment, preserving head at off.
-    table=TurbineTable([60.0,100.0],[2.0,4.0,8.0],[0.8 0.85;0.9 0.95;0.85 0.9],[2.0,2.0],[8.0,8.0])
-    m=Model(); @variable(m,0<=q<=8);@variable(m,60<=h<=100);@variable(m,u,Bin)
-    eta=OpenSHOP._global_turbine!(m,table,q,h,0.0,8.0,60.0,100.0;
-        name=:eta,commitment=u,min_on_flow=3.0)
-    cells=m.ext[:global_turbine_cells]["eta"]
-    @test any(pair->pair[1]==(0.0,0.0),cells)
-    @test all(pair->pair[1]==(0.0,0.0)||pair[1][1]>=3.0,cells)
-    @test lower_bound(eta)>0.0
-    @test upper_bound(eta)<1.0
 end
 
 @testset "Certificates require a resolved root when LPs were solved" begin

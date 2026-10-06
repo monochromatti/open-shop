@@ -145,7 +145,10 @@ end
     crossing=outlet_test_case(100.0)
     global_model=OpenSHOP._build_global_dispatch(crossing; joint = true)
     @test JuMP.variable_by_name(global_model.m, "outlet_head_1_1")!==nothing
-    @test JuMP.variable_by_name(global_model.m, "outlet_head_1_1_cell[1]")!==nothing
+    graph=global_model.m.ext[:global_tensor_tables]["outlet_head_1_1"]
+    @test graph.values==max.(graph.coordinate.nodes,100.0)
+    controls=dispatch_from_controls(crossing,ones(Int,1,1),fill(2.0,1,1),fill(0.5,1,1))
+    @test OpenSHOP._lift_start!(global_model,crossing,controls)["valid"]
     # Registered local operator uses the exact piecewise linear graph too.
     @test OpenSHOP._build_dispatch(crossing).m isa JuMP.Model
 end

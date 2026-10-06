@@ -1,0 +1,64 @@
+name: Performance
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Global allowance per solve, excluding seed preparation
+        type: string
+        default: '300'
+      repeats:
+        type: string
+        default: '2'
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [operating-2h, operating-6h, operating-24h, seasonal-24h, pchip, analytic]
+    env:
+      JULIA_NUM_THREADS: 1
+      JULIA_NUM_PRECOMPILE_TASKS: 2
+      OPENBLAS_NUM_THREADS: 1
+      BENCHMARK_CASE: ${{ matrix.case }}
+      BENCHMARK_SECONDS: ${{ inputs.seconds }}
+      BENCHMARK_REPEATS: ${{ inputs.repeats }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: julia-actions/setup-julia@v3.0.2
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v3.4.0
+        with:
+          delete-old-caches: false
+      - name: Instantiate
+        run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Construct operating case
+        if: matrix.case != 'pchip' && matrix.case != 'analytic'
+        run: |
+          python3 -m pip install PyYAML
+          python3 examples/tokke_vinje/fetch.py
+          if [ "$BENCHMARK_CASE" = seasonal-24h ]; then
+            python3 examples/tokke_vinje/import.py --hours 24 --start 2024-09-29T12:00:00+00:00 --output results/inputs
+          else
+            hours="${BENCHMARK_CASE##*-}"
+            python3 examples/tokke_vinje/import.py --hours "${hours%h}" --output results/inputs
+          fi
+      - name: Benchmark the production solver
+        run: |
+          case "$BENCHMARK_CASE" in
+            pchip) input=benchmark/cases/turbine-tables.json ;;
+            analytic) input=benchmark/cases/distributed-rivers.json ;;
+            *) hours="${BENCHMARK_CASE##*-}"; input="results/inputs/tokke_vinje_${hours%h}h.json" ;;
+          esac
+          julia --pkgimages=no --project=. benchmark/run.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS"
+      - name: Upload scalar measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ matrix.case }}
+          path: results/benchmarks/summary.json
+          if-no-files-found: warn

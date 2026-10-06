@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Settled on exact quadratic SOS2 tables for the production SCIP model after repeated seven-case confirmation.
+- Removed the formulation keyword, Cartesian graphs and experimental network-bound and effective-flow implementations.
+- Shared SOS2 coordinates across compatible linear curves and preserved fixed-state turbine domains.
+- Added independently reconstructed probe audits, exact zero-flow delivery for off units, randomized table tests and empty-reservoir accounting.
+- Published the frozen screening, refinement and confirmation measurements and one production benchmark command.
+
 ## 0.3.0
 
 - Made the exact turbine-table graph the default with independent SOS2 axes, shared head weights and discharge PCHIP corrections.

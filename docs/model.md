@@ -48,7 +48,11 @@ Efficiency can be an analytic function or a turbine table. Turbine tables are
 linear in head and linear or shape-preserving cubic in discharge. The global
 model uses exact polynomial expressions within selected table cells, including
 their off-state continuation; it does not substitute a linear power curve.
-Head-dependent turbine flow envelopes apply to running units. The experimental tightened graph uses isolated zero-discharge cells for off operation; on-cell selectors sum to unit commitment. The experimental tightened table graph bounds efficiency using endpoint and cubic stationary values, including declared extrapolation. It scales clipped cell coordinates to `[0,1]`, uses only the active branch when commitment is fixed, and represents single-segment one-dimensional tables with their exact affine graph.
+Head-dependent turbine flow envelopes apply to running units. A fixed off
+unit has exactly zero discharge and power; its hydraulic head remains part of
+the network. A fixed on unit's table domain starts at its declared minimum
+flow. Efficiency bounds include endpoints, cubic stationary points and the
+original table's secant extrapolation.
 
 Aggregate plant capacity and production ramp limits apply to interval-average
 power. Start/stop allowances use each unit's minimum power. If previous plant
@@ -128,19 +132,44 @@ schedule can be retained. Its objective and gap are recomputed against the same
 global bound. The rejected candidate remains in `discrete_candidate` for
 diagnostics; its certificate is never transferred to the retained controls.
 
-## Formulation diagnostics
+## Algebraic representation and diagnostics
 
-The default `solve(...; formulation=:tensor)` uses capacity-based network domains and independent exact turbine-table axes. `:baseline` retains the original cell graphs. The experimental `:domains` and `:tightened` alternatives propagate conservative flow, head and storage intervals through conservation, river laws and signed tunnel losses before constructing the bounded model. Both prune unreachable table cells; `:tightened` also changes table graphs and strengthens turbine on/off selection. Neither uses a candidate trajectory to restrict the feasible set. Floating-point outward slack protects numerical enclosures; the certificate remains a numerical solver certificate. Matched operating Tokke–Vinje runs regressed with these alternatives, so they remain opt-in.
+The global model uses conservative capacity-based storage and arrival domains.
+Forward and backward passes enclose every feasible storage trajectory; no local
+schedule is used to restrict the feasible set. Polynomial ranges include
+interior stationary points, with outward floating-point slack.
 
-`formulation=:tensor` keeps capacity-based network domains and replaces turbine cell selection with independent discharge and head SOS2 weights. At most two adjacent weights on each axis may be nonzero. Each head column is a discharge interpolant, and efficiency is the head-weighted sum of those columns. Bilinear tables use linear discharge columns. Discharge PCHIP tables add shared adjacent-weight cubic corrections, preserving the original polynomial on clipped intervals and the original secants outside the data range. Column bounds include cubic stationary points and declared head extrapolation. Head-dependent flow envelopes reuse the same head weights; units share those weights when their physical head variable and clipped knots coincide. SOS2 constraints still require discrete search even though the graph has no explicit turbine-cell binaries. Other one-dimensional curves retain their baseline graphs.
+Every linear curve uses an SOS2 coordinate graph. At most two adjacent weights
+are nonzero; coordinate and curve value are their weighted sums of the original
+knots. Turbine tables use independent discharge weights `λ` and head weights
+`μ`. Compatible head coordinates are shared by units and flow envelopes.
 
-With discharge weights `λ` and head weights `μ`, the table graph is
+PCHIP discharge interpolation is represented exactly by quadratic products:
 
 \[
-e_j=\sum_i E_{ij}\lambda_i+\sum_i\left(A_{ij}\lambda_i^2\lambda_{i+1}+B_{ij}\lambda_i\lambda_{i+1}^2\right),
+w_i=\lambda_i\lambda_{i+1},\qquad
+r_i=\lambda_i w_i,\qquad
+ e_j=\sum_i E_{ij}\lambda_i+\sum_i\left(A_{ij}r_i+B_{ij}(w_i-r_i)\right),
 \qquad \eta=\sum_j\mu_j e_j.
 \]
 
-For bilinear interpolation, `A=B=0`. For PCHIP, the corrections reproduce the original cubic on each discharge interval; clipping does not recompute the interpolation slopes. Products are shared across all head columns. Complete starting schedules and returned solver solutions are checked for SOS2 adjacency as well as unit integrality.
+On an active adjacent pair, `λᵢ+λᵢ₊₁=1`, so `rᵢ=λᵢ²λᵢ₊₁` and
+`wᵢ−rᵢ=λᵢλᵢ₊₁²`. The coefficients reproduce the original PCHIP cubic;
+clipping a domain does not recompute slopes. Bilinear tables have `A=B=0` and
+need no discharge products. Products are shared across head columns. The
+turbine power relation remains nonlinear. SOS2 constraints still require
+integer search; they do not turn this into a continuous convex problem.
 
-`formulation=:domains` applies network domains and cell pruning with the original table graphs, separating those effects in an ablation. `formulation=:baseline` reproduces the earlier capacity-based domains and table graphs for matched experiments on the same physical case. `diagnostics_path="scip.log"` enables native SCIP progress logging. Returned `scip_diagnostics` include native root/final bounds, node counts, LP iterations and solution counts. Root or displayed log bounds are diagnostic observations; only the enclosing final bound and independently audited objective determine the reported gap. Native infinity sentinels are reported as missing bounds.
+Complete starting schedules and returned solver solutions are checked for
+SOS2 adjacency and unit integrality. Tiny solver leakage at an off unit is
+removed before physical reconstruction; larger violations reject the controls.
+Accepted off units therefore have exactly zero flow and power.
+
+`diagnostics_path="scip.log"` enables native SCIP progress logging.
+`scip_diagnostics` contains native root/final bounds, node counts, LP iterations
+and solution counts. Root and displayed log bounds are observations; only the
+final enclosing bound and independently reconstructed objective determine the
+reported gap. Native infinity sentinels are missing bounds. An apparent optimum
+without a finite first root LP bound, despite LP iterations, is withheld.
+SCIP's numerical termination status is not an independent proof. A checked
+feasible schedule above a purported upper bound rejects that bound.

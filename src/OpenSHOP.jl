@@ -6,7 +6,7 @@ using .RiverRouting
 include("curves.jl")
 include("types.jl")
 include("curve_physics.jl")
-include("piecewise.jl")
+include("polynomial_tables.jl")
 include("tensor_tables.jl")
 include("operations.jl")
 include("inputs.jl")

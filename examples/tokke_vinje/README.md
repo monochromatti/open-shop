@@ -13,7 +13,7 @@ From the package root, run:
 ```sh
 nix develop . -c python3 examples/tokke_vinje/fetch.py
 nix develop . -c python3 examples/tokke_vinje/import.py --output examples/tokke_vinje/generated/operating
-scripts/julia.sh benchmark/tokke_vinje.jl examples/tokke_vinje/generated/operating
+scripts/julia.sh benchmark/run.jl examples/tokke_vinje/generated/operating/tokke_vinje_24h.json results/tokke_vinje 300 2
 ```
 
 The pinned Nix environment supplies Python 3 and PyYAML. Without Nix, the

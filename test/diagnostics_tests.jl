@@ -16,7 +16,7 @@ include(joinpath(@__DIR__,"..","benchmark","diagnose.jl"))
     end
 end
 
-@testset "Paired benchmark preserves solver failures" begin
+@testset "Benchmark preserves solver failures" begin
     fixture = analytic_global_fixture(:on)
     c = fixture.case
     seed = dispatch_from_controls(c, ones(Int, 1, 1),
@@ -28,11 +28,11 @@ end
         mkpath(seeds)
         benchmark_freeze(joinpath(seeds, "seed.json"), seed)
         output = joinpath(directory, "output")
-        records = paired_benchmark([input]; output,
-            seed_directory = dirname(seeds), formulations = (:invalid,),
+        records = benchmark_cases([input]; output,
+            seed_directory = dirname(seeds), time_limit = -1.0,
             commitments = (:free,), warmup = false, probe_time_limit = 0.0)
         @test length(records) == 1
         @test records[1]["status"] == "BENCHMARK_ERROR"
-        @test occursin("formulation must", records[1]["error"])
+        @test occursin("positive finite time_limit", records[1]["error"])
     end
 end

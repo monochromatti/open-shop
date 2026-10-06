@@ -69,7 +69,8 @@ function _global_tensor_polynomial(c,ql,qr,h)
     _global_shift_polynomial(coefficients,(ql-c.discharge[i])/dq,(qr-ql)/dq)
 end
 
-function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;name=gensym(:tensor_turbine))
+function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
+    name=gensym(:tensor_turbine))
     qc=_global_tensor_coordinate!(m,q,_global_tensor_nodes(c.discharge,qlo,qhi);name="$(name)_q")
     hc=_global_tensor_coordinate!(m,h,_global_tensor_nodes(c.heads,hlo,hhi);name="$(name)_h")
     nq,nh=length(qc.nodes),length(hc.nodes)
@@ -94,14 +95,21 @@ function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;name=gens
         all(pair->all(isfinite,pair),ranges) ||
         throw(ArgumentError("tensor turbine extension bounds overflow"))
     active=[i for i in 1:(nq-1) if any(!iszero,view(A,i,:)) || any(!iszero,view(B,i,:))]
+    w=Dict{Int,VariableRef}()
     r=Dict{Int,VariableRef}()
-    s=Dict{Int,VariableRef}()
+    s=Dict{Int,Any}()
     for i in active
         r[i]=@variable(m,lower_bound=0,upper_bound=4/27+1e-12,base_name="$(name)_r[$i]")
-        s[i]=@variable(m,lower_bound=0,upper_bound=4/27+1e-12,base_name="$(name)_s[$i]")
-        @constraint(m,r[i]==qc.weights[i]^2*qc.weights[i+1])
-        @constraint(m,s[i]==qc.weights[i]*qc.weights[i+1]^2)
+        w[i]=@variable(m,lower_bound=0,upper_bound=1/4+1e-12,base_name="$(name)_w[$i]")
+        @constraint(m,w[i]==qc.weights[i]*qc.weights[i+1])
+        @constraint(m,r[i]==qc.weights[i]*w[i])
+        # An active SOS2 pair sums to one; inactive pairs have w=r=0.
+        # Thus the second cubic basis is exactly w-r, with no new variable.
+        s[i]=w[i]-r[i]
+        @constraint(m,0<=s[i]<=4/27+1e-12)
     end
+    # At most one adjacent discharge pair contributes at an SOS2 feasible point.
+    !isempty(w) && @constraint(m,sum(values(w))<=1/4+1e-12)
     columns=@variable(m,[1:nh],base_name="$(name)_column")
     for j in 1:nh
         set_lower_bound(columns[j],ranges[j][1])
@@ -112,7 +120,8 @@ function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;name=gens
     eta=@variable(m,lower_bound=minimum(first,ranges),upper_bound=maximum(last,ranges),base_name=string(name))
     @constraint(m,eta==sum(columns[j]*hc.weights[j] for j in 1:nh))
     get!(m.ext,:global_tensor_turbines,Dict{String,Any}())[string(name)]=
-        (qcoordinate=qc,hcoordinate=hc,nodal=nodal,A=A,B=B,r=r,s=s,columns=columns,eta=eta)
+        (qcoordinate=qc,hcoordinate=hc,nodal=nodal,A=A,B=B,w=w,r=r,s=s,
+         columns=columns,eta=eta)
     eta
 end
 
@@ -129,12 +138,13 @@ function _global_tensor_turbine_values(data,q,h)
     end
     for i in keys(data.r)
         values[data.r[i]]=qweights[i]^2*qweights[i+1]
-        values[data.s[i]]=qweights[i]*qweights[i+1]^2
+        values[data.w[i]]=qweights[i]*qweights[i+1]
     end
     eta=0.0
     for j in eachindex(data.columns)
         e=sum(data.nodal[i,j]*qweights[i] for i in eachindex(qweights))+
-            sum(data.A[i,j]*values[data.r[i]]+data.B[i,j]*values[data.s[i]] for i in keys(data.r);init=0.0)
+            sum(data.A[i,j]*values[data.r[i]]+data.B[i,j]*qweights[i]*qweights[i+1]^2
+                for i in keys(data.r);init=0.0)
         values[data.columns[j]]=e
         eta+=e*hweights[j]
     end

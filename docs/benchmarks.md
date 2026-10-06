@@ -1,324 +1,138 @@
-# Solver selection
+# Benchmarks
 
-Native SCIP is the global solver used by OpenSHOP. A matched comparison with
-Alpine.jl on the same bounded nonlinear equations favored SCIP for elapsed time,
-bound quality and reliability under a time limit.
+OpenSHOP uses one production global model: native SCIP with exact quadratic
+SOS2 turbine interpolation and SOS2 graphs for every linear curve. The choice
+followed two optimization rounds and a frozen, repeated seven-case comparison.
 
-## Synthetic comparison
+The comparison preserved the physical equations, input files and audited
+initial controls. It changed their algebraic representation. Neither method
+obtained a materially better delivered objective on the operating watercourses;
+the deciding differences were proof progress, robustness and model size.
 
-Measurements used Julia 1.13.1 on an Apple M1 Max with 32 GiB RAM. All engines
-used one thread. Fresh models and solver instances received equal allowances;
-compilation warmups were excluded. Construction, solution extraction and audits
-are included in elapsed times. SCIP.jl 0.12.8 used SCIP 10.0; Alpine.jl 0.5.8 used
-SCIP for relaxation bounds and Juniper/Ipopt for incumbents.
+## Final matched comparison
 
-The first round requested a 0.1% gap with 30 seconds per run. The second round
-requested 0.01% on the four smaller cases and 0.1% on the two larger cases, with
-60 seconds per run. All unit commitment decisions remained free apart from a
-declared unit outage.
+These are free-commitment results with a 300-second allowance and a 0.01%
+requested relative gap. Each pair ran twice on the same Ubuntu host, in
+alternating order. Both methods delivered schedules that passed equation checks
+and finer chronological replay in all 88 confirmation runs, including the
+synthetic and conditional runs.
 
-| Case | Target | SCIP elapsed / gap | Alpine elapsed / gap |
-|---|---:|---:|---:|
-| Six units, two hours, distributed rivers | 0.1% | 0.255 s / 0.00947% | 22.385 s / 0.07185% |
-| Six units, two hours, distributed rivers | 0.01% | 0.240 s / 0.00947% | 60.063 s / 0.07185% |
-| Two stations, eight hours, PCHIP turbine tables | 0.1% | 0.726 s / 0.00701% | 5.245 s / 0.07923% |
-| Two stations, eight hours, PCHIP turbine tables | 0.01% | 0.724 s / 0.00701% | 60.098 s / no returned bound |
-| Six units, six hours, negative prices | 0.1% | 17.844 s / 0.08358% | 30.132 s / no validated incumbent |
-| Six units, six hours, negative prices | 0.01% | 18.375 s / 0.00995% | 60.096 s / no returned bound |
+| Case | Delivered objective, both methods | Cartesian gap | Selected SOS2 gap | Median elapsed: Cartesian / SOS2 |
+|---|---:|---:|---:|---:|
+| Tokke–Vinje, 2 h | 72,196.856 | 10.668% | 11.452% | 300.26 / 300.25 s |
+| Tokke–Vinje, 6 h | 217,669.103 | 14.507% | 12.874% | 300.58 / 300.47 s |
+| Tokke–Vinje, 24 h | 743,693.298 | 1,112.640% | 10.640% | 312.76 / 302.72 s |
+| Seasonal Tokke–Vinje, 24 h | 453,194.141 | 2,451.925% | 8.443% | 302.64 / 302.23 s |
+| Synthetic PCHIP watercourse, 6 h | 217,757.050 | Unusable bound | 12.877% | 129.14 / 300.36 s |
 
-Both methods' objectives agree closely when they return validated schedules:
-14,860.129535 versus 14,860.129617 on the six-unit baseline, and 9,851.225564
-versus 9,851.227255 on the tabulated case. The different objectives lie within
-the certified tolerances. A tighter reported SCIP bound does not by itself
-imply its incumbent is the best feasible schedule.
+Elapsed time includes construction, optimization, extraction and audits. Those
+last steps can overrun the allowance. The reported gap uses each delivered
+objective and its usable final upper bound; it is not SCIP's displayed gap.
+The synthetic PCHIP watercourse changes only the declared turbine interpolation
+in the 6-hour reconstruction. It is not the original SHOP calibration.
 
-The six-hour SCIP schedules pass the discrete equations and gap checks but fail
-finer replay. They are not physically accepted deliveries. The two-hour and
-tabulated eight-hour cases pass both checks. The tabulated case includes four
-starts and two shutdowns, so this comparison exercises actual commitment
-changes rather than an all-on dispatch.
+The Cartesian PCHIP run terminates as `OPTIMAL`, but has no finite first root LP
+bound despite performing LP iterations. Its native bound also lies below a
+better independently reconstructed and fully lifted nonlinear probe. Both
+repetitions therefore receive no certificate and no usable upper bound. Its
+shorter termination time is not a successful proof.
 
-## Harder schedules
+The selected model contains **21,404 variables** on the normal 24-hour case,
+versus Cartesian's **66,104**. It is also smaller than the previous SOS2 model's
+25,159 variables. This is a structural comparison; fewer variables alone do not
+guarantee faster search.
 
-The remaining cases include a restricted 12-hour cascade, an eight-unit full-day
-network with successive confluences, and a 12-hour distributed-delay network.
-Neither method completed a global certificate on those cases in 30 or 60
-seconds from its default start. SCIP consistently returned finite upper bounds;
-several Alpine runs ended with an absent-primal result-extraction error. Such
-failures and overruns are retained in the results.
+The selected method wins on larger cases and supplies usable bounds on every
+confirmation case. Cartesian is slightly stronger at 2 hours and faster on the
+small PCHIP example. These advantages do not justify a second production path.
+The frozen selection protocol scores free-commitment runs, treats missing
+usable bounds as failures and gives equal weight to cases. Fixed-commitment
+proofs do not decide the scheduling architecture.
 
-A second experiment supplied the same independently validated feasible schedule
-to both methods. Every algebraic start variable was populated and checked
-against all constraints, bounds and binary domains before submission.
+## Synthetic certification and fixed commitment
 
-| Case | Shared seed objective | SCIP after 60 s | Alpine after 60 s |
-|---|---:|---|---|
-| Restricted 12-hour cascade | 9,715.775 | L=23,661.330, U=26,142.162, gap=10.48%; improved schedule fails finer replay | No returned bound; extraction failure |
-| Eight-unit full-day network | 33,338.715 | L=33,338.715, U=87,718.787, gap=163.11%; seed passes replay | No returned bound; extraction failure |
+Synthetic campaigns use three repetitions, gap targets of 0.1% and 0.0001%, and
+both supplied and absent initial schedules. Julia and solver paths are warmed
+before measurement. An absent initial schedule retains the model's default
+partial guesses; it does not mean a fresh Julia process.
 
-Preparation cost 29.85 and 4.09 seconds respectively, charged equally to both
-end-to-end workflows. The distributed 12-hour case produced no shared seed
-passing finer replay, so neither seeded engine was scored on that case.
+| Synthetic case | Initial schedule | Cartesian median | Selected SOS2 median |
+|---|---|---:|---:|
+| Two-station PCHIP, 8 h | Supplied | 0.17–0.18 s | 0.36 s |
+| Two-station PCHIP, 8 h | Absent | 0.99–1.01 s | 2.03–2.04 s |
+| Six-unit analytic network, 2 h | Supplied | 0.63–0.69 s | 0.63–0.68 s |
+| Six-unit analytic network, 2 h | Absent | 0.80–0.82 s | 0.76–0.81 s |
 
-These results select SCIP as the simpler and stronger global-search foundation.
-They do not establish fast full-day optimality or industrial SHOP parity. The
-large remaining gaps are a concrete limit of the present formulation and search.
+Every synthetic confirmation run reaches an accepted numerical gap certificate.
+The PCHIP objective is approximately 9,851.227 and the analytic objective
+14,860.130. Differences smaller than 0.0001 objective units are numerical
+precision, not evidence of a better exact optimum.
 
-The complete 24 default-start and four shared-start records are in
-[solver_comparison.json](../benchmark/results/solver_comparison.json). Numerical
-certificates apply to the declared discrete hydraulic model. Distributed river
-mixing and finer replay remain separate modeling checks.
+With commitment fixed to the common seed, Cartesian reports conditional
+certificates at 2 and 6 hours in approximately 13 and 58 seconds. The selected
+SOS2 method instead reaches conditional gaps of 2.682% and 3.033% at the
+five-minute budget. At normal and seasonal 24 hours its conditional gaps are
+4.394% and 0.128%. These restrict the feasible set to one unit schedule and do
+not prove optimal commitment. Earlier screening produced material Cartesian
+bound reversals against checked probes; those bounds remain rejected in the
+published records.
 
-## Reproducing the selected backend
+## Optimization rounds and evidence
 
-The packaged implementation repeats the two replay-valid comparison cases
-three times each. With the baseline formulation, median elapsed times are 0.240 seconds for the six-unit
-two-hour case and 0.727 seconds for the tabulated eight-hour case. All six runs
-pass the equation audit, finer replay and requested 0.1% gap. Their objectives
-and bounds reproduce the original SCIP comparison. Records are in
-[native_reproduction.json](../benchmark/results/native_reproduction.json).
+The first round compared original cell graphs and independent axes, exact
+Cartesian efficiency ranges, additional range cuts, fixed-state domain pruning
+and quadratic PCHIP products. The quadratic PCHIP graph improved the original
+SOS2 synthetic certification cost by about 28% in its matched campaign. Exact
+Cartesian ranges improved its small-case cost by about 11%; extra cuts regressed
+the free operating bound.
+
+The second round tested both families with an effective-flow auxiliary and
+SOS2 for all linear curves. Effective flow increased synthetic certification
+cost by approximately 43% for Cartesian and 23% for SOS2, without a compelling
+operating gain. It was removed. The all-linear SOS2 extension had essentially
+unchanged small-case cost, reduced the operating model and improved conditional
+bounds. It provides one coordinate primitive across the production model.
+
+The frozen finalists were Cartesian cells with exact efficiency ranges and
+fixed-state pruning, and quadratic SOS2 turbines with fixed-state pruning and
+SOS2 linear curves. Confirmation added the larger horizons, a seasonal-rule
+transition and the derived PCHIP watercourse. No solver-parameter tuning occurred
+between freezing the finalists and confirmation.
+
+[Scalar measurements](../benchmark/results/selection.json) preserve screening,
+refinement and confirmation records, source and control hashes, CPU information,
+construction/solve times, native diagnostics and probe audits. Final confirmation
+used Julia 1.13.1, JuMP 1.31.2, SCIP.jl 0.12.8 and SCIP 10.0.3 with one thread.
+Different matrix jobs use different CPUs; comparisons are within each paired
+job, not raw times across campaigns. Local laptop timings are excluded because
+machine sleep contaminated earlier measurements.
+
+The runnable comparison and predeclared selection protocol are archived at
+[`table-contest-2026-10-06`](https://github.com/monochromatti/open-shop/tree/table-contest-2026-10-06).
+The [confirmation workflow](https://github.com/monochromatti/open-shop/actions/runs/37421689056)
+retains the hosted evidence. Production has no formulation selector or alternate
+global table implementation.
+
+## Reproducing the production benchmark
 
 ```sh
 ./scripts/julia.sh benchmark/run.jl
+./scripts/julia.sh benchmark/run.jl case.json results/benchmark 300 2
 ```
 
-The experimental tightened graph also passes all six synthetic runs. Its median
-is 0.306 seconds for distributed rivers and 0.327 seconds for turbine tables;
-the latter's gap is 0.000229%, versus the baseline's 0.00701%. The table case
-improves, while distributed rivers become slower. All twelve scalar records are
-retained in the same file, including a first-run elapsed-time outlier. The
-operating Tokke–Vinje regression below prevents making this option the default.
+The driver freezes an input and one independently reconstructed seed, warms the
+solver paths, then repeats free and fixed commitment. Seed preparation and
+nonlinear probes are measured separately from the global allowance. Probes
+must pass the original equations and a complete model lift before they can
+invalidate an upper bound. Rounded progress logs are diagnostics only.
 
-Run the analytic example and tests with the pinned environment. The tests include
-independently known off-state, on-state, interior-flow and negative-objective
-optima; they check objective bounds and the reported gap.
+For the external watercourse, follow the [Tokke–Vinje example](../examples/tokke_vinje/README.md).
+Upstream cases and schedules are not bundled or uploaded. The hosted Performance
+workflow publishes scalar summaries only.
 
-```sh
-./scripts/julia.sh examples/single_reservoir.jl
-./scripts/julia.sh -e 'using Pkg; Pkg.test()'
-```
-
-The final external-data test uses the
-[Tokke–Vinje reconstruction](../examples/tokke_vinje/README.md):
-
-```sh
-./scripts/julia.sh benchmark/tokke_vinje.jl
-```
-
-It freezes each operating case and one audited seed, then compares the baseline and tightened formulations with free and fixed commitment. The fourth argument sets the global allowance and the fifth sets repetitions. The records include preparation, construction, root/final bounds, search statistics, certificates and replay outcomes. To reproduce the earlier restricted input scope, import with `--profile hydraulic`.
-
-## Operating Tokke–Vinje profile
-
-The current importer adds nine source rules: five minimum river releases,
-three seasonal minimum-storage schedules and the aggregate Vest flow minimum.
-The normal cases begin at 2024-09-01 00:00 UTC. A separate 24-hour case begins
-at 2024-09-29 12:00 UTC and crosses the September 30 rule changes. These inputs
-have a different feasible set from the earlier hydraulic profile below.
-
-The experiment freezes one case and one independently audited seed per horizon.
-Baseline, network-domain and tightened-table formulations receive the same
-controls and global allowance. The two-hour baseline and tightened pairs repeat
-twice in alternating order. Other comparisons run once. Preparation, an
-independent fixed-commitment dispatch probe and compilation warmups are excluded
-from the scored times and recorded separately. The probe never replaces the
-submitted seed; it checks that the solver bound encloses another known feasible
-schedule. Fixed-commitment bounds apply only to the selected on/off decisions.
-They still include tunnel-direction and table-cell choices where required; this
-is a dispatch diagnostic, not a continuous convex subproblem.
-
-The two-hour results did not justify promoting either experimental formulation.
-With free commitment, the baseline gap was 52.13%, network domains 1,575.61%,
-and tightened tables 2,466.94% after 60 seconds. All retained the same audited
-objective, 72,191.373. Fixing commitment reduced the baseline gap to 13.95%;
-tightened tables reached 23.82%. Both repetitions reproduced those bounds.
-
-The smaller formulations performed more LP iterations but had difficulty
-resolving the root relaxation. The first root LP bound was unavailable in both
-experimental free-commitment runs. Variable count alone was a misleading
-performance indicator: the baseline had 5,159 variables, network domains 4,363,
-and tightened tables 4,229. This earlier comparison favored baseline over those two alternatives.
-The independent-axis comparison below determines the version 0.3 default.
-
-At six hours, the baseline free/fixed gaps were 56.02% and 47.91% with a
-120-second allowance. Network domains reached 55.99% with free commitment;
-tightened-table gaps exceeded 1,200%. Fixing commitment therefore does not
-resolve the longer case's dispatch-bound weakness.
-
-The 24-hour baseline contains 336 unit on/off variables and 14,061 turbine-cell
-selectors. Its exact piecewise data representation creates substantially more
-search choices than physical unit commitment alone. A promising next experiment
-must improve this representation and root-relaxation conditioning without
-replacing the supplied physical curves or restricting the feasible set around
-a local schedule.
-
-The earlier baseline delivered these operating schedules:
-
-| Horizon | Preparation | SCIP + audit elapsed | Feasible objective L | Upper bound U | Free-commitment gap |
-|---|---:|---:|---:|---:|---:|
-| 2h | 33.71 s | 60.33 s median | 72,191.373 | 109,823.901 | 52.13% |
-| 6h | 44.40 s | 121.06 s | 217,701.664 | 339,655.226 | 56.02% |
-| 24h | 107.09 s | 123.12 s | 738,775.327 | 1,170,270.011 | 58.41% |
-
-All pass the original equations and finer chronological replay. None closes the
-requested 0.1% gap. The separate normal-case dispatch probe costs 18–20 seconds and is an
-experimental diagnostic, not a required scheduling step. The two-hour seed is
-reused from an earlier preparation; its original cost is shown above.
-
-At 24 hours, network domains and tightened tables both reach an 866.53%
-free-commitment gap. The baseline fixed-commitment run reaches 1,107.04%, versus
-852.86% for tightened tables. Both lack a finite first root LP bound. These
-unstable restricted runs cannot cleanly quantify the mathematical cost of
-commitment; their poor bounds are retained as numerical performance evidence.
-
-Construction costs approximately 0.2 seconds at two hours and 4 seconds at
-24 hours; network-domain propagation itself takes only milliseconds. SCIP's
-relaxation and search dominate elapsed time. Further Julia allocation tuning
-would not address the main measured bottleneck.
-
-The seasonal 24-hour baseline delivers an audited objective of 453,194.141,
-with upper bound 743,920.105 and gap 64.15%. Seed preparation costs 92.56
-seconds; the scored repeat takes 129.85 seconds with a 120-second allowance.
-The dated case crosses reductions in three flow minima and the Ståvatn storage
-minimum. An interrupted first pair is retained with `timing_usable=false`:
-its driver and solver elapsed clocks disagree substantially. The scored repeat
-inhibits idle sleep and reuses the same case and controls. No storage clipping,
-conditional waiver or relaxed environmental rule is used.
-
-Scalar records, case/control fingerprints, native root/final statistics and
-start-audit summaries are in
-[operating_formulations.json](../benchmark/results/operating_formulations.json).
-Each comparison passed its formulation explicitly. These measurements preceded
-the independent-axis default introduced in version 0.3. Upstream raw inputs and generated schedules remain external.
-These measurements do not establish full SHOP compatibility or fast full-day
-optimality.
-
-An earlier numerical failure returned an apparent optimal bound below a
-separately audited feasible fixed-commitment dispatch. The library now withholds
-an optimality claim when LP iterations occurred without a finite first root LP
-bound. The benchmark also rejects any bound below its independent probe.
-These safeguards are conservative numerical checks, not rigorous arithmetic
-certificates.
-
-## Earlier hydraulic Tokke–Vinje profile
-
-The original external-data test uses 17 reservoirs, 14 physical units, 19 tunnels
-(including explicit intake/penstock loss branches), 36 retained rivers and
-15 hydraulic junctions. The zero-delay mixing reach removed by the importer
-is equivalent within the declared profile. All runs use hourly decision
-intervals from 2024-09-01 00:00 UTC.
-
-Local preparation requests a 0.1 MW operational margin. It addresses observed
-power/envelope overshoots in finer replay, while the global SCIP model and
-acceptance tolerances remain unchanged. Preparation includes a feasibility
-fallback and three MILP proposals with audited Ipopt dispatch.
-
-| Horizon | Variables | Preparation | SCIP + audit elapsed | Feasible objective L | Upper bound U | Gap |
-|---|---:|---:|---:|---:|---:|---:|
-| 2h | 5,159 | 39.09 s | 63.02 s | 73,512.047 | 107,110.796 | 45.71% |
-| 6h | 16,043 | 19.67 s | 121.13 s | 224,519.398 | 341,577.817 | 52.14% |
-| 24h | 66,251 | 71.37 s | 123.02 s | 766,840.028 | 1,188,178.992 | 54.94% |
-
-All three delivered schedules pass the original equations, operational checks,
-finer replay and conservation audit. **None closes the requested 0.1% gap.**
-The global allowances are 60 seconds at two hours and 120 seconds at six and
-24 hours. Construction takes 0.29, 0.65 and 2.57 seconds respectively; the
-remaining elapsed time is mostly solver work. Small allowance overruns are
-reported, rather than discarded.
-
-Without the preparation margin, audited objectives were −28,915.595,
-−2,289,527.146 and −2,086,600.389. Stronger local candidates were rejected for
-finer-replay violations. The margin experiment improves the feasible seeds;
-it does not demonstrate faster optimality proof or shrink SCIP's feasible set.
-
-Both complete sets of scalar records, start-audit summaries and case hashes
-are in [tokke_vinje.json](../benchmark/results/tokke_vinje.json). Upstream input
-data and generated cases remain external. This is the restricted hydraulic
-and generation reconstruction described in the example, not a full SHOP
-import, a comparison with licensed SHOP, or an operational Tokke–Vinje plan.
-The remaining global gaps and omitted operating rules prevent claiming a
-competitive full SHOP replacement today.
-
-## Independent turbine-table axes
-
-The `:tensor` formulation replaces Cartesian turbine-cell selection with exact
-SOS2 interpolation on separate discharge and head axes. It shares physical head
-weights between units and their flow envelopes. It preserves original bilinear
-and discharge PCHIP curves, including their declared extrapolation.
-
-On the two-hour operating Tokke–Vinje case, variables fall from 5,159 to 1,953
-and explicit binaries from 1,488 to 216. There are still 51 SOS2 constraints.
-With the same audited starting objective of 72,191.373 and 60 seconds per run,
-two repetitions reproduce these gaps:
-
-| Commitment | Baseline | Tensor axes |
-|---|---:|---:|
-| Free | 52.13% | 12.60% |
-| Fixed | 13.95% | 4.95% |
-
-These are improvements in the enclosing upper bound; both methods retain the
-same feasible objective. Neither proves the requested 0.1% gap. The initial
-comparison logs every node and warms only free commitment, so it supports the
-repeated bound comparison rather than a precise speed claim. Later paired
-runs warm each scored commitment and logging signature.
-
-Silent synthetic comparisons offer the same physical seed and use three repetitions.
-The analytic river case has median elapsed times of 0.271 seconds for either
-formulation. The PCHIP table case takes 0.403 seconds with baseline graphs and
-1.053 seconds with tensor axes. Both return accepted schedules and numerical
-certificates. Their gaps are 0.01479% and 0.0002163%, respectively. The tighter
-tensor result costs more time on this small case. The PCHIP seed has a tiny
-flow-cap excess (1.078e-7) and both graphs reject its native start under the
-stricter 1e-7 algebraic audit, so that pair measures cold native solves after
-compilation warmup. The analytic pair accepts its common native start.
-
-Reproduce a paired comparison with an existing case:
-
-```sh
-./scripts/julia.sh benchmark/tables.jl case.json results/table-comparison - 120 2 silent
-```
-
-Replace `-` with a directory containing `<case-basename>/seed.json` to reuse
-frozen controls. The script otherwise prepares one common seed. `trace` records
-native progress every 100 nodes; `silent` avoids progress-log overhead. Cases,
-controls and source code are hashed. Fixed commitment restricts the proof scope.
-The manually triggered `Table benchmarks` workflow fetches the pinned external
-Tokke–Vinje revision, constructs the operating cases and runs silent comparisons
-on hosted Linux machines. Its artifacts contain scalar diagnostics only.
-
-The hosted operating comparison ran on GitHub Ubuntu machines with AMD Zen 3–5
-CPUs, recorded per pair. Each pair used one common audited seed, one thread and
-fresh models; the 2-hour allowance was 60 seconds and all other allowances were
-120 seconds. Warmups exercised both commitment modes without progress logging.
-Compare variants within a row; absolute timings across machines are not directly
-comparable.
-
-| Operating case | Feasible objective, both variants | Free gap: baseline / tensor | Fixed gap: baseline / tensor |
-|---|---:|---:|---:|
-| 2 hours | 72,196.856 | 51.62% / 13.02% | 0% / 4.96% |
-| 6 hours | 219,896.833 | 54.67% / 13.03% | 2,934.95% / 6.86% |
-| 24 hours | 738,991.315 | 58.36% / 18.48% | 1,106.68% / 8.25% |
-| Seasonal 24 hours | 453,194.141 | 2,451.93% / 8.92% | 0.785% / 0.1685% |
-
-Every run passes the full start audit, original equations and finer replay.
-Returned SOS2 residuals are zero. The free-commitment runs retain the same
-starting objective: this phase improves bounds rather than schedule revenue.
-No free-commitment run certifies the requested 0.1% gap. Baseline certifies the
-2-hour fixed-commitment case in 16.51 seconds; tensor remains at its 60-second
-limit. Larger runs finish in approximately 121–123 seconds including audits.
-The very loose baseline bounds above 1,000% coincide with missing finite first
-root LP bounds; they are numerical/relaxation failures, not normal search-speed
-comparisons. Tensor also has a missing first root LP bound on the normal 24-hour
-free run, despite returning a much stronger enclosing final bound.
-
-The 24-hour graph falls from 66,104 to 25,159 variables and from 19,329 to 3,188
-explicit binaries, with 623 SOS2 constraints remaining. Version 0.3 makes
-`:tensor` the default because it consistently strengthens the larger free
-scheduling runs. Select `:baseline` explicitly when its small-case or conditional
-proof advantage matters. Neither representation changes the physical equations.
-
-[Scalar records](../benchmark/results/tensor_tables.json) include case/control
-hashes, source hashes, starts, native solver statistics and measured times.
-[Hosted benchmark run](https://github.com/monochromatti/open-shop/actions/runs/37415106870)
-used implementation commit `84e6a87`. Later local watercourse trials crossed
-verified laptop sleep periods and are excluded; their logs remain local. The
-published comparison therefore uses complete, uninterrupted hosted runs.
+The remaining free-commitment gaps are substantial. This work establishes one
+measured production architecture, not full SHOP parity or fast global proof on
+large watercourses. Bounds are numerical certificates for the declared discrete
+model; finer replay checks controls but does not certify the continuous-time
+optimum. Future work can improve incumbent search and numerical conditioning
+without maintaining multiple table implementations.

@@ -511,17 +511,18 @@ function _build_dispatch(
         g.startup*(
             joint ? transitions.su[j, t] :
             max(0, u[j, t]-(t==1 ? g.initial_on : u[j, t - 1]))
-        ) for (j, g) in enumerate(s.generators), t in 1:T
+        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
     shutdown=sum(
         g.shutdown*(
             joint ? transitions.sd[j, t] :
             max(0, (t==1 ? g.initial_on : u[j, t - 1])-u[j, t])
-        ) for (j, g) in enumerate(s.generators), t in 1:T
+        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
-    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T)-startup-shutdown+sum(
-        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs)
+    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-startup-shutdown+sum(
+        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
+        init = 0.0,
     )+sum(
         r.water_value*(terminal[i]-history_initial[i]) for (i, r) in enumerate(s.rivers);
         init = 0.0,

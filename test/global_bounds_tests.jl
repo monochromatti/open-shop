@@ -4,35 +4,31 @@ function bounds_only_case(; reservoirs = Reservoir[], junctions = Junction[],
     operations = OperationalSeries[], grid = [0.0, 1.0])
     system=HydroSystem(; reservoirs, junctions, boundaries, tunnels, plants,
         generators, rivers, river_junctions)
-    ScheduleCase(; name = "reachable_domains", system, grid,
+    ScheduleCase(; name = "capacity_domains", system, grid,
         prices = fill(50.0, length(grid)-1), operations)
 end
 
-function bounds_only_domains(c; tightened = true)
+function bounds_only_domains(c)
     OpenSHOP.validate_inputs(c)
     exact=all(r->r.deterministic_delay!==nothing, c.system.rivers)
     nd=exact ? OpenSHOP._transport_data(c, nothing) : nothing
     rd=exact ? nothing : routing_data(c)
-    OpenSHOP._global_reachable_bounds(c, nd, rd; tightened)
+    OpenSHOP._global_capacity_bounds(c, nd, rd)
 end
 
 function assert_domain_enclosure(c, d, x; tolerance = 1e-7)
     @test x["validation"]["valid"]
     @test all(d.lower .<= x["V"] .+ tolerance)
     @test all(d.upper .>= x["V"] .- tolerance)
-    @test all(d.tunnel_lower .<= x["tunnel_q"] .+ tolerance)
-    @test all(d.tunnel_upper .>= x["tunnel_q"] .- tolerance)
-    @test all(d.generator_lower .<= x["generator_q"] .+ tolerance)
-    @test all(d.generator_upper .>= x["generator_q"] .- tolerance)
-    @test all(d.release_lower .<= x["river_release"] .+ tolerance)
-    @test all(d.release_upper .>= x["river_release"] .- tolerance)
-    for (i, name) in enumerate(nodes(c.system)), t in eachindex(c.prices)
-        lo, hi=d.node_head_bounds[(name, t)]
-        @test lo-tolerance<=x["H"][i, t]<=hi+tolerance
-    end
+    R=length(c.system.reservoirs)
+    @test all(d.hlo .<= x["H"][1:R,:] .+ tolerance)
+    @test all(d.hhi .>= x["H"][1:R,:] .- tolerance)
+    @test all(d.arrival_lower .<= x["arrival_volume"] .+ tolerance)
+    @test all(d.arrival_upper .>= x["arrival_volume"] .- tolerance)
+
 end
 
-@testset "Junction continuity proves intake directions and operating flow caps" begin
+@testset "Capacity domains enclose junction dispatch and dated operating limits" begin
     lake=Reservoir(name = :Lake, z0 = 100.0, slope = 1.0,
         v0 = 10.0, vmin = 9.0, vmax = 11.0, inflow = 3.0, water_value = 10.0)
     unit=Generator(name = :Unit, plant = :Station, qmin = 1.0, qmax = 6.0,
@@ -54,23 +50,14 @@ end
             OperationalSeries(object = :Unit, attribute = :forced_on,
                 times = [0.0, 1.0], values = [1.0, 0.0])])
     d=bounds_only_domains(c)
-    old=bounds_only_domains(c; tightened = false)
-    @test !hasproperty(old, :tunnel_lower)
-    @test d.generator_lower==[1.0 0.0]
-    @test d.generator_upper==[4.0 0.0]
-    @test all(d.tunnel_lower[:, 1] .>= 1.0-2e-7)
-    @test all(d.tunnel_upper[:, 1] .<= 4.0+3e-7)
-    @test d.tunnel_lower[:, 2]==[0.0, 0.0]
-    @test d.tunnel_upper[:, 2]==[0.0, 0.0]
-    @test d.node_head_bounds[(:Intake, 1)][1]>108.0
-    @test d.upper[1, 2]<old.upper[1, 2]
-    @test all(d.lower .>= old.lower)
-    @test all(d.upper .<= old.upper)
+    @test d.lower[1,1]==d.upper[1,1]==lake.v0
+    @test d.lower[1,2]≈lake.v0-0.0036*(20.0-3.0)-1e-7
+    @test d.upper[1,2]≈lake.v0+0.0036*(20.0+3.0)+1e-7
     x=dispatch_from_controls(c, [1 0], [3.0 0.0], zeros(0, 2))
     assert_domain_enclosure(c, d, x)
 end
 
-@testset "Head-loss bounds preserve either sign and closed-head independence" begin
+@testset "Capacity bounds preserve either flow sign and closed-head independence" begin
     for difference in (-4.0, 4.0)
         c=bounds_only_case(;
             boundaries = [Boundary(name = :A, head = 100.0+difference),
@@ -78,19 +65,21 @@ end
             tunnels = [Tunnel(name = :Link, source = :A, target = :B,
                 resistance = 1.0, capacity = 5.0)])
         d=bounds_only_domains(c)
-        flow=copysign(2.0, difference)
-        @test d.tunnel_lower[1, 1]<=flow<=d.tunnel_upper[1, 1]
-        @test d.tunnel_upper[1, 1]-d.tunnel_lower[1, 1]<=3e-7
-        @test difference<0 ? d.tunnel_upper[1, 1]<0 : d.tunnel_lower[1, 1]>0
+        x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
+        @test x["objective"]==0.0
+        @test x["tunnel_q"][1,1]≈copysign(2.0,difference)
+        assert_domain_enclosure(c,d,x)
     end
     c=bounds_only_case(;
         boundaries = [Boundary(name = :A, head = 100.0), Boundary(name = :B, head = 104.0)],
         tunnels = [Tunnel(name = :Closed, source = :A, target = :B,
             resistance = 1.0, capacity = 5.0, opening = 0.0)])
     d=bounds_only_domains(c)
-    @test d.tunnel_lower==d.tunnel_upper==zeros(1, 1)
-    @test d.node_head_bounds[(:A, 1)]==(100.0, 100.0)
-    @test d.node_head_bounds[(:B, 1)]==(104.0, 104.0)
+    x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
+    @test x["objective"]==0.0
+    @test x["tunnel_q"]==zeros(1,1)
+    @test x["H"][:,1]==[100.0,104.0]
+    assert_domain_enclosure(c,d,x)
 end
 
 @testset "A genuine reversible tunnel encloses a changing flow direction" begin
@@ -104,14 +93,12 @@ end
         tunnels = [Tunnel(name = :Reversible, source = :A, target = :B,
             resistance = 0.25, capacity = 3.0)], grid = [0.0, 1.0, 2.0])
     d=bounds_only_domains(c)
-    @test all(d.tunnel_lower .< 0)
-    @test all(d.tunnel_upper .> 0)
     x=dispatch_from_controls(c, zeros(Int, 0, 2), zeros(0, 2), [0.4 0.0; 0.0 1.0])
     @test x["tunnel_q"][1, 1]<0<x["tunnel_q"][1, 2]
     assert_domain_enclosure(c, d, x)
 end
 
-@testset "River-law reachability includes gates, tables, dry branches and soft minima" begin
+@testset "Capacity enclosures cover river laws, gates, dry branches and soft minima" begin
     lake=Reservoir(name = :Lake, z0 = 10.0, slope = 0.1,
         v0 = 10.0, vmin = 9.0, vmax = 11.0, water_value = 10.0)
     for (law, curve, expected_cap) in ((:controlled, nothing, 30.0),
@@ -128,10 +115,9 @@ end
         c=bounds_only_case(; reservoirs = [lake], rivers = [r], operations,
             boundaries = [Boundary(name = :Sea, head = 0.0)])
         d=bounds_only_domains(c)
-        @test d.release_upper[1, 1]<=expected_cap+2e-7
-        @test d.release_lower[1, 1]>0
         x=dispatch_from_controls(c, zeros(Int, 0, 1), zeros(0, 1),
             fill(law==:weir ? 1.0 : 0.25, 1, 1))
+        @test 0<x["river_release"][1,1]<=expected_cap
         assert_domain_enclosure(c, d, x)
     end
     dry=Reservoir(name = :DryLake, z0 = -1.0, slope = 1.0,
@@ -143,8 +129,6 @@ end
     c=bounds_only_case(; reservoirs = [dry], rivers = [r],
         boundaries = [Boundary(name = :Sea, head = 0.0)])
     d=bounds_only_domains(c)
-    @test d.release_lower[1, 1]==0
-    @test d.release_upper[1, 1]<=1e-7
     assert_domain_enclosure(c, d,
         dispatch_from_controls(c, zeros(Int, 0, 1), zeros(0, 1), ones(1, 1)))
     controlled=OpenSHOP._river_replace(r; law = :controlled, allow_dry = false)
@@ -154,12 +138,11 @@ end
                 times = [0.0], values = [2.0]),
             OperationalSeries(object = :DryOutlet, attribute = :release_penalty,
                 times = [0.0], values = [10.0])])
-    @test bounds_only_domains(soft).release_lower[1, 1]==0
     assert_domain_enclosure(soft, bounds_only_domains(soft),
         dispatch_from_controls(soft, zeros(Int, 0, 1), zeros(0, 1), zeros(1, 1)))
 end
 
-@testset "Delayed confluence propagates release caps and preserves cohorts" begin
+@testset "Delayed confluence capacity bounds preserve routed cohorts" begin
     reservoirs=[Reservoir(name = name, z0 = 100.0, slope = 1.0,
         v0 = 2.0, vmin = 1.0, vmax = 3.0, water_value = 10.0) for name in (:A, :B)]
     rivers=[River(name = :First, source = :A, target = :Merge, law = :controlled,
@@ -179,10 +162,8 @@ end
             OperationalSeries(object = :Second, attribute = :gate_max,
                 times = [0.0], values = [0.5])])
     d=bounds_only_domains(c)
-    @test d.release_upper[1, 1]<=0.600001
-    @test d.release_upper[2, 1]<=2.000001
-    @test d.release_upper[3, 1]<=2.4501
-    @test d.release_upper[3, 2]<=2.6001
+    @test d.arrival_upper[3,1]≈0.0036*(0.25*3.0+0.5*4.0)
+    @test d.arrival_upper[3,2]≈0.0036*(3.0+4.0)
     x=dispatch_from_controls(c, zeros(Int, 0, 2), zeros(0, 2),
         [0.1 0.2; 0.25 0.5; 0.0 0.0])
     assert_domain_enclosure(c, d, x)
@@ -200,11 +181,47 @@ end
         operations = [OperationalSeries(object = :Reach, attribute = :gate_max,
             times = [0.0], values = [0.4])])
     d=bounds_only_domains(c)
-    @test maximum(d.release_upper)<=1.600001
     for gate in (0.0, 0.2, 0.4)
         x=dispatch_from_controls(c, zeros(Int, 0, 2), zeros(0, 2), fill(gate, 1, 2))
         assert_domain_enclosure(c, d, x)
-        @test all(d.arrival_lower .<= x["arrival_volume"] .+ 1e-7)
-        @test all(d.arrival_upper .>= x["arrival_volume"] .- 1e-7)
     end
+end
+
+@testset "Forward reachability and future storage restrictions" begin
+    for inflow in (-1000.0,1000.0)
+        lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,v0=1.0,vmin=0.0,vmax=2.0,
+            inflow=inflow,water_value=0.0)
+        c=bounds_only_case(;reservoirs=[lake])
+        @test_throws ArgumentError bounds_only_domains(c)
+    end
+    lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,v0=1.0,vmin=0.0,vmax=3.0,water_value=0.0)
+    river=River(name=:Outlet,source=:Lake,target=:Sea,law=:controlled,capacity=10.0,
+        curves=RiverRouting.DelayCurve[],deterministic_delay=0.0,water_value=0.0)
+    future(attribute,value)=bounds_only_case(;reservoirs=[lake],rivers=[river],
+        boundaries=[Boundary(name=:Sea,head=0.0)],grid=[0.0,1.0,2.0,3.0],
+        operations=[OperationalSeries(object=:Lake,attribute=attribute,times=[0.0,2.0],
+            values=[attribute==:vmin ? 0.0 : 3.0,value])])
+    minimum_target=bounds_only_domains(future(:vmin,0.99))
+    maximum_target=bounds_only_domains(future(:vmax,0.95))
+    # The backward pass carries future limits into the preceding storage vertex.
+    @test minimum_target.lower[1,2]>=0.99-2e-7
+    @test maximum_target.upper[1,2]<=0.95+0.0036*10.0+2e-7
+    @test maximum_target.upper[1,2]<lake.v0
+    @test_throws ArgumentError bounds_only_domains(future(:vmin,1.1))
+    @test_throws ArgumentError bounds_only_domains(future(:vmax,0.8))
+end
+
+@testset "Polynomial and table extrema include interior points" begin
+    @test OpenSHOP._global_quadratic_range(1.0,-1.0,0.0,1.0)==(0.0,0.25)
+    @test OpenSHOP._global_quadratic_range(-1.0,1.0,0.0,1.0)==(-0.25,0.0)
+    @test OpenSHOP._global_quadratic_range(2.0,0.0,-1.0,3.0)==(-2.0,6.0)
+    @test OpenSHOP._global_quadratic_range(1.0,-1.0,1.0,2.0)==(-2.0,0.0)
+    lake=Reservoir(name=:Lake,z0=100.0,slope=2.0,curvature=-1.0,v0=1.0,
+        vmin=0.0,vmax=2.0,water_value=0.0)
+    @test OpenSHOP._global_level_range(lake,0.0,2.0)==(100.0,101.0)
+    curve=TableCurve([0.0,1.0,2.0],[100.0,104.0,101.0])
+    tabulated=OpenSHOP._river_replace(lake;level_curve=curve)
+    @test OpenSHOP._global_level_range(tabulated,0.5,1.5)==(102.0,104.0)
+    @test OpenSHOP._global_polynomial_range((0.5,1.0,-1.0,0.0),0.0,1.0)==(0.5,0.75)
+    @test OpenSHOP._global_polynomial_range((0.0,-1.0,0.0,1.0),-1.0,1.0)[2]≈2/(3sqrt(3))
 end

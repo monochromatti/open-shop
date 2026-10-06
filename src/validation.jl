@@ -399,7 +399,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         end
         initial=sum(V[:, 1])+sum(W[:, 1])
         inflow=[
-            sum(opinterval(c, r.name, :inflow, t, r.inflow) for r in s.reservoirs) for
+            sum(opinterval(c, r.name, :inflow, t, r.inflow) for r in s.reservoirs;init=0.0) for
             t in 1:T
         ]
         # One column reduction and prefix sum instead of allocating and summing
@@ -419,7 +419,8 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         )
         objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-startup-shutdown +
                   sum(
-                      r.water_value*(V[i, end]-r.v0) for (i, r) in enumerate(s.reservoirs)
+                      r.water_value*(V[i, end]-r.v0) for (i, r) in enumerate(s.reservoirs);
+                      init = 0.0,
                   ) +
                   sum(
                       r.water_value*(W[d, end]-W[d, 1]) for (d, r) in enumerate(s.rivers);

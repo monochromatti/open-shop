@@ -1,6 +1,6 @@
 name = "OpenSHOP"
 uuid = "dcda3ab0-7d4c-4e43-a9c0-29e6b5c342b7"
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

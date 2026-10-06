@@ -65,14 +65,12 @@ Construction and first-call compilation consume the time allowance; extraction
 and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 `fixed_u` restricts both the search and its certificate to that commitment.
 
-The default formulation is `:tensor`. It represents exact turbine interpolation
-with separate SOS2 discharge and head axes, sharing head weights across units
-and flow envelopes. It improves the larger operating Tokke–Vinje bounds at equal
-time allowances. `:baseline` retains the original cell graphs and can be faster
-for small PCHIP cases or fixed commitment. Experimental `:domains` and
-`:tightened` options change network bounds and table graphs; they remain opt-in.
-See the [matched benchmark results](docs/benchmarks.md#independent-turbine-table-axes)
-before choosing an alternative.
+The solver uses one exact table representation: SOS2 coordinates for linear
+curves and shared quadratic products for discharge PCHIP interpolation. It
+preserves the supplied table values and slopes. Units at the same plant share
+hydraulic head and compatible table coordinates. Fixed unit states restrict
+table domains to their physical branch. See the [benchmark results](docs/benchmarks.md)
+for the measured speed, objective and bound tradeoffs.
 
 For larger cases, a feasible initial schedule can help the global search:
 

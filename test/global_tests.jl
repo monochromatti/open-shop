@@ -142,3 +142,31 @@ end
     @test result["objective"] ≈ 0.0 atol=1e-8
     @test fixture.objective > result["global_bound"]
 end
+
+@testset "Off-state controls have exactly zero physical flow" begin
+    c=analytic_global_fixture(:off).case
+    raw=dispatch_from_controls(c,zeros(Int,1,1),fill(1e-7,1,1),zeros(0,1))
+    @test raw["validation"]["valid"]
+    repaired,correction=OpenSHOP._reconstruct_candidate(c,raw)
+    @test repaired["generator_q"]==zeros(1,1)
+    @test repaired["power"]==zeros(1,1)
+    @test repaired["validation"]["valid"]
+    @test correction.flow==1e-7
+    raw["generator_q"][1]=1e-3
+    @test_throws ArgumentError OpenSHOP._reconstruct_candidate(c,raw)
+end
+
+@testset "A feasible counterexample rejects a purported upper bound" begin
+    fixture=analytic_global_fixture(:on)
+    candidate=dispatch_from_controls(fixture.case,ones(Int,1,1),
+        fill(fixture.discharge,1,1),zeros(0,1))
+    @test candidate["validation"]["valid"]
+    invalid=candidate["objective"]-1.0
+    result=Dict{String,Any}("global_bound"=>invalid)
+    OpenSHOP._set_incumbent!(result,candidate,"initial",1e-3,0.0)
+    @test !result["global_certificate"]
+    @test result["global_bound"]===nothing
+    @test result["rejected_global_bound"]==invalid
+    @test result["relative_gap"]===nothing
+    @test occursin("independently reconstructed",result["bound_rejection"])
+end

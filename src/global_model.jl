@@ -29,15 +29,8 @@ function _build_global_dispatch(
     fixed_u = nothing,
     free_mask = nothing,
     transport = nothing,
-    reachable_bounds = true,
-    share_plant_heads = true,
-    formulation = :tensor,
 )
     starttime=time()
-    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("unknown global formulation"))
-    tightened=formulation in (:domains, :tightened)
-    tensor_tables=formulation==:tensor
-    tightened_tables=formulation==:tightened
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
     isfinite(operational_margin) && operational_margin>=0 ||
@@ -96,7 +89,7 @@ function _build_global_dispatch(
             ),
         )
     rd=exact ? nothing : routing_data(c)
-    domains=reachable_bounds ? _global_reachable_bounds(c, nd, rd; tightened) : nothing
+    domains=_global_capacity_bounds(c, nd, rd)
     bounds_seconds=time()-bound_start
     m=Model()
     set_silent(m)
@@ -122,9 +115,7 @@ function _build_global_dispatch(
     @variable(m, shortfall_release[1:D, 1:T]>=0)
     node_bounds=Dict{Tuple{Symbol,Int},Tuple{Float64,Float64}}()
     for (i, r) in enumerate(s.reservoirs), t in 1:T
-        node_bounds[(r.name, t)]=domains===nothing ?
-                                 _global_level_range(r, r.vmin, r.vmax) :
-                                 (domains.hlo[i, t], domains.hhi[i, t])
+        node_bounds[(r.name, t)]=(domains.hlo[i, t], domains.hhi[i, t])
     end
     for j in s.junctions, t in 1:T
         node_bounds[(j.name, t)]=(j.hmin, j.hmax)
@@ -132,7 +123,6 @@ function _build_global_dispatch(
     for z in s.boundaries, t in 1:T
         node_bounds[(z.name, t)]=(z.head, z.head)
     end
-    tightened && domains!==nothing && merge!(node_bounds,domains.node_head_bounds)
     V=[s.reservoirs[i].vmax*v[i, t] for i in 1:R, t in 1:(T + 1)]
     H=250 .* h
     Q=50 .* q
@@ -142,8 +132,7 @@ function _build_global_dispatch(
     constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
-            lo, hi=domains===nothing ? storage_bounds(c, r, c.grid[t]) :
-                   (domains.lower[i, t], domains.upper[i, t])
+            lo, hi=domains.lower[i, t], domains.upper[i, t]
             set_lower_bound(v[i, t], lo/r.vmax)
             set_upper_bound(v[i, t], hi/r.vmax)
             set_start_value(v[i, t], r.v0/r.vmax)
@@ -153,19 +142,16 @@ function _build_global_dispatch(
             set_lower_bound(h[i, t], node_bounds[(r.name, t)][1]/250)
             set_upper_bound(h[i, t], node_bounds[(r.name, t)][2]/250)
             mid=(V[i, t]+V[i, t + 1])/2
-            midlo=domains===nothing ? r.vmin :
-                  (domains.lower[i, t]+domains.lower[i, t + 1])/2
-            midhi=domains===nothing ? r.vmax :
-                  (domains.upper[i, t]+domains.upper[i, t + 1])/2
+            midlo=(domains.lower[i, t]+domains.lower[i, t + 1])/2
+            midhi=(domains.upper[i, t]+domains.upper[i, t + 1])/2
             level=r.level_curve===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 :
-                  _global_table!(
+                  _global_tensor_table!(
                 m,
                 r.level_curve,
                 mid,
                 midlo,
                 midhi;
                 name = Symbol("level_", i, "_", t),
-                tightened = tightened_tables,
             )
             @constraint(m, (H[i, t]-level)/250==0)
         end
@@ -181,14 +167,11 @@ function _build_global_dispatch(
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=opinterval(c, e.name, :opening, t, e.opening)
-        qlo,qhi=tightened && domains!==nothing ? (domains.tunnel_lower[i,t],domains.tunnel_upper[i,t]) : (-cap,cap)
+        qlo,qhi=-cap,cap
         set_lower_bound(q[i, t], qlo/50)
         set_upper_bound(q[i, t], qhi/50)
         if opening==0
             fix(q[i, t], 0; force = true)
-        elseif tightened && (qlo>=0 || qhi<=0)
-            sign=qlo>=0 ? 1.0 : -1.0
-            @constraint(m,(opening*(H[ix[e.source],t]-H[ix[e.target],t])-e.resistance*sign*Q[i,t]^2)/100==0)
         else
             qp=@variable(
                 m,
@@ -216,25 +199,24 @@ function _build_global_dispatch(
     for (i, g) in enumerate(s.generators), t in 1:T
         plant=generator_plants[i]
         key=(plant.name, t)
-        if share_plant_heads && haskey(shared_heads, key)
+        if haskey(shared_heads, key)
             hd=shared_heads[key]
             hlo=lower_bound(hd)
             hhi=upper_bound(hd)
         else
             totalq=sum(GQ[j, t] for j in plant_generators[plant.name])
             aggregate_max=sum(
-                (tightened ? opinterval(c,s.generators[j].name,:qmax,t,s.generators[j].qmax) : s.generators[j].qmax) for j in plant_generators[plant.name];
+                s.generators[j].qmax for j in plant_generators[plant.name];
                 init = 0.0,
             )
             tail=plant.tailwater_curve===nothing ? 0.0 :
-                 _global_table!(
+                 _global_tensor_table!(
                 m,
                 plant.tailwater_curve,
                 totalq,
                 0.0,
                 aggregate_max;
                 name = Symbol("tailwater_", i, "_", t),
-                tightened = tightened_tables,
             )
             tail_lo=plant.tailwater_curve===nothing ? 0.0 : minimum(plant.tailwater_curve.y)
             tail_hi=plant.tailwater_curve===nothing ? 0.0 : maximum(plant.tailwater_curve.y)
@@ -245,14 +227,13 @@ function _build_global_dispatch(
             if floor!==nothing
                 receiver=dst[2]<=floor ? floor :
                          dst[1]>=floor ? receiver :
-                         _global_table!(
+                         _global_tensor_table!(
                     m,
                     TableCurve([dst[1], floor, dst[2]], [floor, floor, dst[2]]),
                     receiver,
                     dst[1],
                     dst[2];
                     name = Symbol("outlet_head_", i, "_", t),
-                tightened = tightened_tables,
                 )
                 dst=(max(dst[1], floor), max(dst[2], floor))
             end
@@ -267,13 +248,13 @@ function _build_global_dispatch(
             @constraint(m, hd==H[ix[plant.source], t]-receiver-tail)
             shared_heads[key]=hd
         end
-        flowmax=tightened && domains!==nothing ? domains.generator_upper[i,t] : g.qmax
-        powmax=tightened ? opinterval(c,g.name,:pmax,t,g.pmax) : g.pmax
+        flowmax=g.qmax
+        powmax=g.pmax
         # Fixed states need only their physical branch; retaining a redundant
         # off/on disjunction creates degenerate table equations in presolve.
         known_state=joint ? (is_fixed(u[i,t]) ? fix_value(u[i,t]) : nothing) : u[i,t]
-        flowmin=tightened && known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
-        tightened && known_state==0 && (flowmax=0.0)
+        flowmin=known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
+        known_state==0 && (flowmax=0.0)
         eta=if g.turbine_table===nothing
             emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
@@ -284,41 +265,25 @@ function _build_global_dispatch(
                 )^2
             )
             z
-        elseif tensor_tables
+        else
             _global_tensor_turbine!(m,g.turbine_table,GQ[i,t],hd,flowmin,flowmax,hlo,hhi;
                 name=Symbol("turbine_",i,"_",t))
-        else
-            _global_turbine!(
-                m,
-                g.turbine_table,
-                GQ[i, t],
-                hd,
-                flowmin,
-                flowmax,
-                hlo,
-                hhi;
-                name = Symbol("turbine_", i, "_", t),
-                tightened = tightened_tables,
-                commitment = joint && known_state===nothing ? u[i,t] : nothing,
-                min_on_flow = opinterval(c,g.name,:qmin,t,g.qmin),
-            )
         end
         electrical=g.generator_efficiency_curve===nothing ? 1.0 :
-                   _global_table!(
+                   _global_tensor_table!(
             m,
             g.generator_efficiency_curve,
             P[i, t],
             0.0,
             powmax;
             name = Symbol("electrical_", i, "_", t),
-                tightened = tightened_tables,
         )
         qmin=opinterval(c, g.name, :qmin, t, g.qmin)
         qmax=opinterval(c, g.name, :qmax, t, g.qmax)
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
         pmax=opinterval(c, g.name, :pmax, t, g.pmax)
+        effective=GQ[i,t]*eta
         if joint
-            tightened && known_state==1 && set_lower_bound(gq[i,t],flowmin/50)
             set_upper_bound(gq[i, t], flowmax/50)
             set_upper_bound(p[i, t], powmax/40)
             if (fixed_u!==nothing && fixed_u[i, t]==0) ||
@@ -330,7 +295,7 @@ function _build_global_dispatch(
             @constraint(m, GQ[i, t]<=qmax*u[i, t])
             @constraint(m, P[i, t]>=(pmin+operational_margin)*u[i, t])
             @constraint(m, P[i, t]<=max(0.0, pmax-operational_margin)*u[i, t])
-            @constraint(m, (P[i, t]-0.00981*GQ[i, t]*hd*eta*electrical)/40==0)
+            @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
             ranges=(
                 head_min = hlo,
                 head_max = hhi,
@@ -355,7 +320,7 @@ function _build_global_dispatch(
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
             else
-                @constraint(m, (P[i, t]-0.00981*GQ[i, t]*hd*eta*electrical)/40==0)
+                @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
                 @constraint(m, g.hmin<=hd<=g.hmax)
                 @constraint(m, g.min_efficiency<=eta<=1.0)
 
@@ -363,26 +328,10 @@ function _build_global_dispatch(
         end
         if g.turbine_table!==nothing
             table=g.turbine_table
-            qlo=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
-                name=Symbol("qlo_",i,"_",t)) : _global_table!(
-                m,
-                TableCurve(table.heads, table.qmin),
-                hd,
-                hlo,
-                hhi;
-                name = Symbol("qlo_", i, "_", t),
-                tightened = tightened_tables,
-            )
-            qhi=tensor_tables ? _global_tensor_table!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
-                name=Symbol("qhi_",i,"_",t)) : _global_table!(
-                m,
-                TableCurve(table.heads, table.qmax),
-                hd,
-                hlo,
-                hhi;
-                name = Symbol("qhi_", i, "_", t),
-                tightened = tightened_tables,
-            )
+            qlo=_global_tensor_table!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
+                name=Symbol("qlo_",i,"_",t))
+            qhi=_global_tensor_table!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
+                name=Symbol("qhi_",i,"_",t))
             flow_margin=operational_margin/(
                 0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))
             )
@@ -457,8 +406,7 @@ function _build_global_dispatch(
         B=exact ? nothing : rd["B"][i]
         for t in 1:T
             cap=opinterval(c, r.name, :capacity, t, r.capacity)
-            set_upper_bound(rq[i, t], (tightened && domains!==nothing ? domains.release_upper[i,t] : cap)/100)
-            tightened && domains!==nothing && set_lower_bound(rq[i,t],domains.release_lower[i,t]/100)
+            set_upper_bound(rq[i, t], cap/100)
             set_lower_bound(a[i, t], opinterval(c, r.name, :gate_min, t, r.gate_min))
             set_upper_bound(a[i, t], opinterval(c, r.name, :gate_max, t, 1.0))
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
@@ -506,16 +454,15 @@ function _build_global_dispatch(
                 r.law==:weir && fix(a[i, t], 1.0; force = true)
                 level=H[ix[r.source], t]
                 @constraint(m, first(r.discharge_curve.x)<=level<=last(r.discharge_curve.x))
-                lawlo,lawhi=tightened ? (max(first(r.discharge_curve.x),node_bounds[(r.source,t)][1]),min(last(r.discharge_curve.x),node_bounds[(r.source,t)][2])) : (first(r.discharge_curve.x),last(r.discharge_curve.x))
+                lawlo,lawhi=first(r.discharge_curve.x),last(r.discharge_curve.x)
                 lawlo<=lawhi || throw(ArgumentError("river law outside reachable domain for $(r.name)"))
-                discharge=_global_table!(
+                discharge=_global_tensor_table!(
                     m,
                     r.discharge_curve,
                     level,
                     lawlo,
                     lawhi;
                     name = Symbol("river_law_", i, "_", t),
-                tightened = tightened_tables,
                 )
                 @constraint(m, (RQ[i, t]-a[i, t]*discharge)/100==0)
             elseif r.law==:controlled
@@ -694,17 +641,18 @@ function _build_global_dispatch(
         g.startup*(
             joint ? transitions.su[j, t] :
             max(0, u[j, t]-(t==1 ? g.initial_on : u[j, t - 1]))
-        ) for (j, g) in enumerate(s.generators), t in 1:T
+        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
     shutdown=sum(
         g.shutdown*(
             joint ? transitions.sd[j, t] :
             max(0, (t==1 ? g.initial_on : u[j, t - 1])-u[j, t])
-        ) for (j, g) in enumerate(s.generators), t in 1:T
+        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
-    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T)-startup-shutdown+sum(
-        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs)
+    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-startup-shutdown+sum(
+        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
+        init = 0.0,
     )+sum(
         r.water_value*(terminal[i]-history_initial[i]) for (i, r) in enumerate(s.rivers);
         init = 0.0,
@@ -788,6 +736,5 @@ function _build_global_dispatch(
         bounds_seconds,
         shared_heads,
         node_bounds,
-        formulation,
     )
 end

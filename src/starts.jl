@@ -33,17 +33,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put(n,OpenSHOP.table_value(curve,x;extrapolation=:linear))
             return
         end
-        lo,hi=get(get(b.m.ext,:global_tables,Dict()),n,(lo,hi))
-        cells=OpenSHOP._global_intervals(curve.x, lo, hi)
-        k=findfirst(pair->pair[1]<=x<=pair[2], cells)
-        k===nothing && error("table lift outside domain: $n")
-        for (j, (l, r)) in enumerate(cells)
-            λ=l==r ? 0.0 : (x-l)/(r-l)
-            put("$(n)_cell[$j]", j==k ? 1.0 : 0.0)
-            put("$(n)_left[$j]", j==k ? 1-λ : 0.0)
-            put("$(n)_right[$j]", j==k ? λ : 0.0)
-        end
-        put(n, OpenSHOP.table_value(curve, x; extrapolation = :linear))
+        error("missing table graph: $n")
     end
     function turbine(n, curve, q, h, hlo, hhi, qmax)
         tensor=get(get(b.m.ext,:global_tensor_turbines,Dict()),n,nothing)
@@ -55,29 +45,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put(n,OpenSHOP.turbine_efficiency(curve,q,h;extrapolation=:linear))
             return
         end
-        qlo,qmax,hlo,hhi=get(get(b.m.ext,:global_turbines,Dict()),n,(0.0,qmax,hlo,hhi))
-        qc=OpenSHOP._global_intervals(curve.discharge, qlo, qmax)
-        hc=OpenSHOP._global_intervals(curve.heads, hlo, hhi)
-        cells=[(qr, hr) for qr in qc for hr in hc]
-        cells=get(get(b.m.ext,:global_turbine_cells,Dict()),n,cells)
-        normalized=get(get(b.m.ext,:global_turbine_normalized,Dict()),n,false)
-        k=findfirst(pair->pair[1][1]<=q<=pair[1][2] && pair[2][1]<=h<=pair[2][2], cells)
-        k===nothing && error("turbine lift outside domain: $n")
-        for (j, ((ql, qr), (hl, hr))) in enumerate(cells)
-            i=OpenSHOP._curve_segment(curve.discharge, ql+(qr-ql)/2, :linear)
-            z=OpenSHOP._curve_segment(curve.heads, hl+(hr-hl)/2, :linear)
-            put("$(n)_cell[$j]", j==k ? 1.0 : 0.0)
-            put(
-                "$(n)_q[$j]",
-                j==k ? (normalized ? (ql==qr ? 0.0 : (q-ql)/(qr-ql)) : (q-curve.discharge[i])/(curve.discharge[i + 1]-curve.discharge[i])) :
-                0.0,
-            )
-            put(
-                "$(n)_h[$j]",
-                j==k ? (normalized ? (hl==hr ? 0.0 : (h-hl)/(hr-hl)) : (h-curve.heads[z])/(curve.heads[z + 1]-curve.heads[z])) : 0.0,
-            )
-        end
-        put(n, OpenSHOP.turbine_efficiency(curve, q, h; extrapolation = :linear))
+        error("missing turbine graph: $n")
     end
     try
         OpenSHOP.validate(c, warm)["valid"] || error("seed fails original physical audit")
@@ -131,7 +99,6 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 j=ix[pl.target]
                 lo, hi=if j<=length(s.reservoirs)
                     r=s.reservoirs[j]
-                    b.domains===nothing ? OpenSHOP._global_level_range(r, r.vmin, r.vmax) :
                     (b.domains.hlo[j, t], b.domains.hhi[j, t])
                 elseif j<=length(s.reservoirs)+length(s.junctions)
                     r=s.junctions[j - length(s.reservoirs)]
@@ -187,10 +154,8 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         end
         for (i, r) in enumerate(s.reservoirs), t in 1:T
             r.level_curve===nothing && continue
-            lo=b.domains===nothing ? r.vmin :
-               (b.domains.lower[i, t]+b.domains.lower[i, t + 1])/2
-            hi=b.domains===nothing ? r.vmax :
-               (b.domains.upper[i, t]+b.domains.upper[i, t + 1])/2
+            lo=(b.domains.lower[i, t]+b.domains.lower[i, t + 1])/2
+            hi=(b.domains.upper[i, t]+b.domains.upper[i, t + 1])/2
             table(
                 "level_$(i)_$(t)",
                 r.level_curve,

@@ -52,6 +52,7 @@
             @test all(v->has_lower_bound(v)&&has_upper_bound(v),all_variables(m))
             @test count(is_binary,all_variables(m))==0
             interpolation==:bilinear && @test isempty(data.r)
+            @test length(data.w)==length(data.r)
         end
         # A common head variable and identical clipped nodes reuse one SOS2 axis.
         m=Model();@variable(m,0<=q<=16);@variable(m,60<=h<=130)
@@ -61,6 +62,30 @@
         OpenSHOP._global_tensor_table!(m,envelope,h,60.0,130.0;name=:envelope)
         @test m.ext[:global_tensor_tables]["envelope"].coordinate===first_head
         @test length(m.ext[:global_tensor_coordinates])==2
+    end
+    # Irregular, nonmonotone efficiency tables exercise independent polynomial
+    # ranges and exact interpolation away from the hand-chosen fixture knots.
+    rng=OpenSHOP.MersenneTwister(1407)
+    for interpolation in (:bilinear,:pchip_discharge), trial in 1:12
+        table=TurbineTable([35.0,80.0,130.0],[1.0,4.0,9.0,17.0],
+            0.65 .+ 0.33 .* rand(rng,4,3),fill(1.0,3),fill(17.0,3);interpolation)
+        for (qlo,qhi,hlo,hhi) in ((-1.0,21.0,10.0,180.0),(3.1,14.3,55.0,115.0),
+                                  (8.0,8.0,90.0,90.0),(2.0,15.0,90.0,90.0))
+            m=Model();@variable(m,qlo<=q<=qhi);@variable(m,hlo<=h<=hhi)
+            eta=OpenSHOP._global_tensor_turbine!(m,table,q,h,qlo,qhi,hlo,hhi;name=:random_eta)
+            data=m.ext[:global_tensor_turbines]["random_eta"]
+            points=vcat([(qlo,hlo),(qhi,hhi)],
+                [(qlo+rand(rng)*(qhi-qlo),hlo+rand(rng)*(hhi-hlo)) for _ in 1:6])
+            for (qv,hv) in points
+                values=OpenSHOP._global_tensor_turbine_values(data,qv,hv)
+                values[q]=qv;values[h]=hv
+                original=OpenSHOP.turbine_efficiency(table,qv,hv;extrapolation=:linear)
+                @test values[eta]≈original atol=1e-11
+                @test tensor_residual(m,values)<1e-9
+                @test length(values)==num_variables(m)
+                @test lower_bound(eta)<=original<=upper_bound(eta)
+            end
+        end
     end
     @test_throws DomainError OpenSHOP._global_tensor_coordinate_weights([0.0,1.0],1.1)
     @test OpenSHOP._global_tensor_coordinate_weights([3.0],3.0)==[1.0]
@@ -79,20 +104,23 @@ end
         c=copywith(c;system=sys)
         seed=dispatch_from_controls(c,reshape([1,0],2,1),reshape([8.0,0.0],2,1),zeros(0,1))
         @test seed["validation"]["valid"]
-        b=OpenSHOP._build_global_dispatch(c;joint=true,formulation=:tensor)
+        b=OpenSHOP._build_global_dispatch(c;joint=true)
         audit=OpenSHOP._lift_start!(b,c,seed)
         @test audit["valid"]
         @test audit["assigned"]==audit["variables"]
         @test audit["objective"]≈seed["objective"] atol=1e-6
         tables=b.m.ext[:global_tensor_turbines]
         @test tables["turbine_1_1"].hcoordinate===tables["turbine_2_1"].hcoordinate
-        @test !hasproperty(b.domains,:tightening_passes)
+        fixed=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=seed["u"])
+        lifted=OpenSHOP._lift_start!(fixed,c,seed)
+        @test lifted["valid"]
+        @test lifted["assigned"]==lifted["variables"]
+        @test lifted["objective"]≈seed["objective"] atol=1e-6
+        @test fixed.m.ext[:global_tensor_turbines]["turbine_2_1"].qcoordinate.nodes==[0.0]
         result=solve(c;initial=seed,time_limit=20.0,relative_gap=1e-3)
-        @test result["formulation"]=="tensor"
         @test result["accepted"]
         @test result["start_audit"]["valid"]
-        @test result["model_profile"]["sos2_constraints"]==3
-        @test result["model_profile"]["turbine_cell_binaries"]==0
+        @test result["model_profile"]["sos2_constraints"]>0
         @test result["scip_diagnostics"]["available"]
         @test result["raw_sos2_residual"]<=1e-6
         @test result["feasible_lower_bound"]>=seed["objective"]-1e-6

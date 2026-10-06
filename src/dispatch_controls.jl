@@ -59,7 +59,8 @@ function dispatch_from_controls(
                    )-startup-shutdown-req.cost +
                    sum(
                        r.water_value*(x["V"][i, end]-r.v0) for
-                       (i, r) in enumerate(s.reservoirs)
+                       (i, r) in enumerate(s.reservoirs);
+                       init = 0.0,
                    ) +
                    sum(
                        r.water_value*(z["transit"][i, end]-z["transit"][i, 1]) for

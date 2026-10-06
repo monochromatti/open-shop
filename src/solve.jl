@@ -84,6 +84,11 @@ function _reconstruct_candidate(c, raw; transport = nothing)
     all(isfinite, q) && all(isfinite, gate) || throw(ArgumentError("nonfinite controls"))
     all(x -> x >= -1e-6, q) || throw(ArgumentError("negative discharge"))
     all(x -> -1e-8 <= x <= 1 + 1e-8, gate) || throw(ArgumentError("gate outside bounds"))
+    for k in eachindex(q,raw["u"])
+        raw["u"][k]==0 || continue
+        abs(q[k])<=1e-6 || throw(ArgumentError("nonzero discharge at an off unit"))
+        q[k]=0.0
+    end
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
     correction = (
@@ -104,6 +109,12 @@ function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap)
     result["absolute_gap"] = nothing
     result["global_certificate"] = false
     upper, lower = result["global_bound"], candidate["objective"]
+    if upper !== nothing && upper < lower - 1e-6
+        result["rejected_global_bound"] = upper
+        result["bound_rejection"] = "solver upper bound below independently reconstructed objective"
+        result["global_bound"] = nothing
+        upper = nothing
+    end
     if upper !== nothing && upper >= lower - 1e-6
         gap = max(0.0, upper - lower)
         result["absolute_gap"] = gap
@@ -118,8 +129,7 @@ end
     solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0, initial=nothing, fixed_u=nothing)
 
 Optimize generation and binary unit commitment with native SCIP.
-`formulation` selects `:tensor` (default), `:baseline`, `:domains` or `:tightened`; all retain the
-same physical equations. `diagnostics_path` optionally writes a native SCIP
+`diagnostics_path` optionally writes a native SCIP
 progress log. Returned `scip_diagnostics` are observational statistics, not
 independent feasibility or certificate evidence. The objective
 is revenue minus transition costs and release penalties, plus changes in stored
@@ -143,7 +153,6 @@ function solve(
     initial = nothing,
     fixed_u = nothing,
     replay = true,
-    formulation = :tensor,
     diagnostics_path = nothing,
 )
     isfinite(time_limit) && time_limit > 0 ||
@@ -152,13 +161,11 @@ function solve(
         throw(ArgumentError("relative_gap must lie in [0,1)"))
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
-    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("formulation must be :baseline, :domains, :tightened, or :tensor"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(
         "case" => c.name,
         "solver" => "SCIP",
-        "formulation" => string(formulation),
         "status" => "CONSTRUCTION_BUDGET_EXHAUSTED",
         "accepted" => false,
         "global_certificate" => false,
@@ -187,7 +194,7 @@ function solve(
             throw(ArgumentError("initial controls fail reconstruction audit"))
         result["initial_objective"] = best["objective"]
     end
-    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u, formulation)
+    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
@@ -213,7 +220,6 @@ function solve(
         "turbine_cell_binaries"=>count(n->startswith(n,"turbine_") && occursin("_cell[",n),binary_names),
         "river_table_cell_binaries"=>count(n->startswith(n,"river_law_") && occursin("_cell[",n),binary_names),
         "bounds_seconds"=>b.bounds_seconds,
-        "tightening_passes"=>b.domains!==nothing && hasproperty(b.domains,:tightening_passes) ? b.domains.tightening_passes : 0,
         "shared_head_entries"=>length(b.shared_heads),
         "head_variables_saved"=>length(c.system.generators)*length(c.prices)-length(b.shared_heads))
     result["variable_count"] = num_variables(b.m)
