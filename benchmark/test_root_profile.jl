@@ -95,3 +95,44 @@ end
         end
     end
 end
+
+@testset "Power planes cover off head and tightened operating domains" begin
+    for interpolation in (:bilinear,:pchip_discharge),lean in (false,true)
+        table=TurbineTable([50.,100.],[2.,5.,10.,16.],
+            [.2 .8;.6 .9;.7 .95;.3 .85],[2.,2.],[16.,16.];interpolation)
+        g=Generator(name=:g,plant=:plant,qmin=2.,qmax=16.,pmin=.001,pmax=20.,
+            hmin=10.,hmax=110.,turbine_table=table)
+        s=HydroSystem(reservoirs=Reservoir[],junctions=Junction[],
+            boundaries=[Boundary(name=:source,head=100.),Boundary(name=:tail,head=0.)],
+            tunnels=Tunnel[],plants=[Plant(name=:plant,source=:source,target=:tail,pmax=20.)],
+            generators=[g],rivers=River[])
+        c=ScheduleCase(name="plane_domain",system=s,grid=[0.,1.],prices=[100.],
+            operations=[OperationalSeries(object=:g,attribute=:qmin,times=[0.],values=[5.]),
+                OperationalSeries(object=:g,attribute=:qmax,times=[0.],values=[10.])])
+        m=Model()
+        @variable(m,0<=q<=16)
+        @variable(m,0<=p<=20)
+        @variable(m,u,Bin)
+        @variable(m,-60<=h<=150)
+        b=(m=m,P=reshape([p],1,1),GQ=reshape([q],1,1),u=reshape([u],1,1),
+            shared_heads=Dict((:plant,1)=>h))
+        @test add_power_envelopes!(b,c;head_planes=true,lean)==(lean ? 8 : 12)
+        cuts=all_constraints(m;include_variable_in_set_constraints=false)
+        function check(power,flow,head,on)
+            point=Dict(p=>power,q=>flow,h=>head,u=>on)
+            for cut in cuts
+                object=constraint_object(cut)
+                @test value(v->point[v],object.func)<=object.set.upper+1e-8
+            end
+        end
+        @test OpenSHOP.turbine_efficiency(table,0.,-50.;extrapolation=:linear)<0
+        for head in range(-60.,150.;length=15)
+            check(0.,0.,head,0.)
+        end
+        for flow in range(5.,10.;length=11),head in range(10.,110.;length=15)
+            eta=OpenSHOP.turbine_efficiency(table,flow,head;extrapolation=:linear)
+            0<=eta<=1 || continue
+            check(.00981*flow*head*eta,flow,head,1.)
+        end
+    end
+end
