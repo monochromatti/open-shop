@@ -119,7 +119,10 @@ function _global_turbine!(
     tightened = true,
     commitment = nothing,
     min_on_flow = 0.0,
+    exact_bounds = false,
+    range_cuts = false,
 )
+    bound_ranges=tightened || exact_bounds || range_cuts
     get!(m.ext,:global_turbines,Dict{String,NTuple{4,Float64}}())[string(name)]=(qlo,qhi,hlo,hhi)
     separated=tightened && commitment!==nothing && min_on_flow>0
     qc = separated ? vcat([(0.0,0.0)], qhi>=min_on_flow ? _global_intervals(c.discharge,min_on_flow,qhi) : Tuple{Float64,Float64}[]) : _global_intervals(c.discharge, qlo, qhi)
@@ -203,13 +206,19 @@ function _global_turbine!(
         isfinite(bound) ||
             throw(ArgumentError("global solver turbine polynomial bounds overflow"))
         push!(bounds, bound)
-        tightened && push!(ranges,_global_turbine_cell_range(a,b,tl,tr,ul,ur))
+        bound_ranges && push!(ranges,_global_turbine_cell_range(a,b,tl,tr,ul,ur))
     end
     @constraint(m, q == sum(qterms))
     @constraint(m, h == sum(hterms))
     bound = maximum(bounds)
-    emin,emax=tightened ? (minimum(first,ranges),maximum(last,ranges)) : (-bound,bound)
+    emin,emax=bound_ranges ? (minimum(first,ranges),maximum(last,ranges)) : (-bound,bound)
     eta = @variable(m, lower_bound=emin, upper_bound=emax, base_name=string(name))
     @constraint(m, eta == sum(terms))
+    if range_cuts
+        # At integer selection exactly one cell contributes. These linear
+        # enclosure cuts strengthen its relaxation without changing the graph.
+        @constraint(m, eta >= sum(ranges[k][1]*z[k] for k in 1:n))
+        @constraint(m, eta <= sum(ranges[k][2]*z[k] for k in 1:n))
+    end
     eta
 end

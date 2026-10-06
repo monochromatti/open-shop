@@ -34,9 +34,13 @@ function _build_global_dispatch(
     formulation = :tensor,
 )
     starttime=time()
-    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("unknown global formulation"))
+    formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("unknown global formulation"))
     tightened=formulation in (:domains, :tightened)
-    tensor_tables=formulation==:tensor
+    tensor_tables=formulation in (:tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
+    quadratic_tables=formulation in (:tensor_quadratic,:tensor_refined)
+    table_state_pruning=tightened || formulation in (:cartesian_refined,:tensor_pruned,:tensor_refined)
+    exact_table_bounds=formulation in (:cartesian_ranges,:cartesian_cuts,:cartesian_refined)
+    table_range_cuts=formulation in (:cartesian_cuts,:cartesian_refined)
     tightened_tables=formulation==:tightened
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
@@ -272,8 +276,8 @@ function _build_global_dispatch(
         # Fixed states need only their physical branch; retaining a redundant
         # off/on disjunction creates degenerate table equations in presolve.
         known_state=joint ? (is_fixed(u[i,t]) ? fix_value(u[i,t]) : nothing) : u[i,t]
-        flowmin=tightened && known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
-        tightened && known_state==0 && (flowmax=0.0)
+        flowmin=table_state_pruning && known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
+        table_state_pruning && known_state==0 && (flowmax=0.0)
         eta=if g.turbine_table===nothing
             emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
@@ -286,7 +290,7 @@ function _build_global_dispatch(
             z
         elseif tensor_tables
             _global_tensor_turbine!(m,g.turbine_table,GQ[i,t],hd,flowmin,flowmax,hlo,hhi;
-                name=Symbol("turbine_",i,"_",t))
+                name=Symbol("turbine_",i,"_",t),quadratic=quadratic_tables)
         else
             _global_turbine!(
                 m,
@@ -299,6 +303,8 @@ function _build_global_dispatch(
                 hhi;
                 name = Symbol("turbine_", i, "_", t),
                 tightened = tightened_tables,
+                exact_bounds = exact_table_bounds,
+                range_cuts = table_range_cuts,
                 commitment = joint && known_state===nothing ? u[i,t] : nothing,
                 min_on_flow = opinterval(c,g.name,:qmin,t,g.qmin),
             )

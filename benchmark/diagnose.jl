@@ -63,7 +63,7 @@ function benchmark_seed(path,c)
 end
 
 function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulations=(:baseline,:tightened),commitments=(:free,:fixed),
-        operational_margin=.1,relative_gap=1e-3,seed_directory=nothing,warmup=true,probe_time_limit=20.,diagnostics=true)
+        operational_margin=.1,relative_gap=1e-3,seed_directory=nothing,warmup=true,probe_time_limit=20.,diagnostics=true,native_start=true)
     repeats isa Integer && repeats>=1 || throw(ArgumentError("positive repeats required"))
     mkpath(output);records=Any[]
     source_hash=bytes2hex(sha256(join([read(p,String) for p in sort(filter(p->endswith(p,".jl"),readdir(joinpath(@__DIR__,"..","src");join=true)))])))
@@ -111,21 +111,22 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                 "preparation_seconds_excluded"=>preparation_seconds,"probe_seconds_excluded"=>probe_seconds,
                 "probe_discrete_valid"=>probe_valid,"known_discrete_lower_bound"=>reference_lower,
                 "seed_objective"=>initial===nothing ? nothing : initial["objective"],
-                "seed_shared_across_all_variants"=>true,"target_relative_gap"=>relative_gap,
+                "seed_shared_across_all_variants"=>true,"native_start_enabled"=>native_start,"target_relative_gap"=>relative_gap,
                 "global_allowance_seconds"=>time_limit,
                 "scope"=>"same frozen discrete equations and audited seed; fixed commitment restricts feasible set")
             writejson(joinpath(folder,"metadata.json"),metadata)
+            solve_initial=native_start ? initial : nothing
             if warmup
                 for formulation in formulations, mode in commitments
                     fixed_u=mode==:fixed && initial!==nothing ? copy(initial["u"]) : nothing
                     stem="warmup-$(formulation)-$(mode)"
                     try
                         log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
-                        result=solve(c;initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
+                        result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
                         # A compilation-heavy construction can exhaust the first
                         # allowance before exercising native solve and extraction.
                         if result["status"]=="CONSTRUCTION_BUDGET_EXHAUSTED"
-                            result=solve(c;initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
+                            result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,formulation,diagnostics_path=log_path)
                         end
                         writejson(joinpath(folder,stem*".json"),result)
                     catch error
@@ -146,7 +147,7 @@ function paired_benchmark(case_paths;output,time_limit=60.,repeats=1,formulation
                         log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
                         began=time()
                         try
-                            result=solve(c;initial,fixed_u,time_limit,relative_gap,formulation,diagnostics_path=log_path)
+                            result=solve(c;initial=solve_initial,fixed_u,time_limit,relative_gap,formulation,diagnostics_path=log_path)
                             row["harness_seconds"]=time()-began
                             upper=get(result,"global_bound",nothing)
                             consistent=upper===nothing || reference_lower===nothing || upper>=reference_lower-1e-6

@@ -64,3 +64,5 @@ include("global_bounds_tests.jl")
 include("diagnostics_tests.jl")
 
 include("tensor_table_tests.jl")
+
+include("cartesian_range_tests.jl")

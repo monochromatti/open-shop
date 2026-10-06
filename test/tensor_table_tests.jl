@@ -21,7 +21,7 @@
         end
         residual
     end
-    for interpolation in (:bilinear,:pchip_discharge)
+    for interpolation in (:bilinear,:pchip_discharge),quadratic in (false,true)
         table=TurbineTable([50.0,90.0,140.0],[2.0,5.0,10.0,16.0],
             [0.70 0.75 0.79;0.91 0.95 0.93;0.85 0.92 0.96;0.73 0.81 0.86],
             [2.0,2.0,2.0],[16.0,16.0,16.0];interpolation)
@@ -32,7 +32,7 @@
             m=Model()
             @variable(m,qlo<=q<=qhi)
             @variable(m,hlo<=h<=hhi)
-            eta=OpenSHOP._global_tensor_turbine!(m,table,q,h,qlo,qhi,hlo,hhi;name=:eta)
+            eta=OpenSHOP._global_tensor_turbine!(m,table,q,h,qlo,qhi,hlo,hhi;name=:eta,quadratic)
             data=m.ext[:global_tensor_turbines]["eta"]
             qs=unique(vcat(qlo,qhi,(qlo+qhi)/2,filter(x->qlo<=x<=qhi,table.discharge)))
             hs=unique(vcat(hlo,hhi,(hlo+hhi)/2,filter(x->hlo<=x<=hhi,table.heads)))
@@ -52,10 +52,12 @@
             @test all(v->has_lower_bound(v)&&has_upper_bound(v),all_variables(m))
             @test count(is_binary,all_variables(m))==0
             interpolation==:bilinear && @test isempty(data.r)
+            @test data.quadratic==quadratic
+            @test length(data.w)==(quadratic ? length(data.r) : 0)
         end
         # A common head variable and identical clipped nodes reuse one SOS2 axis.
         m=Model();@variable(m,0<=q<=16);@variable(m,60<=h<=130)
-        OpenSHOP._global_tensor_turbine!(m,table,q,h,0.0,16.0,60.0,130.0;name=:one)
+        OpenSHOP._global_tensor_turbine!(m,table,q,h,0.0,16.0,60.0,130.0;name=:one,quadratic)
         first_head=m.ext[:global_tensor_turbines]["one"].hcoordinate
         envelope=TableCurve(table.heads,table.qmin)
         OpenSHOP._global_tensor_table!(m,envelope,h,60.0,130.0;name=:envelope)
@@ -87,6 +89,14 @@ end
         tables=b.m.ext[:global_tensor_turbines]
         @test tables["turbine_1_1"].hcoordinate===tables["turbine_2_1"].hcoordinate
         @test !hasproperty(b.domains,:tightening_passes)
+        for variant in (:baseline,:cartesian_ranges,:cartesian_cuts,:cartesian_refined,
+                        :tensor,:tensor_pruned,:tensor_quadratic,:tensor_refined)
+            candidate=OpenSHOP._build_global_dispatch(c;joint=true,formulation=variant,fixed_u=seed["u"])
+            lifted=OpenSHOP._lift_start!(candidate,c,seed)
+            @test lifted["valid"]
+            @test lifted["assigned"]==lifted["variables"]
+            @test lifted["objective"]≈seed["objective"] atol=1e-6
+        end
         result=solve(c;initial=seed,time_limit=20.0,relative_gap=1e-3)
         @test result["formulation"]=="tensor"
         @test result["accepted"]

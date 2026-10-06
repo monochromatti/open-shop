@@ -1,32 +1,16 @@
-name: Table benchmarks
+name: Table representation contest
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  compare:
+  screen:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: normal-2h
-            hours: 2
-            start: '2024-09-01T00:00:00Z'
-            seconds: 60
-          - name: normal-6h
-            hours: 6
-            start: '2024-09-01T00:00:00Z'
-            seconds: 120
-          - name: normal-24h
-            hours: 24
-            start: '2024-09-01T00:00:00Z'
-            seconds: 120
-          - name: seasonal-24h
-            hours: 24
-            start: '2024-09-29T12:00:00Z'
-            seconds: 120
+        case: [operating-2h, pchip]
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 2
@@ -41,17 +25,22 @@ jobs:
           delete-old-caches: false
       - name: Instantiate
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
-      - name: Fetch and reconstruct external benchmark data
+      - name: Construct operating case
+        if: matrix.case == 'operating-2h'
         run: |
           python3 -m pip install PyYAML
           python3 examples/tokke_vinje/fetch.py
-          python3 examples/tokke_vinje/import.py --hours ${{ matrix.hours }} --start '${{ matrix.start }}' --output results/inputs
-      - name: Compare exact table graphs
-        run: julia --pkgimages=no --project=. benchmark/hosted_tables.jl results/inputs/tokke_vinje_${{ matrix.hours }}h.json results/comparison ${{ matrix.seconds }}
+          python3 examples/tokke_vinje/import.py --hours 2 --output results/inputs
+      - name: Screen operating table graphs
+        if: matrix.case == 'operating-2h'
+        run: julia --pkgimages=no --project=. benchmark/contest.jl results/inputs/tokke_vinje_2h.json results/contest screen 60
+      - name: Screen warm and cold PCHIP at two gap targets
+        if: matrix.case == 'pchip'
+        run: julia --pkgimages=no --project=. benchmark/contest.jl benchmark/cases/turbine-tables.json results/contest synthetic 30
       - name: Upload scalar measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tables-${{ matrix.name }}
-          path: results/comparison/summary.json
+          name: contest-${{ matrix.case }}
+          path: results/contest/summary.json
           if-no-files-found: warn

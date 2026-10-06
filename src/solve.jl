@@ -152,7 +152,7 @@ function solve(
         throw(ArgumentError("relative_gap must lie in [0,1)"))
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
-    formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("formulation must be :baseline, :domains, :tightened, or :tensor"))
+    formulation in (:baseline, :domains, :tightened, :tensor, :cartesian_ranges, :cartesian_cuts, :cartesian_refined, :tensor_pruned, :tensor_quadratic, :tensor_refined) || throw(ArgumentError("formulation must be :baseline, :domains, :tightened, or :tensor"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(
