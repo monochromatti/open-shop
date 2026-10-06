@@ -118,7 +118,7 @@ end
     solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0, initial=nothing, fixed_u=nothing)
 
 Optimize generation and binary unit commitment with native SCIP.
-`formulation` selects `:baseline` (default), `:domains`, `:tightened` or `:tensor`; all retain the
+`formulation` selects `:tensor` (default), `:baseline`, `:domains` or `:tightened`; all retain the
 same physical equations. `diagnostics_path` optionally writes a native SCIP
 progress log. Returned `scip_diagnostics` are observational statistics, not
 independent feasibility or certificate evidence. The objective
@@ -143,7 +143,7 @@ function solve(
     initial = nothing,
     fixed_u = nothing,
     replay = true,
-    formulation = :baseline,
+    formulation = :tensor,
     diagnostics_path = nothing,
 )
     isfinite(time_limit) && time_limit > 0 ||

@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
-- Added an experimental exact turbine-table graph with independent SOS2 axes, shared head weights and discharge PCHIP corrections.
+- Made the exact turbine-table graph the default with independent SOS2 axes, shared head weights and discharge PCHIP corrections.
+- Retained the baseline graph for small or fixed-commitment workloads where it can be faster.
+- Published matched hosted Tokke–Vinje benchmarks at 2, 6 and 24 hours, including the seasonal operating case.
 - Added complete start lifting and adjacency audits for SOS2 constraints, plus paired table-graph benchmarks.
 
 ## 0.2.0

@@ -72,7 +72,7 @@ mixing and finer replay remain separate modeling checks.
 ## Reproducing the selected backend
 
 The packaged implementation repeats the two replay-valid comparison cases
-three times each. With the baseline default, median elapsed times are 0.240 seconds for the six-unit
+three times each. With the baseline formulation, median elapsed times are 0.240 seconds for the six-unit
 two-hour case and 0.727 seconds for the tabulated eight-hour case. All six runs
 pass the equation audit, finer replay and requested 0.1% gap. Their objectives
 and bounds reproduce the original SCIP comparison. Records are in
@@ -136,8 +136,8 @@ The smaller formulations performed more LP iterations but had difficulty
 resolving the root relaxation. The first root LP bound was unavailable in both
 experimental free-commitment runs. Variable count alone was a misleading
 performance indicator: the baseline had 5,159 variables, network domains 4,363,
-and tightened tables 4,229. This evidence supports retaining the baseline as
-the default and keeping the two alternatives explicitly experimental.
+and tightened tables 4,229. This earlier comparison favored baseline over those two alternatives.
+The independent-axis comparison below determines the version 0.3 default.
 
 At six hours, the baseline free/fixed gaps were 56.02% and 47.91% with a
 120-second allowance. Network domains reached 55.99% with free commitment;
@@ -151,7 +151,7 @@ must improve this representation and root-relaxation conditioning without
 replacing the supplied physical curves or restricting the feasible set around
 a local schedule.
 
-The selected baseline delivered these operating schedules:
+The earlier baseline delivered these operating schedules:
 
 | Horizon | Preparation | SCIP + audit elapsed | Feasible objective L | Upper bound U | Free-commitment gap |
 |---|---:|---:|---:|---:|---:|
@@ -187,8 +187,8 @@ conditional waiver or relaxed environmental rule is used.
 Scalar records, case/control fingerprints, native root/final statistics and
 start-audit summaries are in
 [operating_formulations.json](../benchmark/results/operating_formulations.json).
-Each comparison passed its formulation explicitly; the shipped default retains
-the baseline. Upstream raw inputs and generated schedules remain external.
+Each comparison passed its formulation explicitly. These measurements preceded
+the independent-axis default introduced in version 0.3. Upstream raw inputs and generated schedules remain external.
 These measurements do not establish full SHOP compatibility or fast full-day
 optimality.
 
@@ -237,3 +237,88 @@ and generation reconstruction described in the example, not a full SHOP
 import, a comparison with licensed SHOP, or an operational Tokke–Vinje plan.
 The remaining global gaps and omitted operating rules prevent claiming a
 competitive full SHOP replacement today.
+
+## Independent turbine-table axes
+
+The `:tensor` formulation replaces Cartesian turbine-cell selection with exact
+SOS2 interpolation on separate discharge and head axes. It shares physical head
+weights between units and their flow envelopes. It preserves original bilinear
+and discharge PCHIP curves, including their declared extrapolation.
+
+On the two-hour operating Tokke–Vinje case, variables fall from 5,159 to 1,953
+and explicit binaries from 1,488 to 216. There are still 51 SOS2 constraints.
+With the same audited starting objective of 72,191.373 and 60 seconds per run,
+two repetitions reproduce these gaps:
+
+| Commitment | Baseline | Tensor axes |
+|---|---:|---:|
+| Free | 52.13% | 12.60% |
+| Fixed | 13.95% | 4.95% |
+
+These are improvements in the enclosing upper bound; both methods retain the
+same feasible objective. Neither proves the requested 0.1% gap. The initial
+comparison logs every node and warms only free commitment, so it supports the
+repeated bound comparison rather than a precise speed claim. Later paired
+runs warm each scored commitment and logging signature.
+
+Silent synthetic comparisons offer the same physical seed and use three repetitions.
+The analytic river case has median elapsed times of 0.271 seconds for either
+formulation. The PCHIP table case takes 0.403 seconds with baseline graphs and
+1.053 seconds with tensor axes. Both return accepted schedules and numerical
+certificates. Their gaps are 0.01479% and 0.0002163%, respectively. The tighter
+tensor result costs more time on this small case. The PCHIP seed has a tiny
+flow-cap excess (1.078e-7) and both graphs reject its native start under the
+stricter 1e-7 algebraic audit, so that pair measures cold native solves after
+compilation warmup. The analytic pair accepts its common native start.
+
+Reproduce a paired comparison with an existing case:
+
+```sh
+./scripts/julia.sh benchmark/tables.jl case.json results/table-comparison - 120 2 silent
+```
+
+Replace `-` with a directory containing `<case-basename>/seed.json` to reuse
+frozen controls. The script otherwise prepares one common seed. `trace` records
+native progress every 100 nodes; `silent` avoids progress-log overhead. Cases,
+controls and source code are hashed. Fixed commitment restricts the proof scope.
+The manually triggered `Table benchmarks` workflow fetches the pinned external
+Tokke–Vinje revision, constructs the operating cases and runs silent comparisons
+on hosted Linux machines. Its artifacts contain scalar diagnostics only.
+
+The hosted operating comparison ran on GitHub Ubuntu machines with AMD Zen 3–5
+CPUs, recorded per pair. Each pair used one common audited seed, one thread and
+fresh models; the 2-hour allowance was 60 seconds and all other allowances were
+120 seconds. Warmups exercised both commitment modes without progress logging.
+Compare variants within a row; absolute timings across machines are not directly
+comparable.
+
+| Operating case | Feasible objective, both variants | Free gap: baseline / tensor | Fixed gap: baseline / tensor |
+|---|---:|---:|---:|
+| 2 hours | 72,196.856 | 51.62% / 13.02% | 0% / 4.96% |
+| 6 hours | 219,896.833 | 54.67% / 13.03% | 2,934.95% / 6.86% |
+| 24 hours | 738,991.315 | 58.36% / 18.48% | 1,106.68% / 8.25% |
+| Seasonal 24 hours | 453,194.141 | 2,451.93% / 8.92% | 0.785% / 0.1685% |
+
+Every run passes the full start audit, original equations and finer replay.
+Returned SOS2 residuals are zero. The free-commitment runs retain the same
+starting objective: this phase improves bounds rather than schedule revenue.
+No free-commitment run certifies the requested 0.1% gap. Baseline certifies the
+2-hour fixed-commitment case in 16.51 seconds; tensor remains at its 60-second
+limit. Larger runs finish in approximately 121–123 seconds including audits.
+The very loose baseline bounds above 1,000% coincide with missing finite first
+root LP bounds; they are numerical/relaxation failures, not normal search-speed
+comparisons. Tensor also has a missing first root LP bound on the normal 24-hour
+free run, despite returning a much stronger enclosing final bound.
+
+The 24-hour graph falls from 66,104 to 25,159 variables and from 19,329 to 3,188
+explicit binaries, with 623 SOS2 constraints remaining. Version 0.3 makes
+`:tensor` the default because it consistently strengthens the larger free
+scheduling runs. Select `:baseline` explicitly when its small-case or conditional
+proof advantage matters. Neither representation changes the physical equations.
+
+[Scalar records](../benchmark/results/tensor_tables.json) include case/control
+hashes, source hashes, starts, native solver statistics and measured times.
+[Hosted benchmark run](https://github.com/monochromatti/open-shop/actions/runs/37415106870)
+used implementation commit `84e6a87`. Later local watercourse trials crossed
+verified laptop sleep periods and are excluded; their logs remain local. The
+published comparison therefore uses complete, uninterrupted hosted runs.

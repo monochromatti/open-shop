@@ -31,7 +31,7 @@ function _build_global_dispatch(
     transport = nothing,
     reachable_bounds = true,
     share_plant_heads = true,
-    formulation = :baseline,
+    formulation = :tensor,
 )
     starttime=time()
     formulation in (:baseline, :domains, :tightened, :tensor) || throw(ArgumentError("unknown global formulation"))

@@ -65,12 +65,14 @@ Construction and first-call compilation consume the time allowance; extraction
 and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 `fixed_u` restricts both the search and its certificate to that commitment.
 
-The default formulation is `:baseline`. Experimental `:domains` and
-`:tightened` options retain the physical equations but change bounds and table
-graphs. The experimental `:tensor` option uses independent SOS2 axes for exact
-turbine interpolation and shares head weights across units and flow envelopes.
-The domain and tightened variants' smaller models regressed on the operating Tokke–Vinje comparison,
-so they are opt-in. See the benchmark results before selecting one.
+The default formulation is `:tensor`. It represents exact turbine interpolation
+with separate SOS2 discharge and head axes, sharing head weights across units
+and flow envelopes. It improves the larger operating Tokke–Vinje bounds at equal
+time allowances. `:baseline` retains the original cell graphs and can be faster
+for small PCHIP cases or fixed commitment. Experimental `:domains` and
+`:tightened` options change network bounds and table graphs; they remain opt-in.
+See the [matched benchmark results](docs/benchmarks.md#independent-turbine-table-axes)
+before choosing an alternative.
 
 For larger cases, a feasible initial schedule can help the global search:
 
