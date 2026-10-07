@@ -1,3 +1,16 @@
+struct _PowerHullRecord
+    q::Union{VariableRef,AffExpr}
+    head::VariableRef
+    eta::VariableRef
+    power::Union{VariableRef,AffExpr}
+    u::Union{Float64,VariableRef}
+    axes::NTuple{3,Vector{Float64}}
+    corners::Vector{NTuple{3,Float64}}
+    weights::Vector{VariableRef}
+    onhead::VariableRef
+    oneta::VariableRef
+end
+
 _power_hull_value(x,assigned)=x isa Number ? Float64(x) : JuMP.value(v->assigned[v],x)
 _power_hull_bounds(v)=is_fixed(v) ? (fix_value(v),fix_value(v)) : (lower_bound(v),upper_bound(v))
 _power_hull_fixed_off(u)=u isa Number ? u==0 : is_fixed(u)&&fix_value(u)==0
@@ -78,8 +91,8 @@ function _power_hull_unit!(m,q,head,eta,power,u,qbox,hbox,etabox,fullhead,fullet
     product=sum(prod(corners[k])*weights[k] for k in eachindex(corners))
     @constraint(m,power<=0.00981*electrical_max*product)
     @constraint(m,power>=0.00981*electrical_min*product)
-    (q=q,head=head,eta=eta,power=power,u=u,axes=axes,corners=corners,
-     weights=weights,onhead=onhead,oneta=oneta)
+    _PowerHullRecord(q,head,eta,power,u isa Number ? Float64(u) : u,axes,corners,
+        weights,onhead,oneta)
 end
 
 """Add the joint trilinear box hull as a redundant envelope of exact power.
@@ -93,8 +106,9 @@ shrink only the box used by the added corner rows.
 function _add_power_hull!(b,c)
     m=b.m
     haskey(m.ext,:global_power_hulls) && throw(ArgumentError("power hull has already been added"))
-    records=Dict{String,Any}()
+    records=Dict{String,_PowerHullRecord}()
     m.ext[:global_power_hulls]=records
+    tensors=get(m.ext,:global_tensor_turbines,nothing)
     before_variables=num_variables(m)
     before_constraints=num_constraints(m;count_variable_in_set_constraints=false)
     skipped=Dict("fixed_off"=>0,"empty_on_box"=>0,"electrical"=>0)
@@ -105,7 +119,7 @@ function _add_power_hull!(b,c)
             skipped["fixed_off"]+=1;continue
         end
         hd=b.shared_heads[(plantof(c.system,g).name,t)]
-        tensor=get(get(m.ext,:global_tensor_turbines,Dict()),"turbine_$(i)_$(t)",nothing)
+        tensor=tensors===nothing ? nothing : get(tensors,"turbine_$(i)_$(t)",nothing)
         eta=tensor===nothing ? variable_by_name(m,"eta_$(i)_$(t)") : tensor.eta
         fullhead=_power_hull_bounds(hd);fulleta=_power_hull_bounds(eta)
         qbox=(max(0.0,opinterval(c,g.name,:qmin,t,g.qmin)),
@@ -158,7 +172,9 @@ end
 
 """Lift physical points into rank-one corner weights, including zero off mass."""
 function _lift_power_hulls!(m,assigned)
-    for record in values(get(m.ext,:global_power_hulls,Dict()))
+    records=get(m.ext,:global_power_hulls,nothing)
+    records===nothing && return assigned
+    for record in values(records::Dict{String,_PowerHullRecord})
         u=_power_hull_value(record.u,assigned)
         head=_power_hull_value(record.head,assigned);eta=_power_hull_value(record.eta,assigned)
         assigned[record.onhead]=u*head
