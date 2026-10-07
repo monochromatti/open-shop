@@ -4,11 +4,17 @@ include("diagnose.jl")
 using SCIP, JuMP
 include("table_consistency.jl")
 using .TableConsistency
+include("product_hull.jl")
+using .ProductHull
 include("network_energy.jl")
 
 mutable struct RootLP <: SCIP.AbstractEventhdlr
     optimizer::SCIP.Optimizer
     indices::Vector{JuMP.MOI.VariableIndex}
+    variables::Vector{VariableRef}
+    objective::Any
+    first_state::Dict{String,Any}
+    last_state::Dict{String,Any}
     first::Vector{Float64}
     last::Vector{Float64}
     first_seconds::Float64
@@ -31,13 +37,27 @@ function SCIP.eventexec(e::RootLP)
     SCIP.SCIPgetLPSolstat(o)==SCIP.SCIP_LPSOLSTAT_OPTIMAL || return
     began=time()
     vals=SCIP.sol_values(o,e.indices)
-    e.capture_seconds+=time()-began
     e.snapshots+=1
+    assigned=Dict(zip(e.variables,vals))
+    physical=JuMP.value(v->assigned[v],e.objective)
+    native=10000*SCIP.SCIPgetSolOrigObj(o,C_NULL)
+    affine=e.objective isa Union{Number,VariableRef,GenericAffExpr}
+    state=Dict{String,Any}("values_finite"=>all(isfinite,vals),
+        "lp_is_relaxation"=>Bool(SCIP.SCIPisLPRelax(o)),
+        "lp_primal_reliable"=>Bool(SCIP.SCIPisLPPrimalReliable(o)),
+        "scip_run"=>SCIP.SCIPgetNRuns(o),
+        "native_original_lp_objective"=>native,
+        "captured_objective_expression"=>physical,
+        "objective_affine"=>affine,
+        "objective_difference"=>physical-native,
+        "objective_consistent"=>affine ? abs(physical-native)<=1e-7*max(1.,abs(native)) : nothing,
+        "objective_check_scope"=>affine ? "same original affine revenue objective" : "nonlinear objective also relaxed; equality is not expected")
     if isempty(e.first)
-        e.first=vals;e.first_seconds=SCIP.SCIPgetSolvingTime(o)
+        e.first=vals;e.first_seconds=SCIP.SCIPgetSolvingTime(o);e.first_state=state
     else
-        e.last=vals;e.last_seconds=SCIP.SCIPgetSolvingTime(o)
+        e.last=vals;e.last_seconds=SCIP.SCIPgetSolvingTime(o);e.last_state=state
     end
+    e.capture_seconds+=time()-began
 end
 
 function relaxation_summary(b,c,variables,vals)
@@ -110,12 +130,18 @@ const ROOT_PROFILES=Dict{String,Vector{Pair{String,Any}}}(
     "table_bilinear"=>[],
     "table_all"=>[],
     "energy"=>[],
+    "product_hull"=>[],
+    "product_both"=>[],
+    "product_energy"=>[],
 )
 
 function profile_transform(profile)
     profile=="table_bilinear" && return (b,c)->add_table_consistency!(b,c;mode=:bilinear)
     profile=="table_all" && return (b,c)->add_table_consistency!(b,c;mode=:all)
     profile=="energy" && return add_network_energy!
+    profile=="product_hull" && return add_product_hull!
+    profile=="product_both" && return (b,c)->add_product_hull!(b,c;lower_power=true)
+    profile=="product_energy" && return (b,c)->begin add_product_hull!(b,c;lower_power=true);add_network_energy!(b,c) end
     nothing
 end
 
@@ -155,7 +181,7 @@ function root_profile(input,output;seconds=120.,repeats=1,
             if capture
                 vars[]=all_variables(b.m)
                 o=unsafe_backend(b.m)
-                e=RootLP(o,optimizer_index.(vars[]),Float64[],Float64[],0.,0.,0,0.)
+                e=RootLP(o,optimizer_index.(vars[]),vars[],b.obj,Dict{String,Any}(),Dict{String,Any}(),Float64[],Float64[],0.,0.,0,0.)
                 SCIP.include_event_handler(o.inner,e;desc="Root LP diagnostic snapshots")
                 event[]=e
             end
@@ -186,20 +212,22 @@ function root_profile(input,output;seconds=120.,repeats=1,
         row["parameter_changes"]=Dict(ROOT_PROFILES[profile])
         row["source_sha256"]=bytes2hex(sha256(join(read(p,String) for p in
             sort(filter(p->endswith(p,".jl"),readdir(joinpath(@__DIR__,"..","src");join=true))))))
-        row["model_additions"]=Dict(string(k)=>graph[].m.ext[k] for k in (:table_consistency_profile,:network_energy_profile) if graph[]!==nothing && haskey(graph[].m.ext,k))
+        row["model_additions"]=Dict(string(k)=>graph[].m.ext[k] for k in (:table_consistency_profile,:network_energy_profile,:product_hull_profile) if graph[]!==nothing && haskey(graph[].m.ext,k))
         row["allowance_seconds"]=seconds
         row["julia_version"]=string(VERSION)
         row["experiment_sha256"]=bytes2hex(sha256(join(read(joinpath(@__DIR__,p),String)
-            for p in ("coupled_profile.jl","table_consistency.jl","network_energy.jl"))))
+            for p in ("coupled_profile.jl","table_consistency.jl","network_energy.jl","product_hull.jl"))))
         row["cpu_name"]=Sys.CPU_NAME;row["kernel"]=string(Sys.KERNEL)
         row["progress"]=scip_progress(logpath)
         if capture && event[]!==nothing && graph[]!==nothing
             e=event[];b=graph[]
             row["first_root_lp"]=relaxation_summary(b,c,vars[],e.first)
             row["first_root_lp_snapshot_seconds"]=e.first_seconds
+            row["first_root_lp_state"]=e.first_state
             row["last_root_lp"]=relaxation_summary(b,c,vars[],isempty(e.last) ? e.first : e.last)
             row["root_snapshot_scope"]="Only optimal root LP solved events outside probing/diving; no postsolve LP reread"
-            row["last_root_lp_snapshot_seconds"]=e.last_seconds
+            row["last_root_lp_snapshot_seconds"]=isempty(e.last) ? e.first_seconds : e.last_seconds
+            row["last_root_lp_state"]=isempty(e.last) ? e.first_state : e.last_state
             row["root_snapshot_count"]=e.snapshots
             row["root_snapshot_capture_seconds"]=e.capture_seconds
         end
