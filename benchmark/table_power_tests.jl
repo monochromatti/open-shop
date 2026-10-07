@@ -25,6 +25,25 @@ using .TablePower
             @test head_error<=1e-10
             @test discharge_error<=1e-10
             @test all(isfinite,hc)&&all(isfinite,qc)
+            # Curvature uses the same original SOS2 axes through clipped and
+            # linearly extended portions; the other coordinate is restricted
+            # to its physical on box when certifying each second derivative.
+            kappa=TablePower.PowerCurvature.power_curvature_bounds(table,qbox,hbox,qnodes,hnodes,.95)
+            h0=sum(hbox)/2;q0=sum(qbox)/2
+            hbase=[max(0.0,support(table,qbox...,h,h,.95,a)) for h in hnodes]
+            qbase=[max(0.0,support(table,q,q,hbox...,.95,0.0,b)) for q in qnodes]
+            head_error=-Inf;discharge_error=-Inf
+            for q in range(qbox...;length=17),h in range(hbox...;length=19)
+                power=.00981*.95*q*h*OpenSHOP.turbine_efficiency(table,q,h;extrapolation=:linear)
+                mu=OpenSHOP._global_tensor_coordinate_weights(hnodes,h)
+                lambda=OpenSHOP._global_tensor_coordinate_weights(qnodes,q)
+                hright=a*q+sum((hbase.+kappa.head.*(hnodes.-h0).^2).*mu)-kappa.head*(h-h0)^2
+                qright=b*h+sum((qbase.+kappa.discharge.*(qnodes.-q0).^2).*lambda)-kappa.discharge*(q-q0)^2
+                head_error=max(head_error,power-hright)
+                discharge_error=max(discharge_error,power-qright)
+            end
+            @test head_error<=1e-10
+            @test discharge_error<=1e-10
         end
         old_evaluations=evaluations[];old_hits=hits[]
         first=support(table,1.2,1.8,1.4,2.6,.95,0.1,0.2)
@@ -193,4 +212,103 @@ end
             @test audit["objective"]≈seed["objective"] atol=1e-6
         end
     end
+end
+
+@testset "Curvature bounds retain full active coordinate cells" begin
+    curvature=TablePower.PowerCurvature.power_curvature_bounds
+    support,_,_,_=TablePower._support_cache()
+    decreasing=TurbineTable([1.0,3.0],[1.0,2.0],[.9 .3;.9 .3],fill(1.0,2),fill(2.0,2))
+    bounds=curvature(decreasing,(1.0,1.0),(1.0,3.0),[1.0,2.0],[1.0,3.0],1.0)
+    # F_hh=2*.00981*q*(-.3) at q=1, hence kappa_h=.3*.00981.
+    @test bounds.head>=.3*.00981
+    @test bounds.head≈.3*.00981 atol=1e-8
+    @test bounds.discharge==0.0
+    raw=[support(decreasing,1.0,1.0,h,h,1.0,0.0) for h in (1.0,3.0)]
+    linear=TablePower._head_coefficients(decreasing,(1.0,1.0),(1.0,3.0),[1.0,3.0],1.0,0.0,support)
+    origin=2.0
+    for h in (1.0,1.5,2.0,2.5,3.0)
+        mu=OpenSHOP._global_tensor_coordinate_weights([1.0,3.0],h)
+        rhs=sum((max(0.0,raw[j])+bounds.head*([1.0,3.0][j]-origin)^2)*mu[j] for j in 1:2)
+        envelope=rhs-bounds.head*(h-origin)^2
+        exact=.00981*h*OpenSHOP.turbine_efficiency(decreasing,1.0,h)
+        @test envelope>=exact
+        @test envelope≈exact atol=1e-8
+    end
+    @test sum(raw)/2+bounds.head<sum(linear)/2-1e-3
+    @test curvature(decreasing,(1.0,1.0),(1.0,1.0),[1.0,2.0],[1.0,3.0],1.0).head==0.0
+    @test curvature(decreasing,(1.0,1.0),(2.0,2.0),[1.0,2.0],[1.0,3.0],1.0).head>=.3*.00981
+    @test curvature(decreasing,(1.0,1.0),(2.0,2.0),[1.0],[2.0],1.0)==(discharge=0.0,head=0.0)
+
+    # On q in[1.4,1.45], F_qq is positive. However, its SOS2 chord uses the
+    # entire original[1,2] cell, whose right portion has negative curvature.
+    pchip=TurbineTable([1.0,3.0],[1.0,2.0,3.0],[.2 .2;.9 .9;.8 .8],
+        fill(1.0,2),fill(3.0,2);interpolation=:pchip_discharge)
+    qbox=(1.4,1.45);hbox=(2.0,2.0);qnodes=[1.0,2.0,3.0]
+    full=curvature(pchip,qbox,hbox,qnodes,[2.0],1.0)
+    clipped=curvature(pchip,qbox,hbox,[1.4,1.45],[2.0],1.0)
+    @test clipped.discharge==0.0
+    # F_qq at q=2 in the left cell is -8*.00981, requiring kappa_q>=4*.00981.
+    @test full.discharge>=4*.00981
+    @test full.discharge≈4*.00981 atol=1e-8
+    q=1.4;lambda=OpenSHOP._global_tensor_coordinate_weights(qnodes,q)
+    nodal=[.00981*x*2*OpenSHOP.turbine_efficiency(pchip,x,2.0) for x in qnodes]
+    exact=.00981*q*2*OpenSHOP.turbine_efficiency(pchip,q,2.0)
+    @test sum(nodal.*lambda)<exact-1e-5
+    center=sum(qbox)/2
+    good=sum((nodal.+full.discharge.*(qnodes.-center).^2).*lambda)-full.discharge*(q-center)^2
+    @test good>=exact
+    @test curvature(pchip,(2.0,2.0),hbox,qnodes,[2.0],1.0).discharge==0.0
+    @test curvature(pchip,(1.425,1.425),hbox,qnodes,[2.0],1.0).discharge>=4*.00981
+    @test curvature(pchip,(1.425,1.425),hbox,[1.425],[2.0],1.0).discharge==0.0
+
+    # Off q=0 with origin2: clamping after adding square terms leaves a
+    # negative raw intercept hidden by the positive square, violating Jensen.
+    rawoff=[-1.0,-1.0];nodes=[0.0,2.0];offweights=[1.0,0.0]
+    square=(0.0-2.0)^2
+    right=sum((max.(0.0,rawoff).+(nodes.-2.0).^2).*offweights)
+    wrong=sum(max.(0.0,rawoff.+(nodes.-2.0).^2).*offweights)
+    @test right==square
+    @test wrong<square
+end
+
+@testset "Convex coordinate supports add no variables and lift off continuation" begin
+    for interpolation in (:bilinear,:pchip_discharge)
+        c=table_power_fixture(;interpolation)
+        seed=dispatch_from_controls(c,reshape([1,0],2,1),reshape([8.0,0.0],2,1),zeros(0,1))
+        for axes in (:head,:discharge,:both),fixed in (false,true),retain_linear in (false,true)
+            b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
+            prior=Set(all_constraints(b.m;include_variable_in_set_constraints=false))
+            profile=add_table_power!(b,c;axes,curvature=true,retain_linear)
+            @test profile["curvature"]
+            @test profile["retain_linear"]==retain_linear
+            @test profile["variables_added"]==profile["gates_added"]==0
+            expected=4*(axes==:both ? 2 : 1)*(2-fixed)*(1+retain_linear)
+            @test profile["constraints_added"]==expected
+            @test profile["head_rows"]+profile["discharge_rows"]==expected
+            @test 0<=profile["curvature_seconds"]<=profile["setup_seconds"]
+            newquad=[constraint_object(ref).func for ref in all_constraints(b.m;include_variable_in_set_constraints=false)
+                if !(ref in prior) && constraint_object(ref).func isa QuadExpr]
+            axes!=:head && @test !isempty(newquad)
+            # Native convex quadratic recognition should see diagonal positive
+            # continuous squares, with no binary u inside the quadratic.
+            @test all(expr->all(term->term[1]>0 && term[2]==term[3] && !is_binary(term[2]),
+                JuMP.quad_terms(expr)),newquad)
+            audit=OpenSHOP._lift_start!(b,c,seed)
+            @test audit["valid"]
+            @test audit["assigned"]==audit["variables"]==num_variables(b.m)
+            @test audit["objective"]≈seed["objective"] atol=1e-6
+            if !fixed
+                off=b.m.ext[:global_power_hulls]["power_hull_2_1"]
+                @test start_value(off.head)<0 && start_value(off.eta)<0
+            end
+        end
+        operating=table_power_fixture(;interpolation,positive_electrical=true,operating=true)
+        seed=dispatch_from_controls(operating,reshape([1,0],2,1),reshape([8.0,0.0],2,1),zeros(0,1))
+        b=OpenSHOP._build_global_dispatch(operating;joint=true)
+        @test add_table_power!(b,operating;axes=:both,curvature=true)["units_added"]==2
+        @test OpenSHOP._lift_start!(b,operating,seed)["valid"]
+    end
+    c=table_power_fixture();b=OpenSHOP._build_global_dispatch(c;joint=true)
+    @test_throws ArgumentError add_table_power!(b,c;gate=true,curvature=true)
+    @test_throws ArgumentError add_table_power!(b,c;retain_linear=true)
 end

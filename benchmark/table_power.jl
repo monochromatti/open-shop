@@ -1,6 +1,8 @@
 module TablePower
 using JuMP
 import OpenSHOP
+include("power_curvature.jl")
+using .PowerCurvature
 export add_table_power!
 
 const _FRACTIONS=(0.25,0.5,0.75,1.0)
@@ -95,9 +97,14 @@ end
 `axes` selects head, discharge, or both existing SOS2 coordinates. Ungated
 intercepts are nonnegative for off validity. Gated intercepts retain their signs
 and use at most one binary-product auxiliary per supporting row.
+`curvature=true` replaces interval inflation with an ungated convex quadratic
+variance correction. Raw nodal intercepts are clamped before that correction.
+`retain_linear=true` also retains the interval-inflated rows in curvature mode.
 """
-function add_table_power!(b,c;axes=:head,gate=false)
+function add_table_power!(b,c;axes=:head,gate=false,curvature=false,retain_linear=false)
     axes in (:head,:discharge,:both) || throw(ArgumentError("unsupported table-power axis"))
+    gate&&curvature && throw(ArgumentError("curvature supports require ungated intercepts"))
+    retain_linear&&!curvature && throw(ArgumentError("retaining linear supports requires curvature mode"))
     began=time_ns()
     m=b.m
     haskey(m.ext,:table_power_profile) && throw(ArgumentError("table power has already been added"))
@@ -107,6 +114,7 @@ function add_table_power!(b,c;axes=:head,gate=false)
     before_variables=num_variables(m)
     before_constraints=num_constraints(m;count_variable_in_set_constraints=false)
     support,evaluations,hits,certificate_seconds=_support_cache()
+    curvature_seconds=0.0;kappa_q_max=0.0;kappa_h_max=0.0
     skipped=Dict("analytic"=>0,"fixed_off"=>0,"electrical"=>0,"graph_or_hull"=>0,"nonfinite"=>0)
     units=0;head_rows=0;discharge_rows=0
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
@@ -135,23 +143,74 @@ function add_table_power!(b,c;axes=:head,gate=false)
         qbox=(first(hull.axes[1]),last(hull.axes[1]))
         hbox=(first(hull.axes[2]),last(hull.axes[2]))
         em=maximum(electrical)
+        kappas=if curvature
+            curvature_began=time_ns()
+            result=power_curvature_bounds(g.turbine_table,qbox,hbox,
+                tensor.qcoordinate.nodes,tensor.hcoordinate.nodes,em)
+            curvature_seconds+=(time_ns()-curvature_began)/1e9
+            kappa_q_max=max(kappa_q_max,result.discharge)
+            kappa_h_max=max(kappa_h_max,result.head)
+            result
+        else
+            nothing
+        end
         added=false
         for axis in (axes==:both ? (:head,:discharge) : (axes,))
             coordinate=axis==:head ? tensor.hcoordinate : tensor.qcoordinate
             slopes=[0.00981*em*(axis==:head ? hbox[2] : qbox[2])*f for f in _FRACTIONS]
-            coefficients=[axis==:head ?
-                _head_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support) :
-                _discharge_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support)
-                for a in slopes]
+            coefficients=if curvature
+                [axis==:head ?
+                    [support(g.turbine_table,qbox...,h,h,em,a) for h in coordinate.nodes] :
+                    [support(g.turbine_table,q,q,hbox...,em,0.0,a) for q in coordinate.nodes]
+                    for a in slopes]
+            else
+                [axis==:head ?
+                    _head_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support) :
+                    _discharge_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support)
+                    for a in slopes]
+            end
             if !all(v->all(isfinite,v),coefficients) || !all(isfinite,slopes)
                 skipped["nonfinite"]+=1;continue
             end
             for k in eachindex(slopes)
                 n="table_power_$(axis)_$(i)_$(t)_$(k)"
-                intercept=_intercept!(m,coefficients[k],coordinate.weights,u,gate,n,records)
                 term=slopes[k]*(axis==:head ? b.GQ[i,t] : hull.onhead)
-                @constraint(m,(b.P[i,t]-term-intercept)/40<=0)
+                if curvature
+                    kappa=axis==:head ? kappas.head : kappas.discharge
+                    box=axis==:head ? hbox : qbox
+                    origin=box[1]+(box[2]-box[1])/2
+                    # Clamping after the square terms would not establish off
+                    # validity: the raw intercept itself must be nonnegative.
+                    intercept=sum((max(0.0,coefficients[k][j])+kappa*(coordinate.nodes[j]-origin)^2)*
+                        coordinate.weights[j] for j in eachindex(coordinate.nodes))
+                    x=axis==:head ? hull.head : b.GQ[i,t]
+                    if kappa==0.0
+                        @constraint(m,(b.P[i,t]-term-intercept)/40<=0)
+                    else
+                        @constraint(m,(b.P[i,t]-term-intercept+kappa*(x-origin)^2)/40<=0)
+                    end
+                else
+                    intercept=_intercept!(m,coefficients[k],coordinate.weights,u,gate,n,records)
+                    @constraint(m,(b.P[i,t]-term-intercept)/40<=0)
+                end
                 axis==:head ? (head_rows+=1) : (discharge_rows+=1)
+            end
+            if retain_linear
+                linear_coefficients=[axis==:head ?
+                    _head_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support) :
+                    _discharge_coefficients(g.turbine_table,qbox,hbox,coordinate.nodes,em,a,support)
+                    for a in slopes]
+                if all(v->all(isfinite,v),linear_coefficients)
+                    for k in eachindex(slopes)
+                        term=slopes[k]*(axis==:head ? b.GQ[i,t] : hull.onhead)
+                        intercept=_intercept!(m,linear_coefficients[k],coordinate.weights,u,false,
+                            "table_power_$(axis)_$(i)_$(t)_$(k)_linear",records)
+                        @constraint(m,(b.P[i,t]-term-intercept)/40<=0)
+                        axis==:head ? (head_rows+=1) : (discharge_rows+=1)
+                    end
+                else
+                    skipped["nonfinite"]+=1
+                end
             end
             added=true
         end
@@ -168,6 +227,13 @@ function add_table_power!(b,c;axes=:head,gate=false)
         "certificate_cache_hits"=>hits[],"certificate_seconds"=>certificate_seconds[],
         "setup_seconds"=>(time_ns()-began)/1e9,"skipped"=>skipped)
     m.ext[:table_power_profile]=profile
+    if curvature
+        profile["curvature"]=true
+        profile["retain_linear"]=retain_linear
+        profile["curvature_seconds"]=curvature_seconds
+        profile["curvature_discharge_max"]=kappa_q_max
+        profile["curvature_head_max"]=kappa_h_max
+    end
     profile
 end
 end

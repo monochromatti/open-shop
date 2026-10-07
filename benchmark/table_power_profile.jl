@@ -120,13 +120,20 @@ function relaxation_summary(b,c,variables,vals)
 end
 
 const ROOT_PROFILES=Dict{String,Vector{Pair{String,Any}}}(
-    "baseline"=>[], "head"=>[], "discharge"=>[], "axes"=>[], "axes_gate"=>[])
+    "baseline"=>[], "head"=>[], "head_gate"=>[], "discharge"=>[], "axes"=>[], "axes_gate"=>[],
+    "head_curvature"=>[], "discharge_curvature"=>[], "axes_curvature"=>[],
+    "axes_hybrid"=>[])
 
 function profile_transform(profile)
     profile=="head" && return (b,c)->add_table_power!(b,c;axes=:head,gate=false)
+    profile=="head_gate" && return (b,c)->add_table_power!(b,c;axes=:head,gate=true)
     profile=="discharge" && return (b,c)->add_table_power!(b,c;axes=:discharge,gate=false)
     profile=="axes" && return (b,c)->add_table_power!(b,c;axes=:both,gate=false)
     profile=="axes_gate" && return (b,c)->add_table_power!(b,c;axes=:both,gate=true)
+    profile=="head_curvature" && return (b,c)->add_table_power!(b,c;axes=:head,curvature=true)
+    profile=="discharge_curvature" && return (b,c)->add_table_power!(b,c;axes=:discharge,curvature=true)
+    profile=="axes_curvature" && return (b,c)->add_table_power!(b,c;axes=:both,curvature=true)
+    profile=="axes_hybrid" && return (b,c)->add_table_power!(b,c;axes=:both,curvature=true,retain_linear=true)
     nothing
 end
 
@@ -210,7 +217,7 @@ function root_profile(input,output;seconds=120.,repeats=1,
         row["allowance_seconds"]=seconds
         row["julia_version"]=string(VERSION)
         row["experiment_sha256"]=bytes2hex(sha256(join(read(joinpath(@__DIR__,p),String)
-            for p in ("table_power_profile.jl","table_power.jl"))))
+            for p in ("table_power_profile.jl","table_power.jl","power_curvature.jl"))))
         row["cpu_name"]=Sys.CPU_NAME;row["kernel"]=string(Sys.KERNEL)
         row["progress"]=scip_progress(logpath)
         if capture && event[]!==nothing && graph[]!==nothing
