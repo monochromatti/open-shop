@@ -11,7 +11,9 @@ the deciding differences were proof progress, robustness and model size.
 
 The architecture comparison below describes version 0.4.0. The subsequent
 [root relaxation study](performance.md) adds the production power bounds and
-reports their matched performance separately.
+reports their matched performance separately. Version 0.4.2 then adds the
+selected joint power envelope; its [coupled-relaxation comparison](coupled-relaxations.md)
+reports the proof gain and small-case overhead.
 
 ## Final matched comparison
 

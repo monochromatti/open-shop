@@ -40602,6 +40602,7 @@
       "run_url": "https://github.com/monochromatti/open-shop/actions/runs/37524736859"
     }
   ],
+  "diagnostic_correction": "Postsolve LP-value reads in the archived diagnostic driver may reflect stale or temporary bound-tightening states. They do not support final revenue-root pointwise residual claims. The published 21.38 MW, 7.43 m, 1.51 m and fixed-commitment 9.32 MW claims are withdrawn. Native bounds, accepted schedules and callback-free confirmation timings are unaffected. Corrected event-only observations are documented in docs/coupled-relaxations.md.",
   "local_fixed_diagnostic": {
     "accepted": true,
     "bound_rejection": null,

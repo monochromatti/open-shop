@@ -69,8 +69,11 @@ The solver uses one exact table representation: SOS2 coordinates for linear
 curves and shared quadratic products for discharge PCHIP interpolation. It
 preserves the supplied table values and slopes. Units at the same plant share
 hydraulic head and compatible table coordinates. Fixed unit states restrict
-table domains to their physical branch. See the [benchmark results](docs/benchmarks.md)
-for the measured speed, objective and bound tradeoffs.
+table domains to their physical branch. Supporting inequalities and a joint
+power envelope strengthen SCIP's relaxation while retaining the exact equations.
+See the [benchmark results](docs/benchmarks.md) and
+[coupled relaxation experiments](docs/coupled-relaxations.md) for measured schedule,
+bound and runtime tradeoffs.
 
 For larger cases, a feasible initial schedule can help the global search:
 

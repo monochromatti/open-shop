@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2
+
+- Strengthened exact nonlinear power with a joint discharge/head/efficiency envelope and safe conditional on-state bounds, without new binary decisions.
+- Selected one fixed envelope after 114 accepted matched benchmark runs. Repeated five-minute operating comparisons reduced the mean gap by 13.5% with unchanged objectives; small-case certification takes longer.
+- Added complete corner-weight start lifting and regression checks for analytic curves, PCHIP tables, operational limits and off-state continuation.
+- Published the coupled-relaxation measurements and archived alternatives without adding public solver modes.
+- Corrected earlier pointwise root-relaxation claims from a postsolve LP read. Native global bounds, accepted schedules and callback-free comparisons remain valid.
+
 ## 0.4.1
 
 - Strengthened the original nonlinear generation equations with head-aware supporting power bounds.

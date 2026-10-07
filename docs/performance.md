@@ -1,5 +1,8 @@
 # Root relaxation performance
 
+This page records the 0.4.1 power-plane selection. The subsequent
+[coupled relaxation experiments](coupled-relaxations.md) assess additional bounds.
+
 OpenSHOP strengthens its nonlinear power equations with head-aware supporting
 inequalities. These give SCIP tighter upper bounds without new variables or a
 second solver mode. The full nonlinear equations, turbine interpolation and
@@ -49,13 +52,18 @@ reductions. It consumed 108.20 seconds on the seasonal case and found eight.
 Both runs processed only the root node. These are inclusive native plugin
 times; LP and plugin times overlap and must not be summed as separate costs.
 
-The root LP remains far from the physical equations. In the local normal
-24-hour diagnostic, after root separation, the maximum unit power discrepancy
-was 21.38 MW, tunnel head-loss discrepancy 7.43 m and reservoir-level
-discrepancy 1.51 m. These describe an infeasible LP point, not an error in the
-delivered schedule. Fixing all unit commitments still left a 4.89% gap at
-60 seconds, with a 9.32 MW maximum power discrepancy. Laptop timings do not
-select production changes.
+Fixing all unit commitments still left a 4.89% conditional gap at 60 seconds
+in the local normal 24-hour case. This remains evidence that unit commitment
+alone does not explain the unfinished proof. Laptop timings do not select
+production changes.
+
+A later instrument review found that the diagnostic driver reread the current
+LP after optimization. That read can reflect stale or temporary bound-tightening
+values. The previously reported 21.38 MW, 7.43 m, 1.51 m and fixed-commitment
+9.32 MW residual claims are withdrawn. Native bounds, accepted schedules and
+callback-free selection timings remain valid. The
+[coupled relaxation experiments](coupled-relaxations.md) use corrected event-only
+observations outside probing and diving, with reliability and objective checks.
 
 SCIP already detects unit/network symmetries in this watercourse. Its default
 dynamic handling depends on branching decisions. Static symmetry restrictions
@@ -160,6 +168,6 @@ The power inequalities are conservative polynomial enclosures in exact
 arithmetic. Their implementation uses floating-point guards, consistent with the
 project's numerical certificate scope; it is not a directed-rounding proof.
 The substantial remaining operating gaps mean this phase establishes better
-bounds, not optimal schedules or full SHOP parity. The next performance work
-should target the remaining continuous relaxation errors in power, head loss
-and storage curves. Fixing commitment alone does not remove those errors.
+bounds, not optimal schedules or full SHOP parity. The subsequent [coupled relaxation experiments](coupled-relaxations.md) test
+links between power products, table graphs and hydraulic conservation. Fixing
+commitment alone does not remove the continuous-relaxation gap.

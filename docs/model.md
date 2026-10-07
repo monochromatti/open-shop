@@ -176,6 +176,33 @@ the model. These rows strengthen SCIP's relaxation; they do not replace the
 physical functions. Their floating-point guards retain the model's numerical
 certificate scope, rather than supplying a formal rounding-error proof.
 
+A joint power envelope also represents discharge, on-state head and turbine
+efficiency with at most eight corner weights `z`. Their mass is `u`; their
+moments reproduce discharge and auxiliary on-state head and efficiency.
+Linear binary-product hulls enforce `h_on = u h` and `eta_on = u eta`, using
+full source bounds so an off unit retains its hydraulic head and efficiency
+continuation. With corner coordinates `(q_c,h_c,eta_c)`, the added bounds are
+
+```math
+0.00981 e_{min}\sum_c q_c h_c\eta_c z_c
+\le P\le
+0.00981 e_{max}\sum_c q_c h_c\eta_c z_c.
+```
+
+Electrical-efficiency extrema cover the operating power interval. The on-state
+box uses operational flow/head limits and exact efficiency-curve extrema,
+including cubic stationary points and secant extensions. Positive minimum power
+also supplies a conservative minimum head. Off-state bounds remain unchanged.
+Unsupported negative electrical-efficiency domains receive no joint envelope.
+
+Every physical on point has rank-one corner weights that reproduce its product;
+an off point has zero mass and zero on-moments. The supplement therefore retains
+feasible schedules and adds no binary decisions. It strengthens the relaxation
+of the original nonlinear equality. Numerical guards have the same certificate
+scope as the existing polynomial bounds. See the
+[coupled relaxation benchmarks](coupled-relaxations.md) for the measured benefit
+and small-case cost.
+
 Complete starting schedules and returned solver solutions are checked for
 SOS2 adjacency and unit integrality. Tiny solver leakage at an off unit is
 removed before physical reconstruction; larger violations reject the controls.
