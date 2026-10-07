@@ -16,6 +16,95 @@ function hull_residual(m,assigned)
     end
 end
 
+@testset "Conditional on-state efficiency ranges" begin
+    analytic=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=20.0,pmin=0.01,pmax=100.0,hmin=1.0,hmax=200.0,efficiency=0.95,qbest=10.0,hbest=100.0,
+        qcurvature=0.2,hcurvature=0.1)
+    lo,hi=ProductHull._conditional_eta_bounds(analytic,(8.0,12.0),(95.0,105.0))
+    @test lo<0.94175 && hi>0.95
+    @test lo≈0.94175 atol=2e-10
+    @test hi≈0.95 atol=2e-10
+    # Negative curvature remains supported by the analytic extrema helper.
+    convex=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=20.0,pmin=0.01,pmax=100.0,hmin=1.0,hmax=200.0,efficiency=0.8,qbest=10.0,hbest=100.0,
+        qcurvature=-0.2,hcurvature=0.0)
+    lo,hi=ProductHull._conditional_eta_bounds(convex,(8.0,12.0),(100.0,100.0))
+    @test lo<0.8 && hi>0.808
+    for interpolation in (:bilinear,:pchip_discharge)
+        table=TurbineTable([50.0,90.0,140.0],[2.0,5.0,10.0,16.0],
+            [0.70 0.75 0.79;0.91 0.95 0.93;0.85 0.92 0.96;0.73 0.81 0.86],
+            fill(2.0,3),fill(16.0,3);interpolation)
+        g=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=20.0,pmin=0.01,pmax=100.0,hmin=1.0,hmax=200.0,turbine_table=table)
+        for (qbox,hbox) in (((0.0,20.0),(20.0,180.0)),((3.1,14.3),(60.0,130.0)),
+            ((5.0,5.0+1e-8),(89.0,90.0)),((7.0,7.0),(100.0,100.0)),
+            ((10.0,10.0),(20.0,180.0)))
+            lo,hi=ProductHull._conditional_eta_bounds(g,qbox,hbox)
+            sampled=[OpenSHOP.turbine_efficiency(table,q,h;extrapolation=:linear)
+                for q in range(qbox...;length=41),h in range(hbox...;length=19)]
+            @test lo<=minimum(sampled)<=maximum(sampled)<=hi
+            @test hi-lo<maximum(sampled)-minimum(sampled)+0.001
+        end
+        qbox=(3.1,14.3);hbox=(60.0,130.0)
+        hbox,etabox=ProductHull._tighten_on_boxes(g,qbox,hbox,(0.0,1.0),0.01,1.0)
+        m=Model();@variable(m,0<=q<=20);@variable(m,-20<=h<=200)
+        @variable(m,-2<=eta<=2);@variable(m,0<=p<=100);@variable(m,u,Bin)
+        record=ProductHull._add_unit!(m,q,h,eta,p,u,qbox,hbox,etabox,(-20.0,200.0),
+            (-2.0,2.0),1.0,1.0;name=:table_tight,lower_power=true)
+        m.ext[:product_hull]=Dict("table_tight"=>record)
+        for (uv,qv,hv) in ((1.0,3.1,60.0),(1.0,7.25,101.0),(1.0,14.3,130.0),
+            (0.0,0.0,-20.0))
+            ev=OpenSHOP.turbine_efficiency(table,qv,hv;extrapolation=:linear)
+            assigned=Dict(q=>qv,h=>hv,eta=>ev,p=>0.00981*qv*hv*ev,u=>uv)
+            lift_product_hull!(m,assigned)
+            @test length(assigned)==num_variables(m)
+            @test hull_residual(m,assigned)<1e-11
+        end
+    end
+    # Head extrapolation can defeat the original PCHIP monotonicity: the
+    # derivative extrema, rather than only efficiency values at q knots, matter.
+    table=TurbineTable([10.0,20.0],[1.0,2.0,3.0,4.0],
+        [0.6 0.9;0.7 0.8;0.8 0.9;0.9 0.8],fill(1.0,2),fill(4.0,2);
+        interpolation=:pchip_discharge)
+    g=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=20.0,pmin=0.01,pmax=100.0,hmin=1.0,hmax=200.0,turbine_table=table)
+    lo,hi=ProductHull._conditional_eta_bounds(g,(2.0,3.0),(30.0,30.0))
+    values=[OpenSHOP.turbine_efficiency(table,q,30.0;extrapolation=:linear)
+        for q in range(2.0,3.0;length=301)]
+    @test lo<=minimum(values) && maximum(values)<=hi
+    @test hi>maximum(OpenSHOP.turbine_efficiency(table,q,30.0;extrapolation=:linear)
+        for q in (2.0,3.0))+0.001
+end
+
+@testset "Tight boxes preserve exact on/off lifts" begin
+    g=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=2.0,pmin=0.05,pmax=1.0,
+        hmin=0.1,hmax=10.0,min_efficiency=0.0,efficiency=0.9,qcurvature=0.0,hcurvature=0.0)
+    qbox=(1.0,2.0);hbox=(0.1,10.0);etabox=(0.0,1.0)
+    tighthead,tighteta=ProductHull._tighten_on_boxes(g,qbox,hbox,etabox,0.05,1.0)
+    limitinghead=0.05/(0.00981*2*0.9)
+    @test hbox[1]<tighthead[1]<limitinghead
+    @test tighthead[1]≈limitinghead rtol=1e-9
+    @test tighteta[1]<0.9<tighteta[2]
+    @test tighteta[2]-tighteta[1]<3e-10
+    @test ProductHull._tighten_on_boxes(g,qbox,hbox,etabox,0.0,1.0)[1]==hbox
+    @test ProductHull._tighten_on_boxes(g,qbox,hbox,etabox,0.05,0.0)[1]==hbox
+    m=Model();@variable(m,0<=q<=2);@variable(m,-20<=h<=10)
+    eta=@variable(m,lower_bound=-2,upper_bound=1.2,base_name="eta_1_1")
+    @variable(m,0<=p<=1);@variable(m,u,Bin)
+    system=HydroSystem(reservoirs=Reservoir[],junctions=Junction[],boundaries=Boundary[],
+        tunnels=Tunnel[],rivers=River[],plants=[Plant(name=:Plant,source=:Source,target=:Target,pmax=1.0)],
+        generators=[g])
+    c=ScheduleCase(name="tight_hull",system=system,grid=[0.0,1.0],prices=[1.0])
+    b=(m=m,u=reshape([u],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),shared_heads=Dict((:Plant,1)=>h))
+    profile=add_product_hull!(b,c;lower_power=true,tighten_on_box=true)
+    @test profile["tighten_on_box"]
+    @test profile["variables_added"]==10
+    @test only(values(m.ext[:product_hull])).axes[2][1]==tighthead[1]
+    for (uv,qv,hv,ev) in ((1.0,2.0,limitinghead,0.9),(1.0,1.5,5.0,0.9),
+        (0.0,0.0,-20.0,-2.0),(0.0,0.0,-1.0,1.2))
+        assigned=Dict(q=>qv,h=>hv,eta=>ev,p=>0.00981*qv*hv*ev,u=>uv)
+        foreach(lift!->lift!(assigned),m.ext[:experiment_start_lifters])
+        @test length(assigned)==num_variables(m)
+        @test hull_residual(m,assigned)<1e-12
+    end
+end
+
 @testset "Joint power hull contains physical on/off points" begin
     for lower_power in (false,true),boxes in (
         ((1.0,2.0),(2.0,5.0),(0.3,0.9)),

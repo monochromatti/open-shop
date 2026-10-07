@@ -26,7 +26,7 @@ jobs:
       BENCHMARK_CASE: ${{ matrix.case }}
       BENCHMARK_SECONDS: ${{ inputs.seconds }}
       BENCHMARK_REPEATS: ${{ inputs.repeats }}
-      BENCHMARK_PROFILES: baseline,product_hull,product_both,product_energy
+      BENCHMARK_PROFILES: baseline,product_hull,product_both,product_tight
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: julia-actions/setup-julia@v3.0.2
@@ -57,7 +57,7 @@ jobs:
             analytic) input=benchmark/cases/distributed-rivers.json ;;
             *) hours="${BENCHMARK_CASE##*-}"; input="results/inputs/tokke_vinje_${hours%h}h.json" ;;
           esac
-          julia --pkgimages=no --project=. benchmark/coupled_profile.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS" "$BENCHMARK_PROFILES" true
+          julia --pkgimages=no --project=. benchmark/coupled_profile.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS" "$BENCHMARK_PROFILES" false
       - name: Upload scalar measurements
         if: always()
         uses: actions/upload-artifact@v4

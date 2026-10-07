@@ -133,6 +133,7 @@ const ROOT_PROFILES=Dict{String,Vector{Pair{String,Any}}}(
     "product_hull"=>[],
     "product_both"=>[],
     "product_energy"=>[],
+    "product_tight"=>[],
 )
 
 function profile_transform(profile)
@@ -142,6 +143,7 @@ function profile_transform(profile)
     profile=="product_hull" && return add_product_hull!
     profile=="product_both" && return (b,c)->add_product_hull!(b,c;lower_power=true)
     profile=="product_energy" && return (b,c)->begin add_product_hull!(b,c;lower_power=true);add_network_energy!(b,c) end
+    profile=="product_tight" && return (b,c)->add_product_hull!(b,c;lower_power=true,tighten_on_box=true)
     nothing
 end
 

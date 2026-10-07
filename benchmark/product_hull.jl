@@ -7,6 +7,59 @@ _value(x,assigned)=x isa Number ? Float64(x) : JuMP.value(v->assigned[v],x)
 _bounds(v)=is_fixed(v) ? (fix_value(v),fix_value(v)) : (lower_bound(v),upper_bound(v))
 _fixed_off(u)=u isa Number ? u==0 : is_fixed(u)&&fix_value(u)==0
 
+function _outward_bounds(lo,hi)
+    slack=1e-10*max(1.0,abs(lo),abs(hi))
+    (lo-slack,hi+slack)
+end
+
+# Conditional ranges change only the on-state box; the source graph and its
+# full off-inclusive bounds remain intact. Between head knots the graph is
+# linear, so discharge-polynomial extrema at the head knots bound the box.
+function _conditional_eta_bounds(g,qbox,hbox)
+    if g.turbine_table===nothing
+        return _outward_bounds(OpenSHOP._global_analytic_eta_bounds(g,qbox...,hbox...)...)
+    end
+    table=g.turbine_table
+    qs=OpenSHOP._global_tensor_nodes(table.discharge,qbox...)
+    hs=OpenSHOP._global_tensor_nodes(table.heads,hbox...)
+    lo=Inf;hi=-Inf
+    for h in hs
+        if length(qs)==1
+            value=OpenSHOP.turbine_efficiency(table,only(qs),h;extrapolation=:linear)
+            lo=min(lo,value);hi=max(hi,value)
+        else
+            for i in 1:(length(qs)-1)
+                polynomial=OpenSHOP._global_tensor_polynomial(table,qs[i],qs[i+1],h)
+                a,b=OpenSHOP._global_polynomial_range(polynomial,0.0,1.0)
+                lo=min(lo,a);hi=max(hi,b)
+            end
+        end
+    end
+    _outward_bounds(lo,hi)
+end
+
+function _tighten_on_boxes(g,qbox,hbox,etabox,pmin,electrical_max)
+    function restrict_eta(headbox,previous)
+        lo,hi=_conditional_eta_bounds(g,qbox,headbox)
+        all(isfinite,(lo,hi)) || return previous
+        (max(previous[1],lo),min(previous[2],hi))
+    end
+    etabox=restrict_eta(hbox,etabox)
+    etabox[1]<=etabox[2] || return hbox,etabox
+    electrical_upper=_outward_bounds(electrical_max,electrical_max)[2]
+    denominator=0.00981*qbox[2]*etabox[2]*electrical_upper
+    if pmin>0 && electrical_max>0 && isfinite(denominator) && denominator>0
+        headlo=pmin/denominator
+        if isfinite(headlo)
+            # Guard downward: rounding must not exclude the limiting on point.
+            headlo-=1e-10*max(1.0,abs(headlo))
+            hbox=(max(hbox[1],headlo),hbox[2])
+            hbox[1]<=hbox[2] && (etabox=restrict_eta(hbox,etabox))
+        end
+    end
+    hbox,etabox
+end
+
 function _binary_product_rows!(m,z,u,x,lo,hi)
     @constraint(m,z>=lo*u)
     @constraint(m,z<=hi*u)
@@ -39,8 +92,10 @@ end
 On-state head and efficiency moments are linked to the original variables using
 their full off-inclusive bounds. Corner weights add no new integer decisions.
 The original turbine graphs and nonlinear electrical power equality remain.
+With `tighten_on_box=true`, exact conditional efficiency ranges and a guarded
+minimum-power head bound shrink only the box used by the added corner rows.
 """
-function add_product_hull!(b,c;lower_power=false,selected=nothing,max_units=typemax(Int))
+function add_product_hull!(b,c;lower_power=false,tighten_on_box=false,selected=nothing,max_units=typemax(Int))
     max_units>=0 || throw(ArgumentError("product-hull size limit must be nonnegative"))
     m=b.m
     haskey(m.ext,:product_hull) && throw(ArgumentError("product hull has already been added"))
@@ -82,6 +137,12 @@ function add_product_hull!(b,c;lower_power=false,selected=nothing,max_units=type
         if isempty(electrical)||!all(isfinite,electrical)||minimum(electrical)<0
             skipped["electrical"]+=1;continue
         end
+        if tighten_on_box
+            hbox,etabox=_tighten_on_boxes(g,qbox,hbox,etabox,plo,maximum(electrical))
+            if hbox[1]>hbox[2] || etabox[1]>etabox[2]
+                skipped["empty_on_box"]+=1;continue
+            end
+        end
         if length(records)>=max_units
             skipped["size"]+=1;continue
         end
@@ -93,6 +154,7 @@ function add_product_hull!(b,c;lower_power=false,selected=nothing,max_units=type
         "constraints_added"=>num_constraints(m;count_variable_in_set_constraints=false)-before_constraints,
         "corner_weights"=>sum(length(r.weights) for r in values(records);init=0),
         "unit_names"=>sort!(collect(keys(records))),"skipped"=>skipped)
+    tighten_on_box && (profile["tighten_on_box"]=true)
     m.ext[:product_hull_profile]=profile
     !isempty(records) && push!(get!(m.ext,:experiment_start_lifters,Any[]),
         assigned->lift_product_hull!(m,assigned))
