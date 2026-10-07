@@ -166,6 +166,13 @@ can overrun it and are included in `total_seconds`. Julia compilation is also
 included if this is the first call in a process.
 """
 function solve(
+    c::ScheduleCase; kwargs...,
+)
+    _solve(c; kwargs...)
+end
+
+# Private hooks exist only on the archived experiment branch.
+function _solve(
     c::ScheduleCase;
     time_limit = 60.0,
     relative_gap = 1e-3,
@@ -174,6 +181,8 @@ function solve(
     fixed_u = nothing,
     replay = true,
     diagnostics_path = nothing,
+    model_transform = nothing,
+    optimizer_setup = nothing,
 )
     isfinite(time_limit) && time_limit > 0 ||
         throw(ArgumentError("positive finite time_limit required"))
@@ -215,6 +224,7 @@ function solve(
         result["initial_objective"] = best["objective"]
     end
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u)
+    model_transform !== nothing && model_transform(b, c)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
@@ -272,6 +282,7 @@ function solve(
         result["solve_seconds"] = @elapsed try
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
+            optimizer_setup !== nothing && optimizer_setup(b)
             remaining_after_copy=max(0.,time_limit-(time()-began))
             set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
             if diagnostics_path!==nothing
