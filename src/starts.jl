@@ -189,6 +189,9 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
         end
         _lift_power_hulls!(b.m, assigned)
+        for lift! in get(b.m.ext, :experiment_start_lifters, [])
+            lift!(assigned)
+        end
         for (variable, val) in assigned
             set_start_value(variable, val)
         end

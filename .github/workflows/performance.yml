@@ -9,12 +9,20 @@ on:
       repeats:
         type: string
         default: '2'
+      profiles:
+        description: Comma-separated experimental profiles
+        type: string
+        default: 'baseline,head,discharge,axes,axes_gate'
+      capture:
+        description: Capture validated root LP events
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +34,8 @@ jobs:
       BENCHMARK_CASE: ${{ matrix.case }}
       BENCHMARK_SECONDS: ${{ inputs.seconds }}
       BENCHMARK_REPEATS: ${{ inputs.repeats }}
+      BENCHMARK_PROFILES: ${{ inputs.profiles }}
+      BENCHMARK_CAPTURE: ${{ inputs.capture }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: julia-actions/setup-julia@v3.0.2
@@ -36,6 +46,8 @@ jobs:
           delete-old-caches: false
       - name: Instantiate
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Validate table-aware power bounds
+        run: julia --pkgimages=no --project=. benchmark/table_power_tests.jl
       - name: Construct operating case
         if: matrix.case != 'pchip' && matrix.case != 'analytic'
         run: |
@@ -47,18 +59,21 @@ jobs:
             hours="${BENCHMARK_CASE##*-}"
             python3 examples/tokke_vinje/import.py --hours "${hours%h}" --output results/inputs
           fi
-      - name: Benchmark the production solver
+      - name: Benchmark matched experimental profiles
         run: |
           case "$BENCHMARK_CASE" in
             pchip) input=benchmark/cases/turbine-tables.json ;;
             analytic) input=benchmark/cases/distributed-rivers.json ;;
             *) hours="${BENCHMARK_CASE##*-}"; input="results/inputs/tokke_vinje_${hours%h}h.json" ;;
           esac
-          julia --pkgimages=no --project=. benchmark/run.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS"
+          julia --pkgimages=no --project=. benchmark/table_power_profile.jl "$input" results/benchmarks "$BENCHMARK_SECONDS" "$BENCHMARK_REPEATS" "$BENCHMARK_PROFILES" "$BENCHMARK_CAPTURE"
       - name: Upload scalar measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-${{ matrix.case }}
-          path: results/benchmarks/summary.json
+          name: table-power-${{ matrix.case }}
+          path: |
+            results/benchmarks/summary.json
+            results/benchmarks/*.log
+            results/benchmarks/*.statistics.json
           if-no-files-found: warn
