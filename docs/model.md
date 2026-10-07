@@ -203,6 +203,35 @@ scope as the existing polynomial bounds. See the
 [coupled relaxation benchmarks](coupled-relaxations.md) for the measured benefit
 and small-case cost.
 
+Table-coordinate power bounds also couple the complete power polynomial to the
+existing head and discharge weights. Write
+`F(q,h)=0.00981 e_max q h eta_turbine(q,h)` on the conditional running domain.
+For each fixed slope `a`, head-node coefficients start as guarded upper bounds
+on `max_q(F(q,h_j)−a q)`. A Bernstein bound on each original cell's residual
+against the nodal chord raises both endpoint coefficients enough to cover
+intermediate head values. The resulting row is
+
+```math
+P\le a q+u\sum_j c_j\mu_j.
+```
+
+Discharge-node coefficients similarly bound `max_h(F(q_i,h)−b h)`, with certified
+cell corrections. Their rows use the existing `h_on` auxiliary:
+
+```math
+P\le b h_{on}+u\sum_i d_i\lambda_i.
+```
+
+Each signed nodal sum is multiplied by the existing commitment binary using a
+bounded continuous auxiliary and its four linear binary-product hull rows.
+This retains off-state head freedom and adds no binary decisions. Fixed states
+and constant sums simplify directly. Four slopes on each axis give eight
+supporting power rows per applicable unit and interval. Merely joining raw
+nodal bounds is unsafe when power peaks between table knots; the cell correction
+is part of the construction. These bounds reuse the exact table coordinates
+and preserve the original nonlinear power equality. See the
+[table-coordinate comparison](table-power-bounds.md) for the selection and cost.
+
 Complete starting schedules and returned solver solutions are checked for
 SOS2 adjacency and unit integrality. Tiny solver leakage at an off unit is
 removed before physical reconstruction; larger violations reject the controls.

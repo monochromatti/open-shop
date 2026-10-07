@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3
+
+- Added gated power supports tied to existing head and discharge table coordinates, preserving the exact nonlinear equations and adding no binary decisions.
+- Selected one construction after 90 accepted matched measurements. Repeated five-minute operating comparisons reduced the mean gap by 21.8% with unchanged objectives; small PCHIP certification takes about 0.16 seconds longer.
+- Added typed gate records, complete start lifting and regression checks for polynomial extensions, operational limits, electrical efficiency maxima and singleton domains.
+- Published the table-coordinate comparison and archived quadratic curvature and smaller alternatives without public solver modes.
+
 ## 0.4.2
 
 - Strengthened exact nonlinear power with a joint discharge/head/efficiency envelope and safe conditional on-state bounds, without new binary decisions.

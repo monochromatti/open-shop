@@ -13,7 +13,10 @@ The architecture comparison below describes version 0.4.0. The subsequent
 [root relaxation study](performance.md) adds the production power bounds and
 reports their matched performance separately. Version 0.4.2 then adds the
 selected joint power envelope; its [coupled-relaxation comparison](coupled-relaxations.md)
-reports the proof gain and small-case overhead.
+reports the proof gain and small-case overhead. The subsequent
+[table-coordinate comparison](table-power-bounds.md) selects gated table supports
+for version 0.4.3. Its repeated comparisons reduce the mean operating gap by
+21.8% against 0.4.2, with unchanged delivered objectives.
 
 ## Final matched comparison
 
