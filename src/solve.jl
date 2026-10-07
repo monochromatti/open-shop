@@ -241,6 +241,7 @@ function solve(
         "river_table_cell_binaries"=>count(n->startswith(n,"river_law_") && occursin("_cell[",n),binary_names),
         "bounds_seconds"=>b.bounds_seconds,
         "shared_head_entries"=>length(b.shared_heads),
+        "power_hull_units"=>length(get(b.m.ext,:global_power_hulls,Dict())),
         "head_variables_saved"=>length(c.system.generators)*length(c.prices)-length(b.shared_heads))
     result["variable_count"] = num_variables(b.m)
     result["constraint_count"] =

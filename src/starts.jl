@@ -188,6 +188,10 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("wet_root_$(i)_$(t)", sqrt(wet))
             put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
         end
+        _lift_power_hulls!(b.m, assigned)
+        for (variable, val) in assigned
+            set_start_value(variable, val)
+        end
         missing=[name(v) for v in variables if !haskey(assigned, v)]
         isempty(missing) ||
             return Dict("valid"=>false, "missing"=>missing, "assigned"=>length(assigned))

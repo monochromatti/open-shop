@@ -66,3 +66,5 @@ include("diagnostics_tests.jl")
 include("tensor_table_tests.jl")
 
 include("power_bounds_tests.jl")
+include("power_hull_tests.jl")
+include("power_hull_start_tests.jl")

@@ -702,18 +702,6 @@ function _build_global_dispatch(
             set_start_value(a[i, t], warm["gate"][i, t])
         end
     end
-    for variable in all_variables(m)
-        bounded=is_binary(variable) || (
-            is_fixed(variable) ? isfinite(fix_value(variable)) :
-            has_lower_bound(variable) &&
-            has_upper_bound(variable) &&
-            isfinite(lower_bound(variable)) &&
-            isfinite(upper_bound(variable))
-        )
-        bounded || throw(
-            ArgumentError("global solver requires finite bounds for $(name(variable))"),
-        )
-    end
     b=(;
         m,
         obj,
@@ -738,5 +726,18 @@ function _build_global_dispatch(
         node_bounds,
     )
     _add_power_bounds!(b,c)
+    joint && _add_power_hull!(b,c)
+    for variable in all_variables(m)
+        bounded=is_binary(variable) || (
+            is_fixed(variable) ? isfinite(fix_value(variable)) :
+            has_lower_bound(variable) &&
+            has_upper_bound(variable) &&
+            isfinite(lower_bound(variable)) &&
+            isfinite(upper_bound(variable))
+        )
+        bounded || throw(
+            ArgumentError("global solver requires finite bounds for $(name(variable))"),
+        )
+    end
     b
 end
