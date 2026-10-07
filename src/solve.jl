@@ -242,6 +242,7 @@ function solve(
         "bounds_seconds"=>b.bounds_seconds,
         "shared_head_entries"=>length(b.shared_heads),
         "power_hull_units"=>length(get(b.m.ext,:global_power_hulls,Dict())),
+        "table_power_units"=>get(get(b.m.ext,:global_table_power_bounds_profile,Dict()),"units_added",0),
         "head_variables_saved"=>length(c.system.generators)*length(c.prices)-length(b.shared_heads))
     result["variable_count"] = num_variables(b.m)
     result["constraint_count"] =

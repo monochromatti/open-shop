@@ -26,6 +26,7 @@ include("schedule.jl")
 include("global_bounds.jl")
 include("power_bounds.jl")
 include("power_hull.jl")
+include("table_power_bounds.jl")
 include("global_model.jl")
 include("solve.jl")
 export Reservoir,

@@ -727,6 +727,7 @@ function _build_global_dispatch(
     )
     _add_power_bounds!(b,c)
     joint && _add_power_hull!(b,c)
+    joint && _add_table_power_bounds!(b,c)
     for variable in all_variables(m)
         bounded=is_binary(variable) || (
             is_fixed(variable) ? isfinite(fix_value(variable)) :

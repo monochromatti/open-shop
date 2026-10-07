@@ -189,6 +189,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
         end
         _lift_power_hulls!(b.m, assigned)
+        _lift_table_power_bounds!(b.m, assigned)
         for (variable, val) in assigned
             set_start_value(variable, val)
         end
