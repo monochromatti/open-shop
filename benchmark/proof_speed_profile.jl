@@ -184,6 +184,7 @@ function proof_profile(input, output; seconds=120.0, repeats=1,
                 if profile == "shared_cuts"
                     isdefined(@__MODULE__, :install_targeted_supports) || error("targeted supports installer unavailable")
                     separator[] = install_targeted_supports(b, c)
+                    Base.precompile(SCIP.exec_lp, (typeof(separator[]),))
                 end
                 if capture
                     optimizer = unsafe_backend(b.m)
@@ -262,6 +263,8 @@ function proof_profile(input, output; seconds=120.0, repeats=1,
                 get(result, key, nothing) === nothing || error("$(key): $(result[key])")
             end
             isempty(row["bound_event_errors"]) || error("native bound observer failed")
+            sepstats=row["targeted_supports"]
+            sepstats===nothing || isempty(sepstats["errors"]) || error("targeted support separator failed")
         catch exception
             row["experiment_error"] = sprint(showerror, exception)
             haskey(row, "status") || (row["status"] = "EXPERIMENT_ERROR")

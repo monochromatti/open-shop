@@ -47,7 +47,8 @@ jobs:
       - name: Instantiate
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Validate experimental formulations
-        run: julia --pkgimages=no --project=. benchmark/proof_speed_tests.jl
+        run: |
+          julia --pkgimages=no --project=. -e 'include("benchmark/proof_speed_tests.jl"); isfile("benchmark/targeted_power_supports_tests.jl") && include("benchmark/targeted_power_supports_tests.jl")'
       - name: Construct operating case
         if: matrix.case != 'pchip' && matrix.case != 'analytic'
         run: |
