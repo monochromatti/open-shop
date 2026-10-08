@@ -29,7 +29,7 @@ for stage,folder in [item.split('=',1) for item in sys.argv[1:]]:
    compact['nonlinear_handlers']={k:v for k,v in native.get('nlhdlr',{}).get('plugins',{}).items() if k in ('bilinear','default','perspective')}
    row['native_statistics']=compact
    stats=path.parent/(row['profile']+'-'+row['commitment']+'-'+str(row['repeat'])+'.log.statistics.json')
-  row['native_statistics_sha256']=hashlib.sha256(stats.read_bytes()).hexdigest()
+   row['native_statistics_sha256']=hashlib.sha256(stats.read_bytes()).hexdigest()
    row.update(stage=stage,revision=revision,workflow='https://github.com/monochromatti/open-shop/actions/runs/'+workflow,artifact=path.parent.name)
    measurements.append(row)
   checks.append(dict(stage=stage,artifact=path.parent.name,records=len(rows),best_audited_objective=lower))
