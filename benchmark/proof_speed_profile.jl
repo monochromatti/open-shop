@@ -14,10 +14,19 @@ const PROOF_PROFILES = Dict{String,NamedTuple{(:policy, :parameters),Tuple{Symbo
     "discharge_affine" => (policy=:discharge_affine, parameters=Pair{String,Any}[]),
     "shared" => (policy=:shared, parameters=Pair{String,Any}[]),
     "shared_cuts" => (policy=:shared, parameters=Pair{String,Any}[]),
+    "shared_cuts_no_bilin" => (policy=:shared, parameters=Pair{String,Any}["propagating/obbt/createbilinineqs"=>false]),
+    "shared_cuts_wide" => (policy=:shared, parameters=Pair{String,Any}[]),
+    "shared_cuts_wide_no_bilin" => (policy=:shared, parameters=Pair{String,Any}["propagating/obbt/createbilinineqs"=>false]),
     "shared_no_bilin" => (policy=:shared, parameters=Pair{String,Any}["propagating/obbt/createbilinineqs"=>false]),
     "shared_filter" => (policy=:shared, parameters=Pair{String,Any}["propagating/obbt/applyfilterrounds"=>true]),
     "shared_no_bilin_filter" => (policy=:shared, parameters=Pair{String,Any}[
         "propagating/obbt/createbilinineqs"=>false, "propagating/obbt/applyfilterrounds"=>true]))
+
+const TARGETED_PROFILE_OPTIONS = Dict(
+    "shared_cuts_wide" => (max_cuts=128,max_rounds=8,max_cuts_per_round=32,
+        max_coordinates_per_round=32,max_coordinate_checks=256),
+    "shared_cuts_wide_no_bilin" => (max_cuts=128,max_rounds=8,max_cuts_per_round=32,
+        max_coordinates_per_round=32,max_coordinate_checks=256))
 
 const PROOF_GAP_THRESHOLDS = (0.10, 0.08, 0.07, 0.06, 0.05, 0.01, 0.0001)
 
@@ -181,9 +190,9 @@ function proof_profile(input, output; seconds=120.0, repeats=1,
                 for (key, val) in config.parameters
                     set_optimizer_attribute(b.m, key, val)
                 end
-                if profile == "shared_cuts"
+                if startswith(profile, "shared_cuts")
                     isdefined(@__MODULE__, :install_targeted_supports) || error("targeted supports installer unavailable")
-                    separator[] = install_targeted_supports(b, c)
+                    separator[] = install_targeted_supports(b, c; get(TARGETED_PROFILE_OPTIONS,profile,(;))...)
                     Base.precompile(SCIP.exec_lp, (typeof(separator[]),))
                 end
                 if capture
