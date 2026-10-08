@@ -191,6 +191,7 @@ function proof_profile(input, output; seconds=120.0, repeats=1,
                     observer = ProofBounds(optimizer, started_ns[], audited_lower,
                         NamedTuple{(:seconds,:upper,:native_seconds,:run),Tuple{Float64,Float64,Float64,Int}}[],
                         0, 0, true, 0.0, 0.0, String[])
+                    Base.precompile(SCIP.eventexec, (typeof(observer),))
                     SCIP.include_event_handler(optimizer.inner, observer; desc="Global proof-bound timing")
                     event[] = observer
                 end
