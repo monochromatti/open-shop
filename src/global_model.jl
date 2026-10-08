@@ -29,6 +29,7 @@ function _build_global_dispatch(
     fixed_u = nothing,
     free_mask = nothing,
     transport = nothing,
+    table_power_policy = :baseline,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -727,7 +728,7 @@ function _build_global_dispatch(
     )
     _add_power_bounds!(b,c)
     joint && _add_power_hull!(b,c)
-    joint && _add_table_power_bounds!(b,c)
+    joint && _add_table_power_bounds!(b,c;policy=table_power_policy)
     for variable in all_variables(m)
         bounded=is_binary(variable) || (
             is_fixed(variable) ? isfinite(fix_value(variable)) :
