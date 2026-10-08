@@ -271,6 +271,7 @@ function solve(
                 "numerics/feastol" => 1e-8,
                 "parallel/maxnthreads" => 1,
                 "propagating/obbt/createbilinineqs" => false,
+                "propagating/obbt/itlimitfactor" => 1.0,
             ),
         )
         power_cuts=nothing

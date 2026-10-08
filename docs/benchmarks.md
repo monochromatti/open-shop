@@ -24,6 +24,12 @@ reports 138 accepted experiments and selects one configuration. Its repeated
 five-minute operating mean gap falls from 7.183% to 6.494% against 0.4.3, with
 unchanged delivered objectives and faster time to common partial gaps.
 
+Version 0.4.5 reduces ordinary OBBT's iteration allowance after 78 further
+matched runs. Its [root-proof comparison](root-proof.md) reports 14.2× and 2.3×
+faster attainment of the control's common final upper bound at 2 and 6 hours.
+The 24-hour bounds remain nearly unchanged, including a small ordinary-case
+regression. Joint envelope cuts did not earn a production change.
+
 ## Final matched comparison
 
 These are free-commitment results with a 300-second allowance and a 0.01%

@@ -72,6 +72,9 @@ hydraulic head and compatible table coordinates. Fixed unit states restrict
 table domains to their physical branch. Shared on-state weights, a joint power
 envelope and a bounded separator for certified power supports strengthen SCIP's
 relaxation while retaining the exact equations.
+Ordinary bound tightening uses a smaller iteration allowance to improve proof
+progress on shorter horizons; larger watercourses can still spend the full
+budget at the root. See the [root-proof comparison](docs/root-proof.md).
 See the [benchmark results](docs/benchmarks.md) and
 [coupled relaxation experiments](docs/coupled-relaxations.md) for measured schedule,
 bound and runtime tradeoffs.

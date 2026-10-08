@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5
+
+- Reduced SCIP's ordinary OBBT iteration multiplier from 10 to 1, retaining its filtering, minimum allowance and generalized bounds.
+- Selected the change after 78 accepted matched measurements. Time to the control's common final bound falls from 299.51 to 21.10 seconds at 2 hours and from 292.61 to 126.03 seconds at 6 hours, with unchanged objectives.
+- Published the nearly unchanged 24-hour results and small ordinary-horizon regression. Operating global proofs remain unfinished.
+- Tested certified joint power-cut LPs and a cumulative root budget, retaining the simpler production path and archiving the alternatives.
+
 ## 0.4.4
 
 - Replaced independent power gates with shared on-state turbine coordinates, preserving binary branches and the exact nonlinear equations.
