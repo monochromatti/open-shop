@@ -12,6 +12,13 @@ for row in rows
     row["cpu_name"]=Sys.CPU_NAME;row["kernel"]=string(Sys.KERNEL)
 end
 writejson(joinpath(output,"summary.json"),rows)
-all(row->get(row,"status","")!="BENCHMARK_ERROR" && get(row,"accepted",false) &&
-    get(get(row,"start_audit",Dict()),"valid",false),rows) ||
-    error("benchmark lacks an accepted schedule or complete initial lift; inspect summary.json")
+function benchmark_valid(row)
+    statistics=get(row,"power_cut_statistics",nothing)
+    cuts_valid=statistics===nothing || (isempty(statistics["errors"]) && statistics["infeasible_flags"]==0)
+    upper=get(row,"global_bound",nothing)
+    get(row,"accepted",false) && get(get(row,"start_audit",Dict()),"valid",false) &&
+        upper!==nothing && isfinite(upper) && get(row,"bound_consistent_with_known_schedule",false) &&
+        get(row,"power_cut_statistics_error",nothing)===nothing && cuts_valid
+end
+all(benchmark_valid,rows) ||
+    error("benchmark lacks an audited schedule, complete start, or usable global bound; inspect summary.json")

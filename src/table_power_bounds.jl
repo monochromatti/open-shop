@@ -1,7 +1,26 @@
-struct _TablePowerGateRecord
-    z::VariableRef
+const _TablePowerTerm = Union{Float64,VariableRef,AffExpr}
+
+struct _TablePowerCoordinateRecord
+    onweights::Vector{VariableRef}
     u::VariableRef
-    expression::AffExpr
+    weights::Vector{VariableRef}
+end
+
+struct _TablePowerSupportCoordinate
+    unit::Int
+    interval::Int
+    axis::Symbol
+    table::TurbineTable
+    qbox::NTuple{2,Float64}
+    hbox::NTuple{2,Float64}
+    electrical_max::Float64
+    nodes::Vector{Float64}
+    onweights::Vector{_TablePowerTerm}
+    term::_TablePowerTerm
+    power::_TablePowerTerm
+    commitment::_TablePowerTerm
+    discharge::_TablePowerTerm
+    onhead::_TablePowerTerm
 end
 
 const _TABLE_POWER_FRACTIONS=(0.25,0.5,0.75,1.0)
@@ -64,39 +83,48 @@ function _table_power_discharge_coefficients(table,qbox,hbox,nodes,em,b,support)
     base.+correction
 end
 
-function _table_power_intercept!(m,c,weights,u,name,records)
-    # The coordinate weights sum to one, including singleton coordinates.
-    if all(==(first(c)),c)
-        return first(c)*u
-    end
-    expression=sum(c[j]*weights[j] for j in eachindex(c))
+function _table_power_onweights!(m,coordinate,u,moment,name,records;affine=false)
     known=u isa Number ? u : is_fixed(u) ? fix_value(u) : nothing
-    known!==nothing && return known*expression
-    lo,hi=extrema(c)
-    z=@variable(m,lower_bound=min(0.0,lo),upper_bound=max(0.0,hi),base_name="$(name)_on")
-    @constraint(m,z>=lo*u)
-    @constraint(m,z<=hi*u)
-    @constraint(m,z>=expression-hi*(1-u))
-    @constraint(m,z<=expression-lo*(1-u))
-    push!(records,_TablePowerGateRecord(z,u,expression))
-    z
+    if known!==nothing
+        return known==0 ? _TablePowerTerm[0.0 for _ in coordinate.weights] :
+            _TablePowerTerm[known==1 ? w : known*w for w in coordinate.weights]
+    end
+    length(coordinate.nodes)==1 && return _TablePowerTerm[u]
+    if affine && first(coordinate.nodes)==0.0 && all(>(0.0),coordinate.nodes[2:end])
+        # Zero discharge has the unique coordinate vector (1,0,...), so its
+        # on-state weights are affine and need no additional variables.
+        @constraint(m,sum(coordinate.weights[2:end])<=u)
+        return _TablePowerTerm[coordinate.weights[1]+u-1;coordinate.weights[2:end]]
+    end
+    n=length(coordinate.nodes)
+    z=@variable(m,[1:n],lower_bound=0,upper_bound=1,base_name="$(name)_onweight")
+    @constraint(m,[j=1:n],z[j]<=coordinate.weights[j])
+    @constraint(m,sum(z)==u)
+    @constraint(m,sum((coordinate.nodes[j]-coordinate.nodes[1])*z[j] for j in 2:n)==
+        moment-coordinate.nodes[1]*u)
+    push!(records,_TablePowerCoordinateRecord(z,u,coordinate.weights))
+    _TablePowerTerm[z...]
 end
 
 function _lift_table_power_bounds!(m,assigned)
-    records=get(m.ext,:global_table_power_gates,nothing)
+    records=get(m.ext,:global_table_power_coordinates,nothing)
     records===nothing && return assigned
-    for record in records::Vector{_TablePowerGateRecord}
-        assigned[record.z]=_table_power_value(record.u,assigned)*_table_power_value(record.expression,assigned)
+    for record in records::Vector{_TablePowerCoordinateRecord}
+        state=_table_power_value(record.u,assigned)
+        for j in eachindex(record.onweights)
+            assigned[record.onweights[j]]=state*_table_power_value(record.weights[j],assigned)
+        end
     end
     assigned
 end
 
-"""Add gated power supports on both existing turbine-table SOS2 coordinates.
+"""Add power supports using shared on-state turbine-table coordinates.
 
 Nodal intercepts enclose exact turbine power on the conditional on-state box.
 A guarded polynomial certificate raises adjacent intercepts to cover the
-interpolation residual. Binary-product rows gate signed intercepts off, while
-retaining the original table graphs and nonlinear power equations.
+interpolation residual. Shared weights sum to commitment and retain the
+existing on-state moment, preserving signed intercepts and off-state heads.
+The original table graphs and nonlinear power equations remain intact.
 """
 function _add_table_power_bounds!(b,c)
     began=time_ns()
@@ -105,7 +133,8 @@ function _add_table_power_bounds!(b,c)
         throw(ArgumentError("table power bounds have already been added"))
     tensors=get(m.ext,:global_tensor_turbines,nothing)
     hulls=get(m.ext,:global_power_hulls,nothing)
-    records=_TablePowerGateRecord[]
+    records=_TablePowerCoordinateRecord[]
+    supports=_TablePowerSupportCoordinate[]
     before_variables=num_variables(m)
     before_constraints=num_constraints(m;count_variable_in_set_constraints=false)
     support,evaluations,hits,certificate_seconds=_table_power_support_cache()
@@ -148,23 +177,29 @@ function _add_table_power_bounds!(b,c)
             if !all(v->all(isfinite,v),coefficients) || !all(isfinite,slopes)
                 skipped["nonfinite"]+=1;continue
             end
+            onweights=_table_power_onweights!(m,coordinate,u,
+                axis==:head ? hull.onhead : b.GQ[i,t],"table_power_$(axis)_$(i)_$(t)",records;
+                affine=axis==:discharge)
+            term=axis==:head ? b.GQ[i,t] : hull.onhead
+            push!(supports,_TablePowerSupportCoordinate(i,t,axis,g.turbine_table,qbox,hbox,em,
+                coordinate.nodes,onweights,term,b.P[i,t],u isa Number ? Float64(u) : u,
+                b.GQ[i,t],hull.onhead))
             for k in eachindex(slopes)
-                n="table_power_$(axis)_$(i)_$(t)_$(k)"
-                term=slopes[k]*(axis==:head ? b.GQ[i,t] : hull.onhead)
-                intercept=_table_power_intercept!(m,coefficients[k],coordinate.weights,u,n,records)
-                @constraint(m,(b.P[i,t]-term-intercept)/40<=0)
+                intercept=sum(coefficients[k][j]*onweights[j] for j in eachindex(onweights))
+                @constraint(m,(b.P[i,t]-slopes[k]*term-intercept)/40<=0)
                 axis==:head ? (head_rows+=1) : (discharge_rows+=1)
             end
             added=true
         end
         added && (units+=1)
     end
-    m.ext[:global_table_power_gates]=records
-    profile=Dict("axes"=>"both","gate"=>true,"units_added"=>units,
+    m.ext[:global_table_power_coordinates]=records
+    m.ext[:global_table_power_supports]=supports
+    profile=Dict("axes"=>"both","on_state_coordinates"=>"shared","units_added"=>units,
         "head_rows"=>head_rows,"discharge_rows"=>discharge_rows,
         "variables_added"=>num_variables(m)-before_variables,
         "constraints_added"=>num_constraints(m;count_variable_in_set_constraints=false)-before_constraints,
-        "gates_added"=>length(records),"certificate_evaluations"=>evaluations[],
+        "shared_coordinates"=>length(records),"certificate_evaluations"=>evaluations[],
         "certificate_cache_hits"=>hits[],"certificate_seconds"=>certificate_seconds[],
         "setup_seconds"=>(time_ns()-began)/1e9,"skipped"=>skipped)
     m.ext[:global_table_power_bounds_profile]=profile

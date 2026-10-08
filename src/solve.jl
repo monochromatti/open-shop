@@ -192,6 +192,7 @@ function solve(
         "solution" => nothing,
         "feasible_lower_bound" => nothing,
         "global_bound" => nothing,
+        "power_cut_statistics" => nothing,
         "relative_gap" => nothing,
         "absolute_gap" => nothing,
         "commitment_fixed" => fixed_u !== nothing,
@@ -269,11 +270,16 @@ function solve(
                 "limits/absgap" => absolute_gap / 10000,
                 "numerics/feastol" => 1e-8,
                 "parallel/maxnthreads" => 1,
+                "propagating/obbt/createbilinineqs" => false,
             ),
         )
+        power_cuts=nothing
         result["solve_seconds"] = @elapsed try
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
+            if !isempty(get(b.m.ext,:global_table_power_supports,_TablePowerSupportCoordinate[]))
+                power_cuts=_install_power_cuts!(b,c)
+            end
             remaining_after_copy=max(0.,time_limit-(time()-began))
             set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
             if diagnostics_path!==nothing
@@ -285,6 +291,13 @@ function solve(
         end
         result["status"] = string(termination_status(b.m))
         result["primal_status"] = string(primal_status(b.m))
+        if power_cuts!==nothing
+            try
+                result["power_cut_statistics"]=_power_cut_statistics(power_cuts)
+            catch error
+                result["power_cut_statistics_error"]=sprint(showerror,error)
+            end
+        end
         result["scip_diagnostics"]=_scip_diagnostics(b.m)
         if diagnostics_path!==nothing
             try
@@ -310,6 +323,7 @@ function solve(
             upper=nothing
         end
         result["global_bound"] = upper
+        _reject_power_cut_bound!(result)
         if result_count(b.m) > 0
             try
                 raw = _dispatch_values(b)

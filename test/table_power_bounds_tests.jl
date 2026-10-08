@@ -39,22 +39,28 @@ using Test, JuMP, OpenSHOP, HiGHS
     @test sum(corrected)/2>=exact
 end
 
-# Gates must preserve signed intercepts, including off states whose original
+# Shared lifts preserve signed intercepts, including off states whose original
 # coordinates need not belong to the physical on-state domain.
-@testset "Signed table intercepts and fixed coordinate simplifications" begin
+@testset "Signed shared intercepts and fixed coordinate simplifications" begin
     for coefficients in ([-2.0,3.0],[-2.0],[-2.0,-2.0])
         m=Model();@variable(m,u,Bin)
         weights=length(coefficients)==1 ? [1.0] : @variable(m,[1:2],lower_bound=0,upper_bound=1)
         length(coefficients)>1 && @constraint(m,sum(weights)==1)
-        records=OpenSHOP._TablePowerGateRecord[]
-        z=OpenSHOP._table_power_intercept!(m,coefficients,weights,u,"test",records)
-        m.ext[:global_table_power_gates]=records
-        @test length(records)==(coefficients==[-2.0,3.0] ? 1 : 0)
+        nodes=length(coefficients)==1 ? [-2.0] : [-2.0,3.0]
+        @variable(m,-2<=moment<=3)
+        x=sum(nodes[j]*weights[j] for j in eachindex(nodes))
+        OpenSHOP._power_hull_binary_product_rows!(m,moment,u,x,extrema(nodes)...)
+        records=OpenSHOP._TablePowerCoordinateRecord[]
+        onweights=OpenSHOP._table_power_onweights!(m,(nodes=nodes,weights=weights),u,moment,"test",records)
+        z=sum(coefficients[j]*onweights[j] for j in eachindex(coefficients))
+        m.ext[:global_table_power_coordinates]=records
+        @test length(records)==(length(nodes)>1 ? 1 : 0)
         for uv in (0.0,1.0),t in (0.0,.25,1.0)
             assigned=Dict(u=>uv)
             if length(weights)>1
                 assigned[weights[1]]=1-t;assigned[weights[2]]=t
             end
+            assigned[moment]=uv*(length(nodes)==1 ? only(nodes) : nodes[1]*(1-t)+nodes[2]*t)
             OpenSHOP._lift_table_power_bounds!(m,assigned)
             expression=sum(coefficients[j]*(weights[j] isa Number ? weights[j] : assigned[weights[j]]) for j in eachindex(weights))
             @test OpenSHOP._table_power_value(z,assigned)≈uv*expression
@@ -71,13 +77,13 @@ end
     for fixed in (0.0,1.0)
         m=Model();@variable(m,u,Bin);fix(u,fixed;force=true)
         @variable(m,0<=weights[1:2]<=1)
-        records=OpenSHOP._TablePowerGateRecord[]
+        records=OpenSHOP._TablePowerCoordinateRecord[]
         before=num_variables(m)
-        z=OpenSHOP._table_power_intercept!(m,[-2.0,3.0],weights,u,"fixed",records)
+        onweights=OpenSHOP._table_power_onweights!(m,(nodes=[-2.0,3.0],weights=weights),u,0.0,"fixed",records)
+        z=sum([-2.0,3.0].*onweights)
         @test isempty(records)&&num_variables(m)==before
         @test value(v->v==u ? fixed : .5,z)≈fixed*.5
-        constant=OpenSHOP._table_power_intercept!(m,[-2.0,-2.0],weights,u,"constant",records)
-        @test coefficient(constant,u)==-2.0
+        @test value(v->v==u ? fixed : .5,sum(onweights))≈fixed
     end
     assigned=Dict{VariableRef,Float64}()
     @test OpenSHOP._lift_table_power_bounds!(Model(),assigned)===assigned
@@ -116,12 +122,13 @@ end
         for fixed in (false,true)
             b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
             profile=b.m.ext[:global_table_power_bounds_profile]
-            records=b.m.ext[:global_table_power_gates]
-            @test records isa Vector{OpenSHOP._TablePowerGateRecord}
+            records=b.m.ext[:global_table_power_coordinates]
+            @test records isa Vector{OpenSHOP._TablePowerCoordinateRecord}
             @test profile["units_added"]==2-fixed
             @test profile["head_rows"]==profile["discharge_rows"]==4*(2-fixed)
-            @test profile["variables_added"]==profile["gates_added"]==length(records)
-            @test profile["constraints_added"]==8*(2-fixed)+4*length(records)
+            @test profile["variables_added"]==sum(length(r.onweights) for r in records;init=0)
+            @test profile["shared_coordinates"]==length(records)
+            @test profile["constraints_added"]==8*(2-fixed)+sum(length(r.onweights)+2 for r in records;init=0)+(!fixed ? 2 : 0)
             @test 0<=profile["certificate_seconds"]<=profile["setup_seconds"]
             # Fixed commitment retains the two existing binary variables.
             @test count(is_binary,all_variables(b.m))==2
@@ -129,11 +136,13 @@ end
             @test audit["valid"]
             @test audit["assigned"]==audit["variables"]==num_variables(b.m)
             @test audit["objective"]≈seed["objective"] atol=1e-6
-            @test all(r->start_value(r.z)≈start_value(r.u)*value(start_value,r.expression),records)
+            @test all(records) do r
+                all(start_value(r.onweights[j])≈start_value(r.u)*start_value(r.weights[j]) for j in eachindex(r.onweights))
+            end
             if !fixed
                 off=b.m.ext[:global_power_hulls]["power_hull_2_1"]
                 @test start_value(off.head)<0 && start_value(off.eta)<0
-                @test all(r->start_value(r.u)!=0.0 || start_value(r.z)==0.0,records)
+                @test all(r->start_value(r.u)!=0.0 || all(v->start_value(v)==0.0,r.onweights),records)
             end
             if operating
                 # .97 is attained at interior electrical power knot at 3 MW.
@@ -152,7 +161,8 @@ end
     c=table_power_bounds_case(;analytic=true)
     b=OpenSHOP._build_global_dispatch(c;joint=true)
     @test b.m.ext[:global_table_power_bounds_profile]["skipped"]["analytic"]==2
-    @test isempty(b.m.ext[:global_table_power_gates])
+    @test isempty(b.m.ext[:global_table_power_coordinates])
+    @test isempty(b.m.ext[:global_table_power_supports])
 end
 
 @testset "Singleton head and conditional discharge boxes retain exact starts" begin
@@ -175,7 +185,7 @@ end
     @test length(b.m.ext[:global_power_hulls]["power_hull_1_1"].axes[1])==1
     profile=b.m.ext[:global_table_power_bounds_profile]
     @test profile["units_added"]==1 && profile["head_rows"]==profile["discharge_rows"]==4
-    @test profile["variables_added"]==profile["gates_added"]==0
+    @test profile["variables_added"]==profile["shared_coordinates"]==0
     @test OpenSHOP._lift_start!(b,c,seed)["valid"]
 end
 
