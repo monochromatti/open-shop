@@ -17,6 +17,8 @@ def load_rows(folder):
     for path in sorted(pathlib.Path(folder).rglob('summary.json')):
         data = json.loads(path.read_text())
         if isinstance(data, list):
+            for row in data:
+                row["benchmark_label"] = row.get("benchmark_label", path.parent.name.removeprefix("root-proof-"))
             rows.extend(data)
     if not rows:
         raise ValueError('no benchmark records')
@@ -45,9 +47,9 @@ def summarize(rows):
             stat = row.get(key)
             if stat and (stat['errors'] or stat.get('infeasible_flags', 0)):
                 raise ValueError('separator failed')
-        groups[(row['case'], row['allowance_seconds'])].append(row)
+        groups[(row.get('benchmark_label',row['case']), row['case_sha256'], row['allowance_seconds'])].append(row)
     results = []
-    for (case, allowance), group in sorted(groups.items()):
+    for (case, case_hash, allowance), group in sorted(groups.items()):
         for key in ('case_sha256', 'seed_controls_sha256', 'manifest_sha256',
                     'source_sha256', 'experiment_sha256', 'threshold_audited_lower_bound',
                     'julia_version', 'threads', 'blas_threads'):
@@ -78,7 +80,7 @@ def summarize(rows):
                     attained=sum(t is not None for t in ts), repetitions=len(ts),
                     median_seconds=statistics.median(ts) if all(t is not None for t in ts) else None))
             first_branches = [r['root_progress']['first_root_branch'] for r in records]
-            result = dict(case=case, allowance_seconds=allowance, profile=profile,
+            result = dict(case=case, case_name=group[0]["case"], case_sha256=case_hash, allowance_seconds=allowance, profile=profile,
                 repetitions=len(records), audited_common_lower=lower,
                 median_upper=statistics.median(r['global_bound'] for r in records),
                 median_frozen_gap_percent=statistics.median(100*r['gap_against_frozen_audited_objective'] for r in records),
