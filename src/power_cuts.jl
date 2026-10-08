@@ -2,8 +2,8 @@
 # the original on-state box. Neither probing bounds nor sampled power justify
 # a cut. The exact turbine graphs and nonlinear power equations remain intact.
 const _POWER_CUT_FRACTIONS = (0.125,0.375,0.625,0.875,1.125)
-const _POWER_CUT_LIMITS = (certificate_seconds=1.5,cuts=64,rounds=4,
-    cuts_per_round=16,coordinates_per_round=16,coordinate_checks=64,violation_mw=1e-5)
+const _POWER_CUT_LIMITS = (certificate_seconds=1.5,cuts=128,rounds=8,
+    cuts_per_round=32,coordinates_per_round=32,coordinate_checks=256,violation_mw=1e-5)
 
 struct _PowerCutAffine
     constant::Float64
