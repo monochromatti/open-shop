@@ -14,7 +14,8 @@ matched experiments; it does not add a public solver policy selector.
 - `obbt_cap30`: multiplier 1, then stop further OBBT calls at an ordinary root
   LP boundary after at least 30 cumulative native OBBT seconds.
 - `joint`: current configuration plus bounded certified joint table-power cuts.
-- `joint_obbt_1`: reserved combination if separate screening justifies it.
+- `joint_obbt_1`: joint cuts plus multiplier 1; advanced after complementary
+  early-cut and later-branching gains in the 6-hour screen.
 
 The native 5,000-iteration minimum is retained. The multiplier determines a
 **per-invocation** allowance, recomputed from root LP iterations. Zero would
@@ -49,8 +50,9 @@ reliable root LPs outside probing, diving and repropagation. SCIP.jl discards
 the event pointer, so FIRSTLPSOLVED and LPSOLVED have separate handlers.
 
 Root snapshots record cumulative OBBT time, completed calls, domain reductions,
-LP counts/iterations, and table-power separator time/calls. Plugin timers can
-overlap LP timers. Reduction counts exclude probing changes and generalized
+LP counts/iterations, and table-power separator time/calls. OBBT's timer can
+overlap probing/diving LP time; the ordinary dual-LP timer excludes probing
+solves in the pinned solver. Reduction counts exclude probing changes and generalized
 bounds, and cannot by themselves quantify useful tightening. Changes between
 snapshots are associated with an interval of work, not a causal decomposition.
 
@@ -68,3 +70,15 @@ seconds once per profile. Confirm any promising candidate against the control
 at 300 seconds with two repetitions. Select using time to the same valid bound
 and remaining gap at equal time, while disclosing horizon-specific tradeoffs.
 A promising 120-second result alone does not change the production default.
+
+The summary validates matched provenance and observations before computing
+comparisons. It reports both final accepted bounds and the last global bound
+observed within the nominal allowance. Common-bound times attained after that
+allowance remain separate from times attained within it. Actual return time
+also includes reconstruction and chronological replay.
+
+```sh
+python3 -m unittest discover -s benchmark -p root_proof_summary_tests.py
+python3 benchmark/root_proof_summary.py results/root-proof-confirm \
+  --output results/root-proof-confirm-comparison.json
+```

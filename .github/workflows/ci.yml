@@ -27,5 +27,7 @@ jobs:
         run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test(; julia_args=["--pkgimages=no"])'
       - name: Test the dataset importer
         run: python3 -m unittest discover -s examples/tokke_vinje -p "test_*.py"
+      - name: Test proof evidence analysis
+        run: python3 -m unittest discover -s benchmark -p root_proof_summary_tests.py
       - name: Run the public example
         run: julia --pkgimages=no --project=. examples/single_reservoir.jl

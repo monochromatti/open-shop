@@ -41,6 +41,11 @@ def summarize(rows):
         if row['global_bound'] < row['matched_job_best_accepted_objective'] - 1e-6:
             raise ValueError('bound excludes an audited matched schedule')
         points = row['global_bound_trajectory']
+        if any(not math.isfinite(p['upper']) or not math.isfinite(p['seconds']) for p in points):
+            raise ValueError('nonfinite trajectory')
+        for previous, point in zip(points, points[1:]):
+            if point['seconds'] < previous['seconds'] or point['upper'] > previous['upper'] + 1e-8*max(1,abs(previous['upper'])):
+                raise ValueError('unordered or increasing trajectory')
         if any(p['upper'] < row['matched_job_best_accepted_objective'] - 1e-6 for p in points):
             raise ValueError('trajectory excludes an audited matched schedule')
         for key in ('power_cut_statistics', 'joint_supports'):
@@ -52,7 +57,8 @@ def summarize(rows):
     for (case, case_hash, allowance), group in sorted(groups.items()):
         for key in ('case_sha256', 'seed_controls_sha256', 'manifest_sha256',
                     'source_sha256', 'experiment_sha256', 'threshold_audited_lower_bound',
-                    'julia_version', 'threads', 'blas_threads'):
+                    'julia_version', 'threads', 'blas_threads', 'commitment', 'scope',
+                    'native_scip_version', 'native_lp_solver', 'variable_count', 'constraint_count'):
             if len({r[key] for r in group}) != 1:
                 raise ValueError(f'matched records differ in {key}: {case}')
         seen = [(r['profile'], r['repeat']) for r in group]
@@ -80,12 +86,22 @@ def summarize(rows):
                     attained=sum(t is not None for t in ts), repetitions=len(ts),
                     median_seconds=statistics.median(ts) if all(t is not None for t in ts) else None))
             first_branches = [r['root_progress']['first_root_branch'] for r in records]
+            at_allowance = [next((p['upper'] for p in reversed(r['global_bound_trajectory'])
+                                 if p['seconds'] <= allowance),None) for r in records]
+            common_within = [t if t is not None and t<=allowance else None for t in times]
             result = dict(case=case, case_name=group[0]["case"], case_sha256=case_hash, allowance_seconds=allowance, profile=profile,
                 repetitions=len(records), audited_common_lower=lower,
                 median_upper=statistics.median(r['global_bound'] for r in records),
+                median_upper_at_nominal_allowance=statistics.median(at_allowance) if all(u is not None for u in at_allowance) else None,
+                median_frozen_gap_at_nominal_allowance_percent=statistics.median(100*(u-lower)/max(1,abs(lower)) for u in at_allowance) if all(u is not None for u in at_allowance) else None,
+                common_bound_attained_within_allowance=sum(t is not None for t in common_within),
+                median_seconds_to_common_bound_within_allowance=statistics.median(common_within) if all(t is not None for t in common_within) else None,
                 median_frozen_gap_percent=statistics.median(100*r['gap_against_frozen_audited_objective'] for r in records),
                 median_delivered_objective=statistics.median(r['feasible_lower_bound'] for r in records),
                 median_return_seconds=statistics.median(r['total_seconds'] for r in records),
+                median_proof_seconds=statistics.median(r['proof_observation_end_seconds'] for r in records),
+                median_actual_gap_percent=statistics.median(100*r['relative_gap'] for r in records),
+                global_certificates=sum(r['global_certificate'] for r in records),
                 common_control_upper_target=common_upper,
                 common_bound_attained=sum(t is not None for t in times),
                 median_seconds_to_common_bound=statistics.median(times) if all(t is not None for t in times) else None,
