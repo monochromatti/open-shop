@@ -165,7 +165,13 @@ The time allowance includes construction and optimization; extraction/replay
 can overrun it and are included in `total_seconds`. Julia compilation is also
 included if this is the first call in a process.
 """
-function solve(
+function solve(c::ScheduleCase; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0,
+        initial=nothing, fixed_u=nothing, replay=true, diagnostics_path=nothing)
+    _solve(c; time_limit, relative_gap, absolute_gap, initial, fixed_u, replay, diagnostics_path)
+end
+
+# Private hook for matched root-proof experiments; production defaults are unchanged.
+function _solve(
     c::ScheduleCase;
     time_limit = 60.0,
     relative_gap = 1e-3,
@@ -174,6 +180,7 @@ function solve(
     fixed_u = nothing,
     replay = true,
     diagnostics_path = nothing,
+    optimizer_setup = nothing,
 )
     isfinite(time_limit) && time_limit > 0 ||
         throw(ArgumentError("positive finite time_limit required"))
@@ -280,6 +287,7 @@ function solve(
             if !isempty(get(b.m.ext,:global_table_power_supports,_TablePowerSupportCoordinate[]))
                 power_cuts=_install_power_cuts!(b,c)
             end
+            optimizer_setup===nothing || optimizer_setup(b)
             remaining_after_copy=max(0.,time_limit-(time()-began))
             set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
             if diagnostics_path!==nothing
