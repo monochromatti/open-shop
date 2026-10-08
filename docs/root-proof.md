@@ -55,7 +55,7 @@ first branches at 81.58 seconds. Both 24-hour cases still process only the root
 within the allowance. Their observed root-branch events occur just after the
 time limit and do not demonstrate a useful tree search within five minutes.
 
-Operating actual return times are about 300.3–302.9 seconds, including physical
+Operating actual return times are about 300.3–303.4 seconds, including physical
 reconstruction and replay. No operating case reaches a global certificate.
 The remaining obstacle is still the optimistic root relaxation and the cost of
 strengthening it on the longer horizons.
