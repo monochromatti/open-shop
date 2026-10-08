@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4
+
+- Replaced independent power gates with shared on-state turbine coordinates, preserving binary branches and the exact nonlinear equations.
+- Added a bounded root separator for globally certified power supports, with cached coefficients and reusable native-value buffers.
+- Retained ordinary OBBT while disabling its extra bilinear projection LPs. Selected one wider cut budget after paired, repeated six-case comparisons.
+- Reduced the mean five-minute operating gap from 7.183% to 6.494% with unchanged delivered objectives. The 2-hour time to 7% falls from 99.79 to 1.46 seconds; larger operating cases remain uncertified.
+- Published bound trajectories, native statistics and the documented smaller-budget tradeoff. Added regression tests for shared lifts, native cut application and callback failure containment.
+
 ## 0.4.3
 
 - Added gated power supports tied to existing head and discharge table coordinates, preserving the exact nonlinear equations and adding no binary decisions.

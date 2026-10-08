@@ -18,6 +18,12 @@ reports the proof gain and small-case overhead. The subsequent
 for version 0.4.3. Its repeated comparisons reduce the mean operating gap by
 21.8% against 0.4.2, with unchanged delivered objectives.
 
+Version 0.4.4 replaces the independent gates with shared on-state coordinates
+and adds selected certified root cuts. The [proof-speed comparison](proof-speed.md)
+reports 138 accepted experiments and selects one configuration. Its repeated
+five-minute operating mean gap falls from 7.183% to 6.494% against 0.4.3, with
+unchanged delivered objectives and faster time to common partial gaps.
+
 ## Final matched comparison
 
 These are free-commitment results with a 300-second allowance and a 0.01%

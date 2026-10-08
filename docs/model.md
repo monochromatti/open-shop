@@ -209,28 +209,53 @@ existing head and discharge weights. Write
 For each fixed slope `a`, head-node coefficients start as guarded upper bounds
 on `max_q(F(q,h_j)−a q)`. A Bernstein bound on each original cell's residual
 against the nodal chord raises both endpoint coefficients enough to cover
-intermediate head values. The resulting row is
+intermediate head values. All head supports share one vector of on-state
+weights `ζ`:
 
 ```math
-P\le a q+u\sum_j c_j\mu_j.
+0\le\zeta_j\le\mu_j,\qquad
+\sum_j\zeta_j=u,\qquad
+\sum_j(h_j-h_1)\zeta_j=h_{on}-h_1u,
+\qquad P\le a q+\sum_j c_j\zeta_j.
 ```
+
+When on, equal total masses force `ζ=μ`. When off, `ζ=0` while the original
+head weights remain free to represent the physical head. Fractional commitments
+must use consistent on-state weights across every support and the existing
+head moment. This implies the previous independent scalar gate hulls, and can
+exclude fractional points those hulls allowed.
 
 Discharge-node coefficients similarly bound `max_h(F(q_i,h)−b h)`, with certified
-cell corrections. Their rows use the existing `h_on` auxiliary:
+cell corrections. When the discharge coordinates have a unique first node at
+zero and strictly positive remaining nodes, the on-state weights are affine:
 
 ```math
-P\le b h_{on}+u\sum_i d_i\lambda_i.
+\nu_1=\lambda_1+u-1\ge0,\qquad \nu_i=\lambda_i\ (i>1),
+\qquad P\le b h_{on}+\sum_i d_i\nu_i.
 ```
 
-Each signed nodal sum is multiplied by the existing commitment binary using a
-bounded continuous auxiliary and its four linear binary-product hull rows.
-This retains off-state head freedom and adds no binary decisions. Fixed states
-and constant sums simplify directly. Four slopes on each axis give eight
-supporting power rows per applicable unit and interval. Merely joining raw
-nodal bounds is unsafe when power peaks between table knots; the cell correction
-is part of the construction. These bounds reuse the exact table coordinates
-and preserve the original nonlinear power equality. See the
-[table-coordinate comparison](table-power-bounds.md) for the selection and cost.
+These weights have mass `u` and reproduce discharge. They need no new variables.
+Other coordinate domains use the general shared lift; fixed states and singleton
+coordinates simplify directly. The formulation preserves off-state head freedom
+and adds no binary decisions. Four initial slopes on each axis give eight
+supporting power rows per applicable unit and interval. Merely joining raw nodal
+bounds is unsafe when power peaks between table knots; the cell correction is
+part of the construction.
+
+A bounded root separator proposes additional slopes for selected unit/interval
+coordinates. Positive price, interval duration and optimistic relaxed power
+guide the selection. Every added row is separately certified over its complete
+original conditional running domain, including the original PCHIP polynomial
+and extensions. Ranking scores and relaxed equation residuals are not proof
+bounds. Rows enter both SCIP's global cut pool and its current LP. The separator
+uses the existing shared weights, cached coefficients and reusable native value
+buffers. It adds no partitions or binary decisions. Callback failures withhold
+the reported global bound while retaining independently audited schedules.
+
+These bounds preserve the original nonlinear power equality. See the
+[proof-speed experiments](proof-speed.md) for the selected configuration and
+cost, and the earlier [table-coordinate comparison](table-power-bounds.md) for
+the coefficient construction.
 
 Complete starting schedules and returned solver solutions are checked for
 SOS2 adjacency and unit integrality. Tiny solver leakage at an off unit is

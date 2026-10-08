@@ -69,8 +69,9 @@ The solver uses one exact table representation: SOS2 coordinates for linear
 curves and shared quadratic products for discharge PCHIP interpolation. It
 preserves the supplied table values and slopes. Units at the same plant share
 hydraulic head and compatible table coordinates. Fixed unit states restrict
-table domains to their physical branch. Supporting inequalities and a joint
-power envelope strengthen SCIP's relaxation while retaining the exact equations.
+table domains to their physical branch. Shared on-state weights, a joint power
+envelope and a bounded separator for certified power supports strengthen SCIP's
+relaxation while retaining the exact equations.
 See the [benchmark results](docs/benchmarks.md) and
 [coupled relaxation experiments](docs/coupled-relaxations.md) for measured schedule,
 bound and runtime tradeoffs.
@@ -118,7 +119,8 @@ Upstream data are not bundled with this repository.
 ## Why Julia and SCIP.jl?
 
 JuMP provides the algebraic model, while SCIP.jl sends it to the native SCIP
-solver. The nonlinear search runs in SCIP rather than in Julia callbacks.
+solver. SCIP performs the nonlinear search; a bounded Julia separator supplies
+certified power cuts.
 Julia also hosts the typed network data, sparse transport compilation and
 independent physical simulator. Keeping these in one language avoids a second
 model implementation. [SCIP.jl](https://jump.dev/JuMP.jl/stable/packages/SCIP/)
