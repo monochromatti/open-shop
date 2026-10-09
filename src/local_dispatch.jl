@@ -547,6 +547,7 @@ function _build_dispatch(
         set_start_value(rq[i, t], mean(r.history_release)/100)
         r.law==:orifice && set_start_value(a[i, t], 0.5)
     end
+    warm, warm_start=_dispatch_start(c, u, warm)
     if warm!==nothing && haskey(warm, "V")
         for i in 1:R, t in 1:(T + 1)
             set_start_value(v[i, t], warm["V"][i, t]/s.reservoirs[i].vmax)
@@ -590,6 +591,7 @@ function _build_dispatch(
         shortfall_release,
         penalty_cost,
         transport = nd,
+        warm_start,
     )
 end
 
@@ -608,6 +610,31 @@ function _dispatch_values(b)
         "shortfall_release"=>value.(b.shortfall_release),
         "release_penalty_cost"=>value(b.penalty_cost),
     )
+end
+
+function _repair_dispatch!(c, result; transport = nothing)
+    began=time()
+    try
+        repaired, correction=_reconstruct_candidate(c, result; transport)
+        result["forward_reconstruction_audit"]=repaired["validation"]
+        result["forward_reconstruction_correction"]=correction
+        if repaired["validation"]["valid"]
+            result["raw_solver_validation"]=result["validation"]
+            result["raw_solver_objective"]=result["objective"]
+            result["forward_reconstructed"]=true
+            for key in (
+                "generator_q", "gate", "V", "H", "tunnel_q", "power",
+                "river_release", "arrival_volume", "terminal_transit", "objective",
+                "shortfall_release", "release_penalty_cost", "validation",
+            )
+                result[key]=repaired[key]
+            end
+        end
+    catch error
+        result["forward_reconstruction_error"]=sprint(showerror, error)
+    end
+    result["forward_reconstruction_seconds"]=time()-began
+    result
 end
 
 function _local_optimizer!(m, solver, time_limit)
@@ -653,6 +680,7 @@ function solve_case(
     remaining=time_limit-construction_seconds
     result=Dict{String,Any}(
         "case"=>c.name,
+        "grid"=>copy(c.grid),
         "solver"=>solver,
         "seed"=>seed,
         "status"=>"CONSTRUCTION_BUDGET_EXHAUSTED",
@@ -663,6 +691,7 @@ function solve_case(
         "construction_seconds"=>construction_seconds,
         "arrival_margin"=>arrival_margin,
         "operational_margin"=>operational_margin,
+        "warm_start"=>b.warm_start,
     )
     if remaining<=0
         result["total_seconds"]=time()-b.starttime
@@ -678,45 +707,13 @@ function solve_case(
     elapsed=@elapsed optimize!(b.m)
     result["status"]=string(termination_status(b.m))
     result["seconds"]=elapsed
+    result["iterations"]=MOI.get(b.m, MOI.BarrierIterations())
     if has_values(b.m)
         merge!(result, _dispatch_values(b))
         audit_start=time()
         result["validation"]=validate(c, result; transport = b.transport)
         result["validation_seconds"]=time()-audit_start
-        if has_operational_data(c) && !result["validation"]["valid"]
-            try
-                repaired=dispatch_from_controls(
-                    c,
-                    u,
-                    result["generator_q"],
-                    result["gate"];
-                    transport = b.transport,
-                )
-                result["forward_reconstruction_audit"]=repaired["validation"]
-                if repaired["validation"]["valid"]
-                    result["raw_solver_validation"]=result["validation"]
-                    result["raw_solver_objective"]=result["objective"]
-                    result["forward_reconstructed"]=true
-                    for key in (
-                        "V",
-                        "H",
-                        "tunnel_q",
-                        "power",
-                        "river_release",
-                        "arrival_volume",
-                        "terminal_transit",
-                        "objective",
-                        "shortfall_release",
-                        "release_penalty_cost",
-                        "validation",
-                    )
-                        result[key]=repaired[key]
-                    end
-                end
-            catch e
-                result["forward_reconstruction_error"]=sprint(showerror, e)
-            end
-        end
+        result["validation"]["valid"] || _repair_dispatch!(c, result; transport = b.transport)
     end
     result["total_seconds"]=time()-b.starttime
     result

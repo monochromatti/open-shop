@@ -1,5 +1,9 @@
 # Benchmarks
 
+The [schedule-generation study](scheduling-performance.md) measures feasible
+schedule preparation independently of global search. The comparisons below
+measure SCIP's global model and bound progress.
+
 OpenSHOP uses one production global model: native SCIP with exact quadratic
 SOS2 turbine interpolation and SOS2 graphs for every linear curve. The choice
 followed two optimization rounds and a frozen, repeated seven-case comparison.

@@ -55,6 +55,8 @@ function schedule_case(
                 "accepted"=>v["accepted"],
                 "seconds"=>v["total_seconds"],
                 "steps"=>v["attempts"],
+                "u"=>copy(fallback),
+                "elapsed_seconds"=>time()-started,
             ),
         )
         v["accepted"] && (best=v)
@@ -90,9 +92,13 @@ function schedule_case(
             push!(
                 attempts,
                 Dict(
+                    "stage"=>"dispatch",
                     "accepted"=>v["accepted"],
                     "seconds"=>v["total_seconds"],
                     "steps"=>v["attempts"],
+                    "u"=>copy(u),
+                    "elapsed_seconds"=>time()-started,
+                    "warm_start_objective"=>reference===nothing ? nothing : reference["objective"],
                 ),
             )
             if v["accepted"] &&

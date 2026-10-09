@@ -102,6 +102,10 @@ controls away from active power and turbine-envelope limits during replay.
 This can make a narrow operating range infeasible; it is not a replay
 guarantee. SCIP always uses the original case restrictions.
 
+The [schedule-generation comparison](docs/scheduling-performance.md) measures
+preparation separately, including time to useful schedules, accepted objectives,
+nonlinear iterations and hydraulic acceptance costs.
+
 ## Model and data
 
 - Nonlinear head–storage curves, signed tunnel losses and flow conservation.

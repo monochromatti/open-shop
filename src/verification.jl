@@ -227,6 +227,8 @@ function solve_verified(
         throw(
             ArgumentError("initial candidate commitment differs from requested commitment"),
         )
+    initial!==nothing && haskey(initial, "grid") && initial["grid"]!=c.grid &&
+        throw(ArgumentError("initial candidate control grid differs from requested grid"))
     isfinite(operational_margin) && operational_margin >= 0 ||
         throw(ArgumentError("nonnegative finite operational_margin required"))
     began=time()
@@ -250,10 +252,11 @@ function solve_verified(
             time_limit = time_limit,
             feasibility_only = feasibility_only,
         )
-        physical=haskey(x, "objective") && validate(cc, x)["valid"]
-        audit=physical ?
+        audit=haskey(x, "objective") ?
               replay_audit(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
-              Dict("valid"=>false, "errors"=>["NLP candidate failed model validation"])
+              Dict("valid"=>false, "errors"=>["NLP candidate has no objective"])
+        original=get(audit, "original_audit", Dict{String,Any}())
+        physical=get(original, "valid", false)
         push!(
             attempts,
             Dict(
@@ -264,9 +267,16 @@ function solve_verified(
                 "status"=>x["status"],
                 "objective"=>get(x, "objective", nothing),
                 "model_valid"=>physical,
-                "model_errors"=>get(get(x, "validation", Dict()), "errors", String[]),
+                "model_errors"=>get(original, "errors", String[]),
                 "replay"=>audit,
                 "solve_seconds"=>get(x, "total_seconds", 0.0),
+                "construction_seconds"=>get(x, "construction_seconds", 0.0),
+                "optimization_seconds"=>get(x, "seconds", 0.0),
+                "validation_seconds"=>get(x, "validation_seconds", 0.0),
+                "forward_reconstruction_seconds"=>get(x, "forward_reconstruction_seconds", 0.0),
+                "forward_reconstructed"=>get(x, "forward_reconstructed", false),
+                "iterations"=>get(x, "iterations", nothing),
+                "warm_start"=>get(x, "warm_start", nothing),
             ),
         )
         get(audit, "valid", false) && break
