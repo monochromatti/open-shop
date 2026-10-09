@@ -1,0 +1,52 @@
+--- a/src/Algorithm/LinearSolvers/IpMumpsSolverInterface.cpp
++++ b/src/Algorithm/LinearSolvers/IpMumpsSolverInterface.cpp
+@@ -577,28 +577,32 @@
+    const std::lock_guard<std::mutex> lock(mumps_call_mutex);
+ #endif
+ 
++   if( nrhs == 0 )
++   {
++      return SYMSOLVER_SUCCESS;
++   }
+    ESymSolverStatus retval = SYMSOLVER_SUCCESS;
+    if( HaveIpData() )
+    {
+       IpData().TimingStats().LinearSystemBackSolve().Start();
+    }
+-   for( Index i = 0; i < nrhs; i++ )
+-   {
+-      Index offset = i * mumps_data->n;
+-      mumps_data->rhs = &(rhs_vals[offset]);
+-      mumps_data->job = 3;  //solve
+-      Jnlst().Printf(J_MOREDETAILED, J_LINEAR_ALGEBRA,
+-                     "Calling MUMPS-3 for solve.\n");
+-      mumps_c(mumps_data);
+-      Jnlst().Printf(J_MOREDETAILED, J_LINEAR_ALGEBRA,
+-                     "Done with MUMPS-3 for solve.\n");
+-      Index error = mumps_data->info[0];
+-      if( error < 0 )
+-      {
+-         Jnlst().Printf(J_ERROR, J_LINEAR_ALGEBRA,
+-                        "Error=%" IPOPT_INDEX_FORMAT " returned from MUMPS in Solve.\n", error);
+-         retval = SYMSOLVER_FATAL_ERROR;
+-      }
++   // Ipopt supplies a dense column-major block with leading dimension n.
++   // Set nrhs on every call, including singleton solves following a batch.
++   mumps_data->rhs = rhs_vals;
++   mumps_data->nrhs = static_cast<MUMPS_INT>(nrhs);
++   mumps_data->lrhs = mumps_data->n;
++   mumps_data->job = 3;  //solve all right-hand sides with the same factors
++   Jnlst().Printf(J_MOREDETAILED, J_LINEAR_ALGEBRA,
++                  "Calling MUMPS-3 for batched solve.\n");
++   mumps_c(mumps_data);
++   Jnlst().Printf(J_MOREDETAILED, J_LINEAR_ALGEBRA,
++                  "Done with MUMPS-3 for batched solve.\n");
++   Index error = mumps_data->info[0];
++   if( error < 0 )
++   {
++      Jnlst().Printf(J_ERROR, J_LINEAR_ALGEBRA,
++                     "Error=%" IPOPT_INDEX_FORMAT " returned from MUMPS in Solve.\n", error);
++      retval = SYMSOLVER_FATAL_ERROR;
+    }
+    if( HaveIpData() )
+    {
