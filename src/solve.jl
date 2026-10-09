@@ -96,27 +96,6 @@ function _unresolved_root_certificate(diagnostics, status)
     diagnostics["first_root_lp_upper_bound"]===nothing
 end
 
-function _reconstruct_candidate(c, raw; transport = nothing)
-    admissible(c, raw["u"]) || throw(ArgumentError("inadmissible commitment"))
-    q, gate = copy(raw["generator_q"]), copy(raw["gate"])
-    all(isfinite, q) && all(isfinite, gate) || throw(ArgumentError("nonfinite controls"))
-    all(x -> x >= -1e-6, q) || throw(ArgumentError("negative discharge"))
-    all(x -> -1e-8 <= x <= 1 + 1e-8, gate) || throw(ArgumentError("gate outside bounds"))
-    for k in eachindex(q,raw["u"])
-        raw["u"][k]==0 || continue
-        abs(q[k])<=1e-6 || throw(ArgumentError("nonzero discharge at an off unit"))
-        q[k]=0.0
-    end
-    q = max.(q, 0.0)
-    gate = clamp.(gate, 0.0, 1.0)
-    correction = (
-        flow = maximum(abs, q .- raw["generator_q"]; init = 0.0),
-        gate = maximum(abs, gate .- raw["gate"]; init = 0.0),
-    )
-    x = dispatch_from_controls(c, raw["u"], q, gate; transport)
-    x, correction
-end
-
 function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap)
     result["solution"] = candidate
     result["incumbent_source"] = source

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Shared guarded control reconstruction between local and global candidates, retaining corrected controls, recomputed objectives and raw solver diagnostics.
+- Removed a duplicate hydraulic audit in fixed-commitment verification while preserving fresh original validation, finer replay and transport acceptance.
+- Added compatible-grid checks for starts, iteration and stage timings, and a separate schedule-generation benchmark.
+- Tested hydraulic start reconstruction and reference refresh, retaining the existing initialization after objective/time regressions.
+
 ## 0.4.5
 
 - Reduced SCIP's ordinary OBBT iteration multiplier from 10 to 1, retaining its filtering, minimum allowance and generalized bounds.
