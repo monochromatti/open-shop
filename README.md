@@ -90,6 +90,8 @@ result = solve(case; initial, time_limit=60.0)
 
 Preparation uses HiGHS commitment proposals and Ipopt nonlinear dispatch. Its
 objective is a feasible lower bound; SCIP supplies the global upper bound.
+The [linear-system study](docs/linear-systems.md) profiles this dispatch and
+compares sparse solvers, curvature systems and native right-hand-side batching.
 The proposal and NLP limits apply to each invocation: preparation tries three
 MILP proposals and may dispatch several candidate commitments. Its total time
 is reported separately from `solve`'s allowance. An initial schedule must

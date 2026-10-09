@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a fixed-commitment linear-system profiler with frozen starts, native timings, library fingerprints and independent replay acceptance.
+- Benchmarked sparse backends, curvature history, exact derivatives, BLAS and MUMPS right-hand-side batching; retained production defaults after longer-case regressions.
 - Shared guarded control reconstruction between local and global candidates, retaining corrected controls, recomputed objectives and raw solver diagnostics.
 - Removed a duplicate hydraulic audit in fixed-commitment verification while preserving fresh original validation, finer replay and transport acceptance.
 - Added compatible-grid checks for starts, iteration and stage timings, and a separate schedule-generation benchmark.

@@ -1,7 +1,9 @@
 # Benchmarks
 
 The [schedule-generation study](scheduling-performance.md) measures feasible
-schedule preparation independently of global search. The comparisons below
+schedule preparation independently of global search. The subsequent
+[linear-system study](linear-systems.md) isolates Ipopt's sparse solves and checks
+kernel gains against complete scheduling. The comparisons below
 measure SCIP's global model and bound progress.
 
 OpenSHOP uses one production global model: native SCIP with exact quadratic
