@@ -55,10 +55,22 @@ the network. A fixed on unit's table domain starts at its declared minimum
 flow. Efficiency bounds include endpoints, cubic stationary points and the
 original table's secant extrapolation.
 
-Aggregate plant capacity and production ramp limits apply to interval-average
-power. Start/stop allowances use each unit's minimum power. If previous plant
-power is supplied, the first interval is also ramp constrained. Any remaining
-terminal dwell obligation is returned for the next horizon.
+Aggregate plant power and discharge limits apply when any member unit runs.
+Plant commitment is the logical OR of its unit states. Plant minimum up/down
+times constrain this aggregate state, so handing production from one unit to
+another does not restart a continuously operating plant. Maintenance, forced
+states and hard schedules retain their individual constraints.
+
+Directional power and discharge ramps compare interval averages at their
+midpoints, integrating the hourly rate limit between those times. Power ramps
+include a unit's current minimum on startup and its previous minimum on
+shutdown; flow ramps remain strict through transitions. Reservoir volume and
+level ramps compare storage vertices over each interval. Exact nonlinear
+head–storage relationships also apply at level-ramp vertices.
+Historical values constrain the first transition when supplied. Finer replay
+checks these rows over the original operating windows. Remaining unit and
+plant dwell obligations are returned and retained on restart. See
+[operating rules](operating-rules.md) for equations and input conventions.
 
 ## Rivers
 

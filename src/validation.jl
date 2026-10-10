@@ -161,51 +161,13 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
             Dict("generator"=>string(g.name), "state"=>state, "remaining_hours"=>left),
         )
     end
-    for pl in s.plants
-        ids=findall(g->g.plant==pl.name, s.generators)
-        total=vec(sum(P[ids, :]; dims = 1))
-        bound(
-            "plant_capacity_$(pl.name)",
-            [total[t]-opinterval(c, pl.name, :pmax, t, pl.pmax) for t in 1:T],
-        )
-        violations=Float64[]
-        if pl.initial_power!==nothing
-            base=pl.ramp*(pl.initial_interval_hours+dt[1])/2
-            su=sum(
-                opinterval(c, s.generators[j].name, :pmin, 1, s.generators[j].pmin)*max(
-                    0,
-                    u[j, 1]-s.generators[j].initial_on,
-                ) for j in ids
-            )
-            sd=sum(
-                opinterval(c, s.generators[j].name, :pmin, 1, s.generators[j].pmin)*max(
-                    0,
-                    s.generators[j].initial_on-u[j, 1],
-                ) for j in ids
-            )
-            push!(
-                violations,
-                total[1]-pl.initial_power-base-su,
-                pl.initial_power-total[1]-base-sd,
-            )
-        end
-        for t in 2:T
-            base=pl.ramp*(dt[t]+dt[t - 1])/2
-            su=sum(
-                opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*max(
-                    0,
-                    u[j, t]-u[j, t - 1],
-                ) for j in ids
-            )
-            sd=sum(
-                opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*max(
-                    0,
-                    u[j, t - 1]-u[j, t],
-                ) for j in ids
-            )
-            push!(violations, total[t]-total[t - 1]-base-su, total[t - 1]-total[t]-base-sd)
-        end
-        bound("plant_ramp_$(pl.name)", violations)
+    for (name,residual) in operating_residuals(c,result)
+        bound(name,[residual])
+    end
+    for history in _plant_commitment_history(c,u)
+        history.residual>0 && push!(obligations,Dict(
+            "plant"=>string(history.plant),"state"=>history.state,
+            "remaining_hours"=>history.residual))
     end
     bound("gate_bounds", vcat(vec(-ga), vec(ga .- 1)))
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
@@ -407,17 +369,8 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         inventory=vec(sum(V; dims = 1)) .+ vec(sum(W; dims = 1))
         exchange=cumsum(dt .* (external .- inflow))
         record("global_water", (@view inventory[2:end]) .- initial .+ 0.0036 .* exchange)
-        startup=sum(
-            g.startup*max(0, u[i, t]-(t==1 ? g.initial_on : u[i, t - 1])) for
-            (i, g) in enumerate(s.generators), t in 1:T;
-            init = 0.0,
-        )
-        shutdown=sum(
-            g.shutdown*max(0, (t==1 ? g.initial_on : u[i, t - 1])-u[i, t]) for
-            (i, g) in enumerate(s.generators), t in 1:T;
-            init = 0.0,
-        )
-        objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-startup-shutdown +
+        operating_cost=transition_costs(c,u)
+        objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-operating_cost +
                   sum(
                       r.water_value*(V[i, end]-r.v0) for (i, r) in enumerate(s.reservoirs);
                       init = 0.0,

@@ -35,10 +35,8 @@ function schedule_case(
         best=v
     end
     fallback=ones(Int, length(c.system.generators), length(c.prices))
-    for (j, g) in enumerate(c.system.generators), t in eachindex(c.prices)
-        forced=opinterval(c, g.name, :forced_on, t, -1.0)
-        forced>=0 && (fallback[j, t]=Int(forced))
-    end
+    bounds=_commitment_bounds(c)
+    fallback=clamp.(fallback,bounds.unit_lower,bounds.unit_upper)
     if best===nothing && admissible(c, fallback)
         v=solve_verified(
             c;

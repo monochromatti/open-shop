@@ -43,21 +43,12 @@ function dispatch_from_controls(
     req=release_requirements(c, x["river_release"])
     x["shortfall_release"]=req.shortfall
     x["release_penalty_cost"]=req.cost
-    startup=sum(
-        g.startup*max(0, u[j, t]-(t==1 ? g.initial_on : u[j, t - 1])) for
-        (j, g) in enumerate(s.generators), t in 1:T;
-        init = 0.0,
-    )
-    shutdown=sum(
-        g.shutdown*max(0, (t==1 ? g.initial_on : u[j, t - 1])-u[j, t]) for
-        (j, g) in enumerate(s.generators), t in 1:T;
-        init = 0.0,
-    )
+    operating_cost=transition_costs(c,u)
     x["objective"]=sum(
                        c.prices[t]*dt[t]*x["power"][j, t] for
                        j in eachindex(s.generators), t in 1:T;
                        init = 0.0,
-                   )-startup-shutdown-req.cost +
+                   )-operating_cost-req.cost +
                    sum(
                        r.water_value*(x["V"][i, end]-r.v0) for
                        (i, r) in enumerate(s.reservoirs);

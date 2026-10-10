@@ -55,9 +55,13 @@ function restart_case(c::ScheduleCase, x, time::Real)
         end
         push!(
             generators,
-            _restart_replace(g; initial_on = state, initial_age = Float64(time-since)),
+            _restart_replace(g; initial_on = state, initial_age = Float64(time-since),
+                initial_power=Float64(x["power"][i,previous]),
+                initial_discharge=Float64(x["generator_q"][i,previous]),
+                initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1])),
         )
     end
+    plant_history=_plant_commitment_history(c,x["u"],time)
     plants=[
         _restart_replace(
             p;
@@ -66,8 +70,12 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 (i, g) in enumerate(s.generators) if g.plant==p.name;
                 init = 0.0,
             ),
+            initial_discharge=sum(x["generator_q"][i,previous] for
+                (i,g) in enumerate(s.generators) if g.plant==p.name;init=0.0),
+            initial_on=plant_history[j].state,
+            initial_age=plant_history[j].age,
             initial_interval_hours = Float64(c.grid[edge]-c.grid[edge - 1]),
-        ) for p in s.plants
+        ) for (j,p) in enumerate(s.plants)
     ]
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
     routed=exact ? route_network_exact(c, x["river_release"]) : nothing
@@ -96,6 +104,8 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 history_grid,
                 history_release,
                 arrival_window_grid = windows,
+                initial_release=Float64(x["river_release"][i,previous]),
+                initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1]),
             ),
         )
     end
