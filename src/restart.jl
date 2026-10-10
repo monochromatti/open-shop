@@ -78,7 +78,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         ) for (j,p) in enumerate(s.plants)
     ]
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    routed=exact ? route_network_exact(c, x["river_release"]) : nothing
+    routed=exact ? route_network_exact(c, x["river_release"];generator_q=x["generator_q"],tunnel_q=x["tunnel_q"]) : nothing
     rivers=River[]
     for (i, r) in enumerate(s.rivers)
         windows=isempty(r.arrival_window_grid) ? Float64[] :

@@ -10,8 +10,9 @@ end
 
 """Compile direct reach-to-reach targets to private zero-storage graph nodes.
 
-An upstream river may name another river as its target. That downstream river
-uses source=:auto; all incoming arrivals are merged by conservation. Explicit
+An upstream river may name another river as its target; plant/tunnel outfalls
+name their discharge_river. The receiving reach uses source=:auto; incoming
+arrivals, directed outfalls and natural inflow are merged by conservation. Explicit
 RiverJunction nodes remain supported. Inferred names are reserved and
 collisions are rejected. This function does not infer a diversion allocation.
 """
@@ -22,9 +23,18 @@ function normalize_river_connections(s::HydroSystem)
     isempty(intersect(names, physical)) ||
         throw(ArgumentError("river names and node names must be disjoint"))
     destinations=Set(r.target for r in s.rivers if r.target in names)
+    for x in Iterators.flatten((s.plants,s.tunnels))
+        x.discharge_river===nothing && continue
+        x.discharge_river in names || throw(ArgumentError("unknown discharge river for $(x.name)"))
+        push!(destinations,x.discharge_river)
+    end
+    # An inflow-only reach also has an internal zero-storage source.
+    union!(destinations, (r.name for r in s.rivers if r.source==:auto))
     isempty(destinations) && return s
     inferred=Dict(n=>Symbol(_INFERRED_RIVER_PREFIX, string(n)) for n in destinations)
-    isempty(intersect(Set(values(inferred)), union(names, physical))) || throw(
+    existing=Set(j.name for j in s.river_junctions if startswith(string(j.name),_INFERRED_RIVER_PREFIX))
+    reused=Set(inferred[r.name] for r in s.rivers if r.name in destinations && r.source==inferred[r.name] && r.source in existing)
+    isempty(intersect(setdiff(Set(values(inferred)),reused), union(names, physical))) || throw(
         ArgumentError(
             "reserved inferred river-junction name collides with an input object",
         ),
@@ -33,9 +43,9 @@ function normalize_river_connections(s::HydroSystem)
     for r in s.rivers
         source=r.source
         if r.name in destinations
-            source==:auto || throw(
+            (source==:auto || source==inferred[r.name] && source in reused) || throw(
                 ArgumentError(
-                    "river $(r.name) receives direct river connections and must omit source or set source=auto",
+                    "river $(r.name) receives direct discharge connections and must omit source or set source=auto",
                 ),
             )
             r.law==:junction || throw(
@@ -44,12 +54,6 @@ function normalize_river_connections(s::HydroSystem)
                 ),
             )
             source=inferred[r.name]
-        elseif source==:auto
-            throw(
-                ArgumentError(
-                    "river $(r.name) has no source and no incoming river connection",
-                ),
-            )
         end
         push!(result, _river_replace(r; source, target = get(inferred, r.target, r.target)))
     end
@@ -57,7 +61,7 @@ function normalize_river_connections(s::HydroSystem)
         s.river_junctions,
         [
             RiverJunction(name = inferred[n]) for
-            n in sort!(collect(destinations); by = string)
+            n in sort!(collect(destinations); by = string) if !(inferred[n] in reused)
         ],
     )
     _river_replace(s; rivers = result, river_junctions = js)
@@ -115,13 +119,7 @@ function river_order(c::ScheduleCase)
         push!(outgoing[r.source], d)
         isfinite(r.capacity) && r.capacity>0 ||
             throw(ArgumentError("invalid reach capacity"))
-        r.deterministic_delay!==nothing ||
-            (
-                length(r.curves)==2 &&
-                r.curves[1].reference_flow==0 &&
-                r.curves[2].reference_flow==r.capacity
-            ) ||
-            throw(ArgumentError("reach curves must bracket zero and capacity"))
+        r.deterministic_delay!==nothing || RiverRouting.check_curves(r.curves; capacity=r.capacity)
         RiverRouting.check_grid(r.history_grid)
         RiverRouting.check_releases(r.history_grid, r.history_release)
         last(r.history_grid)==first(c.grid) ||
@@ -130,9 +128,15 @@ function river_order(c::ScheduleCase)
             throw(ArgumentError("historical release exceeds curve domain"))
     end
     for j in junctions
-        !isempty(incoming[j]) && length(outgoing[j])==1 || throw(
+        length(outgoing[j])==1 || throw(ArgumentError("junction $j needs exactly one outgoing reach"))
+        d=only(outgoing[j])
+        river=s.rivers[d]
+        supplied=!isempty(incoming[j]) ||
+            any(x.discharge_river==river.name for x in Iterators.flatten((s.plants,s.tunnels))) ||
+            river.inflow>0 || any(z.object==river.name && z.attribute==:inflow && any(>(0),z.values) for z in c.operations)
+        supplied || throw(
             ArgumentError(
-                "junction $j needs incoming reaches and exactly one outgoing reach",
+                "junction $j needs an upstream water supply",
             ),
         )
     end
@@ -202,13 +206,19 @@ end
 
 """Route all reaches in topological order, independently of model coefficients.
 
-`source_release` is D×T on the original case grid. Only reservoir-source rows
-are prescribed. Junction release is the sum of upstream arrival volumes divided
-by interval duration. Optional `grid` preserves original reservoir cohorts, but
+`source_release` is D×T on the original case grid. Reservoir-source rows are
+prescribed total reach releases, including natural inflow. Other local injections
+come from `generator_q`, `tunnel_q` and natural inflow. Junction release adds the
+upstream arrival volumes divided by interval duration. Optional `grid` preserves
+original reservoir cohorts, but
 junction mixing rebins arrivals: its timing is a convergent grid approximation,
 not an exact continuous-time convolution. Transit includes historical cohorts.
 """
-function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c.grid)
+function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c.grid,
+    generator_q=nothing, tunnel_q=nothing, injections=nothing)
+    size(source_release)==(length(c.system.rivers),length(c.prices)) ||
+        throw(ArgumentError("source release matrix has incorrect dimensions"))
+    source_release=injections===nothing ? river_injections(c,source_release,generator_q,tunnel_q) : injections
     order=river_order(c)
     RiverRouting.check_grid(grid)
     first(grid)==first(c.grid) && last(grid)==last(c.grid) ||
@@ -231,7 +241,8 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
             release[d, :]=source_averages(grid, cohort_grid, q)
         else
             upstream=findall(e->e.target==r.source, s.rivers)
-            q=vec(sum(arrival[upstream, :]; dims = 1)) ./ (0.0036 .* diff(grid))
+            q=source_averages(grid,c.grid,view(source_release,d,:)) +
+              vec(sum(arrival[upstream, :]; dims = 1)) ./ (0.0036 .* diff(grid))
             # Floating-point conservation can put a capacity-bound flow a few
             # ulps outside its reference range. Do not hide physical excess.
             q=[x<=r.capacity+1e-10 ? min(x, r.capacity) : x for x in q]

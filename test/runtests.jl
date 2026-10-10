@@ -2,6 +2,7 @@ using Test, JuMP, OpenSHOP
 using OpenSHOP: river_order
 include("rivergraph_tests.jl")
 include("forward_tests.jl")
+include("mixed_source_forward_tests.jl")
 include("short_delay_tests.jl")
 include("temporal_tests.jl")
 include("curve_tests.jl")
@@ -75,3 +76,8 @@ include("power_hull_start_tests.jl")
 include("table_power_bounds_tests.jl")
 include("table_power_coordinate_tests.jl")
 include("power_cut_tests.jl")
+
+include("multireference_routing_tests.jl")
+include("mixed_source_network_tests.jl")
+
+include("river_source_input_tests.jl")

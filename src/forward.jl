@@ -4,6 +4,8 @@
 contains the fractions of each current release cohort arriving in this same
 interval, one column per reference curve. River junction mixing and current
 arrivals are evaluated inside Newton's residual, coupled to storage and heads.
+For deterministic transport, `current_network` maps local injections to arrivals;
+upstream water entering a confluence is represented by those same source pulses.
 Operational bounds are reported, never imposed by clipping physical states.
 """
 function forward_step(
@@ -43,6 +45,7 @@ function forward_step(
     all(x->0<=x<=1, current_transfer) ||
         throw(ArgumentError("invalid controls or arrival fractions"))
     active=findall(r->r.law!=:junction, s.rivers)
+    source_indices=river_source_indices(s)
     na=length(active)
     order=_forward_river_order(s)
     base=nr+nj
@@ -57,12 +60,12 @@ function forward_step(
     add!(v, node, q) = haskey(ix, node) && ix[node]<=base ? (v[ix[node]]+=q) : nothing
     for (e, t) in enumerate(s.tunnels)
         add!(view(B, :, e), t.source, -1.0)
-        add!(view(B, :, e), t.target, 1.0)
+        t.discharge_river===nothing && add!(view(B, :, e), t.target, 1.0)
     end
     for (i, g) in enumerate(s.generators)
         p=plantof(s, g)
         add!(fixed, p.source, -generator_q[i])
-        add!(fixed, p.target, generator_q[i])
+        p.discharge_river===nothing && add!(fixed, p.target, generator_q[i])
     end
     for d in active
         haskey(ix, s.rivers[d].source) && ix[s.rivers[d].source]<=nr ||
@@ -84,11 +87,13 @@ function forward_step(
         release=zeros(nd)
         arrival=copy(river_arrival)
         release[active].=x[(nq + 1):end]
-        current_network!==nothing && (arrival .+= current_network*release)
+        injection=_river_injections(s,release,generator_q,view(x,(base+1):nq);
+            indices=source_indices)
+        current_network!==nothing && (arrival .+= current_network*injection)
         for d in order
             r=s.rivers[d]
             if r.law==:junction
-                release[d]=sum(
+                release[d]=injection[d]+sum(
                     (arrival[k] for (k, e) in enumerate(s.rivers) if e.target==r.source);
                     init = 0.0,
                 )
@@ -102,15 +107,15 @@ function forward_step(
                 arrival[d]+=max(0.0, release[d])*fraction
             end
         end
-        release, arrival
+        release, arrival, injection
     end
     function equations(x)
         h=heads(x)
         net=B*x[(base + 1):nq]+fixed
         f=zeros(nv)
-        release, arrival=river_rates(x)
+        release, arrival, _=river_rates(x)
         for (d, r) in enumerate(s.rivers)
-            add!(net, r.source, -release[d])
+            add!(net, r.source, -(release[d]-r.inflow))
             add!(net, r.target, arrival[d])
         end
         for i in 1:nr
@@ -124,7 +129,7 @@ function forward_step(
         end
         for (k, d) in enumerate(active)
             r=s.rivers[d]
-            f[nq + k]=x[nq + k]-law(r, h[ix[r.source]], gate[d])
+            f[nq + k]=x[nq + k]-r.inflow-law(r, h[ix[r.source]], gate[d])
         end
         f
     end
@@ -141,7 +146,7 @@ function forward_step(
         x[base + k]=sign(dh)*sqrt(t.opening*abs(dh)/t.resistance)
     end
     for (k, d) in enumerate(active)
-        x[nq + k]=law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
+        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
     end
     if initial_guess!==nothing
         if initial_guess isa AbstractDict
@@ -193,9 +198,9 @@ function forward_step(
     # Exact law evaluation removes Newton roundoff from a shut outlet. Its
     # storage consequence is included in the recomputed convergence residual.
     for (k, d) in enumerate(active)
-        x[nq + k]=law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
+        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
     end
-    release, arrival=river_rates(x)
+    release, arrival, injection=river_rates(x)
     gh=[
         begin
             plant=plantof(s, g)
@@ -215,27 +220,31 @@ function forward_step(
     end
     for (i, t) in enumerate(s.tunnels)
         boundary!(t.source, -x[base + i])
-        boundary!(t.target, x[base + i])
+        t.discharge_river===nothing && boundary!(t.target, x[base + i])
     end
     for (i, g) in enumerate(s.generators)
         p=plantof(s, g)
         boundary!(p.source, -generator_q[i])
-        boundary!(p.target, generator_q[i])
+        p.discharge_river===nothing && boundary!(p.target, generator_q[i])
     end
     for (i, r) in enumerate(s.rivers)
-        boundary!(r.source, -release[i])
+        boundary!(r.source, -(release[i]-r.inflow))
         boundary!(r.target, arrival[i])
     end
     residual=maximum(abs, equations(x); init = 0.0)
     domain=all(isfinite, vcat(x, h, pw, release, arrival)) &&
-           all(_forward_domain(r, release[d]) for (d, r) in enumerate(s.rivers))
+           all(_forward_domain(r, release[d]) for (d, r) in enumerate(s.rivers)) &&
+           all(t.discharge_river===nothing || x[base+i]>=-1e-10
+               for (i,t) in enumerate(s.tunnels))
     violations=Dict(
         "storage"=>maximum(
             (max(r.vmin-x[i], x[i]-r.vmax, 0.0) for (i, r) in enumerate(s.reservoirs));
             init = 0.0,
         ),
         "tunnel_flow"=>maximum(
-            (max(abs(x[base + i])-r.capacity, 0.0) for (i, r) in enumerate(s.tunnels));
+            (max(abs(x[base + i])-r.capacity,
+                r.discharge_river===nothing ? 0.0 : -x[base+i], 0.0)
+                for (i, r) in enumerate(s.tunnels));
             init = 0.0,
         ),
         "river_flow"=>maximum(
@@ -251,6 +260,7 @@ function forward_step(
         "H"=>h,
         "tunnel_q"=>x[(base + 1):nq],
         "river_release"=>release,
+        "river_injection"=>injection,
         "river_arrival"=>arrival,
         "generator_head"=>gh,
         "power"=>pw,
@@ -340,9 +350,10 @@ end
 """Independent chronological replay with coupled same-step river arrivals.
 
 Source outlet laws, midpoint storage and zero/short-delay transfers are solved
-simultaneously during each forward step. Junction mixing conserves volume but
-rebins the arriving water uniformly on the replay grid; refine the grid to
-assess this timing approximation. Each cohort contributes exactly once.
+simultaneously during each forward step. Deterministic routing preserves each
+local injection's pulses through confluences. Distributed junction mixing
+conserves volume but rebins arriving water uniformly on the replay grid; refine
+the grid to assess this timing approximation. Each cohort contributes once.
 """
 function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport = nothing)
     s=c.system
@@ -368,6 +379,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
     Q=zeros(length(s.tunnels), T)
     P=zeros(ng, T)
     R=zeros(nd, T)
+    L=zeros(nd, T)
     A=zeros(nd, T)
     W=zeros(nd, T+1)
     out=zeros(T)
@@ -412,7 +424,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
                 A[d, t]=ndat.arrival_history[d, t]
                 for (i, k, v) in ndat.arrival_terms[d, t]
                     if k<t
-                        A[d, t]+=v*R[i, k]
+                        A[d, t]+=v*L[i, k]
                     elseif k==t
                         network[d, i]+=v/(0.0036dt)
                     else
@@ -439,6 +451,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
         Q[:, t].=z["tunnel_q"]
         P[:, t].=z["power"]
         R[:, t].=z["river_release"]
+        L[:, t].=z["river_injection"]
         out[t]=sum(z["boundary_net_inflow"])
         A[:, t].=0.0036dt .* z["river_arrival"]
         for (d, r) in enumerate(s.rivers)

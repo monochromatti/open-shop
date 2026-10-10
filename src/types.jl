@@ -30,12 +30,14 @@ Base.@kwdef struct Tunnel
     resistance::Float64
     capacity::Float64
     opening::Float64=1.0
+    discharge_river::Union{Nothing,Symbol}=nothing # forward outfall; target remains hydraulic head reference
 end
 Base.@kwdef struct Plant
     name::Symbol
     source::Symbol
     target::Symbol
     pmax::Float64
+    discharge_river::Union{Nothing,Symbol}=nothing # water destination, independent of outlet head
     ramp::Union{Nothing,Float64}=100.0 # MW/hour; nothing disables the symmetric default
     initial_power::Union{Nothing,Float64}=nothing
     initial_interval_hours::Float64=1.0
@@ -94,6 +96,7 @@ Base.@kwdef struct River
     target::Symbol
     curves::Vector{RiverRouting.DelayCurve}
     capacity::Float64
+    inflow::Float64=0.0 # natural water entering the top of this reach
     law::Symbol=:junction # :orifice, :weir, or :junction
     coefficient::Float64=0.0 # q=C*a*sqrt(H-crest), or C*(H-crest)^1.5
     crest::Float64=0.0

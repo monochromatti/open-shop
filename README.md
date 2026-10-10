@@ -38,6 +38,9 @@ The [single-reservoir example](examples/single_reservoir.jl) constructs a case
 from Julia objects and solves it against a known optimum.
 The [operating-rules example](examples/operating_rules.jl) adds maintenance,
 required discharge, plant dwell and directional ramps to a two-unit station.
+The [mixed-source river example](examples/mixed_source_network.jl) routes two
+plants and natural inflow through delayed reaches; [river networks](docs/river-networks.md)
+describes direct plant/tunnel connections and flow-dependent travel time.
 
 ## Solving a schedule
 
