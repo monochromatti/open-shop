@@ -87,7 +87,7 @@ class RuleTests(unittest.TestCase):
         return self.case_fixture()
 
     def case_fixture(self):
-        rivers = set(IMPORTER.RIVER_MINIMUM_FILES) | set(IMPORTER.VEST_RIVERS)
+        rivers = set(IMPORTER.RIVER_MINIMUM_FILES) | set(IMPORTER.VEST_RIVERS) | {IMPORTER.VEST_NAME}
         return {
             "name": "fixture",
             "operations": [],
@@ -99,7 +99,7 @@ class RuleTests(unittest.TestCase):
             "generators": [{"name": "Lio_G1", "plant": "Lio"}],
         }
 
-    def test_storage_units_and_observation_without_second_water_flow(self):
+    def test_storage_units_and_physical_reach_minimum(self):
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory)
             case = self.fixture(source)
@@ -114,17 +114,16 @@ class RuleTests(unittest.TestCase):
             self.assertEqual(case["generators"], before["generators"])
             storage = next(x for x in case["operations"] if x["object"] == "Totak")
             self.assertEqual(storage["values"], [10.0, 2.0])
-            observation = case["flow_requirements"][0]
-            self.assertEqual(observation["generators"], ["Lio_G1"])
-            self.assertEqual(observation["rivers"], list(IMPORTER.VEST_RIVERS))
-            self.assertEqual(observation["inflow"], 1.25)
-            self.assertEqual(observation["min_flow"], 6)
-            local = next(
+            self.assertNotIn("flow_requirements", case)
+            minimum = next(
                 x
                 for x in case["operations"]
-                if x["object"] == IMPORTER.VEST_NAME and x["attribute"] == "inflow"
+                if x["object"] == IMPORTER.VEST_NAME and x["attribute"] == "min_release"
             )
-            self.assertEqual(local["values"], inflows[IMPORTER.VEST_NAME])
+            self.assertEqual(minimum["times"], [0.0, 12.0])
+            self.assertEqual(minimum["values"], [6, 9])
+            self.assertFalse(any(z["object"] == IMPORTER.VEST_NAME and
+                z["attribute"] == "inflow" for z in case["operations"]))
 
     def test_invalid_initial_state_is_rejected_without_clipping(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -141,7 +140,7 @@ class RuleTests(unittest.TestCase):
                 )
             self.assertEqual(case["reservoirs"][0]["v0"], 9.0)
 
-    def test_observation_rejects_missing_inflow_or_named_terms(self):
+    def test_vest_rule_rejects_missing_inflow_or_named_terms(self):
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory)
             case = self.fixture(source)
@@ -155,7 +154,7 @@ class RuleTests(unittest.TestCase):
                 )
             case = self.case_fixture()
             case["generators"] = []
-            with self.assertRaisesRegex(ValueError, "observation terms"):
+            with self.assertRaisesRegex(ValueError, "source terms"):
                 IMPORTER.apply_operating_rules(
                     case,
                     source,
@@ -186,9 +185,32 @@ class ExternalInputTests(unittest.TestCase):
                 )
                 self.assertEqual(case["reservoirs"], before["reservoirs"])
                 self.assertEqual(len(coverage), 9)
-                self.assertEqual(len(case["flow_requirements"]), 1)
+                self.assertNotIn("flow_requirements", case)
                 self.assertEqual(len(case["generators"]), 14)
                 self.assertEqual(len(case["reservoirs"]), 17)
+                bandak = next(r for r in case["reservoirs"] if r["name"] == "Bandak")
+                self.assertEqual(bandak["inflow"], inflows["Bandak"][0])
+                bandak_inflow = next(z for z in case["operations"] if
+                    z["object"] == "Bandak" and z["attribute"] == "inflow")
+                self.assertEqual(bandak_inflow["values"], inflows["Bandak"][:hours])
+                vest = next(r for r in case["rivers"] if r["name"] == IMPORTER.VEST_NAME)
+                self.assertEqual(vest["source"], "auto")
+                self.assertEqual(vest["target"], "Bandak")
+                self.assertEqual(vest["law"], "junction")
+                self.assertEqual(vest["deterministic_delay"], 0.0)
+                self.assertEqual(vest["inflow"], inflows[IMPORTER.VEST_NAME][0])
+                self.assertEqual({r["name"] for r in case["rivers"] if
+                    r["target"] == IMPORTER.VEST_NAME}, set(IMPORTER.VEST_RIVERS))
+                lio = next(p for p in case["plants"] if p["name"] == "Lio")
+                self.assertEqual(lio["target"], "Bandak")
+                self.assertEqual(lio["discharge_river"], IMPORTER.VEST_NAME)
+                expected_cap = sum(r["capacity"] for r in case["rivers"] if
+                    r["target"] == IMPORTER.VEST_NAME)
+                expected_cap += next(g["qmax"] for g in case["generators"] if g["name"] == "Lio_G1")
+                expected_cap += max(inflows[IMPORTER.VEST_NAME][:hours])
+                self.assertEqual(vest["capacity"], expected_cap)
+                self.assertEqual(sum(z["object"] == IMPORTER.VEST_NAME and
+                    z["attribute"] == "inflow" for z in case["operations"]), 1)
                 if hours == 48:
                     rule = next(
                         x
