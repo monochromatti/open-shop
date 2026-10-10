@@ -1,7 +1,12 @@
 const OPERATION_ATTRIBUTES=Dict(
-    Reservoir=>Set((:inflow, :vmin, :vmax)),
-    Generator=>Set((:qmin, :qmax, :pmin, :pmax, :forced_on)),
-    Plant=>Set((:pmax,)),
+    Reservoir=>Set((:inflow, :vmin, :vmax, :volume_ramp_up, :volume_ramp_down,
+        :level_ramp_up, :level_ramp_down)),
+    Generator=>Set((:qmin, :qmax, :pmin, :pmax, :forced_on, :maintenance,
+        :power, :discharge, :startup, :shutdown, :ramp_up, :ramp_down,
+        :discharge_ramp_up, :discharge_ramp_down)),
+    Plant=>Set((:pmin, :pmax, :qmin, :qmax, :forced_on, :maintenance,
+        :power, :discharge, :ramp_up, :ramp_down,
+        :discharge_ramp_up, :discharge_ramp_down)),
     Tunnel=>Set((:capacity, :opening)),
     River=>Set((
         :capacity,
@@ -10,9 +15,22 @@ const OPERATION_ATTRIBUTES=Dict(
         :min_arrival,
         :min_release,
         :release_penalty,
+        :ramp_up,
+        :ramp_down,
     )),
     FlowRequirement=>Set((:inflow, :min_flow)),
 )
+
+"""Optional interval input. Missing schedules or ramp limits remain disabled."""
+function optional_opvalue(c, object, attribute, time, default=nothing)
+    i=findfirst(z->z.object==object && z.attribute==attribute, c.operations)
+    i===nothing && return default
+    z=c.operations[i]
+    k=searchsortedlast(z.times, time)
+    k==0 ? default : z.values[k]
+end
+optional_operation(c, object, attribute, t; grid=c.grid, default=nothing) =
+    optional_opvalue(c, object, attribute, grid[t], default)
 
 """Piecewise-constant operating data at absolute physical time. Before a series'
 first knot the object's static default applies. Internal knots have both limits.
@@ -101,12 +119,19 @@ function validate_operations(c)
             all(v->v>=getfield(obj, z.attribute), z.values) ||
                 throw(ArgumentError("operating minimum may only tighten its static bound"))
         elseif z.attribute in (:vmax, :qmax, :pmax, :capacity)
-            all(v->v<=getfield(obj, z.attribute), z.values) ||
+            ceiling=getfield(obj, z.attribute)
+            if obj isa Plant && z.attribute==:qmax && ceiling===nothing
+                ceiling=sum(g.qmax for g in c.system.generators if g.plant==obj.name; init=0.0)
+            end
+            all(v->v<=ceiling, z.values) ||
                 throw(ArgumentError("operating maximum may only tighten its static bound"))
         end
         if z.attribute==:forced_on
             all(x->x in (-1.0, 0.0, 1.0), z.values) ||
                 throw(ArgumentError("forced_on must be -1 (free), 0 (off), or 1 (on)"))
+        elseif z.attribute==:maintenance
+            all(x->x in (0.0, 1.0), z.values) ||
+                throw(ArgumentError("maintenance must be 0 (available) or 1 (unavailable)"))
         elseif z.attribute in (:opening, :gate_min, :gate_max)
             all(x->0<=x<=1, z.values) ||
                 throw(ArgumentError("opening and gate bounds must lie in [0,1]"))
@@ -134,6 +159,26 @@ function validate_operations(c)
             throw(ArgumentError("inconsistent unit flow bounds"))
         opinterval(c, g.name, :pmin, t, g.pmin)<=opinterval(c, g.name, :pmax, t, g.pmax) ||
             throw(ArgumentError("inconsistent unit power bounds"))
+        for (attribute, lo, hi) in (
+            (:power, opinterval(c, g.name, :pmin, t, g.pmin), opinterval(c, g.name, :pmax, t, g.pmax)),
+            (:discharge, opinterval(c, g.name, :qmin, t, g.qmin), opinterval(c, g.name, :qmax, t, g.qmax)),
+        )
+            scheduled=optional_operation(c, g.name, attribute, t)
+            scheduled===nothing || scheduled==0 || lo<=scheduled<=hi ||
+                throw(ArgumentError("$(g.name).$attribute schedule outside running bounds"))
+        end
+    end
+    for p in c.system.plants, t in eachindex(c.prices)
+        qmax=p.qmax===nothing ? sum(g.qmax for g in c.system.generators if g.plant==p.name; init=0.0) : p.qmax
+        for (attribute, lo, hi) in (
+            (:power, opinterval(c, p.name, :pmin, t, p.pmin), opinterval(c, p.name, :pmax, t, p.pmax)),
+            (:discharge, opinterval(c, p.name, :qmin, t, p.qmin), opinterval(c, p.name, :qmax, t, qmax)),
+        )
+            lo<=hi || throw(ArgumentError("inconsistent plant operating bounds"))
+            scheduled=optional_operation(c, p.name, attribute, t)
+            scheduled===nothing || scheduled==0 || lo<=scheduled<=hi ||
+                throw(ArgumentError("$(p.name).$attribute schedule outside running bounds"))
+        end
     end
     for r in c.system.rivers, t in eachindex(c.prices)
         opinterval(c, r.name, :gate_min, t, r.gate_min)<=opinterval(
@@ -155,6 +200,7 @@ function validate_operations(c)
             ),
         )
     end
+    _commitment_bounds(c) # Intersect operational states with initial dwell obligations.
     nothing
 end
 

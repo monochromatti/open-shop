@@ -9,6 +9,10 @@ Base.@kwdef struct Reservoir
     inflow::Float64=0.0
     water_value::Float64
     level_curve::Union{Nothing,TableCurve}=nothing
+    volume_ramp_up::Union{Nothing,Float64}=nothing # Mm³/hour, between storage vertices
+    volume_ramp_down::Union{Nothing,Float64}=nothing
+    level_ramp_up::Union{Nothing,Float64}=nothing # metres/hour, between level vertices
+    level_ramp_down::Union{Nothing,Float64}=nothing
 end
 Base.@kwdef struct Junction
     name::Symbol
@@ -32,11 +36,23 @@ Base.@kwdef struct Plant
     source::Symbol
     target::Symbol
     pmax::Float64
-    ramp::Float64=100.0 # MW/hour, inter-period aggregate production ramp
+    ramp::Union{Nothing,Float64}=100.0 # MW/hour; nothing disables the symmetric default
     initial_power::Union{Nothing,Float64}=nothing
     initial_interval_hours::Float64=1.0
     tailwater_curve::Union{Nothing,TableCurve}=nothing
     outlet_head_floor::Union{Nothing,Float64}=nothing
+    pmin::Float64=0.0
+    qmin::Float64=0.0
+    qmax::Union{Nothing,Float64}=nothing
+    ramp_up::Union{Nothing,Float64}=nothing # nothing inherits the symmetric power ramp
+    ramp_down::Union{Nothing,Float64}=nothing
+    discharge_ramp_up::Union{Nothing,Float64}=nothing # (m³/s)/hour
+    discharge_ramp_down::Union{Nothing,Float64}=nothing
+    initial_discharge::Union{Nothing,Float64}=nothing
+    minup::Float64=0.0
+    mindown::Float64=0.0
+    initial_on::Union{Nothing,Int}=nothing # otherwise any initially running member unit
+    initial_age::Union{Nothing,Float64}=nothing
 end
 Base.@kwdef struct Generator
     name::Symbol
@@ -61,6 +77,13 @@ Base.@kwdef struct Generator
     shutdown::Float64=0.0
     turbine_table::Union{Nothing,TurbineTable}=nothing
     generator_efficiency_curve::Union{Nothing,TableCurve}=nothing
+    ramp_up::Union{Nothing,Float64}=nothing
+    ramp_down::Union{Nothing,Float64}=nothing
+    discharge_ramp_up::Union{Nothing,Float64}=nothing
+    discharge_ramp_down::Union{Nothing,Float64}=nothing
+    initial_power::Union{Nothing,Float64}=nothing
+    initial_discharge::Union{Nothing,Float64}=nothing
+    initial_interval_hours::Float64=1.0
 end
 Base.@kwdef struct RiverJunction
     name::Symbol
@@ -84,6 +107,10 @@ Base.@kwdef struct River
     history_release::Vector{Float64}=zeros(4)
     discharge_curve::Union{Nothing,TableCurve}=nothing
     allow_dry::Bool=false
+    ramp_up::Union{Nothing,Float64}=nothing # release (m³/s)/hour
+    ramp_down::Union{Nothing,Float64}=nothing
+    initial_release::Union{Nothing,Float64}=nothing # previous control-window average, separate from cohorts
+    initial_interval_hours::Float64=1.0
 end
 Base.@kwdef struct HydroSystem
     reservoirs::Vector{Reservoir}

@@ -50,15 +50,7 @@ function replay_audit(
     end
     try
         cc=with_grid(c, grid)
-        # Average-power ramps are imposed over the original operating windows below.
-        ss=_river_replace(
-            cc.system;
-            plants = [
-                _river_replace(p; ramp = 1e12, initial_power = nothing) for
-                p in cc.system.plants
-            ],
-        )
-        fine=_river_replace(cc; system = ss)
+        fine=without_interval_controls(cc)
         indices=[
             clamp(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), 1, length(c.prices))
             for t in 1:(length(grid) - 1)
@@ -72,58 +64,10 @@ function replay_audit(
         audit=z["validation"]
         merge!(violations, audit["residuals"])
         append!(errors, audit["errors"])
-        dt=diff(grid)
-        for p in c.system.plants
-            ids=findall(g->g.plant==p.name, c.system.generators)
-            power=vec(sum(z["power"][ids, :]; dims = 1))
-            averages=[
-                sum(power[k]*dt[k] for k in eachindex(dt) if indices[k]==t)/diff(c.grid)[t]
-                for t in eachindex(c.prices)
-            ]
-            maximum_violation=0.0
-            for t in eachindex(c.prices)
-                previous=t==1 ? p.initial_power : averages[t - 1]
-                previous===nothing && continue
-                elapsed=t==1 ? (p.initial_interval_hours+diff(c.grid)[1])/2 :
-                        (diff(c.grid)[t - 1]+diff(c.grid)[t])/2
-                su=sum(
-                    opinterval(
-                        c,
-                        c.system.generators[j].name,
-                        :pmin,
-                        t,
-                        c.system.generators[j].pmin,
-                    )*max(
-                        0,
-                        x["u"][j, t]-(
-                            t==1 ? c.system.generators[j].initial_on : x["u"][j, t - 1]
-                        ),
-                    ) for j in ids
-                )
-                sd=sum(
-                    opinterval(
-                        c,
-                        c.system.generators[j].name,
-                        :pmin,
-                        t,
-                        c.system.generators[j].pmin,
-                    )*max(
-                        0,
-                        (t==1 ? c.system.generators[j].initial_on : x["u"][j, t - 1])-x["u"][
-                            j,
-                            t,
-                        ],
-                    ) for j in ids
-                )
-                maximum_violation=max(
-                    maximum_violation,
-                    averages[t]-previous-p.ramp*elapsed-su,
-                    previous-averages[t]-p.ramp*elapsed-sd,
-                )
-            end
-            violations["plant_ramp_$(p.name)"]=maximum_violation
-            maximum_violation>tolerance &&
-                push!(errors, "plant ramp $(p.name) fails finer replay: $maximum_violation")
+        windows=operating_window_values(c,z,grid,indices,x["u"])
+        for (name,residual) in operating_residuals(c,windows)
+            violations[name]=max(get(violations,name,0.0),residual)
+            residual>tolerance && push!(errors,"$name fails finer replay: $residual")
         end
         for g in c.system.generators
             violations["unit_power_$(g.name)"]=max(

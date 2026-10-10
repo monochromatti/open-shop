@@ -38,9 +38,8 @@ function propose_commitment(
     m=Model(HiGHS.Optimizer)
     set_silent(m)
     set_optimizer_attribute(m, "mip_rel_gap", 0.002)
-    @variable(m, u[1:G, 1:T], Bin)
-    @variable(m, start[1:G, 1:T], Bin)
-    @variable(m, stop[1:G, 1:T], Bin)
+    states=_joint_states!(m,c)
+    u=states.u
     @variable(m, V[1:R, 1:(T + 1)])
     @variable(m, Q[1:E, 1:T])
     @variable(m, gq[1:G, 1:T]>=0)
@@ -77,71 +76,10 @@ function propose_commitment(
         @constraint(m, gq[j, t]<=qhi*u[j, t])
         @constraint(m, alpha[j, t]*gq[j, t]>=plo*u[j, t])
         @constraint(m, alpha[j, t]*gq[j, t]<=phi*u[j, t])
-        forced=opvalue(c, g.name, :forced_on, c.grid[t], -1.0)
-        forced>=0 && @constraint(m, u[j, t]==forced)
-        prev=t==1 ? g.initial_on : u[j, t - 1]
-        @constraint(m, u[j, t]-prev==start[j, t]-stop[j, t])
-        @constraint(m, start[j, t]+stop[j, t]<=1)
-        for k in t:T
-            c.grid[k]-c.grid[t]<g.minup-1e-9 && @constraint(m, u[j, k]>=start[j, t])
-            c.grid[k]-c.grid[t]<g.mindown-1e-9 && @constraint(m, u[j, k]<=1-stop[j, t])
-        end
-        residual=(g.initial_on==1 ? g.minup : g.mindown)-g.initial_age
-        if c.grid[t]-first(c.grid)<residual-1e-9
-            fix(u[j, t], g.initial_on; force = true)
-        end
     end
     P=[alpha[j, t]*gq[j, t] for j in 1:G, t in 1:T]
-    for p in s.plants
-        members=findall(g->g.plant==p.name, s.generators)
-        for t in 1:T
-            @constraint(
-                m,
-                sum(P[j, t] for j in members)<=opvalue(c, p.name, :pmax, c.grid[t], p.pmax)
-            )
-            if t==1 && p.initial_power!==nothing
-                change=sum(P[j, t] for j in members)-p.initial_power
-                @constraint(
-                    m,
-                    change<=p.ramp*(p.initial_interval_hours+dt[t])/2+sum(
-                        opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*start[
-                            j,
-                            t,
-                        ] for j in members
-                    )
-                )
-                @constraint(
-                    m,
-                    -change<=p.ramp*(p.initial_interval_hours+dt[t])/2+sum(
-                        opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*stop[
-                            j,
-                            t,
-                        ] for j in members
-                    )
-                )
-            elseif t>1
-                change=sum(P[j, t]-P[j, t - 1] for j in members)
-                @constraint(
-                    m,
-                    change<=p.ramp*(dt[t - 1]+dt[t])/2+sum(
-                        opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*start[
-                            j,
-                            t,
-                        ] for j in members
-                    )
-                )
-                @constraint(
-                    m,
-                    -change<=p.ramp*(dt[t - 1]+dt[t])/2+sum(
-                        opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*stop[
-                            j,
-                            t,
-                        ] for j in members
-                    )
-                )
-            end
-        end
-    end
+    constrain_dispatch_operations!(m,c,u,P,gq,rq; transitions=states, proposal=true)
+    constrain_reservoir_ramps!(m,c,V) # Only linear storage ramps belong to the proposal.
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=storage_bounds(c, r, c.grid[t])
@@ -277,11 +215,8 @@ function propose_commitment(
         m,
         Max,
         sum(
-            c.prices[t]*dt[t]*P[j, t]-s.generators[j].startup*start[j, t]-s.generators[j].shutdown*stop[
-                j,
-                t,
-            ] for j in 1:G, t in 1:T
-        )+water_scale*valuechange-sum(
+            c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T
+        )-transition_costs(c,u; transitions=states)+water_scale*valuechange-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
                 t,

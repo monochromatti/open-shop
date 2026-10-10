@@ -100,10 +100,6 @@ function _build_global_dispatch(
         u=states.u
         transitions=states
         ustart=states.start
-        for (j, g) in enumerate(s.generators), t in 1:T
-            forced=opinterval(c, g.name, :forced_on, t, -1.0)
-            forced>=0 && fix(u[j, t], forced; force = true)
-        end
     end
     @variable(m, v[1:R, 1:(T + 1)])
     @variable(m, h[1:N, 1:T])
@@ -156,6 +152,14 @@ function _build_global_dispatch(
             @constraint(m, (H[i, t]-level)/250==0)
         end
     end
+    level_at_vertex=(i,t)->begin
+        r=s.reservoirs[i]
+        volume=V[i,t]
+        r.level_curve===nothing ? r.z0+r.slope*volume+r.curvature*volume^2 :
+            _global_tensor_table!(m,r.level_curve,volume,domains.lower[i,t],domains.upper[i,t];
+                name=Symbol("level_vertex_",i,"_",t))
+    end
+    constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], node_bounds[(j.name,t)][1]/250)
         set_upper_bound(h[R + i, t], node_bounds[(j.name,t)][2]/250)
@@ -354,52 +358,7 @@ function _build_global_dispatch(
             end
         end
     end
-    for plant in s.plants
-        ids=plant_generators[plant.name]
-        for t in 1:T
-            @constraint(
-                m,
-                sum(P[j, t] for j in ids)<=max(
-                    0.0,
-                    opinterval(c, plant.name, :pmax, t, plant.pmax)-operational_margin,
-                )
-            )
-            if t==1 && plant.initial_power!==nothing
-                ramp=max(
-                    0.0,
-                    plant.ramp*(plant.initial_interval_hours+dt[t])/2-operational_margin,
-                )
-                su=sum(
-                    opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.su[j, t] :
-                        max(0, u[j, t]-s.generators[j].initial_on)
-                    ) for j in ids
-                )
-                sd=sum(
-                    opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.sd[j, t] :
-                        max(0, s.generators[j].initial_on-u[j, t])
-                    ) for j in ids
-                )
-                @constraint(m, sum(P[j, t] for j in ids)-plant.initial_power>=-ramp-sd)
-                @constraint(m, sum(P[j, t] for j in ids)-plant.initial_power<=ramp+su)
-            elseif t>1
-                ramp=max(0.0, plant.ramp*(dt[t - 1]+dt[t])/2-operational_margin)
-                su=sum(
-                    opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.su[j, t] : max(0, u[j, t]-u[j, t - 1])
-                    ) for j in ids
-                )
-                sd=sum(
-                    opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.sd[j, t] : max(0, u[j, t - 1]-u[j, t])
-                    ) for j in ids
-                )
-                @constraint(m, sum(P[j, t]-P[j, t - 1] for j in ids)>=-ramp-sd)
-                @constraint(m, sum(P[j, t]-P[j, t - 1] for j in ids)<=ramp+su)
-            end
-        end
-    end
+    constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
     arrivals=Matrix{Any}(undef, D, T)
     terminal=Any[]
     for (i, r) in enumerate(s.rivers)
@@ -637,20 +596,9 @@ function _build_global_dispatch(
             @constraint(m, net/50==0)
         end
     end
-    startup=sum(
-        g.startup*(
-            joint ? transitions.su[j, t] :
-            max(0, u[j, t]-(t==1 ? g.initial_on : u[j, t - 1]))
-        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
-    )
-    shutdown=sum(
-        g.shutdown*(
-            joint ? transitions.sd[j, t] :
-            max(0, (t==1 ? g.initial_on : u[j, t - 1])-u[j, t])
-        ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
-    )
+    operating_cost=transition_costs(c,u; transitions)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
-    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-startup-shutdown+sum(
+    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-operating_cost+sum(
         r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
         init = 0.0,
     )+sum(

@@ -36,6 +36,8 @@ Without Nix, use `julia --project=.` instead of `./scripts/julia.sh`.
 
 The [single-reservoir example](examples/single_reservoir.jl) constructs a case
 from Julia objects and solves it against a known optimum.
+The [operating-rules example](examples/operating_rules.jl) adds maintenance,
+required discharge, plant dwell and directional ramps to a two-unit station.
 
 ## Solving a schedule
 
@@ -115,11 +117,13 @@ nonlinear iterations and hydraulic acceptance costs.
 
 - Nonlinear head–storage curves, signed tunnel losses and flow conservation.
 - Turbine tables, electrical efficiency curves and aggregate plant limits.
-- Unit on/off states, minimum up/down times and transition costs.
+- Unit and plant on/off rules, minimum up/down times, maintenance and transition costs.
+- Prescribed power/discharge schedules and directional power, flow, storage and level ramps.
 - River confluences, release laws, finite travel times and environmental limits.
 - Time-dependent operating restrictions, aggregate flow observations and restart state.
 
-See [input objects and units](docs/input.md), [equations and certificate scope](docs/model.md)
+See [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
+[equations and certificate scope](docs/model.md)
 and [benchmark results](docs/benchmarks.md).
 
 The [Tokke–Vinje example](examples/tokke_vinje/README.md) fetches SINTEF's public

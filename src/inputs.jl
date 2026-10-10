@@ -15,6 +15,8 @@ function validate_inputs(c)
         for x in objects, f in fieldnames(typeof(x))
             value=getfield(x, f)
             value isa Real && !isfinite(value) && error("Nonfinite attribute $(x.name).$f")
+            occursin("ramp", string(f)) && value!==nothing && value<0 &&
+                throw(ArgumentError("negative ramp limit $(x.name).$f"))
         end
     end
     objectnames=[
@@ -64,10 +66,21 @@ function validate_inputs(c)
     end
     for p in s.plants
         p.source in ns && p.target in ns || error("Plant connection")
-        p.pmax>0 && p.ramp>=0 && p.initial_interval_hours>0 || error("Plant limits")
+        p.pmax>0 && (p.ramp===nothing || p.ramp>=0) && p.initial_interval_hours>0 || error("Plant limits")
+        0<=p.pmin<=p.pmax && p.qmin>=0 &&
+            (p.qmax===nothing || p.qmax>=p.qmin) || error("Plant operating limits")
+        p.minup>=0 && p.mindown>=0 &&
+            (p.initial_on===nothing || p.initial_on in (0, 1)) &&
+            (p.initial_age===nothing || p.initial_age>=0) || error("Plant commitment history")
+        p.initial_discharge===nothing ||
+            0<=p.initial_discharge<=(p.qmax===nothing ? sum(g.qmax for g in s.generators if g.plant==p.name; init=0.0) : p.qmax) ||
+            error("Initial plant discharge")
         p.initial_power===nothing ||
             0<=p.initial_power<=p.pmax ||
             error("Initial plant production")
+        initially_running=any(g.plant==p.name && g.initial_on==1 for g in s.generators)
+        initially_running || all(x->x===nothing || x==0,(p.initial_power,p.initial_discharge)) ||
+            throw(ArgumentError("initially off plant has nonzero production/discharge"))
         p.outlet_head_floor===nothing ||
             isfinite(p.outlet_head_floor) ||
             error("Nonfinite plant outlet head floor")
@@ -83,9 +96,17 @@ function validate_inputs(c)
         0<=g.min_efficiency<=1 || error("Unit minimum efficiency must lie in [0,1]")
         g.initial_on in [0, 1] && g.initial_age>=0 && g.minup>=0 && g.mindown>=0 ||
             error("Initial commitment")
+        g.initial_interval_hours>0 || error("Initial unit interval duration")
+        for (value, upper) in ((g.initial_power, g.pmax), (g.initial_discharge, g.qmax))
+            value===nothing || 0<=value<=upper || error("Initial unit production/discharge")
+            g.initial_on==1 || value===nothing || value==0 ||
+                error("Initially off unit has nonzero production/discharge")
+        end
     end
     for r in s.rivers
         r.capacity>0 && r.min_arrival>=0 && 0<=r.gate_min<=1 || error("River limits")
+        r.initial_interval_hours>0 && (r.initial_release===nothing ||
+            0<=r.initial_release<=r.capacity) || error("Initial river release")
         r.law in (:orifice, :weir) &&
             r.discharge_curve===nothing &&
             r.coefficient<=0 &&

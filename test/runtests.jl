@@ -9,6 +9,8 @@ include("outlet_head_tests.jl")
 include("head_extrapolation_tests.jl")
 include("schedule_tests.jl")
 include("dispatch_data_tests.jl")
+include("commitment_controls_tests.jl")
+include("operating_controls_tests.jl")
 
 @testset "Named object round trip and bounded model" begin
     lake=Reservoir(

@@ -10,14 +10,14 @@ The fields below are the accepted object attributes. Fields marked “required�
 
 | Object | Required fields | Optional fields |
 | --- | --- | --- |
-| Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve` |
+| Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
 | Hydraulic junction | `name` | `hmin`, `hmax` |
 | Boundary | `name`, `head` | None |
 | Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening` |
-| Plant | `name`, `source`, `target`, `pmax` | `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor` |
-| Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve` |
+| Plant | `name`, `source`, `target`, `pmax` | `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
+| Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | River junction | `name` | None |
-| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry` |
+| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 
@@ -59,16 +59,20 @@ An operation names an existing object and one supported attribute:
 
 | Object | Attributes |
 | --- | --- |
-| Reservoir | `inflow`, `vmin`, `vmax` |
-| Generator | `qmin`, `qmax`, `pmin`, `pmax`, `forced_on` |
-| Plant | `pmax` |
+| Reservoir | `inflow`, `vmin`, `vmax`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
+| Generator | `qmin`, `qmax`, `pmin`, `pmax`, `forced_on`, `maintenance`, `power`, `discharge`, `startup`, `shutdown`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
+| Plant | `pmin`, `pmax`, `qmin`, `qmax`, `forced_on`, `maintenance`, `power`, `discharge`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
 | Tunnel | `capacity`, `opening` |
-| River | `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty` |
+| River | `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty`, `ramp_up`, `ramp_down` |
 | Flow requirement | `inflow`, `min_flow` |
 
 `times` are strictly increasing absolute-hour knots and `values` are piecewise constant. Before the first knot the object's default applies; the last value is held afterward. Ordinary dispatch interval data use time averages. Storage edges and pointwise arrival requirements retain their corresponding endpoint/event semantics. Place knots on scheduling edges when a commitment or outage transition must occur at a particular time.
 
 Operating minimum/maximum restrictions tighten their static object bounds. Gate and opening values lie in `[0,1]`; `forced_on` is `-1` for free commitment, `0` for off, or `1` for on. Duplicate series for one object/attribute are rejected. `min_release` is a hard requirement unless a positive `release_penalty` declares a soft shortfall cost. Soft shortfalls are measured in Mm³ and reported explicitly; they are not silently dropped.
+
+`maintenance=1` makes a unit unavailable; a plant outage makes every member unit unavailable. Forced states, schedules and initial minimum-duration restrictions are intersected: one input cannot overwrite another. `power` and `discharge` prescribe hard interval schedules. They are inactive before their first knot; an explicit zero schedule forces the affected unit or plant off. Positive schedules require an operating unit, while positive `pmin`/`qmin` alone do not force operation.
+
+Plant `qmax` defaults to no additional aggregate discharge restriction. Directional plant power ramps inherit `ramp` when omitted; other omitted ramp limits are disabled. See [operating rules](operating-rules.md) for timing, history, equations, and differences from SHOP inputs.
 
 ## Flow observations
 
@@ -91,7 +95,10 @@ Refinement retains these rules and their physical input times. Independent equat
 | Discharge and inflow | m³/s |
 | Head, crest and elevation | metres |
 | Electrical power | MW |
-| Ramp | MW/hour |
+| Power ramp | MW/hour |
+| Discharge or release ramp | (m³/s)/hour |
+| Storage ramp | Mm³/hour |
+| Level ramp | metres/hour |
 | Price | objective currency/MWh |
 | Startup and shutdown | objective currency |
 | Water value and release penalty | objective currency/Mm³ |
