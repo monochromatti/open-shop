@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Separated local dispatch interval data and typed routing expressions from physical constraint construction.
+- Removed unreachable joint-commitment code from the fixed-commitment local builder.
+
 - Added a fixed-commitment linear-system profiler with frozen starts, native timings, library fingerprints and independent replay acceptance.
 - Benchmarked sparse backends, curvature history, exact derivatives, BLAS and MUMPS right-hand-side batching; retained production defaults after longer-case regressions.
 - Shared guarded control reconstruction between local and global candidates, retaining corrected controls, recomputed objectives and raw solver diagnostics.

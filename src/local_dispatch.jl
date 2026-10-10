@@ -26,17 +26,8 @@ function _build_dispatch(
     operational_margin = 0.0,
     time_limit = 45.0,
     feasibility_only = false,
-    joint = false,
-    relaxed = false,
-    fixed_u = nothing,
-    free_mask = nothing,
     transport = nothing,
 )
-    joint && throw(
-        ArgumentError(
-            "local dispatch requires fixed commitment; use the global solver for joint scheduling",
-        ),
-    )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
         throw(ArgumentError("invalid arrival margin"))
@@ -45,7 +36,7 @@ function _build_dispatch(
     isfinite(time_limit) && time_limit>0 ||
         throw(ArgumentError("time limit must be finite and positive"))
     validate_inputs(c)
-    joint || admissible(c, u)||error("Invalid commitment")
+    admissible(c, u) || error("Invalid commitment")
     s=c.system
     node_names=nodes(s)
     T=length(c.prices)
@@ -88,13 +79,6 @@ function _build_dispatch(
     m=Model()
     set_silent(m)
     ustart=copy(u)
-    transitions=nothing
-    if joint
-        states=_joint_states!(m, c; relaxed, fixed_u, free_mask, incumbent = warm)
-        u=states.u
-        transitions=states
-        ustart=states.start
-    end
     @variable(m, v[1:R, 1:(T + 1)])
     @variable(m, h[1:N, 1:T])
     @variable(m, q[1:E, 1:T])
@@ -130,7 +114,7 @@ function _build_dispatch(
         (i, r) in enumerate(s.rivers)
     ]
     turbine_flow_ops=[
-        if !joint && g.turbine_table!==nothing && any(t->u[i, t]!=0, 1:T)
+        if g.turbine_table!==nothing && any(t->u[i, t]!=0, 1:T)
             table=g.turbine_table
             (
                 table_operator(
@@ -270,13 +254,11 @@ function _build_dispatch(
                 )
                 su=sum(
                     opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.su[j, t] :
                         max(0, u[j, t]-s.generators[j].initial_on)
                     ) for j in ids
                 )
                 sd=sum(
                     opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.sd[j, t] :
                         max(0, s.generators[j].initial_on-u[j, t])
                     ) for j in ids
                 )
@@ -286,12 +268,12 @@ function _build_dispatch(
                 ramp=max(0.0, plant.ramp*(dt[t - 1]+dt[t])/2-operational_margin)
                 su=sum(
                     opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.su[j, t] : max(0, u[j, t]-u[j, t - 1])
+                        max(0, u[j, t]-u[j, t - 1])
                     ) for j in ids
                 )
                 sd=sum(
                     opinterval(c, s.generators[j].name, :pmin, t, s.generators[j].pmin)*(
-                        joint ? transitions.sd[j, t] : max(0, u[j, t - 1]-u[j, t])
+                        max(0, u[j, t - 1]-u[j, t])
                     ) for j in ids
                 )
                 @constraint(m, sum(P[j, t]-P[j, t - 1] for j in ids)>=-ramp-sd)
@@ -299,25 +281,15 @@ function _build_dispatch(
             end
         end
     end
-    exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    nd=exact ? _transport_data(c, transport) : nothing
-    !exact &&
-        transport!==nothing &&
-        throw(
-            ArgumentError(
-                "compiled deterministic transport cannot serve distributed dispatch",
-            ),
-        )
-    rd=exact ? nothing : routing_data(c)
-    arrivals=Matrix{Any}(undef, D, T)
-    terminal=Any[]
+    outlet_bounds = _dispatch_outlet_bounds(c)
+    routing = _dispatch_transport_expressions(c, RQ; transport)
+    (; exact, nd, rd, arrivals, terminal) = routing
     for (i, r) in enumerate(s.rivers)
-        B=exact ? nothing : rd["B"][i]
         for t in 1:T
-            cap=opinterval(c, r.name, :capacity, t, r.capacity)
+            cap=outlet_bounds.capacity[i, t]
             set_upper_bound(rq[i, t], cap/100)
-            set_lower_bound(a[i, t], opinterval(c, r.name, :gate_min, t, r.gate_min))
-            set_upper_bound(a[i, t], opinterval(c, r.name, :gate_max, t, 1.0))
+            set_lower_bound(a[i, t], outlet_bounds.gate_lower[i, t])
+            set_upper_bound(a[i, t], outlet_bounds.gate_upper[i, t])
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
             penalty=opinterval(c, r.name, :release_penalty, t, 0.0)
             if penalty>0
@@ -328,21 +300,6 @@ function _build_dispatch(
             else
                 fix(shortfall_release[i, t], 0.0; force = true)
                 requirement>0 && @constraint(m, RQ[i, t]>=requirement)
-            end
-            if exact
-                arrivals[i, t]=nd.arrival_history[i, t]+sum(
-                    v*RQ[d, k] for (d, k, v) in nd.arrival_terms[i, t];
-                    init = 0.0,
-                )
-            else
-                # Skip structural zeros to preserve banded routing sparsity.
-                ks=[k for k in 1:T if B[t, k, 1]!=0 || B[t, k, 2]!=0]
-                arrivals[i, t]=rd["history_arrival"][i, t]+sum(
-                    0.0036*dt[k]*RQ[i, k]*(
-                        B[t, k, 1]+RQ[i, k]/r.capacity*(B[t, k, 2]-B[t, k, 1])
-                    ) for k in ks;
-                    init = 0.0,
-                )
             end
             if r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)
                 @constraint(
@@ -441,13 +398,6 @@ function _build_dispatch(
             end
         end
         if exact
-            push!(
-                terminal,
-                nd.terminal_history[i]+sum(
-                    v*RQ[d, k] for (d, k, v) in nd.terminal_terms[i];
-                    init = 0.0,
-                ),
-            )
             # Intermediate capacity constrains actual arrival-shaped releases, not only their averages.
             for time in
                 sort!(unique!(vcat(deterministic_knots(nd, i; kind = :release), c.grid)))
@@ -463,15 +413,6 @@ function _build_dispatch(
                     )
                 end
             end
-        else
-            push!(
-                terminal,
-                rd["history_terminal"][i]+sum(
-                    0.0036*dt[k]*RQ[i, k]*(
-                        1-sum(B[:, k, 1])-RQ[i, k]/r.capacity*sum(B[:, k, 2]-B[:, k, 1])
-                    ) for k in 1:T
-                ),
-            )
         end
     end
     for (outgoing, incoming) in river_junction_incidence, t in 1:T
@@ -509,13 +450,11 @@ function _build_dispatch(
     end
     startup=sum(
         g.startup*(
-            joint ? transitions.su[j, t] :
             max(0, u[j, t]-(t==1 ? g.initial_on : u[j, t - 1]))
         ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
     shutdown=sum(
         g.shutdown*(
-            joint ? transitions.sd[j, t] :
             max(0, (t==1 ? g.initial_on : u[j, t - 1])-u[j, t])
         ) for (j, g) in enumerate(s.generators), t in 1:T; init=0.0,
     )
@@ -586,7 +525,6 @@ function _build_dispatch(
         arrivals,
         terminal,
         u,
-        transitions,
         starttime,
         shortfall_release,
         penalty_cost,
