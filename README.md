@@ -88,8 +88,11 @@ initial = prepared["accepted"] ? prepared["solution"] : nothing
 result = solve(case; initial, time_limit=60.0)
 ```
 
-Preparation uses HiGHS commitment proposals and Ipopt nonlinear dispatch. Its
-objective is a feasible lower bound; SCIP supplies the global upper bound.
+Preparation uses HiGHS commitment proposals and one sparse JuMP nonlinear
+model solved by Ipopt. Local dispatch prepares interval bounds and routing
+expressions separately from the physical constraints, retaining explicit
+storage, head, flow and power variables. Its objective is a feasible lower
+bound; SCIP supplies the global upper bound.
 The [linear-system study](docs/linear-systems.md) profiles this dispatch and
 compares sparse solvers, curvature systems and native right-hand-side batching.
 The proposal and NLP limits apply to each invocation: preparation tries three
