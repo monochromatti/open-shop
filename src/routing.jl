@@ -7,7 +7,9 @@ export DelayCurve,
     remaining_volume,
     mean_flows,
     merge_arrivals,
-    chain_route
+    chain_route,
+    transfer_value,
+    transfer_range
 
 const FLOW_HOUR_TO_MM3 = 0.0036
 
@@ -53,10 +55,34 @@ function check_grid(grid)
     nothing
 end
 
-function check_curves(curves)
+function check_curves(curves; capacity=nothing)
     !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
     all(diff([c.reference_flow for c in curves]) .> 0) || throw(ArgumentError("reference flows must be strictly increasing"))
+    if capacity!==nothing
+        isfinite(capacity) && capacity>=0 ||
+            throw(ArgumentError("routing capacity must be finite and nonnegative"))
+        length(curves)==1 ||
+            (first(curves).reference_flow==0 && last(curves).reference_flow>=capacity) ||
+            throw(ArgumentError("delay reference flows must cover zero through capacity"))
+    end
     nothing
+end
+
+# Locate the segment to the right of an interior knot, matching TableCurve.
+# Endpoint segments also supply the optimizer's numerical continuation.
+function reference_segment(references, q; reference=identity)
+    n=length(references)
+    n>=2 || throw(ArgumentError("an interpolated reference needs at least two flows"))
+    lo, hi=1, n
+    while lo<hi
+        mid=(lo+hi+1)>>>1
+        if reference(references[mid])<=q
+            lo=mid
+        else
+            hi=mid-1
+        end
+    end
+    min(lo, n-1)
 end
 
 # Stable difference of CDF antiderivatives G(hi)-G(lo), where
@@ -75,6 +101,15 @@ function integral_cdf(c::DelayCurve, lo::Real, hi::Real)
     total
 end
 
+# Exact fraction of one uniform release cohort arriving within [a,b]. Shared by
+# the optimizer's coefficient tensor and streaming numerical replay.
+function cohort_transfer_fraction(c::DelayCurve, a, b, s, e)
+    (b<=s+first(c.edges) || a>=e+last(c.edges)) && return 0.0
+    x=(integral_cdf(c,b-e,b-s)-integral_cdf(c,a-e,a-s))/(e-s)
+    -1e-10<=x<=1+1e-10 || error("invalid transfer fraction: $x")
+    clamp(x,0.0,1.0)
+end
+
 """Exact transfer fractions [arrival interval, release interval, reference curve].
 
 Releases are constant within each release interval. Arrival/release time grids
@@ -91,17 +126,7 @@ function coefficients(arrival_grid, release_grid, curves)
 
         a, b = arrival_grid[t], arrival_grid[t + 1]
         s, e = release_grid[k], release_grid[k + 1]
-        # Impossible/full-support cases also protect distant-time subtraction.
-        if b <= s+first(curves[l].edges) || a >= e+last(curves[l].edges)
-            B[t, k, l] = 0.0
-        else
-            x =
-                (integral_cdf(curves[l], b-e, b-s) - integral_cdf(curves[l], a-e, a-s))/(
-                    e-s
-                )
-            -1e-10 <= x <= 1+1e-10 || error("invalid transfer fraction: $x")
-            B[t, k, l] = clamp(x, 0.0, 1.0)
-        end
+        B[t,k,l]=cohort_transfer_fraction(curves[l],a,b,s,e)
     end
     B
 end
@@ -132,30 +157,98 @@ end
 # One curve is flow-independent. Multiple curves use a convex linear blend of
 # distributions at the contemporaneous release flow, with no extrapolation.
 function blend(curves, q)
+    !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
+    isfinite(q) && q>=0 || throw(ArgumentError("release flow must be finite and nonnegative"))
     length(curves) == 1 && return [(1, 1.0)]
-    refs = [c.reference_flow for c in curves]
-    first(refs) <= q <= last(refs) ||
+    first(curves).reference_flow <= q <= last(curves).reference_flow ||
         throw(ArgumentError("release flow outside reference range"))
-    q == last(refs) && return [(length(refs), 1.0)]
-    j = searchsortedlast(refs, q)
-    w = (q-refs[j])/(refs[j + 1]-refs[j])
+    q == last(curves).reference_flow && return [(length(curves), 1.0)]
+    j = reference_segment(curves,q; reference=c->c.reference_flow)
+    w = (q-curves[j].reference_flow)/(curves[j + 1].reference_flow-curves[j].reference_flow)
     [(j, 1-w), (j+1, w)]
+end
+
+function check_transfer_coefficients(curves, values)
+    check_curves(curves)
+    length(values)==length(curves) && all(isfinite, values) ||
+        throw(ArgumentError("one finite transfer coefficient is required per delay reference"))
+    nothing
+end
+
+"""Released flow times its neighboring-reference transfer coefficient.
+
+`values` can describe interval fractions, instantaneous coefficients or terminal
+fractions. A single delay curve is independent of flow. Multiple curves use
+their supplied reference flows, without extrapolation or a capacity rescaling.
+"""
+function transfer_value(curves, values, q)
+    check_transfer_coefficients(curves, values)
+    q*sum(weight*values[j] for (j,weight) in blend(curves,q); init=0.0)
+end
+
+"""Extrema of the exact piecewise-quadratic released transfer on `[qlo,qhi]`.
+
+Every intersected reference interval contributes endpoints and its quadratic
+stationary point. This bounds the declared interpolation, including coefficients
+with either sign, rather than selecting an assumed operating flow.
+"""
+function transfer_range(curves, values, qlo, qhi)
+    check_transfer_coefficients(curves, values)
+    all(isfinite,(qlo,qhi)) && 0<=qlo<=qhi ||
+        throw(ArgumentError("transfer bounds need finite nonnegative ordered flows"))
+    if length(curves)==1
+        return minmax(qlo*only(values),qhi*only(values))
+    end
+    first(curves).reference_flow<=qlo<=qhi<=last(curves).reference_flow ||
+        throw(ArgumentError("transfer bounds outside delay reference range"))
+    lower,upper=Inf,-Inf
+    for j in 1:(length(curves)-1)
+        left,right=curves[j].reference_flow,curves[j+1].reference_flow
+        a,b=max(qlo,left),min(qhi,right)
+        a<=b || continue
+        slope=(values[j+1]-values[j])/(right-left)
+        value(q)=q*(values[j]+slope*(q-left))
+        for q in (a,b)
+            y=value(q)
+            lower=min(lower,y)
+            upper=max(upper,y)
+        end
+        if slope!=0
+            stationary=(left-values[j]/slope)/2
+            if a<stationary<b
+                y=value(stationary)
+                lower=min(lower,y)
+                upper=max(upper,y)
+            end
+        end
+    end
+    lower,upper
 end
 
 """Route original release cohorts; returns arrival volumes in Mm³.
 
 Flow-dependent distributions are selected at release time. The entire original
 cohort must be retained for restart on a finer grid: arrival bucket averages
-generally cannot reconstruct its within-bucket arrival shape.
+generally cannot reconstruct its within-bucket arrival shape. Numerical replay
+streams only arrival intervals overlapping each cohort's delay support.
 """
 function route(arrival_grid, release_grid, releases, curves)
     check_releases(release_grid, releases)
-    B = coefficients(arrival_grid, release_grid, curves)
+    check_grid(arrival_grid)
+    check_grid(release_grid)
+    check_curves(curves)
     volumes = zeros(length(arrival_grid)-1)
     for k in eachindex(releases), (l, w) in blend(curves, releases[k])
-        volumes .+=
-            (FLOW_HOUR_TO_MM3*(release_grid[k + 1]-release_grid[k])*releases[k]*w) .*
-            B[:, k, l]
+        scale=FLOW_HOUR_TO_MM3*(release_grid[k+1]-release_grid[k])*releases[k]*w
+        scale==0 && continue
+        c=curves[l]
+        s,e=release_grid[k],release_grid[k+1]
+        lo=max(1,searchsortedlast(arrival_grid,s+first(c.edges)))
+        hi=min(length(volumes),searchsortedfirst(arrival_grid,e+last(c.edges))-1)
+        for t in lo:hi
+            volumes[t]+=scale*cohort_transfer_fraction(c,arrival_grid[t],
+                arrival_grid[t+1],s,e)
+        end
     end
     volumes
 end

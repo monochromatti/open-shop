@@ -91,29 +91,32 @@ function propose_commitment(
     for (j, e) in enumerate(s.tunnels), t in 1:T
         cap=opvalue(c, e.name, :opening, c.grid[t], e.opening)==0 ? 0.0 :
             opvalue(c, e.name, :capacity, c.grid[t], e.capacity)
-        set_lower_bound(Q[j, t], -cap)
+        set_lower_bound(Q[j, t], e.discharge_river===nothing ? -cap : 0.0)
         set_upper_bound(Q[j, t], cap)
     end
+    injections=river_injections(c,rq,gq,Q)
     arrivals=Matrix{Any}(undef, D, T)
     terminal=Any[]
     for (d, r) in enumerate(s.rivers)
         K=nothing
         if !exact
             B=data["B"][d]
-            fractions=reference!==nothing && haskey(reference, "river_release") ?
-                      clamp.(reference["river_release"][d, :] ./ r.capacity, 0.0, 1.0) :
-                      fill(0.5, T)
-            K=[B[t, k, 1]+fractions[k]*(B[t, k, 2]-B[t, k, 1]) for t in 1:T, k in 1:T]
+            qref=reference!==nothing && haskey(reference,"river_release") ?
+                clamp.(reference["river_release"][d,:],0.0,r.capacity) : fill(r.capacity/2,T)
+            K=[r.deterministic_delay!==nothing ? B[t,k,1] :
+                sum(w*B[t,k,l] for (l,w) in RiverRouting.blend(r.curves,qref[k]))
+                for t in 1:T,k in 1:T]
         end
         for t in 1:T
             set_upper_bound(rq[d, t], opvalue(c, r.name, :capacity, c.grid[t], r.capacity))
+            set_lower_bound(rq[d,t],opinterval(c,r.name,:inflow,t,r.inflow))
             minimum_release=opvalue(c, r.name, :min_release, c.grid[t], 0.0)
             penalty=opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)
             penalty>0 || fix(release_shortfall[d, t], 0; force = true)
             @constraint(m, rq[d, t]+release_shortfall[d, t]>=minimum_release)
             arrivals[d, t]=exact ?
                            nd.arrival_history[d, t]+sum(
-                v*rq[i, k] for (i, k, v) in nd.arrival_terms[d, t];
+                v*injections[i, k] for (i, k, v) in nd.arrival_terms[d, t];
                 init = 0.0,
             ) :
                            data["history_arrival"][d, t]+sum(
@@ -134,7 +137,7 @@ function propose_commitment(
             terminal,
             exact ?
             nd.terminal_history[d]+sum(
-                v*rq[i, k] for (i, k, v) in nd.terminal_terms[d];
+                v*injections[i, k] for (i, k, v) in nd.terminal_terms[d];
                 init = 0.0,
             ) :
             data["history_terminal"][d]+sum(
@@ -142,32 +145,23 @@ function propose_commitment(
             ),
         )
     end
-    for j in s.river_junctions, t in 1:T
-        outgoing=findall(r->r.source==j.name, s.rivers)
-        incoming=findall(r->r.target==j.name, s.rivers)
-        @constraint(
-            m,
-            0.0036*dt[t]*sum(rq[d, t] for d in outgoing)==sum(
-                arrivals[d, t] for d in incoming
-            )
-        )
-    end
+    constrain_river_sources!(m,c,rq,arrivals,injections)
     # Hydraulic node continuity is retained, but pressure-loss equations and
     # nonlinear outlet laws are deliberately absent from this proposal model.
     for i in 1:(R + length(s.junctions)), t in 1:T
         name=nodes(s)[i]
         net=sum(
-            ((e.target==name ? 1 : 0)-(e.source==name ? 1 : 0))*Q[j, t] for
+            water_incidence(e,name)*Q[j, t] for
             (j, e) in enumerate(s.tunnels);
             init = 0.0,
         )
         for (j, g) in enumerate(s.generators)
             p=plantof(s, g)
-            net+=((p.target==name ? 1 : 0)-(p.source==name ? 1 : 0))*gq[j, t]
+            net+=water_incidence(p,name)*gq[j, t]
         end
         net+=sum(
             (r.target==name ? arrivals[d, t]/(0.0036*dt[t]) : 0)-(
-                r.source==name ? rq[d, t] : 0
+                r.source==name ? rq[d, t]-opinterval(c,r.name,:inflow,t,r.inflow) : 0
             ) for (d, r) in enumerate(s.rivers);
             init = 0.0,
         )

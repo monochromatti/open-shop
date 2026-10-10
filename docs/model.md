@@ -38,8 +38,8 @@ Startup and shutdown variables record transitions.
 
 Plant net head is upstream hydraulic head minus downstream outlet head and
 the supplied flow-dependent tailwater term. An outlet-head floor gives
-`max(receiver_head, outlet_head_floor)` while water still enters the original
-receiving node.
+`max(receiver_head, outlet_head_floor)` while water enters its declared destination. `discharge_river` redirects water
+into a reach without changing the hydraulic head reference.
 
 ```math
 P=0.00981\,q\,h\,\eta_{turbine}(q,h)\,\eta_{electrical}(P).
@@ -89,6 +89,12 @@ flow. Each original cohort retains its chosen distribution. Downstream mixing
 uses the declared scheduling grid. This approximation is checked with transport
 and grid refinement; its optimization bound does not certify a continuous-time
 mixing model.
+
+Plant discharges, forward tunnel outfalls, tributaries and natural inflow can
+feed a reach directly. Local injections and upstream arrivals share one
+conservation equation. Only delayed arrivals enter receiving storage. Distributed
+curves support one fixed distribution or any number of neighboring reference
+flows. See [river networks](river-networks.md) for source and transport equations.
 
 Historical releases establish initial water in transit. Terminal water still in
 transit retains the explicitly supplied river water value.

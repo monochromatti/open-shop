@@ -188,6 +188,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("wet_root_$(i)_$(t)", sqrt(wet))
             put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
         end
+        _lift_distributed_references!(b.m, assigned)
         _lift_power_hulls!(b.m, assigned)
         _lift_table_power_bounds!(b.m, assigned)
         for (variable, val) in assigned
