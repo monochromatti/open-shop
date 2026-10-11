@@ -16,7 +16,9 @@ H_u-H_d = \bigl(R_{tunnel}+R_{gate}(s)\bigr)q|q|.
 The table must cover `[0,1]` and contain nonnegative coefficients. Opening zero
 means closed and imposes `q=0`; it does not impose equality of endpoint heads.
 An `OperationalSeries` on `opening` prescribes its chronological position.
-These openings are inputs, not new optimization variables.
+Openings remain prescribed when `gate_positions` is empty. Nonempty listed
+positions enable [discrete gate decisions and interlocks](tunnel-gates.md);
+the positive-position resistance and closed-gate laws stay the same.
 
 Without a gate-loss curve, the existing law remains
 `s*(H_u-H_d)=R_tunnel*q*abs(q)`. No gate-position-to-height curve is needed.

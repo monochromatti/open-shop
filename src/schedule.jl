@@ -26,6 +26,7 @@ function schedule_case(
             c;
             u,
             initial,
+            tunnel_opening=get(initial,"tunnel_opening",tunnel_opening_schedule(c)),
             max_refinements = 0,
             time_limit = nlp_time_limit,
             operational_margin,
@@ -37,10 +38,20 @@ function schedule_case(
     fallback=ones(Int, length(c.system.generators), length(c.prices))
     bounds=_commitment_bounds(c)
     fallback=clamp.(fallback,bounds.unit_lower,bounds.unit_upper)
-    if best===nothing && admissible(c, fallback)
+    fallback_opening=tunnel_opening_schedule(c)
+    fallback_gates_valid=try
+        validate_tunnel_openings(c,fallback_opening)
+    catch error
+        error isa ArgumentError || rethrow()
+        false
+    end
+    selectable=any(length(tunnel_allowed_positions(c,e,t))>1
+        for e in c.system.tunnels,t in eachindex(c.prices))
+    if best===nothing && !selectable && fallback_gates_valid && admissible(c, fallback)
         v=solve_verified(
             c;
             u = fallback,
+            tunnel_opening=fallback_opening,
             max_refinements,
             time_limit = nlp_time_limit,
             feasibility_only = true,
@@ -70,11 +81,11 @@ function schedule_case(
         )
         push!(proposals, p)
     end
-    candidates=[p["u"] for p in proposals if haskey(p, "u")]
-    admissible(c, fallback) && push!(candidates, fallback)
-    seen=Set{String}()
-    for u in candidates
-        key=join(vec(u))
+    candidates=[(p["u"],p["tunnel_opening"]) for p in proposals if haskey(p, "u")]
+    fallback_gates_valid && admissible(c,fallback) && push!(candidates,(fallback,fallback_opening))
+    seen=Set{Tuple{String,String}}()
+    for (u,opening) in candidates
+        key=(join(vec(u)),join(vec(opening),','))
         key in seen && continue
         push!(seen, key)
         admissible(c, u) || continue
@@ -82,6 +93,7 @@ function schedule_case(
             v=solve_verified(
                 c;
                 u,
+                tunnel_opening=opening,
                 max_refinements,
                 time_limit = nlp_time_limit,
                 warm = reference,
@@ -95,6 +107,7 @@ function schedule_case(
                     "seconds"=>v["total_seconds"],
                     "steps"=>v["attempts"],
                     "u"=>copy(u),
+                    "tunnel_opening"=>copy(opening),
                     "elapsed_seconds"=>time()-started,
                     "warm_start_objective"=>reference===nothing ? nothing : reference["objective"],
                 ),

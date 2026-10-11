@@ -59,7 +59,8 @@ function benchmark_seed(path,c)
     all(isinteger,fractional) || error("frozen commitment is not integral")
     u=Int.(fractional);q=matrix("generator_q")
     gate=isempty(data["gate"]) ? zeros(0,length(c.prices)) : matrix("gate")
-    dispatch_from_controls(c,u,q,gate)
+    tunnel_opening=haskey(data,"tunnel_opening") ? matrix("tunnel_opening") : nothing
+    dispatch_from_controls(c,u,q,gate;tunnel_opening)
 end
 
 function benchmark_cases(case_paths;output,time_limit=60.,repeats=1,commitments=(:free,:fixed),
@@ -98,13 +99,15 @@ function benchmark_cases(case_paths;output,time_limit=60.,repeats=1,commitments=
                     initial["u"][k]==0 && (q[k]=0.0)
                 end
                 off_flow_correction=maximum(abs,q-initial["generator_q"];init=0.0)
-                initial=dispatch_from_controls(c,initial["u"],q,initial["gate"])
+                initial=dispatch_from_controls(c,initial["u"],q,initial["gate"];
+                    tunnel_opening=get(initial,"tunnel_opening",nothing))
                 initial["validation"]["valid"] || error("common reconstructed seed fails physical/replay audit")
                 benchmark_freeze(frozen_seed,initial)
             end
             seed_hash=bytes2hex(sha256(read(frozen_seed)))
             control_path=joinpath(folder,"seed-controls.json")
-            benchmark_freeze(control_path,initial===nothing ? nothing : Dict(k=>initial[k] for k in ("u","generator_q","gate")))
+            benchmark_freeze(control_path,initial===nothing ? nothing :
+                Dict(k=>initial[k] for k in ("u","generator_q","gate","tunnel_opening")))
             control_hash=bytes2hex(sha256(read(control_path)))
             reference_lower=initial===nothing ? nothing : initial["objective"]
             probe_seconds=0.;probe_valid=false;probe_raw_objective=nothing;probe_reconstructed_objective=nothing;physical_probe=nothing

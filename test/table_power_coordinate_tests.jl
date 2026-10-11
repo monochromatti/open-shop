@@ -104,7 +104,7 @@ function coordinate_strength_witness(nodes, weights_value, u_value, moment_value
             lo, hi = extrema(row)
             z = @variable(m, lower_bound=min(0.0,lo), upper_bound=max(0.0,hi))
             expression = sum(row[j] * weights[j] for j in eachindex(row))
-            OpenSHOP._power_hull_binary_product_rows!(m,z,u,expression,lo,hi)
+            OpenSHOP._binary_product_rows!(m,z,u,expression,lo,hi)
             z
         end
         @constraint(m, p <= intercept)

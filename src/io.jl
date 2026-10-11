@@ -91,6 +91,7 @@ function case_from_dict(d)
         junctions = Junction,
         boundaries = Boundary,
         tunnels = Tunnel,
+        tunnel_interlocks = TunnelInterlock,
         plants = Plant,
         generators = Generator,
         river_junctions = RiverJunction,
@@ -190,6 +191,8 @@ end
 """Identify cases requiring operational and tabulated-physics audit handling."""
 function has_operational_data(c)
     !isempty(c.operations) || !isempty(c.flow_requirements) ||
+        !isempty(c.system.tunnel_interlocks) ||
+        any(!isempty(e.gate_positions) || e.gate_adjustment_cost!=0 for e in c.system.tunnels) ||
         any(r.level_curve!==nothing for r in c.system.reservoirs) ||
         any(
             g.turbine_table!==nothing ||

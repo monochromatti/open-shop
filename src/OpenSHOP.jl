@@ -6,6 +6,7 @@ using .RiverRouting
 include("curves.jl")
 include("level_flow_curves.jl")
 include("types.jl")
+include("algebra.jl")
 include("curve_physics.jl")
 include("tunnel_physics.jl")
 include("polynomial_tables.jl")
@@ -13,6 +14,7 @@ include("tensor_tables.jl")
 include("distributed_routing.jl")
 include("channel_physics.jl")
 include("operations.jl")
+include("tunnel_controls.jl")
 include("commitment_controls.jl")
 include("operating_constraints.jl")
 include("inputs.jl")
@@ -20,11 +22,13 @@ include("rivergraph.jl")
 include("river_sources.jl")
 include("transport.jl")
 include("temporal.jl")
+include("pressure_references.jl")
 include("forward.jl")
 include("joint_states.jl")
 include("dispatch_data.jl")
 include("local_dispatch.jl")
 include("validation.jl")
+include("proposal_hydraulics.jl")
 include("proposal.jl")
 include("io.jl")
 include("dispatch_controls.jl")
@@ -42,6 +46,7 @@ export Reservoir,
     Junction,
     Boundary,
     Tunnel,
+    TunnelInterlock,
     Plant,
     Generator,
     RiverJunction,
@@ -59,6 +64,9 @@ export Reservoir,
     nodeindex,
     head,
     plantof,
+    tunnel_opening_schedule,
+    validate_tunnel_openings,
+    tunnel_adjustment_cost,
     efficiency,
     power,
     RiverRouting,

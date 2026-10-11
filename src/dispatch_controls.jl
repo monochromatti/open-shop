@@ -1,3 +1,33 @@
+# Physical controls are explicit for every optimized tunnel. Legacy schedules
+# without gate decisions retain prescribed operating-series/static defaults.
+function _tunnel_opening_input(c,opening)
+    if opening===nothing
+        any(e->!isempty(e.gate_positions),c.system.tunnels) &&
+            throw(ArgumentError("optimized tunnel gates require a complete tunnel_opening schedule"))
+        return tunnel_opening_schedule(c)
+    end
+    opening isa AbstractMatrix &&
+        size(opening)==(length(c.system.tunnels),length(c.prices)) ||
+        throw(DimensionMismatch("tunnel opening schedule dimensions"))
+    all(x->x isa Real && isfinite(x),opening) ||
+        throw(ArgumentError("nonfinite or nonreal tunnel openings"))
+    Matrix{Float64}(opening)
+end
+function _physical_tunnel_openings(c,opening)
+    A=_tunnel_opening_input(c,opening)
+    validate_tunnel_openings(c,A)
+    # Prescribed interval averages may differ by arithmetic roundoff after
+    # grid refinement. Use the prescribed value; selectable modes stay exact.
+    for (i,e) in enumerate(c.system.tunnels)
+        isempty(e.gate_positions) || continue
+        for t in axes(A,2)
+            A[i,t]=opinterval(c,e.name,:opening,t,e.opening)
+        end
+    end
+    validate_tunnel_openings(c,A;tolerance=0)
+    A
+end
+
 """Build a physical schedule from prescribed controls using independent integration.
 No bound, gate or state is clipped. This is reconstruction, not optimization.
 """
@@ -8,6 +38,7 @@ function dispatch_from_controls(
     gate;
     status = "FORWARD_RECONSTRUCTED",
     transport = nothing,
+    tunnel_opening = nothing,
 )
     admissible(c, u) || throw(ArgumentError("inadmissible commitment"))
     nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ?
@@ -19,7 +50,7 @@ function dispatch_from_controls(
                 "compiled deterministic transport cannot serve distributed reconstruction",
             ),
         )
-    z=simulate(c, q, gate; transport = nd)
+    z=simulate(c, q, gate; transport = nd,tunnel_opening)
     z["converged"] || throw(ArgumentError("forward reconstruction did not converge"))
     s=c.system
     dt=diff(c.grid)
@@ -35,6 +66,7 @@ function dispatch_from_controls(
         "V"=>z["V"],
         "H"=>z["H"],
         "tunnel_q"=>z["tunnel_q"],
+        "tunnel_opening"=>z["tunnel_opening"],
         "power"=>z["power"],
         "river_release"=>z["river_release"],
         "arrival_volume"=>z["arrival_volume"],
@@ -44,11 +76,13 @@ function dispatch_from_controls(
     x["shortfall_release"]=req.shortfall
     x["release_penalty_cost"]=req.cost
     operating_cost=transition_costs(c,u)
+    adjustment_cost=tunnel_adjustment_cost(c,x["tunnel_opening"])
+    x["gate_adjustment_cost"]=adjustment_cost
     x["objective"]=sum(
                        c.prices[t]*dt[t]*x["power"][j, t] for
                        j in eachindex(s.generators), t in 1:T;
                        init = 0.0,
-                   )-operating_cost-req.cost +
+                   )-operating_cost-req.cost-adjustment_cost +
                    sum(
                        r.water_value*(x["V"][i, end]-r.v0) for
                        (i, r) in enumerate(s.reservoirs);
@@ -77,11 +111,14 @@ function _reconstruct_candidate(c, raw; transport = nothing)
     end
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
+    raw_opening=_tunnel_opening_input(c,get(raw,"tunnel_opening",nothing))
+    ta=_physical_tunnel_openings(c,raw_opening)
     correction = (
         flow = maximum(abs, q .- raw["generator_q"]; init = 0.0),
         gate = maximum(abs, gate .- raw["gate"]; init = 0.0),
+        tunnel_opening = maximum(abs, ta .- get(raw,"fractional_tunnel_opening",raw_opening);init=0.0),
     )
-    x = dispatch_from_controls(c, raw["u"], q, gate; transport)
+    x = dispatch_from_controls(c, raw["u"], q, gate; transport,tunnel_opening=ta)
     x, correction
 end
 
@@ -108,6 +145,19 @@ function _dispatch_start(c, u, warm)
             return nothing, diagnostics
         end
     end
+    opening=try
+        _physical_tunnel_openings(c,get(warm,"tunnel_opening",nothing))
+    catch e
+        diagnostics["ignored_reason"]="warm tunnel_opening: "*sprint(showerror,e)
+        return nothing,diagnostics
+    end
+    normalized=if haskey(warm,"tunnel_opening") && warm["tunnel_opening"]==opening
+        warm
+    else
+        updated=copy(warm)
+        updated["tunnel_opening"]=opening
+        updated
+    end
     diagnostics["used"]=true
-    warm, diagnostics
+    normalized, diagnostics
 end

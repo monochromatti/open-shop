@@ -133,6 +133,8 @@ function prepare_seed(c, path)
     all(isinteger, u) || error("Seed commitment is fractional")
     raw = Dict("u" => Int.(u), "generator_q" => matrix_rows(data["generator_q"], T),
         "gate" => matrix_rows(data["gate"], T))
+    haskey(data,"tunnel_opening") &&
+        (raw["tunnel_opening"]=matrix_rows(data["tunnel_opening"],T))
     physical, correction = OpenSHOP._reconstruct_candidate(c, raw)
     physical["validation"]["valid"] || error("Seed controls fail independent equation validation")
     physical["benchmark_control_correction"] = correction
@@ -280,7 +282,8 @@ function run_benchmark(cfg, cases)
         seed_started = time()
         common_initial = prepare_seed(c, entry.seed)
         seed_seconds = time() - seed_started
-        controls = common_initial === nothing ? nothing : Dict(k => common_initial[k] for k in ("u", "generator_q", "gate"))
+        controls = common_initial === nothing ? nothing : Dict(k => common_initial[k]
+            for k in ("u", "generator_q", "gate", "tunnel_opening"))
         OpenSHOP.writejson(joinpath(folder, "seed-controls.json"), controls)
         for repetition in 1:cfg[:repeats]
             initial = common_initial === nothing ? nothing : deepcopy(common_initial)

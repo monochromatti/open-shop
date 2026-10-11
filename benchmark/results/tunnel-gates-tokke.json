@@ -1,0 +1,36 @@
+{
+  "accepted": true,
+  "status": "TIME_LIMIT",
+  "initial_objective": 743562.6057776964,
+  "feasible_lower_bound": 743562.6057776964,
+  "global_bound": 802506.5192494913,
+  "relative_gap": 0.0792722939719987,
+  "global_certificate": false,
+  "variable_count": 26213,
+  "constraint_count": 36640,
+  "construction_seconds": 3.4485790729522705,
+  "total_seconds": 33.144598960876465,
+  "case_sha256": "78e5d58a32278247659d1f18bc700312ac7d245ce501d551b246ec6c24661c1e",
+  "seed_sha256": "60fd26c41512fc698585ffe2ef44d6124093ebcc4e28e35c7e00df5ab2513304",
+  "equivalence": {
+    "tunnel_flow_max_difference_m3_s": 0,
+    "power_max_difference_MW": 0,
+    "storage_max_difference_Mm3": 0,
+    "objective_difference": 0
+  },
+  "fourfold_replay": {
+    "max_storage_difference_Mm3": 0.0006505610832476805,
+    "replayed_objective": 743555.612733314,
+    "max_water_residual_Mm3": 8.406608742461685e-13,
+    "valid": true,
+    "terminal_transit_difference_Mm3": 0,
+    "errors": [],
+    "objective_difference": -6.993044382310472
+  },
+  "restart_valid": true,
+  "restart_storage_difference_Mm3": 4.831690603168681e-13,
+  "restart_transit_difference_Mm3": 0,
+  "gate_decision_binaries": 0,
+  "requested_seconds": 30.0,
+  "scope": "Unchanged retained-Vest Tokke-Vinje24h input and existing independently audited initial schedule; prescribed tunnel gates"
+}

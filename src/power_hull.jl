@@ -68,13 +68,6 @@ function _power_hull_on_boxes(g,qbox,hbox,etabox,pmin,electrical_max)
     hbox,etabox
 end
 
-function _power_hull_binary_product_rows!(m,z,u,x,lo,hi)
-    @constraint(m,z>=lo*u)
-    @constraint(m,z<=hi*u)
-    @constraint(m,z>=x-hi*(1-u))
-    @constraint(m,z<=x-lo*(1-u))
-end
-
 function _power_hull_unit!(m,q,head,eta,power,u,qbox,hbox,etabox,fullhead,fulleta,
     electrical_min,electrical_max;name)
     axes=map(box->box[1]==box[2] ? [box[1]] : [box[1],box[2]],(qbox,hbox,etabox))
@@ -86,8 +79,8 @@ function _power_hull_unit!(m,q,head,eta,power,u,qbox,hbox,etabox,fullhead,fullet
     @constraint(m,q==sum(corners[k][1]*weights[k] for k in eachindex(corners)))
     @constraint(m,onhead==sum(corners[k][2]*weights[k] for k in eachindex(corners)))
     @constraint(m,oneta==sum(corners[k][3]*weights[k] for k in eachindex(corners)))
-    _power_hull_binary_product_rows!(m,onhead,u,head,fullhead...)
-    _power_hull_binary_product_rows!(m,oneta,u,eta,fulleta...)
+    _binary_product_rows!(m,onhead,u,head,fullhead...)
+    _binary_product_rows!(m,oneta,u,eta,fulleta...)
     product=sum(prod(corners[k])*weights[k] for k in eachindex(corners))
     @constraint(m,power<=0.00981*electrical_max*product)
     @constraint(m,power>=0.00981*electrical_min*product)

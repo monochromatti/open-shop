@@ -52,6 +52,10 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         s=c.system
         T=length(c.prices)
         ix=OpenSHOP.nodeindex(s)
+        openings=get(warm,"tunnel_opening",tunnel_opening_schedule(c))
+        for (variable,val) in _tunnel_gate_values(b.gates,c,openings)
+            put(name(variable),val)
+        end
         for v in variables
             is_fixed(v) && put(name(v), fix_value(v))
         end
@@ -66,11 +70,14 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("q[$i,$t]", q/50)
             put("tunnel_positive_$(i)_$(t)", max(q, 0.0))
             put("tunnel_negative_$(i)_$(t)", max(-q, 0.0))
+            put("gate_loss_$(i)_$(t)",q*abs(q)/2500)
+            put("gate_open_head_$(i)_$(t)",openings[i,t]>0 ?
+                warm["H"][ix[e.source],t]-warm["H"][ix[e.target],t] : 0.0)
             # A zero-flow residual must not overwrite a fixed auxiliary branch.
             # The physical and split-flow equations are still audited below.
             direction="tunnel_direction_$(i)_$(t)"
             choice=haskey(byname,direction) && is_fixed(byname[direction]) ?
-                fix_value(byname[direction]) : (q>=0 ? 1.0 : 0.0)
+                fix_value(byname[direction]) : (openings[i,t]>0 && q>=0 ? 1.0 : 0.0)
             put(direction, choice)
         end
         heads=Dict{Tuple{Symbol,Int},String}()

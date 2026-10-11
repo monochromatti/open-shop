@@ -123,22 +123,24 @@ function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap)
 end
 
 """
-    solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0, initial=nothing, fixed_u=nothing)
+    solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0,
+          initial=nothing, fixed_u=nothing, fixed_tunnel_opening=nothing)
 
-Optimize generation and binary unit commitment with native SCIP.
+Optimize generation, unit commitment and eligible tunnel gates with native SCIP.
 `diagnostics_path` optionally writes a native SCIP
 progress log and an accompanying `.statistics.json` file with native plugin
 and LP counters. Returned `scip_diagnostics` and `scip_statistics` are
 observational statistics, not independent feasibility or certificate evidence.
 The objective
-is revenue minus transition costs and release penalties, plus changes in stored
-water value. `initial` may supply a physical schedule on the same control grid.
+is revenue minus transition and gate movement costs and release penalties, plus
+changes in stored water value. `initial` may supply a physical schedule on the same control grid.
 
 `solution` is independently reconstructed and equation-validated. `accepted`
 also requires finer chronological replay. `global_certificate` requires an
 enclosing solver upper bound within either requested gap. Its scope is the
 declared discrete hydraulic model, under numerical solver tolerances. Supplying
-`fixed_u` makes the certificate conditional on that commitment matrix.
+`fixed_u` makes the certificate conditional on that commitment matrix;
+`fixed_tunnel_opening` makes it conditional on the supplied gate positions.
 
 The time allowance includes construction and optimization; extraction/replay
 can overrun it and are included in `total_seconds`. Julia compilation is also
@@ -151,6 +153,7 @@ function solve(
     absolute_gap = 0.0,
     initial = nothing,
     fixed_u = nothing,
+    fixed_tunnel_opening = nothing,
     replay = true,
     diagnostics_path = nothing,
 )
@@ -175,10 +178,14 @@ function solve(
         "relative_gap" => nothing,
         "absolute_gap" => nothing,
         "commitment_fixed" => fixed_u !== nothing,
+        "tunnel_opening_fixed" => fixed_tunnel_opening !== nothing,
         "certificate_scope" =>
-            fixed_u === nothing ?
+            fixed_u === nothing && fixed_tunnel_opening===nothing ?
             "declared discrete midpoint model; numerical global bound" :
-            "declared discrete midpoint model with fixed commitment; numerical global bound",
+            "declared discrete midpoint model with "*join(
+                vcat(fixed_u===nothing ? String[] : ["fixed commitment"],
+                    fixed_tunnel_opening===nothing ? String[] : ["fixed tunnel openings"])," and ")*
+                "; numerical global bound",
         "transport_exact" =>
             all(r -> r.deterministic_delay !== nothing, c.system.rivers),
         "requested_relative_gap" => relative_gap,
@@ -194,7 +201,7 @@ function solve(
             throw(ArgumentError("initial controls fail reconstruction audit"))
         result["initial_objective"] = best["objective"]
     end
-    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u)
+    b = _build_global_dispatch(c; joint = true, warm = best, fixed_u,tunnel_opening=fixed_tunnel_opening)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
@@ -217,6 +224,7 @@ function solve(
         "tensor_axes"=>length(get(b.m.ext,:global_tensor_coordinates,[])),
         "tensor_axis_knots"=>sum(length(x.nodes) for x in get(b.m.ext,:global_tensor_coordinates,[]);init=0),
         "tunnel_direction_binaries"=>count(n->startswith(n,"tunnel_direction_"),binary_names),
+        "tunnel_gate_binaries"=>count(n->startswith(n,"gate_select_"),binary_names),
         "turbine_cell_binaries"=>count(n->startswith(n,"turbine_") && occursin("_cell[",n),binary_names),
         "river_table_cell_binaries"=>count(n->startswith(n,"river_law_") && occursin("_cell[",n),binary_names),
         "bounds_seconds"=>b.bounds_seconds,
@@ -311,17 +319,20 @@ function solve(
                 raw["fractional_commitment"] = fractional
                 raw["u"] = round.(Int, fractional)
                 error = maximum(abs, fractional .- raw["u"]; init = 0.0)
+                gate_integrality=maximum((abs(value(v)-round(value(v))) for v in variables if is_binary(v));init=0.0)
                 raw["validation"] = validate(c, raw; transport = b.transport)
                 result["raw_solver_solution"] = raw
                 result["raw_integrality_error"] = error
+                result["raw_binary_integrality_error"] = gate_integrality
                 sos2_error=maximum((_sos2_residual(JuMP.value.(constraint_object(ref).func),constraint_object(ref).set.weights)
                     for ref in all_constraints(b.m;include_variable_in_set_constraints=false)
                     if constraint_object(ref).set isa MOI.SOS2);init=0.0)
                 result["raw_sos2_residual"]=sos2_error
-                if error <= 1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw["u"] == fixed_u)
+                if error <= 1e-6 && gate_integrality<=1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw["u"] == fixed_u)
                     x, correction = _reconstruct_candidate(c, raw; transport = b.transport)
                     result["control_boundary_correction"] =
-                        Dict("flow" => correction.flow, "gate" => correction.gate)
+                        Dict("flow" => correction.flow, "gate" => correction.gate,
+                            "tunnel_opening"=>correction.tunnel_opening)
                     if x["validation"]["valid"] &&
                        (best === nothing || x["objective"] > best["objective"])
                         best = x
