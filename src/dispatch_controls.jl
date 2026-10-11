@@ -16,23 +16,15 @@ end
 function _physical_tunnel_openings(c,opening)
     A=_tunnel_opening_input(c,opening)
     validate_tunnel_openings(c,A)
-    A
-end
-
-# Correct only a bounded solver error around a declared discrete position.
-# In particular zero is assigned exactly; arbitrary openings are never clipped.
-function _canonical_tunnel_openings(c,opening)
-    A=_tunnel_opening_input(c,opening)
+    # Prescribed interval averages may differ by arithmetic roundoff after
+    # grid refinement. Use the prescribed value; selectable modes stay exact.
     for (i,e) in enumerate(c.system.tunnels)
-        isempty(e.gate_positions) && continue
+        isempty(e.gate_positions) || continue
         for t in axes(A,2)
-            index=gate_position_index(e,A[i,t];tolerance=1e-6)
-            index!==nothing ||
-                throw(ArgumentError("tunnel gate position is not within reconstruction tolerance"))
-            A[i,t]=e.gate_positions[index]
+            A[i,t]=opinterval(c,e.name,:opening,t,e.opening)
         end
     end
-    validate_tunnel_openings(c,A)
+    validate_tunnel_openings(c,A;tolerance=0)
     A
 end
 
@@ -120,11 +112,11 @@ function _reconstruct_candidate(c, raw; transport = nothing)
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
     raw_opening=_tunnel_opening_input(c,get(raw,"tunnel_opening",nothing))
-    ta=_canonical_tunnel_openings(c,raw_opening)
+    ta=_physical_tunnel_openings(c,raw_opening)
     correction = (
         flow = maximum(abs, q .- raw["generator_q"]; init = 0.0),
         gate = maximum(abs, gate .- raw["gate"]; init = 0.0),
-        tunnel_opening = maximum(abs, ta .- raw_opening;init=0.0),
+        tunnel_opening = maximum(abs, ta .- get(raw,"fractional_tunnel_opening",raw_opening);init=0.0),
     )
     x = dispatch_from_controls(c, raw["u"], q, gate; transport,tunnel_opening=ta)
     x, correction
@@ -154,7 +146,7 @@ function _dispatch_start(c, u, warm)
         end
     end
     opening=try
-        _canonical_tunnel_openings(c,get(warm,"tunnel_opening",nothing))
+        _physical_tunnel_openings(c,get(warm,"tunnel_opening",nothing))
     catch e
         diagnostics["ignored_reason"]="warm tunnel_opening: "*sprint(showerror,e)
         return nothing,diagnostics

@@ -8,8 +8,8 @@
   "global_certificate": false,
   "variable_count": 26213,
   "constraint_count": 36640,
-  "construction_seconds": 2.4648468494415283,
-  "total_seconds": 31.948868989944458,
+  "construction_seconds": 3.4485790729522705,
+  "total_seconds": 33.144598960876465,
   "case_sha256": "78e5d58a32278247659d1f18bc700312ac7d245ce501d551b246ec6c24661c1e",
   "seed_sha256": "60fd26c41512fc698585ffe2ef44d6124093ebcc4e28e35c7e00df5ab2513304",
   "equivalence": {

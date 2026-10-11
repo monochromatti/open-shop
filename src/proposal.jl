@@ -264,7 +264,8 @@ function propose_commitment(
         result["u"]=round.(Int, value.(u))
         result["generator_q"]=value.(gq)
         result["river_release"]=value.(rq)
-        result["tunnel_opening"]=_canonical_tunnel_openings(c,value.(gates.opening))
+        result["tunnel_opening"]=_tunnel_gate_solution(gates)
+        validate_tunnel_openings(c,result["tunnel_opening"];tolerance=0)
         result["proposal_objective"]=objective_value(m)
     end
     result["total_seconds"]=time()-started

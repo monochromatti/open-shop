@@ -49,7 +49,7 @@ end
         nodes=length(coefficients)==1 ? [-2.0] : [-2.0,3.0]
         @variable(m,-2<=moment<=3)
         x=sum(nodes[j]*weights[j] for j in eachindex(nodes))
-        OpenSHOP._power_hull_binary_product_rows!(m,moment,u,x,extrema(nodes)...)
+        OpenSHOP._binary_product_rows!(m,moment,u,x,extrema(nodes)...)
         records=OpenSHOP._TablePowerCoordinateRecord[]
         onweights=OpenSHOP._table_power_onweights!(m,(nodes=nodes,weights=weights),u,moment,"test",records)
         z=sum(coefficients[j]*onweights[j] for j in eachindex(coefficients))

@@ -97,6 +97,10 @@ Passing `fixed_tunnel_opening` fixes gates and makes the corresponding
 certificate conditional on those openings.
 A complete accepted solution contains `tunnel_opening`, with one row per tunnel
 and one column per interval, including prescribed tunnels.
+Discrete positions are extracted from integral selectors, so arbitrarily close
+listed positions retain their identity. Supplied fixed and physical control
+schedules must use exact declared positions; tolerance never turns a closed
+gate into an open one.
 
 Local nonlinear dispatch fixes both discrete control families. Pass
 `tunnel_opening` to `solve_case` or `solve_verified`; without it they use the
@@ -110,6 +114,15 @@ nonlinear dispatch and physical replay use the original hydraulic equations.
 Passive links between known reservoir/boundary heads derive their reference
 flow from the pressure-loss law rather than from a station's nominal discharge.
 Cases with prescribed gates retain their existing proposal model.
+
+Closing gates can leave junction components without a reservoir or boundary
+pressure reference. Independent integration fixes one numerical reference per
+unobservable pressure component and retains every water-balance equation in a
+rectangular Newton solve. It then selects a common pressure shift compatible
+with the junction bounds. Replay compares such heads modulo that common shift;
+head differences, operational bounds, flows and generation are still audited.
+Components whose pressure is observable through active generation are not
+assigned an independent reference.
 
 ```julia
 prepared = schedule_case(case; proposal_time_limit=5.0,
@@ -164,12 +177,12 @@ model integration, not an optimality gap or a speed comparison with SHOP.
 
 | Horizon | Scheduling | Gate changes | Objective | Global model variables | Global construction |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 48 hours | 29.731 s | 18 | 169,096.105 | 16,476 | 0.402 s |
-| 168 hours | 71.170 s | 58 | 590,823.726 | 57,680 | 2.909 s |
+| 48 hours | 33.185 s | 18 | 169,096.105 | 16,476 | 0.491 s |
+| 168 hours | 76.526 s | 58 | 590,761.726 | 57,680 | 3.424 s |
 
 All three joint proposals were feasible in both runs. Both schedules passed
 fourfold chronological replay. Maximum storage difference was below
-`9.9e-7` Mm³, and maximum water-balance residual was below `9.2e-13` Mm³.
+`9.7e-7` Mm³, and maximum water-balance residual was below `7.2e-13` Mm³.
 Every global model variable received an independently checked feasible start;
 the week-long model has 1,344 gate-position binaries before presolve.
 Gate movement costs were 180 and 580, including initial position changes.

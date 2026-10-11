@@ -116,9 +116,14 @@ function validate_tunnel_openings(c,A;tolerance=1e-8)
             prescribed=opinterval(c,e.name,:opening,t,e.opening)
             abs(x-prescribed)<=tolerance ||
                 throw(ArgumentError("$(e.name): opening differs from its prescribed schedule"))
+            (x==0)==(prescribed==0) ||
+                throw(ArgumentError("$(e.name): tolerance cannot change whether a gate is closed"))
         else
-            gate_position_index(e,x;tolerance)!==nothing ||
+            position=gate_position_index(e,x;tolerance)
+            position!==nothing ||
                 throw(ArgumentError("$(e.name): opening is not a declared gate position"))
+            (x==0)==(e.gate_positions[position]==0) ||
+                throw(ArgumentError("$(e.name): tolerance cannot change whether a gate is closed"))
             scheduled=optional_operation(c,e.name,:opening,t)
             scheduled===nothing || abs(x-scheduled)<=tolerance ||
                 throw(ArgumentError("$(e.name): opening differs from its hard schedule"))
@@ -159,7 +164,7 @@ stay numeric; a fixed trajectory introduces no gate variables. Positive costs
 use an absolute-change epigraph only when the change is an affine expression.
 """
 function _tunnel_gate_states!(m,c;fixed=nothing,relaxed=false)
-    fixed===nothing || validate_tunnel_openings(c,fixed)
+    fixed===nothing || (fixed=_physical_tunnel_openings(c,fixed))
     E,T=length(c.system.tunnels),length(c.prices)
     opening=Matrix{Any}(undef,E,T)
     open=similar(opening)
@@ -211,20 +216,48 @@ function _tunnel_gate_states!(m,c;fixed=nothing,relaxed=false)
             @constraint(m,lo<=count_open<=hi)
         end
     end
-    (;opening,open,weights,cost,changes)
+    (;opening,open,weights,cost,changes,positions=[e.gate_positions for e in c.system.tunnels])
+end
+
+"""Extract exact positions from integral selectors, independent of position spacing.
+
+The implicit first selector is selected only when all explicit selectors round
+to zero. Position-valued expressions are never used to infer a discrete state.
+"""
+function _tunnel_gate_solution(data,value_function=JuMP.value;tolerance=1e-6)
+    isfinite(tolerance) && 0<=tolerance<0.5 ||
+        throw(ArgumentError("invalid gate-selector integrality tolerance"))
+    opening=Matrix{Float64}(value_function.(data.opening))
+    for ((i,t),weights) in data.weights
+        selected=1
+        for k in 2:length(weights)
+            x=value_function(weights[k])
+            isfinite(x) && abs(x-round(x))<=tolerance && round(x) in (0,1) ||
+                throw(ArgumentError("fractional tunnel gate selector"))
+            if round(x)==1
+                selected==1 || throw(ArgumentError("multiple selected tunnel gate positions"))
+                selected=k
+            end
+        end
+        implicit=value_function(first(weights))
+        isfinite(implicit) && abs(implicit-Float64(selected==1))<=tolerance ||
+            throw(ArgumentError("inconsistent implicit tunnel gate selector"))
+        opening[i,t]=data.positions[i][selected]
+    end
+    opening
 end
 
 """Lift a physical opening trajectory into selector and change variables."""
 function _tunnel_gate_values(data,c,A)
-    validate_tunnel_openings(c,A)
+    validate_tunnel_openings(c,A;tolerance=0)
     for i in axes(A,1),t in axes(A,2)
         fixed=data.opening[i,t]
-        fixed isa Real && abs(A[i,t]-fixed)>1e-8 &&
+        fixed isa Real && A[i,t]!=fixed &&
             throw(ArgumentError("opening trajectory differs from the compiled fixed controls"))
     end
     assigned=Dict{VariableRef,Float64}()
     for ((i,t),weights) in data.weights
-        position=gate_position_index(c.system.tunnels[i],A[i,t];tolerance=1e-8)
+        position=gate_position_index(c.system.tunnels[i],A[i,t])
         for k in 2:length(weights)
             assigned[weights[k]]=Float64(k==position)
         end

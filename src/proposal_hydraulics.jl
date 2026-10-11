@@ -3,16 +3,6 @@
 # never a physical audit or a bound on the nonlinear problem. They are used only
 # when the case contains selectable gates; the existing prescribed-gate proposal
 # keeps its original construction.
-function _proposal_on_value!(m,x,state,lo,hi,name)
-    state isa Number && return state*x
-    y=@variable(m,lower_bound=min(0.0,lo),upper_bound=max(0.0,hi),base_name=name)
-    @constraint(m,y>=lo*state)
-    @constraint(m,y<=hi*state)
-    @constraint(m,y>=x-hi*(1-state))
-    @constraint(m,y<=x-lo*(1-state))
-    y
-end
-
 function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,reference)
     s=c.system
     T=length(c.prices)
@@ -51,7 +41,7 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         src,dst=ix[e.source],ix[e.target]
         dh=H[src,t]-H[dst,t]
         dlo,dhi=bounds[src,t][1]-bounds[dst,t][2],bounds[src,t][2]-bounds[dst,t][1]
-        onhead=_proposal_on_value!(m,dh,gates.open[i,t],dlo,dhi,"proposal_gate_head_$(i)_$(t)")
+        onhead=_bounded_binary_product!(m,dh,gates.open[i,t],dlo,dhi;name="proposal_gate_head_$(i)_$(t)")
         cap=opinterval(c,e.name,:capacity,t,e.capacity)
         direct_nominal=sum(clamp(g.qbest,g.qmin,g.qmax) for g in s.generators
             if plantof(s,g).source in (e.source,e.target);init=0.0)
@@ -78,8 +68,8 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
             positive=findall(>(0),positions)
             for k in positive
                 modeflow=length(positive)==1 ? Q[i,t] :
-                    _proposal_on_value!(m,Q[i,t],weights[k],e.discharge_river===nothing ? -cap : 0.0,
-                        cap,"proposal_gate_flow_$(i)_$(t)_$(k)")
+                    _bounded_binary_product!(m,Q[i,t],weights[k],e.discharge_river===nothing ? -cap : 0.0,
+                        cap;name="proposal_gate_flow_$(i)_$(t)_$(k)")
                 add_to_expression!(loss,tunnel_effective_resistance(e,positions[k])*anchor,modeflow)
             end
         end
@@ -107,7 +97,7 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         tail=tailwater(plant,tailref)
         nethead=H[src,t]-receiver-tail
         hlo,hhi=bounds[src,t][1]-rhi-tail,bounds[src,t][2]-rlo-tail
-        onhead=_proposal_on_value!(m,nethead,u[i,t],hlo,hhi,"proposal_unit_head_$(i)_$(t)")
+        onhead=_bounded_binary_product!(m,nethead,u[i,t],hlo,hhi;name="proposal_unit_head_$(i)_$(t)")
         href=reference_heads[i,t]
         head_gain=0.00981*qref*efficiency(g,qref,href)*
             generator_efficiency(g,power(g,qref,href))

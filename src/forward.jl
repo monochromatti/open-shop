@@ -162,25 +162,39 @@ function forward_step(
             x.=initial_guess
         end
     end
+    floating=_floating_pressure_components(s,ta,generator_q;ix)
+    _normalize_pressure_references!(x,s,floating)
+    # Fix one reference column per pressure nullspace. Keep every physical row:
+    # the rectangular Newton system uses QR least squares, so incompatible
+    # component injections cannot disappear through a removed balance equation.
+    free_columns=isempty(floating) ? (1:nv) :
+        setdiff(1:nv,first.(floating))
     iterations=0
     for k in 1:max_iterations
         f=equations(x)
         maximum(abs, f; init = 0.0)<=tolerance && break
-        J=zeros(nv, nv)
-        for j in 1:nv
+        J=zeros(nv,length(free_columns))
+        for (column,j) in enumerate(free_columns)
             epsj=1e-5*max(abs(x[j]), 1.0)
             xp=copy(x)
             xm=copy(x)
             xp[j]+=epsj
             xm[j]-=epsj
-            J[:, j].=(equations(xp)-equations(xm))/(2epsj)
+            J[:,column].=(equations(xp)-equations(xm))/(2epsj)
         end
-        step=try
+        direction=try
             -(J\f)
         catch
             -pinv(J)*f
         end
-        all(isfinite, step) || (step=-pinv(J)*f)
+        all(isfinite,direction) || (direction=-pinv(J)*f)
+        step=if isempty(floating)
+            direction
+        else
+            full=zeros(nv)
+            full[free_columns].=direction
+            full
+        end
         merit=sum(abs2, f)
         accepted=false
         scale=1.0
@@ -197,6 +211,7 @@ function forward_step(
         iterations=k
         accepted || break
     end
+    _normalize_pressure_references!(x,s,floating)
     h=heads(x)
     for k in eachindex(s.tunnels)
         ta[k]==0 && (x[base+k]=0.0)

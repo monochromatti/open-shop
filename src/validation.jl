@@ -422,7 +422,8 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         )
         record("replay_residual", [replay["residual"]])
         record("replay_tunnel_opening",replay["tunnel_opening"]-TA)
-        for key in ["V", "H", "tunnel_q", "power", "river_release", "arrival_volume"]
+        record("replay_H",_pressure_replay_difference(s,TA,GQ,H,replay["H"]))
+        for key in ["V", "tunnel_q", "power", "river_release", "arrival_volume"]
             record("replay_$key", replay[key]-result[key])
         end
     catch e

@@ -41,16 +41,7 @@ function _global_tunnel_gate_loss!(m,e,i,t,Q,dh,gates,cap,dhlo,dhhi;relaxed=fals
         opened=gates.open[i,t]
         @constraint(m,Q<=cap*opened)
         e.discharge_river===nothing && @constraint(m,Q>=-cap*opened)
-        if opened isa Number
-            onhead=dh
-        else
-            onhead=@variable(m,lower_bound=min(0.0,dhlo),upper_bound=max(0.0,dhhi),
-                base_name="gate_open_head_$(i)_$(t)")
-            @constraint(m,onhead>=dhlo*opened)
-            @constraint(m,onhead<=dhhi*opened)
-            @constraint(m,onhead>=dh-dhhi*(1-opened))
-            @constraint(m,onhead<=dh-dhlo*(1-opened))
-        end
+        onhead=_bounded_binary_product!(m,dh,opened,dhlo,dhhi;name="gate_open_head_$(i)_$(t)")
     end
     # The sign follows the head difference for every positive resistance.
     # Use that implication for selectable gates, avoiding an unnecessary sign
