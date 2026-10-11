@@ -571,7 +571,7 @@ def seasonal_series(rule, at, hours):
 
 
 def apply_operating_rules(case, source, at, hours, inflows):
-    """Attach hard current rules; observations never add a second water flow."""
+    """Attach hard current storage and reach-release rules."""
     folder = source / "data/input_data/SEnDHub"
     rivers = {r["name"] for r in case["rivers"]}
     reservoirs = {r["name"]: r for r in case["reservoirs"]}
@@ -628,53 +628,34 @@ def apply_operating_rules(case, source, at, hours, inflows):
                 "physical_minimum": reservoir["vmin"],
             }
         )
-    missing = set(VEST_RIVERS) - rivers
+    missing = (set(VEST_RIVERS) | {VEST_NAME}) - rivers
     units = [g["name"] for g in case["generators"] if g["plant"] == "Lio"]
     if missing or units != ["Lio_G1"]:
         raise ValueError(
-            f"unexpected Vest observation terms: {units}, missing {missing}"
+            f"unexpected Vest source terms: {units}, missing {missing}"
         )
     rule = read_seasonal_rule(folder / "qmin_7891.csv")
     times, values = seasonal_series(rule, at, hours)
     rates = inflows.get(VEST_NAME, [])[:hours]
     if len(rates) != hours or any(not math.isfinite(x) or x < 0 for x in rates):
         raise ValueError("missing or invalid dated Vest local inflow")
-    case["flow_requirements"] = [
-        {
-            "name": VEST_NAME,
-            "generators": units,
-            "rivers": list(VEST_RIVERS),
-            "inflow": rates[0],
-            "min_flow": values[0],
-        }
-    ]
-    case["operations"].extend(
-        [
-            {
-                "object": VEST_NAME,
-                "attribute": "min_flow",
-                "times": times,
-                "values": values,
-            },
-            {
-                "object": VEST_NAME,
-                "attribute": "inflow",
-                "times": list(map(float, range(hours))),
-                "values": rates,
-            },
-        ]
+    # The physical reach already combines Lio, four tributaries and its dated
+    # natural inflow. Its release is the environmental measurement; a separate
+    # aggregate observation would duplicate this conservation relationship.
+    case["operations"].append(
+        {"object": VEST_NAME, "attribute": "min_release", "times": times, "values": values}
     )
     coverage.append(
         {
             "object": VEST_NAME,
-            "attribute": "min_flow",
+            "attribute": "min_release",
             "unit": "m3/s",
             "source_file": "data/input_data/SEnDHub/qmin_7891.csv",
             "annual_rule": rule,
             "times": times,
             "values": values,
-            "observation": case["flow_requirements"][0],
-            "local_inflow": "same dated local inflow already added to Bandak; observation only",
+            "observation": "total release of the retained Vest reach",
+            "local_inflow": "enters Vest once and reaches Bandak through river transport",
         }
     )
     case["name"] = f"tokke_vinje_operating_{hours}h"
@@ -758,8 +739,6 @@ def compile_case(data, params, levels, prices, inflows, terminal_price, hours, s
                 }
             )
         rates = inflows[name][:hours]
-        if name == "Bandak":
-            rates = [a + b for a, b in zip(rates, inflows["r_Vest_Vassdraget"][:hours])]
         case["reservoirs"].append(
             {
                 "name": name,
@@ -953,16 +932,17 @@ def compile_case(data, params, levels, prices, inflows, terminal_price, hours, s
                     "__" + group_name + "_intake", intake, coefficient, cap
                 )
                 tunnel("__" + group_name + "_loss", intake, node, coefficient, cap)
-            case["plants"].append(
-                {
-                    "name": group_name,
-                    "source": node,
-                    "target": downstream,
-                    "pmax": sum(model["generator"][u]["p_max"] for u in members),
-                    "ramp": 1e12,
-                    "outlet_head_floor": plant["outlet_line"],
-                }
-            )
+            plant_case = {
+                "name": group_name,
+                "source": node,
+                "target": downstream,
+                "pmax": sum(model["generator"][u]["p_max"] for u in members),
+                "ramp": 1e12,
+                "outlet_head_floor": plant["outlet_line"],
+            }
+            if len(outputs) == 1 and outputs[0]["to_type"] == "river":
+                plant_case["discharge_river"] = outputs[0]["to"]
+            case["plants"].append(plant_case)
             for unit in members:
                 obj = model["generator"][unit]
                 curves = obj["turb_eff_curves"]
@@ -1054,9 +1034,7 @@ def compile_case(data, params, levels, prices, inflows, terminal_price, hours, s
             raise ValueError(f"unsupported river source: {name}")
         src = incoming[0]["from"]
         target = outgoing[0]["to"] if len(outgoing) == 1 else sink_name
-        if target == "r_Vest_Vassdraget":
-            target = "Bandak"
-        if target not in reservoirs and target != sink_name:
+        if target not in reservoirs and target not in model["river"] and target != sink_name:
             raise ValueError(f"unsupported river target: {name}")
         discharge_curve = obj.get("up_head_flow_curve")
         if discharge_curve:
@@ -1111,6 +1089,40 @@ def compile_case(data, params, levels, prices, inflows, terminal_price, hours, s
                 "source_soft_max_treated_as_hard": "max_flow_const" in obj,
             }
         )
+    # Retain the mixed plant/tributary reach with a capacity enclosing all
+    # configured supplies. The source supplies no separate reach capacity.
+    incoming = [e for e in edges if e["to"] == VEST_NAME and e["to_type"] == "river"]
+    outgoing = [e for e in edges if e["from"] == VEST_NAME and e["from_type"] == "river"]
+    expected = {("plant", "Lio")} | {("river", name) for name in VEST_RIVERS}
+    if (
+        len(incoming) != len(expected)
+        or {(e["from_type"], e["from"]) for e in incoming} != expected
+        or len(outgoing) != 1
+        or (outgoing[0]["to_type"], outgoing[0]["to"]) != ("reservoir", "Bandak")
+    ):
+        raise ValueError("unexpected Vest river connections")
+    rates = inflows[VEST_NAME][:hours]
+    if len(rates) != hours or any(not math.isfinite(q) or q < 0 for q in rates):
+        raise ValueError("missing or invalid dated Vest local inflow")
+    outfall_plants = {p["name"] for p in case["plants"] if p.get("discharge_river") == VEST_NAME}
+    capacity = sum(r["capacity"] for r in case["rivers"] if r["target"] == VEST_NAME)
+    capacity += sum(g["qmax"] for g in case["generators"] if g["plant"] in outfall_plants)
+    capacity += max(rates)
+    case["rivers"].append({
+        "name": VEST_NAME, "source": "auto", "target": "Bandak", "law": "junction",
+        "capacity": capacity, "inflow": rates[0], "water_value": 0.0,
+        "deterministic_delay": 0.0, "curves": [],
+        "history_grid": [-1.0, 0.0], "history_release": [0.0],
+    })
+    case["operations"].append({
+        "object": VEST_NAME, "attribute": "inflow",
+        "times": list(map(float, range(hours))), "values": rates,
+    })
+    river_meta.append({
+        "name": VEST_NAME, "source": "mixed", "target": "Bandak",
+        "source_attributes": list(model["river"][VEST_NAME]),
+        "capacity_policy": "sum of upstream reach capacities, unit qmax and maximum dated local inflow",
+    })
     if any(r["target"] == sink_name for r in case["rivers"]):
         # River arrival is delivered out of the modeled watercourse. This head
         # is unused by the supplied upstream-only river discharge laws.
@@ -1208,7 +1220,7 @@ def main():
             "Source outlet_line is represented by the exact outlet_head_floor field of OpenSHOP.",
             "Startup and shutdown costs are preserved; initial commitment is an explicit all-off benchmark policy with no dwell restrictions because source history is absent.",
             "No physical travel-time attribute is supplied; zero delay is used, not an invented calibrated delay.",
-            "The zero-delay r_Vest_Vassdraget mixing reach is eliminated exactly for the declared profile; Lio output and four bypass/spill arrivals go to Bandak, and local inflow is added to Bandak.",
+            "The source's r_Vest_Vassdraget reach is retained: Lio discharge, four bypass/spill arrivals and dated local inflow merge before reaching Bandak. Zero delay preserves the earlier eliminated-reach physics.",
             "Environmental constraints, reserves, river flow costs and source soft-bound penalty semantics are excluded from this generation/hydraulic profile.",
             "Nominal reservoir volume bounds and source river maximum flows are enforced as hard benchmark restrictions; spillway tables remain but flooding beyond HRL is not allowed.",
             "Storage lower bounds are tightened where needed to keep documented inter-reservoir tunnel mouths submerged; unsupported emergence is excluded, not approximated.",
@@ -1303,14 +1315,14 @@ def main():
                 "Annual environmental steps use UTC month/day recurrence from the current qfomin, qmin and mamin files; the source December 31 baseline is mapped to January 1. The notebook's Old version schedules are not imported.",
                 "Current source annual rule tables are applied to historical benchmark dates; historical rule revisions are not reconstructed.",
                 "Raw mamin values are storage in Mm3. They are retained directly, combined with physical storage minima; rounded prose elevations are not substituted for raw thresholds.",
-                "Vest minimum flow observes Lio discharge, four incoming river releases and the same dated local inflow already delivered to Bandak; this adds no water or hydraulic state.",
+                "Vest minimum flow constrains total release of its retained physical reach, including Lio, four tributaries and dated natural inflow. No separate aggregate observation is added.",
                 "Conditional extraordinary-inflow waivers are unsupported and never applied automatically. Historical initial states are preserved; a violated initial minimum causes an error.",
                 "No current extra environmental maximum-storage schedule is supplied in the reviewed raw inputs; physical nominal maxima remain in force.",
             ]
         )
         metadata["time_series_coverage"][
             "environmental_constraints"
-        ] = "included: five bypass minimum-flow schedules, three minimum-storage schedules and the Vest aggregate minimum flow; conditional waivers and soft semantics excluded"
+        ] = "included: five bypass minimum-flow schedules, three minimum-storage schedules and the Vest reach minimum release; conditional waivers and soft semantics excluded"
     metadata["operating_rule_policy"] = {
         "enabled": args.profile == "operating",
         "hard_minimum_semantics": True,

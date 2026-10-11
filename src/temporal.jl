@@ -9,8 +9,8 @@ end
 
 """Instantaneous arrival coefficients, cohort × reference curve.
 
-For the supported one/two-curve cases this always has two columns: a single
-curve or deterministic delay is duplicated. A release cohort [a,b) contributes
+Each distributed reference curve has a column. A single curve or deterministic
+delay retains two identical columns for compatibility. A release cohort [a,b) contributes
 q*(F(t-a)-F(t-b)). For an atom, `side` chooses the one-sided value at a jump.
 """
 function point_coefficients(r::River, release_grid, time::Real; side::Symbol = :right)

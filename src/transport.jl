@@ -34,6 +34,7 @@ end
 
 struct _TransportSignature
     reservoirs::Vector{Symbol}
+    local_sources::BitVector
     names::Vector{Symbol}
     sources::Vector{Symbol}
     targets::Vector{Symbol}
@@ -91,6 +92,7 @@ function _transport_signature(c)
     s=c.system
     _TransportSignature(
         [r.name for r in s.reservoirs],
+        river_local_sources(c),
         [r.name for r in s.rivers],
         [r.source for r in s.rivers],
         [r.target for r in s.rivers],
@@ -106,6 +108,8 @@ function _transport_data(c, data::CompiledTransport; arrival_grid = c.grid)
     river_order(c)
     s=c.system
     sig=data.signature
+    sig.local_sources==river_local_sources(c) ||
+        throw(ArgumentError("compiled transport local sources changed"))
     data.source_grid==c.grid && data.grid==arrival_grid ||
         throw(ArgumentError("compiled transport grid differs from case"))
     length(sig.reservoirs)==length(s.reservoirs) && length(sig.names)==length(s.rivers) ||
@@ -207,8 +211,8 @@ end
 
 Each `arrival_terms[d,t]` / `release_terms[d,t]` is a vector of
 `(source_river, original_period, coefficient)` triples. Its dot product with
-root releases in m³/s plus the corresponding `*_history[d,t]` gives volume in
-Mm³. Non-root release rows are therefore derived quantities. Terminal terms
+local injections in m³/s plus the corresponding `*_history[d,t]` gives volume in
+Mm³. Confluence release rows also include upstream arrivals. Terminal terms
 have the same units. Historical cohorts independently declared on each reach
 represent water already entering that reach before horizon start; upstream
 historical arrivals propagate downstream only after the horizon starts. This
@@ -232,6 +236,7 @@ function deterministic_network_data(c::ScheduleCase; arrival_grid = c.grid)
         ),
     )
     reservoirs=Set(r.name for r in s.reservoirs)
+    local_sources=river_local_sources(c)
     releases=[_TransportPulse[] for _ in 1:D]
     arrivals=[_TransportPulse[] for _ in 1:D]
     initial=zeros(D)
@@ -239,15 +244,11 @@ function deterministic_network_data(c::ScheduleCase; arrival_grid = c.grid)
         r=s.rivers[d]
         delay=r.deterministic_delay
         isfinite(delay) && delay>=0 || throw(ArgumentError("invalid deterministic delay"))
-        if r.source in reservoirs
-            append!(
-                releases[d],
-                [
-                    _TransportPulse(c.grid[k], c.grid[k + 1], 1.0, d, k) for
-                    k in 1:(length(c.grid) - 1)
-                ],
-            )
-        else
+        # Local injections retain their original decision windows. At a
+        # confluence the incoming pulses are additional, never rebinned.
+        local_sources[d] && append!(releases[d],[_TransportPulse(c.grid[k],c.grid[k+1],1.0,d,k)
+            for k in 1:(length(c.grid)-1)])
+        if !(r.source in reservoirs)
             for u in findall(e->e.target==r.source, s.rivers), p in arrivals[u]
                 clipped=_pulse_clip(p, lo, hi)
                 clipped===nothing || push!(releases[d], clipped)
@@ -355,7 +356,11 @@ function route_network_exact(
     source_release::AbstractMatrix;
     grid = c.grid,
     transport = nothing,
+    generator_q=nothing,
+    tunnel_q=nothing,
+    injections=nothing,
 )
+    source_release=injections===nothing ? river_injections(c,source_release,generator_q,tunnel_q) : injections
     size(source_release)==(length(c.system.rivers), length(c.grid)-1) ||
         throw(DimensionMismatch("source releases"))
     all(isfinite, source_release) && all(>=(0), source_release) ||
@@ -461,7 +466,10 @@ function route_network_controlled(
     max_refinements = 6,
     max_internal_intervals = 2048,
     transport = nothing,
+    generator_q=nothing,
+    tunnel_q=nothing,
 )
+    injections=river_injections(c,q,generator_q,tunnel_q)
     isfinite(absolute_tolerance) && absolute_tolerance>0 ||
         throw(ArgumentError("positive transport tolerance required"))
     max_refinements>=1 ||
@@ -469,7 +477,7 @@ function route_network_controlled(
     max_internal_intervals>=1 ||
         throw(ArgumentError("positive internal interval limit required"))
     all(r->r.deterministic_delay!==nothing, c.system.rivers) &&
-        return route_network_exact(c, q; grid, transport)
+        return route_network_exact(c, q; grid, transport, injections)
     transport===nothing || throw(
         ArgumentError("compiled deterministic transport cannot serve distributed routing"),
     )
@@ -477,8 +485,8 @@ function route_network_controlled(
     first(grid)==first(c.grid) && last(grid)==last(c.grid) ||
         throw(ArgumentError("transport grid must span horizon"))
     current_grid=sort!(unique!(vcat(Float64.(grid), c.grid)))
-    previous=route_network(c, q; grid = current_grid)
-    previous["source_release"]=q
+    previous=route_network(c, q; grid = current_grid,injections)
+    previous["source_release"]=injections
     error=Inf
     transiterror=Inf
     converged=false
@@ -486,11 +494,11 @@ function route_network_controlled(
     for iteration in 1:max_refinements
         2(length(current_grid)-1)>max_internal_intervals && break
         newgrid=_transport_subdivide(current_grid, 2)
-        current=route_network(c, q; grid = newgrid)
+        current=route_network(c, q; grid = newgrid,injections)
         oldA, oldW=_transport_evaluate_previous(c, previous, current_grid, newgrid)
         error=maximum(abs, cumsum(current["arrival_volume"]-oldA; dims = 2); init = 0.0)
         transiterror=maximum(abs, current["transit"]-oldW; init = 0.0)
-        current["source_release"]=q
+        current["source_release"]=injections
         previous=current
         current_grid=newgrid
         rounds=iteration
@@ -530,7 +538,7 @@ function route_network_controlled(
                 grid = r.source in Set(x.name for x in c.system.reservoirs) ? copy(c.grid) :
                        current_grid,
                 release = r.source in Set(x.name for x in c.system.reservoirs) ?
-                          collect(q[d, :]) : collect(previous["release"][d, :]),
+                          collect(injections[d, :]) : collect(previous["release"][d, :]),
             ) for (d, r) in enumerate(c.system.rivers)
         ],
     )
@@ -549,6 +557,8 @@ function transport_audit(
     routed=route_network_controlled(
         c,
         x["river_release"];
+        generator_q=get(x,"generator_q",nothing),
+        tunnel_q=get(x,"tunnel_q",nothing),
         absolute_tolerance,
         max_refinements,
         max_internal_intervals,

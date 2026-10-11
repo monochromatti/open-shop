@@ -44,7 +44,7 @@ function _read_object(T, x)
     for f in fieldnames(T)
         haskey(x, string(f)) || continue
         v=x[string(f)]
-        if fieldtype(T, f)==Symbol
+        if fieldtype(T, f)==Symbol || (f==:discharge_river && v!==nothing)
             v=Symbol(v)
         elseif f==:curves
             v=[

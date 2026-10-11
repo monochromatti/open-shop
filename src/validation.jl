@@ -179,6 +179,10 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
                 "compiled deterministic transport cannot serve distributed validation",
             ),
         )
+    for (i,e) in enumerate(s.tunnels)
+        e.discharge_river===nothing || bound("tunnel_outfall_direction_$(e.name)",-Q[i,:])
+    end
+    injections=river_injections(c,RQ,GQ,Q)
     for (d, r) in enumerate(s.rivers)
         bound(
             "gate_min_$(r.name)",
@@ -200,7 +204,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
                  [
             _transport_value(
                 _pulse_expression(nd.arrival_pulses[d], windows[k], windows[k + 1]),
-                RQ,
+                injections,
             ) for k in 1:(length(windows) - 1)
         ] :
                  windows==c.grid ? vec(A[d, :]) :
@@ -236,7 +240,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
 
                     rate=_transport_value(
                         deterministic_point_data(nd, d, time; side, kind),
-                        RQ,
+                        injections,
                     )
                     kind==:release && push!(
                         deviations,
@@ -267,10 +271,11 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
                     _river_replace(
                         r;
                         capacity = opinterval(c, r.name, :capacity, t, r.capacity),
+                        inflow=opinterval(c,r.name,:inflow,t,r.inflow),
                     ) : r,
                     H[ix[r.source], t],
                     ga[d, t],
-                ) for t in 1:T
+                )+opinterval(c,r.name,:inflow,t,r.inflow) for t in 1:T
             ]
             record("river_law_$(r.name)", RQ[d, :]-expected)
             r.law==:weir && record("weir_gate_$(r.name)", ga[d, :] .- 1)
@@ -312,21 +317,21 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         incoming=findall(r->r.target==j.name, s.rivers)
         record(
             "river_junction_$(j.name)",
-            0.0036 .* dt .* RQ[outgoing, :]-vec(sum(A[incoming, :]; dims = 1)),
+            0.0036 .* dt .* (RQ[outgoing, :]-injections[outgoing,:])-vec(sum(A[incoming, :]; dims = 1)),
         )
     end
     for name in nodes(s)[1:(R + length(s.junctions))]
         net=zeros(T)
         for (d, e) in enumerate(s.tunnels)
-            net .+= ((e.target==name)-(e.source==name)) .* Q[d, :]
+            net .+= water_incidence(e,name) .* Q[d, :]
         end
         for (d, g) in enumerate(s.generators)
             p=plantof(s, g)
-            net .+= ((p.target==name)-(p.source==name)) .* GQ[d, :]
+            net .+= water_incidence(p,name) .* GQ[d, :]
         end
         for (d, r) in enumerate(s.rivers)
             r.target==name && (net .+= A[d, :] ./ (0.0036 .* dt))
-            r.source==name && (net .-= RQ[d, :])
+            r.source==name && (net .-= RQ[d, :]-[opinterval(c,r.name,:inflow,t,r.inflow) for t in 1:T])
         end
         i=ix[name]
         record(
@@ -341,7 +346,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         )
     end
     try
-        routed=exact ? route_network_exact(c, RQ; transport = nd) : route_network(c, RQ)
+        routed=exact ? route_network_exact(c, RQ; transport = nd,injections) : route_network(c, RQ;injections)
         record("routing_release", routed["release"]-RQ)
         record("routing_arrival", routed["arrival_volume"]-A)
         record("terminal_transit", routed["transit"][:, end]-result["terminal_transit"])
@@ -349,11 +354,11 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         external=zeros(T)
         for b in s.boundaries
             for (d, e) in enumerate(s.tunnels)
-                external .+= ((e.target==b.name)-(e.source==b.name)) .* Q[d, :]
+                external .+= water_incidence(e,b.name) .* Q[d, :]
             end
             for (d, g) in enumerate(s.generators)
                 p=plantof(s, g)
-                external .+= ((p.target==b.name)-(p.source==b.name)) .* GQ[d, :]
+                external .+= water_incidence(p,b.name) .* GQ[d, :]
             end
             for (d, r) in enumerate(s.rivers)
                 r.target==b.name && (external .+= A[d, :] ./ (0.0036 .* dt))
@@ -361,7 +366,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         end
         initial=sum(V[:, 1])+sum(W[:, 1])
         inflow=[
-            sum(opinterval(c, r.name, :inflow, t, r.inflow) for r in s.reservoirs;init=0.0) for
+            sum(opinterval(c, r.name, :inflow, t, r.inflow) for r in Iterators.flatten((s.reservoirs,s.rivers));init=0.0) for
             t in 1:T
         ]
         # One column reduction and prefix sum instead of allocating and summing

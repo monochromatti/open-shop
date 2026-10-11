@@ -62,10 +62,12 @@ function validate_inputs(c)
     end
     for e in s.tunnels
         e.source in ns && e.target in ns && e.source!=e.target || error("Tunnel connection")
+        e.discharge_river===nothing || any(r.name==e.discharge_river for r in s.rivers) || error("Tunnel discharge river")
         e.resistance>0 && e.capacity>=0 && 0<=e.opening<=1 || error("Tunnel limits")
     end
     for p in s.plants
         p.source in ns && p.target in ns || error("Plant connection")
+        p.discharge_river===nothing || any(r.name==p.discharge_river for r in s.rivers) || error("Plant discharge river")
         p.pmax>0 && (p.ramp===nothing || p.ramp>=0) && p.initial_interval_hours>0 || error("Plant limits")
         0<=p.pmin<=p.pmax && p.qmin>=0 &&
             (p.qmax===nothing || p.qmax>=p.qmin) || error("Plant operating limits")
@@ -84,6 +86,12 @@ function validate_inputs(c)
         p.outlet_head_floor===nothing ||
             isfinite(p.outlet_head_floor) ||
             error("Nonfinite plant outlet head floor")
+    end
+    for x in Iterators.flatten((s.plants,s.tunnels))
+        x.discharge_river===nothing && continue
+        reach=only(r for r in s.rivers if r.name==x.discharge_river)
+        reach.law==:junction && any(j.name==reach.source for j in s.river_junctions) ||
+            throw(ArgumentError("outfall $(x.name) must feed a confluence; normalize direct river connections before constructing a case"))
     end
     for j in s.junctions
         j.hmin<=j.hmax || error("Junction limits")
@@ -104,6 +112,7 @@ function validate_inputs(c)
         end
     end
     for r in s.rivers
+        r.inflow>=0 || error("Negative river inflow")
         r.capacity>0 && r.min_arrival>=0 && 0<=r.gate_min<=1 || error("River limits")
         r.initial_interval_hours>0 && (r.initial_release===nothing ||
             0<=r.initial_release<=r.capacity) || error("Initial river release")
@@ -126,9 +135,7 @@ function validate_inputs(c)
                 error("Arrival windows must span scheduling horizon")
         end
         if r.deterministic_delay===nothing
-            length(r.curves)==2 &&
-            r.curves[1].reference_flow==0 &&
-            r.curves[2].reference_flow==r.capacity || error("Delay curves")
+            RiverRouting.check_curves(r.curves; capacity=r.capacity)
         else
             isfinite(r.deterministic_delay) && r.deterministic_delay>=0 ||
                 error("Invalid deterministic delay")

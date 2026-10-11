@@ -55,13 +55,13 @@ function _build_global_dispatch(
     )
     tunnel_incidence=[
         [
-            (j, Int(e.target==name)-Int(e.source==name)) for
+            (j, water_incidence(e,name)) for
             (j, e) in enumerate(s.tunnels) if e.target==name || e.source==name
         ] for name in node_names
     ]
     generator_incidence=[
         [
-            (j, Int(plant.target==name)-Int(plant.source==name)) for
+            (j, water_incidence(plant,name)) for
             (j, plant) in enumerate(generator_plants) if
             plant.target==name || plant.source==name
         ] for name in node_names
@@ -71,12 +71,6 @@ function _build_global_dispatch(
             (j, r.target==name, r.source==name) for
             (j, r) in enumerate(s.rivers) if r.target==name || r.source==name
         ] for name in node_names
-    ]
-    river_junction_incidence=[
-        (
-            only(findall(r->r.source==j.name, s.rivers)),
-            findall(r->r.target==j.name, s.rivers),
-        ) for j in s.river_junctions
     ]
     bound_start=time()
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
@@ -172,10 +166,12 @@ function _build_global_dispatch(
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=opinterval(c, e.name, :opening, t, e.opening)
         qlo,qhi=-cap,cap
-        set_lower_bound(q[i, t], qlo/50)
+        set_lower_bound(q[i, t], (e.discharge_river===nothing ? qlo : max(0.0,qlo))/50)
         set_upper_bound(q[i, t], qhi/50)
         if opening==0
             fix(q[i, t], 0; force = true)
+        elseif e.discharge_river!==nothing
+            @constraint(m,(opening*(H[ix[e.source],t]-H[ix[e.target],t])-e.resistance*Q[i,t]^2)/100==0)
         else
             qp=@variable(
                 m,
@@ -359,6 +355,12 @@ function _build_global_dispatch(
         end
     end
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
+    injections=river_injections(c,RQ,GQ,Q)
+    coordinates=exact ? nothing : [
+        river_reference_coordinate!(m,r,RQ[i,t];name=Symbol("routing_",i,"_",t))
+        for (i,r) in enumerate(s.rivers),t in 1:T
+    ]
+    transfer=(i,k,b)->river_transfer_expression(m,s.rivers[i],RQ[i,k],b; coordinate=coordinates[i,k])
     arrivals=Matrix{Any}(undef, D, T)
     terminal=Any[]
     for (i, r) in enumerate(s.rivers)
@@ -366,6 +368,7 @@ function _build_global_dispatch(
         for t in 1:T
             cap=opinterval(c, r.name, :capacity, t, r.capacity)
             set_upper_bound(rq[i, t], cap/100)
+            set_lower_bound(rq[i,t],opinterval(c,r.name,:inflow,t,r.inflow)/100)
             set_lower_bound(a[i, t], opinterval(c, r.name, :gate_min, t, r.gate_min))
             set_upper_bound(a[i, t], opinterval(c, r.name, :gate_max, t, 1.0))
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
@@ -382,16 +385,14 @@ function _build_global_dispatch(
             end
             if exact
                 arrivals[i, t]=nd.arrival_history[i, t]+sum(
-                    v*RQ[d, k] for (d, k, v) in nd.arrival_terms[i, t];
+                    v*injections[d, k] for (d, k, v) in nd.arrival_terms[i, t];
                     init = 0.0,
                 )
             else
                 # Skip structural zeros to preserve banded routing sparsity.
-                ks=[k for k in 1:T if B[t, k, 1]!=0 || B[t, k, 2]!=0]
+                ks=[k for k in 1:T if any(!iszero,view(B,t,k,:))]
                 arrivals[i, t]=rd["history_arrival"][i, t]+sum(
-                    0.0036*dt[k]*RQ[i, k]*(
-                        B[t, k, 1]+RQ[i, k]/r.capacity*(B[t, k, 2]-B[t, k, 1])
-                    ) for k in ks;
+                    0.0036*dt[k]*transfer(i,k,collect(view(B,t,k,:))) for k in ks;
                     init = 0.0,
                 )
             end
@@ -407,6 +408,8 @@ function _build_global_dispatch(
                     )
                 )
             end
+            natural=opinterval(c,r.name,:inflow,t,r.inflow)
+            outlet_release=RQ[i,t]-natural
             if r.law==:junction
                 fix(a[i, t], 0.0; force = true)
             elseif r.discharge_curve!==nothing
@@ -423,9 +426,9 @@ function _build_global_dispatch(
                     lawhi;
                     name = Symbol("river_law_", i, "_", t),
                 )
-                @constraint(m, (RQ[i, t]-a[i, t]*discharge)/100==0)
+                @constraint(m, (outlet_release-a[i, t]*discharge)/100==0)
             elseif r.law==:controlled
-                @constraint(m, RQ[i, t]==cap*a[i, t])
+                @constraint(m, outlet_release==(cap-natural)*a[i, t])
             elseif r.law in (:orifice, :weir)
                 r.law==:weir && fix(a[i, t], 1.0; force = true)
                 hd=H[ix[r.source], t]-r.crest
@@ -459,9 +462,9 @@ function _build_global_dispatch(
                 )
                 @constraint(m, root^2==wet)
                 if r.law==:orifice
-                    @constraint(m, (RQ[i, t]-r.coefficient*a[i, t]*root)/100==0)
+                    @constraint(m, (outlet_release-r.coefficient*a[i, t]*root)/100==0)
                 else
-                    @constraint(m, (RQ[i, t]-r.coefficient*wet*root)/100==0)
+                    @constraint(m, (outlet_release-r.coefficient*wet*root)/100==0)
                 end
             else
                 error("Unknown river law")
@@ -475,13 +478,11 @@ function _build_global_dispatch(
             for j in 1:(length(windows) - 1)
                 if exact
                     ex=_pulse_expression(nd.arrival_pulses[i], windows[j], windows[j + 1])
-                    volume=ex.history+sum(v*RQ[d, k] for (d, k, v) in ex.terms; init = 0.0)
+                    volume=ex.history+sum(v*injections[d, k] for (d, k, v) in ex.terms; init = 0.0)
                 else
-                    ks=[k for k in 1:T if K[j, k, 1]!=0 || K[j, k, 2]!=0]
+                    ks=[k for k in 1:T if any(!iszero,view(K,j,k,:))]
                     volume=hist[j]+sum(
-                        0.0036*dt[k]*RQ[i, k]*(
-                            K[j, k, 1]+RQ[i, k]/r.capacity*(K[j, k, 2]-K[j, k, 1])
-                        ) for k in ks;
+                        0.0036*dt[k]*transfer(i,k,collect(view(K,j,k,1:river_curve_count(r)))) for k in ks;
                         init = 0.0,
                     )
                 end
@@ -509,15 +510,15 @@ function _build_global_dispatch(
                     if exact
                         ex=deterministic_point_data(nd, i, time; side)
                         rate=ex.history+sum(
-                            v*RQ[d, k] for (d, k, v) in ex.terms;
+                            v*injections[d, k] for (d, k, v) in ex.terms;
                             init = 0.0,
                         )
                     else
                         K=point_coefficients(r, c.grid, time; side = side)
                         history=point_arrival(r, c.grid, zeros(T), time; side = side)
-                        ks=[k for k in 1:T if K[k, 1]!=0 || K[k, 2]!=0]
+                        ks=[k for k in 1:T if any(!iszero,view(K,k,:))]
                         rate=history+sum(
-                            RQ[i, k]*(K[k, 1]+RQ[i, k]/r.capacity*(K[k, 2]-K[k, 1])) for
+                            transfer(i,k,collect(view(K,k,1:river_curve_count(r)))) for
                             k in ks;
                             init = 0.0,
                         )
@@ -533,7 +534,7 @@ function _build_global_dispatch(
             push!(
                 terminal,
                 nd.terminal_history[i]+sum(
-                    v*RQ[d, k] for (d, k, v) in nd.terminal_terms[i];
+                    v*injections[d, k] for (d, k, v) in nd.terminal_terms[i];
                     init = 0.0,
                 ),
             )
@@ -545,7 +546,7 @@ function _build_global_dispatch(
                     time==last(c.grid) ? (:left,) : (:left, :right)
                 )
                     ex=deterministic_point_data(nd, i, time; side, kind = :release)
-                    rate=ex.history+sum(v*RQ[d, k] for (d, k, v) in ex.terms; init = 0.0)
+                    rate=ex.history+sum(v*injections[d, k] for (d, k, v) in ex.terms; init = 0.0)
                     @constraint(
                         m,
                         rate<=opvalue(c, r.name, :capacity, time, r.capacity; side)
@@ -556,24 +557,17 @@ function _build_global_dispatch(
             push!(
                 terminal,
                 rd["history_terminal"][i]+sum(
-                    0.0036*dt[k]*RQ[i, k]*(
-                        1-sum(B[:, k, 1])-RQ[i, k]/r.capacity*sum(B[:, k, 2]-B[:, k, 1])
-                    ) for k in 1:T
+                    0.0036*dt[k]*transfer(i,k,[1-sum(view(B,:,k,l)) for l in 1:river_curve_count(r)]) for k in 1:T
                 ),
             )
         end
     end
-    for (outgoing, incoming) in river_junction_incidence, t in 1:T
-        @constraint(
-            m,
-            (0.0036*dt[t]*RQ[outgoing, t]-sum(arrivals[k, t] for k in incoming))/0.3==0
-        )
-    end
+    constrain_river_sources!(m,c,RQ,arrivals,injections)
     for i in 1:(R + length(s.junctions)), t in 1:T
         net=sum(sign*Q[j, t] for (j, sign) in tunnel_incidence[i]; init = 0.0)
         net+=sum(sign*GQ[j, t] for (j, sign) in generator_incidence[i]; init = 0.0)
         net+=sum(
-            (incoming ? arrivals[j, t]/(0.0036*dt[t]) : 0)-(outgoing ? RQ[j, t] : 0) for
+            (incoming ? arrivals[j, t]/(0.0036*dt[t]) : 0)-(outgoing ? RQ[j, t]-opinterval(c,s.rivers[j].name,:inflow,t,s.rivers[j].inflow) : 0) for
             (j, incoming, outgoing) in river_incidence[i];
             init = 0.0,
         )

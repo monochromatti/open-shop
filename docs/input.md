@@ -13,29 +13,36 @@ The fields below are the accepted object attributes. Fields marked “required�
 | Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
 | Hydraulic junction | `name` | `hmin`, `hmax` |
 | Boundary | `name`, `head` | None |
-| Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening` |
-| Plant | `name`, `source`, `target`, `pmax` | `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
+| Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `discharge_river` |
+| Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
 | Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | River junction | `name` | None |
-| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
+| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 
 Reservoir head is `z0 + slope * V + curvature * V²`, unless `level_curve` supplies the volume-to-head relationship. The relationship must increase over the storage domain. Hydraulic junctions have no storage; signed tunnel and generation flows satisfy continuity. Boundaries have fixed heads and represent external water exchange.
 
-Positive tunnel discharge follows `source` to `target`; negative discharge reverses that direction. `opening` lies between zero and one, and zero closes the tunnel. Resistance must be positive. A plant's units share endpoints and aggregate capacity/ramp restrictions. Tailwater is additional head loss indexed by total plant discharge. Optional `outlet_head_floor` sets the turbine outlet reference to the greater of the receiving node head and that floor; net head is source head minus this reference and tailwater loss. The receiving node still receives the original water discharge. Generators produce electrical power; pumping is not part of this profile. Explicit initial state, age and power support chronological dwell and ramp constraints. `startup` is charged once on an off-to-on transition; `shutdown` is charged once on an on-to-off transition, including the first interval relative to `initial_on`.
+Positive tunnel discharge follows `source` to `target`; negative discharge reverses that direction. `opening` lies between zero and one, and zero closes the tunnel. Resistance must be positive. A plant's units share endpoints and aggregate capacity/ramp restrictions. Tailwater is additional head loss indexed by total plant discharge. Optional `outlet_head_floor` sets the turbine outlet reference to the greater of the receiving node head and that floor; net head is source head minus this reference and tailwater loss. The target receives the discharge immediately unless `discharge_river` redirects it into delayed transport. Generators produce electrical power; pumping is not part of this profile. Explicit initial state, age and power support chronological dwell and ramp constraints. `startup` is charged once on an off-to-on transition; `shutdown` is charged once on an on-to-off transition, including the first interval relative to `initial_on`.
 
 River targets may be reservoirs, boundaries, river junctions or other rivers. A boundary receives water leaving the modeled system; delayed arrivals, rather than upstream releases, determine that exchange.
 
 `min_efficiency` is a lower bound on a running unit's turbine efficiency and defaults to zero. It is independent of the electrical-efficiency curve.
 
-River `law` is `controlled`, `orifice`, `weir` or `junction`. Controlled release is operating capacity times gate opening. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
+River `law` is `controlled`, `orifice`, `weir` or `junction`. For controlled outlets, reservoir withdrawal is `(operating capacity - natural inflow) * gate`; total reach release adds natural inflow. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
 
 ## Shared streams and direct river links
 
-Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks may contain loops. River networks must be acyclic. Multiple incoming rivers can merge into one outgoing river through a named river junction; conservation determines the downstream release. One river junction must have incoming reaches and exactly one outgoing reach. Hydraulic junctions and river junctions have different roles.
+Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks may contain loops. River networks must be acyclic. Multiple incoming rivers can merge into one outgoing river through a named river junction; conservation determines the downstream release. One river junction must have a water supply and exactly one outgoing reach. Hydraulic junctions and river junctions have different roles.
 
 A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred confluence. OpenSHOP creates its internal junction during input construction and restores the direct river links on serialization. Names beginning with `__river_merge__` are reserved for inferred junctions. An explicit source on a receiving direct-link river is rejected.
+
+Plants and tunnels can set `discharge_river` to a receiving reach while retaining
+`target` as their hydraulic head reference. Routed tunnel outfalls are forward
+only; other tunnel links remain reversible. Receiving reaches combine these
+outfalls, upstream rivers and their own natural `inflow`. An inflow-only reach
+also omits `source`. See [river networks](river-networks.md) for equations,
+capacity conventions, history and mixed-delay behavior.
 
 A shared penstock can be represented by a tunnel from a reservoir to a hydraulic junction, with multiple plants taking their source at that junction. Junction continuity sums their unit discharges, and the common tunnel head-loss law therefore depends on the combined flow. Units within one plant likewise share that plant's hydraulic endpoints and tailwater relationship.
 
@@ -49,7 +56,7 @@ A turbine table contains `heads`, `discharge`, `efficiency`, `qmin`, `qmax`, and
 
 `head_extrapolation` defaults to `"error"`: reference heads must cover the generator's declared operating head range. Explicit `"linear"` extends efficiency and discharge envelopes using the outermost pair of reference heads. Supplied knots remain unchanged; the generator's head, discharge, power and efficiency restrictions still apply to the extended values. Raw table-query APIs remain strict unless the caller explicitly requests linear extrapolation.
 
-Each distributed delay curve contains `reference_flow`, `edges`, and `weights`. Edges are finite increasing nonnegative delays; weights are nonnegative bin probabilities summing to one. Distributed routing requires two curves, at zero and `capacity`, and blends their transfer distributions using contemporaneous release flow. A deterministic reach instead supplies nonnegative `deterministic_delay`; `curves` may be an empty array. History edges end at the scheduling horizon's first edge and have one nonnegative release value per interval. History is physical water already in transit, not an optimization decision.
+Each distributed delay curve contains `reference_flow`, `edges`, and `weights`. Edges are finite increasing nonnegative delays; weights are nonnegative bin probabilities summing to one. One distributed curve is independent of flow. Multiple curves have strictly increasing reference flows covering zero through `capacity`; their neighboring transfer distributions are blended using contemporaneous release flow. A deterministic reach instead supplies nonnegative `deterministic_delay`; `curves` may be an empty array. History edges end at the scheduling horizon's first edge and have one nonnegative release value per interval. History is physical water already in transit, not an optimization decision.
 
 Deterministic transport preserves release cohorts through confluences. A network containing distributed reaches uses interval-average mixing at downstream junctions. Its scheduling grid is therefore part of the model; numerical refinement does not turn its discrete global bound into a continuous-time certificate.
 
@@ -63,7 +70,7 @@ An operation names an existing object and one supported attribute:
 | Generator | `qmin`, `qmax`, `pmin`, `pmax`, `forced_on`, `maintenance`, `power`, `discharge`, `startup`, `shutdown`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
 | Plant | `pmin`, `pmax`, `qmin`, `qmax`, `forced_on`, `maintenance`, `power`, `discharge`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
 | Tunnel | `capacity`, `opening` |
-| River | `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty`, `ramp_up`, `ramp_down` |
+| River | `inflow`, `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty`, `ramp_up`, `ramp_down` |
 | Flow requirement | `inflow`, `min_flow` |
 
 `times` are strictly increasing absolute-hour knots and `values` are piecewise constant. Before the first knot the object's default applies; the last value is held afterward. Ordinary dispatch interval data use time averages. Storage edges and pointwise arrival requirements retain their corresponding endpoint/event semantics. Place knots on scheduling edges when a commitment or outage transition must occur at a particular time.

@@ -48,9 +48,9 @@ function _global_capacity_bounds(c, nd, rd)
             lo=hi=rd["history_arrival"][i, t]
             B=rd["B"][i]
             for k in 1:T
-                a=0.0036*dt[k]*B[t, k, 1]
-                b=0.0036*dt[k]*(B[t, k, 2]-B[t, k, 1])/r.capacity
-                l, h=_global_quadratic_range(a, b, 0.0, release_cap[i, k])
+                l,h=river_transfer_range(r,collect(view(B,t,k,:)),0.0,release_cap[i,k])
+                l*=0.0036*dt[k]
+                h*=0.0036*dt[k]
                 lo+=l
                 hi+=h
             end
@@ -64,9 +64,9 @@ function _global_capacity_bounds(c, nd, rd)
     delta_hi=similar(delta_lo)
     plants=[plantof(s, g) for g in s.generators]
     for (i, r) in enumerate(s.reservoirs)
-        tunnels=[e for e in s.tunnels if e.source==r.name || e.target==r.name]
+        tunnels=[e for e in s.tunnels if water_incidence(e,r.name)!=0]
         gen_out=findall(p->p.source==r.name, plants)
-        gen_in=findall(p->p.target==r.name, plants)
+        gen_in=findall(p->p.discharge_river===nothing && p.target==r.name, plants)
         river_out=findall(reach->reach.source==r.name, s.rivers)
         river_in=findall(reach->reach.target==r.name, s.rivers)
         for t in 1:(T + 1)
@@ -78,8 +78,13 @@ function _global_capacity_bounds(c, nd, rd)
             for e in tunnels
                 cap=opinterval(c, e.name, :opening, t, e.opening)==0 ? 0.0 :
                     opinterval(c, e.name, :capacity, t, e.capacity)
-                lo-=cap
-                hi+=cap
+                sign=water_incidence(e,r.name)
+                if e.discharge_river===nothing
+                    lo-=cap
+                    hi+=cap
+                elseif sign<0
+                    lo-=cap
+                end
             end
             for j in gen_out
                 g=s.generators[j]
@@ -90,7 +95,9 @@ function _global_capacity_bounds(c, nd, rd)
                 hi+=opinterval(c, g.name, :qmax, t, g.qmax)
             end
             for j in river_out
-                lo-=release_cap[j, t]
+                natural=opinterval(c,s.rivers[j].name,:inflow,t,s.rivers[j].inflow)
+                lo-=release_cap[j,t]-natural
+                # Reservoir outlets cannot withdraw negative water.
             end
             for j in river_in
                 lo+=al[j, t]/(0.0036*dt[t])

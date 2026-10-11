@@ -9,6 +9,7 @@ const OPERATION_ATTRIBUTES=Dict(
         :discharge_ramp_up, :discharge_ramp_down)),
     Tunnel=>Set((:capacity, :opening)),
     River=>Set((
+        :inflow,
         :capacity,
         :gate_min,
         :gate_max,
@@ -194,6 +195,8 @@ function validate_operations(c)
         r.law==:junction &&
             opinterval(c, r.name, :gate_min, t, r.gate_min)>0 &&
             throw(ArgumentError("inferred confluence has no gate"))
+        opinterval(c,r.name,:inflow,t,r.inflow)<=opinterval(c,r.name,:capacity,t,r.capacity) ||
+            throw(ArgumentError("river inflow exceeds capacity of $(r.name)"))
         opinterval(c, r.name, :capacity, t, r.capacity)<=r.capacity+1e-12 || throw(
             ArgumentError(
                 "river operating capacity cannot exceed routing calibration capacity",
@@ -289,8 +292,8 @@ function operational_system(c, a, b)
         e in s.tunnels
     ]
     rivers=[
-        r.law==:controlled ?
-        _river_replace(r; capacity = opaverage(c, r.name, :capacity, a, b, r.capacity)) : r
+        _river_replace(r; inflow=opaverage(c,r.name,:inflow,a,b,r.inflow),
+            capacity=r.law==:controlled ? opaverage(c,r.name,:capacity,a,b,r.capacity) : r.capacity)
         for r in s.rivers
     ]
     _river_replace(s; reservoirs, tunnels, rivers)
@@ -298,7 +301,7 @@ end
 function river_law_value(r, h, a)
     r.discharge_curve!==nothing &&
         return a*table_value(r.discharge_curve, h; extrapolation = :linear)
-    r.law==:controlled && return r.capacity*a
+    r.law==:controlled && return max(0.0,r.capacity-r.inflow)*a
     r.law==:orifice && return r.coefficient*a*sqrt(max(h-r.crest, 0.0))
     r.law==:weir && return r.coefficient*max(h-r.crest, 0.0)^1.5
     throw(ArgumentError("unsupported river law"))

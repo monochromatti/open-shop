@@ -19,7 +19,7 @@
         m=Model()
         @variable(m, q[1:3, 1:4])
         set_start_value.(q, rates)
-        routing=OpenSHOP._dispatch_transport_expressions(c, q)
+        routing=OpenSHOP._dispatch_transport_expressions(m,c, q)
         evaluate(x)=value(start_value, x)
         arrivals=evaluate.(routing.arrivals)
         terminal=evaluate.(routing.terminal)
@@ -29,7 +29,7 @@
             expected=OpenSHOP.route_network_exact(c, rates)
             @test arrivals≈expected["arrival_volume"] atol=1e-13
             @test terminal≈expected["transit"][:, end] atol=1e-13
-            cached=OpenSHOP._dispatch_transport_expressions(c, q;
+            cached=OpenSHOP._dispatch_transport_expressions(m,c, q;
                 transport = routing.nd)
             @test evaluate.(cached.arrivals)≈arrivals atol=1e-13
             @test evaluate.(cached.terminal)≈terminal atol=1e-13
@@ -50,7 +50,7 @@
         end
     end
     empty_case=warm_dispatch_fixture(; rivers = false)
-    empty_routing=OpenSHOP._dispatch_transport_expressions(empty_case, zeros(0, 2))
+    empty_routing=OpenSHOP._dispatch_transport_expressions(Model(),empty_case, zeros(0, 2))
     @test size(empty_routing.arrivals)==(0, 2)
     @test isempty(empty_routing.terminal)
 end
