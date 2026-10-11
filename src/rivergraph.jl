@@ -115,6 +115,13 @@ function river_order(c::ScheduleCase)
             ArgumentError("reach $(r.name) has an unknown endpoint or invalid source"),
         )
         r.source!=r.target || throw(ArgumentError("reach $(r.name) is a self-loop"))
+        if is_channel(r)
+            validate_channel(r,s)
+            RiverRouting.check_grid(r.history_grid)
+            length(r.history_release)==length(r.history_grid)-1 || throw(DimensionMismatch("channel history"))
+            last(r.history_grid)==first(c.grid) || throw(ArgumentError("channel history must end at horizon start"))
+            continue
+        end
         push!(incoming[r.target], d)
         push!(outgoing[r.source], d)
         isfinite(r.capacity) && r.capacity>0 ||
@@ -155,6 +162,7 @@ function river_order(c::ScheduleCase)
         end
     end
     visited==length(valid) || throw(ArgumentError("river graph must be acyclic"))
+    append!(order,findall(is_channel,s.rivers))
     order
 end
 
@@ -237,7 +245,7 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
         if r.source in reservoirs
             q=collect(source_release[d, :])
             cohort_grid=c.grid
-            RiverRouting.check_releases(cohort_grid, q)
+            _check_river_releases(r,cohort_grid,q)
             release[d, :]=source_averages(grid, cohort_grid, q)
         else
             upstream=findall(e->e.target==r.source, s.rivers)
@@ -271,7 +279,7 @@ end
 function route_volumes(r, arrival_grid, release_grid, q)
     r.deterministic_delay===nothing &&
         return RiverRouting.route(arrival_grid, release_grid, q, r.curves)
-    RiverRouting.check_releases(release_grid, q)
+    _check_river_releases(r,release_grid,q)
     RiverRouting.fixed_coefficients(arrival_grid, release_grid, r.deterministic_delay)*(
         0.0036 .* diff(release_grid) .* q
     )
@@ -279,7 +287,7 @@ end
 function remaining_volume(r, time, grid, q)
     r.deterministic_delay===nothing &&
         return RiverRouting.remaining_volume(time, grid, q, r.curves)
-    RiverRouting.check_releases(grid, q)
+    _check_river_releases(r,grid,q)
     sum(
         0.0036*q[k]*(
             max(0.0, min(grid[k + 1], time)-grid[k])-max(

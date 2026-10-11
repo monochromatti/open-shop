@@ -44,7 +44,7 @@ function point_coefficients(r::River, release_grid, time::Real; side::Symbol = :
 end
 
 function cohort_point_arrival(r::River, grid, q, time; side = :right)
-    RiverRouting.check_releases(grid, q)
+    _check_river_releases(r,grid,q)
     K=point_coefficients(r, grid, time; side)
     total=0.0
     for k in eachindex(q)

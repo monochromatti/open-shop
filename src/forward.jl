@@ -82,7 +82,7 @@ function forward_step(
         end
         h
     end
-    law(r, h, a) = river_law_value(r, h, a)
+    law(r,h,a) = is_channel(r) ? channel_flow(r,h[ix[r.source]],h[ix[r.target]]) : river_law_value(r,h[ix[r.source]],a)
     function river_rates(x)
         release=zeros(nd)
         arrival=copy(river_arrival)
@@ -104,7 +104,7 @@ function forward_step(
                 fraction=sum(
                     w*current_transfer[d, l] for (l, w) in _forward_weights(r, release[d])
                 )
-                arrival[d]+=max(0.0, release[d])*fraction
+                arrival[d]+=is_channel(r) ? release[d] : max(0.0,release[d])*fraction
             end
         end
         release, arrival, injection
@@ -124,12 +124,11 @@ function forward_step(
         f[(nr + 1):base].=-net[(nr + 1):base]
         for (k, t) in enumerate(s.tunnels)
             q=x[base + k]
-            f[base + k]=t.opening==0 ? q :
-                        t.opening*(h[ix[t.source]]-h[ix[t.target]])-t.resistance*q*abs(q)
+            f[base + k]=tunnel_loss_residual(t, h[ix[t.source]]-h[ix[t.target]], q)
         end
         for (k, d) in enumerate(active)
             r=s.rivers[d]
-            f[nq + k]=x[nq + k]-r.inflow-law(r, h[ix[r.source]], gate[d])
+            f[nq + k]=x[nq + k]-r.inflow-law(r,h,gate[d])
         end
         f
     end
@@ -143,10 +142,10 @@ function forward_step(
     h=heads(x)
     for (k, t) in enumerate(s.tunnels)
         dh=h[ix[t.source]]-h[ix[t.target]]
-        x[base + k]=sign(dh)*sqrt(t.opening*abs(dh)/t.resistance)
+        x[base + k]=tunnel_flow(t, dh)
     end
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
+        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d],h,gate[d])
     end
     if initial_guess!==nothing
         if initial_guess isa AbstractDict
@@ -198,7 +197,7 @@ function forward_step(
     # Exact law evaluation removes Newton roundoff from a shut outlet. Its
     # storage consequence is included in the recomputed convergence residual.
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d], h[ix[s.rivers[d].source]], gate[d])
+        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d],h,gate[d])
     end
     release, arrival, injection=river_rates(x)
     gh=[
@@ -249,7 +248,7 @@ function forward_step(
         ),
         "river_flow"=>maximum(
             (
-                max(-release[d], release[d]-r.capacity, 0.0) for
+                max(river_flow_lower(r,r.capacity)-release[d],release[d]-r.capacity,0.0) for
                 (d, r) in enumerate(s.rivers)
             );
             init = 0.0,
@@ -271,7 +270,7 @@ function forward_step(
         "routing_domain_valid"=>domain,
         "bound_violations"=>violations,
         "law_domain_valid"=>all(
-            s.rivers[d].law==:controlled ||
+            is_channel(s.rivers[d]) || s.rivers[d].law==:controlled ||
                 s.rivers[d].allow_dry ||
                 s.rivers[d].discharge_curve!==nothing ||
                 h[ix[s.rivers[d].source]]>=s.rivers[d].crest for d in active
@@ -287,7 +286,7 @@ function _forward_river_order(s)
     while !isempty(remaining)
         ready=sort!([
             d for d in remaining if !any(
-                k in remaining && s.rivers[k].target==s.rivers[d].source for
+                !is_channel(s.rivers[d]) && !is_channel(s.rivers[k]) && k in remaining && s.rivers[k].target==s.rivers[d].source for
                 k in eachindex(s.rivers)
             )
         ])
@@ -311,7 +310,7 @@ function _forward_weights(r, q)
     RiverRouting.blend(r.curves, clamp(q, first(refs), last(refs)))
 end
 function _forward_domain(r, q)
-    isfinite(q) && q>=-1e-10 && q<=r.capacity+1e-9 || return false
+    river_flow_valid(r,q;tolerance=1e-9) || return false
     _forward_atom(r) ||
         length(r.curves)==1 ||
         first(r.curves).reference_flow-1e-10<=q<=last(r.curves).reference_flow+1e-9

@@ -174,7 +174,18 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             put("rq[$i,$t]", warm["river_release"][i, t]/100)
             put("a[$i,$t]", warm["gate"][i, t])
             put("shortfall_release[$i,$t]", shortfall[i, t])
+            if is_channel(r)
+                upstream,downstream=warm["H"][ix[r.source],t],warm["H"][ix[r.target],t]
+                delta=upstream-downstream
+                put("channel_delta_$(i)_$(t)",delta)
+                graph=b.m.ext[:global_level_flow_tables]["channel_flow_$(i)_$(t)"]
+                for (variable,val) in _global_level_flow_values(graph,delta,channel_reference(r,upstream,downstream))
+                    put(name(variable),val)
+                end
+                continue
+            end
             r.law==:junction && continue
+
             h=warm["H"][ix[r.source], t]
             r.discharge_curve!==nothing && table(
                 "river_law_$(i)_$(t)",

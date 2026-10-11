@@ -64,6 +64,13 @@ function validate_inputs(c)
         e.source in ns && e.target in ns && e.source!=e.target || error("Tunnel connection")
         e.discharge_river===nothing || any(r.name==e.discharge_river for r in s.rivers) || error("Tunnel discharge river")
         e.resistance>0 && e.capacity>=0 && 0<=e.opening<=1 || error("Tunnel limits")
+        if e.gate_loss_factor_curve!==nothing
+            curve=e.gate_loss_factor_curve
+            first(curve.x)<=0 && last(curve.x)>=1 ||
+                throw(ArgumentError("$(e.name): gate loss table must cover opening [0,1]"))
+            all(curve.y .>= 0) ||
+                throw(ArgumentError("$(e.name): gate loss factors must be nonnegative"))
+        end
     end
     for p in s.plants
         p.source in ns && p.target in ns || error("Plant connection")
@@ -114,8 +121,9 @@ function validate_inputs(c)
     for r in s.rivers
         r.inflow>=0 || error("Negative river inflow")
         r.capacity>0 && r.min_arrival>=0 && 0<=r.gate_min<=1 || error("River limits")
+        validate_channel(r,s)
         r.initial_interval_hours>0 && (r.initial_release===nothing ||
-            0<=r.initial_release<=r.capacity) || error("Initial river release")
+            river_flow_lower(r,r.capacity)<=r.initial_release<=r.capacity) || error("Initial river release")
         r.law in (:orifice, :weir) &&
             r.discharge_curve===nothing &&
             r.coefficient<=0 &&
@@ -140,7 +148,7 @@ function validate_inputs(c)
             isfinite(r.deterministic_delay) && r.deterministic_delay>=0 ||
                 error("Invalid deterministic delay")
         end
-        r.law in (:orifice, :weir, :junction, :controlled) || error("Unknown river law")
+        r.law in (:orifice, :weir, :junction, :controlled, :delta) || error("Unknown river law")
         if r.law in (:orifice, :weir) && !r.allow_dry && r.discharge_curve===nothing
             src=only(x for x in s.reservoirs if x.name==r.source)
             head(src, src.vmin)>r.crest ||
@@ -182,7 +190,7 @@ function with_grid(c::ScheduleCase, newgrid)
         )] for t in 1:(length(grid) - 1)
     ]
     rivers=[
-        r.arrival_policy==:interval_average && isempty(r.arrival_window_grid) ?
+        !is_channel(r) && r.arrival_policy==:interval_average && isempty(r.arrival_window_grid) ?
         _river_replace(r; arrival_window_grid = copy(c.grid)) : r for r in c.system.rivers
     ]
     _river_replace(c; grid, prices, system = _river_replace(c.system; rivers))

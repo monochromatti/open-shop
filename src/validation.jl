@@ -93,10 +93,8 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         record(
             "tunnel_loss_$(e.name)",
             [
-                opinterval(c, e.name, :opening, t, e.opening)==0 ? Q[i, t] :
-                opinterval(c, e.name, :opening, t, e.opening)*(
-                    H[ix[e.source], t]-H[ix[e.target], t]
-                )-e.resistance*Q[i, t]*abs(Q[i, t]) for t in 1:T
+                tunnel_loss_residual(e, H[ix[e.source], t]-H[ix[e.target], t], Q[i, t],
+                    opinterval(c, e.name, :opening, t, e.opening)) for t in 1:T
             ],
         )
     end
@@ -195,11 +193,19 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         bound(
             "river_capacity_$(r.name)",
             vcat(
-                -RQ[d, :],
+                [river_flow_lower(r,opinterval(c,r.name,:capacity,t,r.capacity))-RQ[d,t] for t in 1:T],
                 [RQ[d, t]-opinterval(c, r.name, :capacity, t, r.capacity) for t in 1:T],
             ),
         )
+        if is_channel(r)
+            expected=[channel_flow(r,H[ix[r.source],t],H[ix[r.target],t]) for t in 1:T]
+            record("river_law_$(r.name)",RQ[d,:]-expected)
+            record("channel_gate_$(r.name)",ga[d,:])
+            record("channel_arrival_$(r.name)",A[d,:]-0.0036 .* diff(c.grid) .* RQ[d,:])
+            continue
+        end
         windows=isempty(r.arrival_window_grid) ? c.grid : r.arrival_window_grid
+
         averaged=exact ?
                  [
             _transport_value(

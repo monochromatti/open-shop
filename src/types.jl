@@ -30,6 +30,7 @@ Base.@kwdef struct Tunnel
     resistance::Float64
     capacity::Float64
     opening::Float64=1.0
+    gate_loss_factor_curve::Union{Nothing,TableCurve}=nothing # added q|q| resistance by gate position
     discharge_river::Union{Nothing,Symbol}=nothing # forward outfall; target remains hydraulic head reference
 end
 Base.@kwdef struct Plant
@@ -109,6 +110,8 @@ Base.@kwdef struct River
     history_grid::Vector{Float64}=[-8.0, -6.0, -4.0, -2.0, 0.0]
     history_release::Vector{Float64}=zeros(4)
     discharge_curve::Union{Nothing,TableCurve}=nothing
+    delta_level_ref_up_flow_curve::Union{Nothing,LevelFlowCurve}=nothing
+    delta_level_ref_down_flow_curve::Union{Nothing,LevelFlowCurve}=nothing
     allow_dry::Bool=false
     ramp_up::Union{Nothing,Float64}=nothing # release (m³/s)/hour
     ramp_down::Union{Nothing,Float64}=nothing

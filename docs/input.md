@@ -13,11 +13,11 @@ The fields below are the accepted object attributes. Fields marked â€œrequiredâ€
 | Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
 | Hydraulic junction | `name` | `hmin`, `hmax` |
 | Boundary | `name`, `head` | None |
-| Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `discharge_river` |
+| Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `gate_loss_factor_curve`, `discharge_river` |
 | Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
 | Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | River junction | `name` | None |
-| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
+| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 
@@ -29,11 +29,11 @@ River targets may be reservoirs, boundaries, river junctions or other rivers. A 
 
 `min_efficiency` is a lower bound on a running unit's turbine efficiency and defaults to zero. It is independent of the electrical-efficiency curve.
 
-River `law` is `controlled`, `orifice`, `weir` or `junction`. For controlled outlets, reservoir withdrawal is `(operating capacity - natural inflow) * gate`; total reach release adds natural inflow. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
+River `law` is `controlled`, `orifice`, `weir`, `junction` or `delta`. The delta law uses supplied reference-level flow tables for a signed, zero-delay channel between reservoirs; see [channel and gate-loss curves](channel-curves.md). For controlled outlets, reservoir withdrawal is `(operating capacity - natural inflow) * gate`; total reach release adds natural inflow. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
 
 ## Shared streams and direct river links
 
-Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks may contain loops. River networks must be acyclic. Multiple incoming rivers can merge into one outgoing river through a named river junction; conservation determines the downstream release. One river junction must have a water supply and exactly one outgoing reach. Hydraulic junctions and river junctions have different roles.
+Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks and instantaneous delta-level channels may contain loops. Delayed river networks must be acyclic. Multiple incoming rivers can merge into one outgoing river through a named river junction; conservation determines the downstream release. One river junction must have a water supply and exactly one outgoing reach. Hydraulic junctions and river junctions have different roles.
 
 A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred confluence. OpenSHOP creates its internal junction during input construction and restores the direct river links on serialization. Names beginning with `__river_merge__` are reserved for inferred junctions. An explicit source on a receiving direct-link river is rejected.
 

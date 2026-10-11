@@ -109,7 +109,12 @@ function propose_commitment(
         end
         for t in 1:T
             set_upper_bound(rq[d, t], opvalue(c, r.name, :capacity, c.grid[t], r.capacity))
-            set_lower_bound(rq[d,t],opinterval(c,r.name,:inflow,t,r.inflow))
+            set_lower_bound(rq[d,t],river_flow_lower(r,opinterval(c,r.name,:capacity,t,r.capacity),opinterval(c,r.name,:inflow,t,r.inflow)))
+            if is_channel(r)
+                fix(release_shortfall[d,t],0.0;force=true)
+                arrivals[d,t]=0.0036*dt[t]*rq[d,t]
+                continue
+            end
             minimum_release=opvalue(c, r.name, :min_release, c.grid[t], 0.0)
             penalty=opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)
             penalty>0 || fix(release_shortfall[d, t], 0; force = true)

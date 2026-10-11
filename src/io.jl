@@ -10,6 +10,11 @@ function _read_table(x)
     _input_keys(x, ("x", "y"), "table")
     TableCurve(Float64.(x["x"]), Float64.(x["y"]))
 end
+function _read_level_flow(x)
+    x===nothing && return nothing
+    _input_keys(x,("reference_levels","curves"),"level-flow table")
+    LevelFlowCurve(Float64.(x["reference_levels"]),[_read_table(cv) for cv in x["curves"]])
+end
 function _read_turbine(x)
     x===nothing && return nothing
     _input_keys(
@@ -62,8 +67,11 @@ function _read_object(T, x)
             :tailwater_curve,
             :discharge_curve,
             :generator_efficiency_curve,
+            :gate_loss_factor_curve,
         )
             v=_read_table(v)
+        elseif f in (:delta_level_ref_up_flow_curve,:delta_level_ref_down_flow_curve)
+            v=_read_level_flow(v)
         elseif f==:turbine_table
             v=_read_turbine(v)
         elseif fieldtype(T, f)==Vector{Float64}
@@ -116,6 +124,7 @@ function case_from_dict(d)
 end
 readcase(path) = case_from_dict(JSON3.read(read(path, String)))
 _table_dict(t::TableCurve) = Dict("x"=>t.x, "y"=>t.y)
+_table_dict(t::LevelFlowCurve) = Dict("reference_levels"=>t.reference_levels,"curves"=>_table_dict.(t.curves))
 _table_dict(t::TurbineTable) = Dict(
     string(f)=>getfield(t, f) for f in
     (:heads, :discharge, :efficiency, :qmin, :qmax, :interpolation, :head_extrapolation)
@@ -123,7 +132,7 @@ _table_dict(t::TurbineTable) = Dict(
 function component_dict(x)
     Dict(
         string(f)=>(
-            getfield(x, f) isa Union{TableCurve,TurbineTable} ?
+            getfield(x, f) isa Union{TableCurve,TurbineTable,LevelFlowCurve} ?
             _table_dict(getfield(x, f)) : getfield(x, f)
         ) for f in fieldnames(typeof(x))
     )

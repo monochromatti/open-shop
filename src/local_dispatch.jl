@@ -90,6 +90,8 @@ function _build_dispatch(
         table_operator(m, r.discharge_curve; name = Symbol("river_law_", i)) for
         (i, r) in enumerate(s.rivers)
     ]
+    channel_ops=[is_channel(r) ? level_flow_operator(m,channel_curve(r);name=Symbol("channel_",i)) : nothing
+        for (i,r) in enumerate(s.rivers)]
     turbine_flow_ops=[
         if g.turbine_table!==nothing && any(t->u[i, t]!=0, 1:T)
             table=g.turbine_table
@@ -150,6 +152,7 @@ function _build_dispatch(
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=opinterval(c, e.name, :opening, t, e.opening)
+        factor, resistance=tunnel_coefficients(e, opening)
         set_lower_bound(q[i, t], (e.discharge_river===nothing ? -cap : 0.0)/50)
         set_upper_bound(q[i, t], cap/50)
         if opening==0
@@ -158,7 +161,7 @@ function _build_dispatch(
             @constraint(
                 m,
                 (
-                    opening*(H[ix[e.source], t]-H[ix[e.target], t])-e.resistance*Q[i, t]*abs(
+                    factor*(H[ix[e.source], t]-H[ix[e.target], t])-resistance*Q[i, t]*abs(
                         Q[i, t],
                     )
                 )/100==0
@@ -230,9 +233,17 @@ function _build_dispatch(
         for t in 1:T
             cap=outlet_bounds.capacity[i, t]
             set_upper_bound(rq[i, t], cap/100)
-            set_lower_bound(rq[i,t],opinterval(c,r.name,:inflow,t,r.inflow)/100)
+            set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/100)
             set_lower_bound(a[i, t], outlet_bounds.gate_lower[i, t])
             set_upper_bound(a[i, t], outlet_bounds.gate_upper[i, t])
+            if is_channel(r)
+                fix(a[i,t],0.0;force=true)
+                fix(shortfall_release[i,t],0.0;force=true)
+                upstream,downstream=H[ix[r.source],t],H[ix[r.target],t]
+                flow=channel_ops[i](upstream-downstream,channel_reference(r,upstream,downstream))
+                @constraint(m,(RQ[i,t]-flow)/100==0)
+                continue
+            end
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
             penalty=opinterval(c, r.name, :release_penalty, t, 0.0)
             if penalty>0

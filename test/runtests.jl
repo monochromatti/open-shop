@@ -81,3 +81,7 @@ include("multireference_routing_tests.jl")
 include("mixed_source_network_tests.jl")
 
 include("river_source_input_tests.jl")
+
+include("level_flow_curves.jl")
+include("tunnel_gate_losses.jl")
+include("delta_channel_tests.jl")

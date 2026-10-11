@@ -116,6 +116,8 @@ function validate_operations(c)
                 throw(ArgumentError("scheduling grid misses operating change at $t"))
         end
         obj=objects[z.object]
+        obj isa River && is_channel(obj) && !(z.attribute in (:capacity,:ramp_up,:ramp_down)) &&
+            throw(ArgumentError("delta-level channels support capacity and signed-flow ramps, not arrival/gate restrictions"))
         if z.attribute in (:vmin, :qmin, :pmin)
             all(v->v>=getfield(obj, z.attribute), z.values) ||
                 throw(ArgumentError("operating minimum may only tighten its static bound"))
@@ -235,6 +237,7 @@ function release_requirements(c, release; grid = c.grid)
     cost=0.0
     hard=zeros(D, T)
     for (d, r) in enumerate(c.system.rivers), t in 1:T
+        is_channel(r) && continue
         requirement=opinterval(c, r.name, :min_release, t, 0.0; grid)
         penalty=opinterval(c, r.name, :release_penalty, t, 0.0; grid)
         deficit=max(0.0, requirement-release[d, t])
@@ -293,7 +296,7 @@ function operational_system(c, a, b)
     ]
     rivers=[
         _river_replace(r; inflow=opaverage(c,r.name,:inflow,a,b,r.inflow),
-            capacity=r.law==:controlled ? opaverage(c,r.name,:capacity,a,b,r.capacity) : r.capacity)
+            capacity=r.law in (:controlled,:delta) ? opaverage(c,r.name,:capacity,a,b,r.capacity) : r.capacity)
         for r in s.rivers
     ]
     _river_replace(s; reservoirs, tunnels, rivers)

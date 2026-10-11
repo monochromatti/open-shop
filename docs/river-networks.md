@@ -1,6 +1,6 @@
 # River networks
 
-A reach carries water from its upstream release to its downstream arrival.
+A delayed reach carries water from its upstream release to its downstream arrival. Instantaneous reservoir-to-reservoir channels instead use signed [delta-level flow curves](channel-curves.md).
 Reservoir outlets, plant discharges, directed tunnel outfalls, upstream reaches
 and natural inflow can supply it. Water in transit belongs to the river inventory
 until it arrives; it is not credited to downstream storage early.
