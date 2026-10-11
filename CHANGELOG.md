@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Separated midpoint hydraulic equations from Newton iteration, with reusable residual and Jacobian buffers.
+- Shared integer network connectivity and physical water-balance constraints across local and global dispatch.
+- Added named control arguments for replay and reconstruction, empty defaults for absent model objects, and public API documentation.
+
 - Separated local dispatch interval data and typed routing expressions from physical constraint construction.
 - Removed unreachable joint-commitment code from the fixed-commitment local builder.
 

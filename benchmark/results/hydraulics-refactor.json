@@ -1,0 +1,53 @@
+{
+  "baseline_commit": "2ffe0f7d480190dd326e0ee9ab8ed5fda09b44b9",
+  "julia_version": "1.13.1",
+  "julia_threads": 1,
+  "blas_threads": 1,
+  "cpu": "Apple M1",
+  "repetitions": 9,
+  "statistic": "median of warm chronological simulation calls",
+  "results": {
+    "deterministic": {
+      "before_seconds": 0.0096555,
+      "after_seconds": 0.001905833,
+      "before_bytes": 10757312,
+      "after_bytes": 2227744,
+      "maximum_absolute_differences": {
+        "V": 0,
+        "H": 0.0,
+        "tunnel_q": 2.3314683517128287e-15,
+        "power": 0.0,
+        "river_release": 3.552713678800501e-15,
+        "arrival_volume": 2.7755575615628914e-17,
+        "transit": 5.551115123125783e-17
+      },
+      "model_size": {
+        "local_variables": 360,
+        "local_constraints": 1157,
+        "global_variables": 654,
+        "global_constraints": 2237
+      }
+    },
+    "distributed": {
+      "before_seconds": 0.013131083,
+      "after_seconds": 0.001584666,
+      "before_bytes": 17506928,
+      "after_bytes": 1869392,
+      "maximum_absolute_differences": {
+        "V": 0,
+        "H": 0.0,
+        "tunnel_q": 0.0,
+        "power": 0.0,
+        "river_release": 0.0,
+        "arrival_volume": 0.0,
+        "transit": 0.0
+      },
+      "model_size": {
+        "local_variables": 360,
+        "local_constraints": 951,
+        "global_variables": 852,
+        "global_constraints": 2625
+      }
+    }
+  }
+}

@@ -22,19 +22,15 @@ function forward_step(
     tolerance = 1e-9,
     max_iterations = 100,
 )
-    nr, nj, ne, nd=length(s.reservoirs),
-    length(s.junctions),
-    length(s.tunnels),
-    length(s.rivers)
+    nr, nj, ne, nd=length(s.reservoirs), length(s.junctions), length(s.tunnels), length(s.rivers)
     ng=length(s.generators)
     ta=tunnel_opening===nothing ? [t.opening for t in s.tunnels] : tunnel_opening
-    ix=nodeindex(s)
-    nn=length(nodes(s))
     length(Vprev)==nr &&
     length(generator_q)==ng &&
     length(gate)==nd &&
     length(river_arrival)==nd &&
-    ta isa AbstractVector && length(ta)==ne || throw(DimensionMismatch("forward inputs"))
+    ta isa AbstractVector &&
+    length(ta)==ne || throw(DimensionMismatch("forward inputs"))
     size(current_transfer, 1)==nd &&
     size(current_transfer, 2)>=maximum((length(r.curves) for r in s.rivers); init = 1) ||
         throw(DimensionMismatch("current transfer fractions"))
@@ -48,94 +44,36 @@ function forward_step(
     all(>=(0), river_arrival) &&
     all(x->0<=x<=1, current_transfer) ||
         throw(ArgumentError("invalid controls or arrival fractions"))
-    active=findall(r->r.law!=:junction, s.rivers)
-    source_indices=river_source_indices(s)
-    na=length(active)
-    order=_forward_river_order(s)
-    base=nr+nj
-    nq=base+ne
-    nv=nq+na
-    alpha=0.0036dt
-    B=zeros(base, ne)
-    fixed=zeros(base)
-    for (i, r) in enumerate(s.reservoirs)
-        fixed[i]=r.inflow
-    end
-    add!(v, node, q) = haskey(ix, node) && ix[node]<=base ? (v[ix[node]]+=q) : nothing
-    for (e, t) in enumerate(s.tunnels)
-        add!(view(B, :, e), t.source, -1.0)
-        t.discharge_river===nothing && add!(view(B, :, e), t.target, 1.0)
-    end
-    for (i, g) in enumerate(s.generators)
-        p=plantof(s, g)
-        add!(fixed, p.source, -generator_q[i])
-        p.discharge_river===nothing && add!(fixed, p.target, generator_q[i])
-    end
-    for d in active
-        haskey(ix, s.rivers[d].source) && ix[s.rivers[d].source]<=nr ||
-            throw(ArgumentError("operational river law requires reservoir source"))
-    end
-    function heads(x)
-        h=zeros(nn)
-        for (i, r) in enumerate(s.reservoirs)
-            h[i]=head(r, (Vprev[i]+x[i])/2)
-        end
-        h[(nr + 1):base].=x[(nr + 1):base]
-        for (i, b) in enumerate(s.boundaries)
-            h[base + i]=b.head
-        end
-        h
-    end
-    law(r,h,a) = is_channel(r) ? channel_flow(r,h[ix[r.source]],h[ix[r.target]]) : river_law_value(r,h[ix[r.source]],a)
-    function river_rates(x)
-        release=zeros(nd)
-        arrival=copy(river_arrival)
-        release[active].=x[(nq + 1):end]
-        injection=_river_injections(s,release,generator_q,view(x,(base+1):nq);
-            indices=source_indices)
-        current_network!==nothing && (arrival .+= current_network*injection)
-        for d in order
-            r=s.rivers[d]
-            if r.law==:junction
-                release[d]=injection[d]+sum(
-                    (arrival[k] for (k, e) in enumerate(s.rivers) if e.target==r.source);
-                    init = 0.0,
-                )
-            end
-            # Guards define finite trial residuals only. Accepted physical
-            # releases remain untouched, and routing-domain violations fail replay.
-            if current_network===nothing
-                fraction=sum(
-                    w*current_transfer[d, l] for (l, w) in _forward_weights(r, release[d])
-                )
-                arrival[d]+=is_channel(r) ? release[d] : max(0.0,release[d])*fraction
-            end
-        end
-        release, arrival, injection
-    end
-    function equations(x)
-        h=heads(x)
-        net=B*x[(base + 1):nq]+fixed
-        f=zeros(nv)
-        release, arrival, _=river_rates(x)
-        for (d, r) in enumerate(s.rivers)
-            add!(net, r.source, -(release[d]-r.inflow))
-            add!(net, r.target, arrival[d])
-        end
-        for i in 1:nr
-            f[i]=(x[i]-Vprev[i])/alpha-net[i]
-        end
-        f[(nr + 1):base].=-net[(nr + 1):base]
-        for (k, t) in enumerate(s.tunnels)
-            q=x[base + k]
-            f[base + k]=tunnel_loss_residual(t, h[ix[t.source]]-h[ix[t.target]], q, ta[k])
-        end
-        for (k, d) in enumerate(active)
-            r=s.rivers[d]
-            f[nq + k]=x[nq + k]-r.inflow-law(r,h,gate[d])
-        end
-        f
-    end
+    current_network === nothing ||
+        (size(current_network) == (nd, nd) && all(isfinite, current_network)) ||
+        throw(ArgumentError("current network must be a finite river-by-river matrix"))
+    isfinite(tolerance) && tolerance > 0 ||
+        throw(ArgumentError("positive finite tolerance required"))
+    max_iterations isa Integer && max_iterations >= 0 ||
+        throw(ArgumentError("nonnegative iteration limit required"))
+    data = HydraulicStepData(
+        s,
+        Vprev,
+        dt,
+        generator_q,
+        gate,
+        river_arrival,
+        ta,
+        current_transfer,
+        current_network,
+    )
+    _forward_step(data; initial_guess, tolerance, max_iterations)
+end
+
+function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_iterations)
+    s, topology = data.system, data.topology
+    nr, nj, ne = length(s.reservoirs), length(s.junctions), length(s.tunnels)
+    base, nq = nr + nj, nr + nj + ne
+    active = data.active_rivers
+    nv = nq + length(active)
+    ix = topology.node_index
+    Vprev, generator_q, gate, ta = data.previous_storage, data.generator_q, data.gate, data.opening
+    work = HydraulicWorkspace(data)
     x=zeros(nv)
     x[1:nr].=Vprev
     known=vcat(
@@ -143,13 +81,19 @@ function forward_step(
         [b.head for b in s.boundaries],
     )
     x[(nr + 1):base].=isempty(known) ? 0.0 : sum(known)/length(known)
-    h=heads(x)
+    h = midpoint_heads!(work.head, x, data)
     for (k, t) in enumerate(s.tunnels)
         dh=h[ix[t.source]]-h[ix[t.target]]
         x[base + k]=tunnel_flow(t, dh, ta[k])
     end
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d],h,gate[d])
+        x[nq + k]=s.rivers[d].inflow+outlet_flow(
+            s.rivers[d],
+            h,
+            gate[d],
+            topology.river_source[d],
+            topology.river_target[d],
+        )
     end
     if initial_guess!==nothing
         if initial_guess isa AbstractDict
@@ -162,74 +106,30 @@ function forward_step(
             x.=initial_guess
         end
     end
-    floating=_floating_pressure_components(s,ta,generator_q;ix)
-    _normalize_pressure_references!(x,s,floating)
-    # Fix one reference column per pressure nullspace. Keep every physical row:
-    # the rectangular Newton system uses QR least squares, so incompatible
-    # component injections cannot disappear through a removed balance equation.
-    free_columns=isempty(floating) ? (1:nv) :
-        setdiff(1:nv,first.(floating))
-    iterations=0
-    for k in 1:max_iterations
-        f=equations(x)
-        maximum(abs, f; init = 0.0)<=tolerance && break
-        J=zeros(nv,length(free_columns))
-        for (column,j) in enumerate(free_columns)
-            epsj=1e-5*max(abs(x[j]), 1.0)
-            xp=copy(x)
-            xm=copy(x)
-            xp[j]+=epsj
-            xm[j]-=epsj
-            J[:,column].=(equations(xp)-equations(xm))/(2epsj)
-        end
-        direction=try
-            -(J\f)
-        catch
-            -pinv(J)*f
-        end
-        all(isfinite,direction) || (direction=-pinv(J)*f)
-        step=if isempty(floating)
-            direction
-        else
-            full=zeros(nv)
-            full[free_columns].=direction
-            full
-        end
-        merit=sum(abs2, f)
-        accepted=false
-        scale=1.0
-        for _ in 1:45
-            candidate=x+scale*step
-            fc=equations(candidate)
-            if all(isfinite, fc) && sum(abs2, fc)<merit
-                x=candidate
-                accepted=true
-                break
-            end
-            scale/=2
-        end
-        iterations=k
-        accepted || break
-    end
-    _normalize_pressure_references!(x,s,floating)
-    h=heads(x)
+    iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations)
+    h = midpoint_heads!(work.head, x, data)
     for k in eachindex(s.tunnels)
-        ta[k]==0 && (x[base+k]=0.0)
+        ta[k]==0 && (x[base + k]=0.0)
     end
     # Exact law evaluation removes Newton roundoff from a shut outlet. Its
     # storage consequence is included in the recomputed convergence residual.
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+law(s.rivers[d],h,gate[d])
+        x[nq + k]=s.rivers[d].inflow+outlet_flow(
+            s.rivers[d],
+            h,
+            gate[d],
+            topology.river_source[d],
+            topology.river_target[d],
+        )
     end
-    release, arrival, injection=river_rates(x)
+    river_rates!(work, x, data)
+    release, arrival, injection = work.release, work.arrival, work.injection
     gh=[
         begin
             plant=plantof(s, g)
             h[ix[plant.source]]-outlet_head(plant, h[ix[plant.target]]) - tailwater(
                 plant,
-                sum(
-                    generator_q[j] for (j, z) in enumerate(s.generators) if z.plant==g.plant
-                ),
+                sum(generator_q[j] for (j, z) in enumerate(s.generators) if z.plant==g.plant),
             )
         end for g in s.generators
     ]
@@ -252,25 +152,30 @@ function forward_step(
         boundary!(r.source, -(release[i]-r.inflow))
         boundary!(r.target, arrival[i])
     end
-    residual=maximum(abs, equations(x); init = 0.0)
+    residual = maximum(abs, hydraulic_residual!(similar(x), x, data, work); init = 0.0)
     domain=all(isfinite, vcat(x, h, pw, release, arrival)) &&
            all(_forward_domain(r, release[d]) for (d, r) in enumerate(s.rivers)) &&
-           all(t.discharge_river===nothing || x[base+i]>=-1e-10
-               for (i,t) in enumerate(s.tunnels))
+           all(
+               t.discharge_river===nothing || x[base + i]>=-1e-10 for (i, t) in enumerate(s.tunnels)
+           )
     violations=Dict(
         "storage"=>maximum(
             (max(r.vmin-x[i], x[i]-r.vmax, 0.0) for (i, r) in enumerate(s.reservoirs));
             init = 0.0,
         ),
         "tunnel_flow"=>maximum(
-            (max(abs(x[base + i])-r.capacity,
-                r.discharge_river===nothing ? 0.0 : -x[base+i], 0.0)
-                for (i, r) in enumerate(s.tunnels));
+            (
+                max(
+                    abs(x[base + i])-r.capacity,
+                    r.discharge_river===nothing ? 0.0 : -x[base + i],
+                    0.0,
+                ) for (i, r) in enumerate(s.tunnels)
+            );
             init = 0.0,
         ),
         "river_flow"=>maximum(
             (
-                max(river_flow_lower(r,r.capacity)-release[d],release[d]-r.capacity,0.0) for
+                max(river_flow_lower(r, r.capacity)-release[d], release[d]-r.capacity, 0.0) for
                 (d, r) in enumerate(s.rivers)
             );
             init = 0.0,
@@ -293,7 +198,8 @@ function forward_step(
         "routing_domain_valid"=>domain,
         "bound_violations"=>violations,
         "law_domain_valid"=>all(
-            is_channel(s.rivers[d]) || s.rivers[d].law==:controlled ||
+            is_channel(s.rivers[d]) ||
+                s.rivers[d].law==:controlled ||
                 s.rivers[d].allow_dry ||
                 s.rivers[d].discharge_curve!==nothing ||
                 h[ix[s.rivers[d].source]]>=s.rivers[d].crest for d in active
@@ -309,8 +215,10 @@ function _forward_river_order(s)
     while !isempty(remaining)
         ready=sort!([
             d for d in remaining if !any(
-                !is_channel(s.rivers[d]) && !is_channel(s.rivers[k]) && k in remaining && s.rivers[k].target==s.rivers[d].source for
-                k in eachindex(s.rivers)
+                !is_channel(s.rivers[d]) &&
+                    !is_channel(s.rivers[k]) &&
+                    k in remaining &&
+                    s.rivers[k].target==s.rivers[d].source for k in eachindex(s.rivers)
             )
         ])
         isempty(ready) && throw(ArgumentError("river graph must be acyclic"))
@@ -333,7 +241,7 @@ function _forward_weights(r, q)
     RiverRouting.blend(r.curves, clamp(q, first(refs), last(refs)))
 end
 function _forward_domain(r, q)
-    river_flow_valid(r,q;tolerance=1e-9) || return false
+    river_flow_valid(r, q; tolerance = 1e-9) || return false
     _forward_atom(r) ||
         length(r.curves)==1 ||
         first(r.curves).reference_flow-1e-10<=q<=last(r.curves).reference_flow+1e-9
@@ -346,12 +254,7 @@ end
 function _forward_history(grid, r)
     _forward_atom(r) || return (
         RiverRouting.route(grid, r.history_grid, r.history_release, r.curves),
-        RiverRouting.remaining_volume(
-            first(grid),
-            r.history_grid,
-            r.history_release,
-            r.curves,
-        ),
+        RiverRouting.remaining_volume(first(grid), r.history_grid, r.history_release, r.curves),
     )
     RiverRouting.check_releases(r.history_grid, r.history_release)
     a=RiverRouting.fixed_coefficients(grid, r.history_grid, r.deterministic_delay)*(
@@ -369,7 +272,21 @@ function _forward_history(grid, r)
     a, w
 end
 
-"""Independent chronological replay with coupled same-step river arrivals.
+"""
+    simulate(case; generator_q, gate, tunnel_opening=nothing, grid=case.grid)
+    simulate(case, generator_q, gate; kwargs...)
+
+Independent chronological replay with coupled same-step river arrivals.
+`generator_q[unit, interval]` is prescribed discharge in m³/s; `gate[river,
+interval]` is a river outlet opening in [0,1]. `tunnel_opening[tunnel, interval]`
+is required when tunnels have selectable positions. Input arrays are read-only.
+
+Returns a dictionary with storage `V[reservoir, vertex]` in Mm³, midpoint heads
+`H[node, interval]` in metres, `power[unit, interval]` in MW, river releases in
+m³/s, arrivals/transit in Mm³, and convergence diagnostics. A converged physical
+trajectory can violate operating limits; use [`dispatch_from_controls`](@ref)
+to reconstruct and validate a complete schedule. Malformed inputs throw an
+`ArgumentError` or `DimensionMismatch`.
 
 Source outlet laws, midpoint storage and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each
@@ -377,8 +294,14 @@ local injection's pulses through confluences. Distributed junction mixing
 conserves volume but rebins arriving water uniformly on the replay grid; refine
 the grid to assess this timing approximation. Each cohort contributes once.
 """
-function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport = nothing,
-    tunnel_opening = nothing)
+function simulate(
+    c::ScheduleCase,
+    generator_q,
+    gate;
+    grid = c.grid,
+    transport = nothing,
+    tunnel_opening = nothing,
+)
     s=c.system
     ng, nd=length(s.generators), length(s.rivers)
     T=length(grid)-1
@@ -389,13 +312,10 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
         throw(ArgumentError("replay grid must span original horizon"))
     all(t->any(isapprox(t, x; atol = 1e-12) for x in grid), c.grid) ||
         throw(ArgumentError("replay grid must contain original control change times"))
-    indices=[
-        min(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), length(c.grid)-1) for
-        t in 1:T
-    ]
+    indices=[min(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), length(c.grid)-1) for t in 1:T]
     gq=generator_q[:, indices]
     ga=gate[:, indices]
-    ta=_physical_tunnel_openings(c,tunnel_opening)[:,indices]
+    ta=_physical_tunnel_openings(c, tunnel_opening)[:, indices]
     nr=length(s.reservoirs)
     V=zeros(nr, T+1)
     V[:, 1].=[r.v0 for r in s.reservoirs]
@@ -413,12 +333,8 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
     ndat=exact ? _transport_data(nc_case, transport) : nothing
     !exact &&
         transport!==nothing &&
-        throw(
-            ArgumentError(
-                "compiled deterministic transport cannot serve distributed replay",
-            ),
-        )
-    B=exact ? Array{Float64,3}[] : [_forward_coefficients(grid, r) for r in s.rivers]
+        throw(ArgumentError("compiled deterministic transport cannot serve distributed replay"))
+    B=exact ? Array{Float64, 3}[] : [_forward_coefficients(grid, r) for r in s.rivers]
     # forward_step still checks the reference-curve column shape, even when
     # the exact network matrix supersedes those reference fractions.
     nc=exact ? maximum((length(r.curves) for r in s.rivers); init = 1) :
@@ -465,7 +381,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
             gq[:, t],
             ga[:, t],
             A[:, t]/(0.0036dt);
-            tunnel_opening = ta[:,t],
+            tunnel_opening = ta[:, t],
             current_transfer = transfer,
             current_network = network,
             initial_guess = isempty(steps) ? nothing : last(steps),
@@ -505,4 +421,16 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
         "residual"=>maximum((z["residual"] for z in steps); init = 0.0),
         "steps"=>steps,
     )
+end
+
+# Named controls avoid mixing two physically different discharge/gate arrays.
+function simulate(
+    c::ScheduleCase;
+    generator_q,
+    gate,
+    grid = c.grid,
+    transport = nothing,
+    tunnel_opening = nothing,
+)
+    simulate(c, generator_q, gate; grid, transport, tunnel_opening)
 end
