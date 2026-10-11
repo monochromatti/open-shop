@@ -21,3 +21,14 @@ function tunnel_flow(t::Tunnel, dh, opening=t.opening)
     factor, resistance=tunnel_coefficients(t, opening)
     sign(dh)*sqrt(factor*abs(dh)/resistance)
 end
+
+# Positive gate positions can all use the unscaled head difference. The legacy
+# opening multiplier is equivalent to increasing resistance by its reciprocal.
+function tunnel_effective_resistance(e::Tunnel,opening)
+    opening>0 || throw(ArgumentError("effective resistance requires an open gate"))
+    resistance=e.gate_loss_factor_curve===nothing ? e.resistance/opening :
+        e.resistance+table_value(e.gate_loss_factor_curve,opening)
+    isfinite(resistance) && resistance>0 ||
+        throw(ArgumentError("$(e.name): gate resistance must be finite and positive"))
+    resistance
+end

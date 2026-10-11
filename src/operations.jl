@@ -7,7 +7,8 @@ const OPERATION_ATTRIBUTES=Dict(
     Plant=>Set((:pmin, :pmax, :qmin, :qmax, :forced_on, :maintenance,
         :power, :discharge, :ramp_up, :ramp_down,
         :discharge_ramp_up, :discharge_ramp_down)),
-    Tunnel=>Set((:capacity, :opening)),
+    Tunnel=>Set((:capacity, :opening, :gate_adjustment_cost)),
+    TunnelInterlock=>Set((:min_open, :max_open)),
     River=>Set((
         :inflow,
         :capacity,
@@ -91,6 +92,7 @@ function validate_operations(c)
             c.system.generators,
             c.system.plants,
             c.system.tunnels,
+            c.system.tunnel_interlocks,
             c.system.rivers,
             c.flow_requirements,
         ) for x in xs
@@ -138,6 +140,12 @@ function validate_operations(c)
         elseif z.attribute in (:opening, :gate_min, :gate_max)
             all(x->0<=x<=1, z.values) ||
                 throw(ArgumentError("opening and gate bounds must lie in [0,1]"))
+            obj isa Tunnel && !isempty(obj.gate_positions) &&
+                !all(x->gate_position_index(obj,x)!==nothing,z.values) &&
+                throw(ArgumentError("tunnel opening schedules must use a declared gate position"))
+        elseif z.attribute in (:min_open, :max_open)
+            all(x->isinteger(x) && 0<=x<=length(obj.tunnels),z.values) ||
+                throw(ArgumentError("interlock counts must be integers within their tunnel group"))
         else
             all(>=(0), z.values) ||
                 throw(ArgumentError("operational bounds/rates/costs must be nonnegative"))
@@ -206,6 +214,7 @@ function validate_operations(c)
         )
     end
     _commitment_bounds(c) # Intersect operational states with initial dwell obligations.
+    _validate_tunnel_operating_controls(c)
     nothing
 end
 
@@ -291,7 +300,8 @@ function operational_system(c, a, b)
         r in s.reservoirs
     ]
     tunnels=[
-        _river_replace(e; opening = opaverage(c, e.name, :opening, a, b, e.opening)) for
+        _river_replace(e; opening = opaverage(c, e.name, :opening, a, b, e.opening),
+            capacity=opaverage(c,e.name,:capacity,a,b,e.capacity)) for
         e in s.tunnels
     ]
     rivers=[

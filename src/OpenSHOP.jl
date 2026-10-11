@@ -13,6 +13,7 @@ include("tensor_tables.jl")
 include("distributed_routing.jl")
 include("channel_physics.jl")
 include("operations.jl")
+include("tunnel_controls.jl")
 include("commitment_controls.jl")
 include("operating_constraints.jl")
 include("inputs.jl")
@@ -25,6 +26,7 @@ include("joint_states.jl")
 include("dispatch_data.jl")
 include("local_dispatch.jl")
 include("validation.jl")
+include("proposal_hydraulics.jl")
 include("proposal.jl")
 include("io.jl")
 include("dispatch_controls.jl")
@@ -42,6 +44,7 @@ export Reservoir,
     Junction,
     Boundary,
     Tunnel,
+    TunnelInterlock,
     Plant,
     Generator,
     RiverJunction,
@@ -59,6 +62,9 @@ export Reservoir,
     nodeindex,
     head,
     plantof,
+    tunnel_opening_schedule,
+    validate_tunnel_openings,
+    tunnel_adjustment_cost,
     efficiency,
     power,
     RiverRouting,

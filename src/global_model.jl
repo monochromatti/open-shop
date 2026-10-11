@@ -14,6 +14,80 @@ function _global_analytic_eta_bounds(g, qlo, qhi, hlo, hhi)
     (g.efficiency+a+c, g.efficiency+b+d)
 end
 
+function _global_scaled_head_bounds(variable)
+    lo,hi=is_fixed(variable) ? (fix_value(variable),fix_value(variable)) :
+        (lower_bound(variable),upper_bound(variable))
+    prevfloat(250lo),nextfloat(250hi)
+end
+
+# A selectable gate transmits the head difference only when open. The binary
+# product hull keeps closed endpoint heads independent and gives the continuous
+# relaxation the same finite head domain. Only varying resistance needs a
+# separate signed-square lift; a binary closed/open gate retains a quadratic law.
+function _global_tunnel_gate_loss!(m,e,i,t,Q,dh,gates,cap,dhlo,dhhi;relaxed=false)
+    opening=gates.opening[i,t]
+    if opening isa Number
+        opening==0 && return
+        factor,resistance=tunnel_coefficients(e,opening)
+        onhead=factor*dh
+    else
+        weights=gates.weights[(i,t)]
+        positions=e.gate_positions
+        positive=findfirst(>(0),positions)
+        coefficients=[x==0 ? 0.0 : tunnel_effective_resistance(e,x) for x in positions]
+        coefficients[positions .== 0].=coefficients[positive]
+        resistance=all(==(first(coefficients)),coefficients) ? first(coefficients) :
+            sum(coefficients[k]*weights[k] for k in eachindex(weights))
+        opened=gates.open[i,t]
+        @constraint(m,Q<=cap*opened)
+        e.discharge_river===nothing && @constraint(m,Q>=-cap*opened)
+        if opened isa Number
+            onhead=dh
+        else
+            onhead=@variable(m,lower_bound=min(0.0,dhlo),upper_bound=max(0.0,dhhi),
+                base_name="gate_open_head_$(i)_$(t)")
+            @constraint(m,onhead>=dhlo*opened)
+            @constraint(m,onhead<=dhhi*opened)
+            @constraint(m,onhead>=dh-dhhi*(1-opened))
+            @constraint(m,onhead<=dh-dhlo*(1-opened))
+        end
+    end
+    # The sign follows the head difference for every positive resistance.
+    # Use that implication for selectable gates, avoiding an unnecessary sign
+    # binary on links whose complete permitted head domain has one direction.
+    selectable=!(opening isa Number)
+    loss=if e.discharge_river!==nothing || (selectable && dhlo>=0)
+        selectable && @constraint(m,Q>=0)
+        Q^2
+    elseif selectable && dhhi<=0
+        @constraint(m,Q<=0)
+        -Q^2
+    else
+        qp=@variable(m,lower_bound=0,upper_bound=cap,base_name="tunnel_positive_$(i)_$(t)")
+        qm=@variable(m,lower_bound=0,upper_bound=cap,base_name="tunnel_negative_$(i)_$(t)")
+        direction=@variable(m,lower_bound=0,upper_bound=1,binary=!relaxed,
+            base_name="tunnel_direction_$(i)_$(t)")
+        @constraint(m,qp<=cap*direction)
+        if selectable
+            @constraint(m,direction<=gates.open[i,t])
+            @constraint(m,qm<=cap*(gates.open[i,t]-direction))
+        else
+            @constraint(m,qm<=cap*(1-direction))
+        end
+        @constraint(m,Q==qp-qm)
+        qp^2-qm^2
+    end
+    if resistance isa Number
+        @constraint(m,(onhead-resistance*loss)/100==0)
+    else
+        signed_square=@variable(m,lower_bound=-(cap/50)^2,upper_bound=(cap/50)^2,
+            base_name="gate_loss_$(i)_$(t)")
+        @constraint(m,signed_square==loss/2500)
+        @constraint(m,(onhead-2500resistance*signed_square)/100==0)
+    end
+    nothing
+end
+
 function _build_global_dispatch(
     c;
     u = ones(Int, length(c.system.generators), length(c.prices)),
@@ -29,6 +103,7 @@ function _build_global_dispatch(
     fixed_u = nothing,
     free_mask = nothing,
     transport = nothing,
+    tunnel_opening = nothing,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -87,6 +162,7 @@ function _build_global_dispatch(
     bounds_seconds=time()-bound_start
     m=Model()
     set_silent(m)
+    gates=_tunnel_gate_states!(m,c;fixed=tunnel_opening,relaxed)
     ustart=copy(u)
     transitions=nothing
     if joint
@@ -164,36 +240,19 @@ function _build_global_dispatch(
     end
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
-        opening=opinterval(c, e.name, :opening, t, e.opening)
-        factor, resistance=tunnel_coefficients(e, opening)
+        opening=gates.opening[i,t]
         qlo,qhi=-cap,cap
         set_lower_bound(q[i, t], (e.discharge_river===nothing ? qlo : max(0.0,qlo))/50)
         set_upper_bound(q[i, t], qhi/50)
-        if opening==0
+        if opening isa Number && opening==0
             fix(q[i, t], 0; force = true)
-        elseif e.discharge_river!==nothing
-            @constraint(m,(factor*(H[ix[e.source],t]-H[ix[e.target],t])-resistance*Q[i,t]^2)/100==0)
         else
-            qp=@variable(
-                m,
-                lower_bound=0,
-                upper_bound=cap,
-                base_name="tunnel_positive_$(i)_$(t)"
-            )
-            qm=@variable(
-                m,
-                lower_bound=0,
-                upper_bound=cap,
-                base_name="tunnel_negative_$(i)_$(t)"
-            )
-            direction=@variable(m, binary=true, base_name="tunnel_direction_$(i)_$(t)")
-            @constraint(m, qp<=cap*direction)
-            @constraint(m, qm<=cap*(1-direction))
-            @constraint(m, Q[i, t]==qp-qm)
-            @constraint(
-                m,
-                (factor*(H[ix[e.source], t]-H[ix[e.target], t])-resistance*(qp^2-qm^2))/100==0
-            )
+            # Enclose the stored scaled head domain, including rounding at fixed
+            # boundary heads, rather than the unscaled input bounds.
+            srcvar,dstvar=h[ix[e.source],t],h[ix[e.target],t]
+            src,dst=_global_scaled_head_bounds(srcvar),_global_scaled_head_bounds(dstvar)
+            _global_tunnel_gate_loss!(m,e,i,t,Q[i,t],H[ix[e.source],t]-H[ix[e.target],t],
+                gates,cap,prevfloat(src[1]-dst[2]),nextfloat(src[2]-dst[1]);relaxed)
         end
     end
     shared_heads=Dict{Tuple{Symbol,Int},VariableRef}()
@@ -621,7 +680,7 @@ function _build_global_dispatch(
         (i, r) in enumerate(s.rivers), t in 1:T;
         init = 0.0,
     )
-    obj-=penalty_cost
+    obj-=penalty_cost+gates.cost
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -683,6 +742,7 @@ function _build_global_dispatch(
         bounds_seconds,
         shared_heads,
         node_bounds,
+        gates,
     )
     _add_power_bounds!(b,c)
     joint && _add_power_hull!(b,c)

@@ -15,6 +15,7 @@ function forward_step(
     generator_q,
     gate,
     river_arrival;
+    tunnel_opening = nothing,
     current_transfer = zeros(length(s.rivers), 2),
     current_network = nothing,
     initial_guess = nothing,
@@ -26,21 +27,24 @@ function forward_step(
     length(s.tunnels),
     length(s.rivers)
     ng=length(s.generators)
+    ta=tunnel_opening===nothing ? [t.opening for t in s.tunnels] : tunnel_opening
     ix=nodeindex(s)
     nn=length(nodes(s))
     length(Vprev)==nr &&
     length(generator_q)==ng &&
     length(gate)==nd &&
-    length(river_arrival)==nd || throw(DimensionMismatch("forward inputs"))
+    length(river_arrival)==nd &&
+    ta isa AbstractVector && length(ta)==ne || throw(DimensionMismatch("forward inputs"))
     size(current_transfer, 1)==nd &&
     size(current_transfer, 2)>=maximum((length(r.curves) for r in s.rivers); init = 1) ||
         throw(DimensionMismatch("current transfer fractions"))
     isfinite(dt) &&
     dt>0 &&
-    all(isfinite, vcat(Vprev, generator_q, gate, river_arrival, vec(current_transfer))) ||
+    all(isfinite, vcat(Vprev, generator_q, gate, ta, river_arrival, vec(current_transfer))) ||
         throw(ArgumentError("finite state and positive duration required"))
     all(>=(0), generator_q) &&
     all(x->0<=x<=1, gate) &&
+    all(x->0<=x<=1, ta) &&
     all(>=(0), river_arrival) &&
     all(x->0<=x<=1, current_transfer) ||
         throw(ArgumentError("invalid controls or arrival fractions"))
@@ -124,7 +128,7 @@ function forward_step(
         f[(nr + 1):base].=-net[(nr + 1):base]
         for (k, t) in enumerate(s.tunnels)
             q=x[base + k]
-            f[base + k]=tunnel_loss_residual(t, h[ix[t.source]]-h[ix[t.target]], q)
+            f[base + k]=tunnel_loss_residual(t, h[ix[t.source]]-h[ix[t.target]], q, ta[k])
         end
         for (k, d) in enumerate(active)
             r=s.rivers[d]
@@ -142,7 +146,7 @@ function forward_step(
     h=heads(x)
     for (k, t) in enumerate(s.tunnels)
         dh=h[ix[t.source]]-h[ix[t.target]]
-        x[base + k]=tunnel_flow(t, dh)
+        x[base + k]=tunnel_flow(t, dh, ta[k])
     end
     for (k, d) in enumerate(active)
         x[nq + k]=s.rivers[d].inflow+law(s.rivers[d],h,gate[d])
@@ -194,6 +198,9 @@ function forward_step(
         accepted || break
     end
     h=heads(x)
+    for k in eachindex(s.tunnels)
+        ta[k]==0 && (x[base+k]=0.0)
+    end
     # Exact law evaluation removes Newton roundoff from a shut outlet. Its
     # storage consequence is included in the recomputed convergence residual.
     for (k, d) in enumerate(active)
@@ -258,6 +265,7 @@ function forward_step(
         "Vnew"=>x[1:nr],
         "H"=>h,
         "tunnel_q"=>x[(base + 1):nq],
+        "tunnel_opening"=>copy(ta),
         "river_release"=>release,
         "river_injection"=>injection,
         "river_arrival"=>arrival,
@@ -354,7 +362,8 @@ local injection's pulses through confluences. Distributed junction mixing
 conserves volume but rebins arriving water uniformly on the replay grid; refine
 the grid to assess this timing approximation. Each cohort contributes once.
 """
-function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport = nothing)
+function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport = nothing,
+    tunnel_opening = nothing)
     s=c.system
     ng, nd=length(s.generators), length(s.rivers)
     T=length(grid)-1
@@ -371,6 +380,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
     ]
     gq=generator_q[:, indices]
     ga=gate[:, indices]
+    ta=_physical_tunnel_openings(c,tunnel_opening)[:,indices]
     nr=length(s.reservoirs)
     V=zeros(nr, T+1)
     V[:, 1].=[r.v0 for r in s.reservoirs]
@@ -440,6 +450,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
             gq[:, t],
             ga[:, t],
             A[:, t]/(0.0036dt);
+            tunnel_opening = ta[:,t],
             current_transfer = transfer,
             current_network = network,
             initial_guess = isempty(steps) ? nothing : last(steps),
@@ -467,6 +478,7 @@ function simulate(c::ScheduleCase, generator_q, gate; grid = c.grid, transport =
         "V"=>V,
         "H"=>H,
         "tunnel_q"=>Q,
+        "tunnel_opening"=>ta,
         "generator_q"=>gq,
         "gate"=>ga,
         "power"=>P,

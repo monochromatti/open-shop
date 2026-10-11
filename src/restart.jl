@@ -61,6 +61,9 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1])),
         )
     end
+    opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
+    tunnels=[_restart_replace(e;initial_opening=Float64(opening[i,previous]))
+        for (i,e) in enumerate(s.tunnels)]
     plant_history=_plant_commitment_history(c,x["u"],time)
     plants=[
         _restart_replace(
@@ -112,7 +115,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
             ),
         )
     end
-    system=_restart_replace(s; reservoirs, generators, plants, rivers)
+    system=_restart_replace(s; reservoirs, generators, plants, rivers, tunnels)
     result=ScheduleCase(
         name = c.name*"_restart_"*string(time),
         system = system,

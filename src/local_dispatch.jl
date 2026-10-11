@@ -10,6 +10,7 @@ function _build_dispatch(
     time_limit = 45.0,
     feasibility_only = false,
     transport = nothing,
+    tunnel_opening = nothing,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -55,6 +56,8 @@ function _build_dispatch(
     ]
     m=Model()
     set_silent(m)
+    openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
+    gates=_tunnel_gate_states!(m,c;fixed=openings)
     ustart=copy(u)
     @variable(m, v[1:R, 1:(T + 1)])
     @variable(m, h[1:N, 1:T])
@@ -151,7 +154,7 @@ function _build_dispatch(
     end
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
-        opening=opinterval(c, e.name, :opening, t, e.opening)
+        opening=gates.opening[i,t]
         factor, resistance=tunnel_coefficients(e, opening)
         set_lower_bound(q[i, t], (e.discharge_river===nothing ? -cap : 0.0)/50)
         set_upper_bound(q[i, t], cap/50)
@@ -411,7 +414,7 @@ function _build_dispatch(
         (i, r) in enumerate(s.rivers), t in 1:T;
         init = 0.0,
     )
-    obj-=penalty_cost
+    obj-=penalty_cost+gates.cost
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -470,6 +473,7 @@ function _build_dispatch(
         penalty_cost,
         transport = nd,
         warm_start,
+        gates,
     )
 end
 
@@ -479,6 +483,8 @@ function _dispatch_values(b)
         "V"=>value.(b.V),
         "H"=>value.(b.H),
         "tunnel_q"=>value.(b.Q),
+        "tunnel_opening"=>value.(b.gates.opening),
+        "gate_adjustment_cost"=>value(b.gates.cost),
         "generator_q"=>value.(b.GQ),
         "power"=>value.(b.P),
         "river_release"=>value.(b.RQ),
@@ -501,7 +507,7 @@ function _repair_dispatch!(c, result; transport = nothing)
             result["raw_solver_objective"]=result["objective"]
             result["forward_reconstructed"]=true
             for key in (
-                "generator_q", "gate", "V", "H", "tunnel_q", "power",
+                "generator_q", "gate", "V", "H", "tunnel_q", "tunnel_opening", "gate_adjustment_cost", "power",
                 "river_release", "arrival_volume", "terminal_transit", "objective",
                 "shortfall_release", "release_penalty_cost", "validation",
             )
@@ -539,6 +545,7 @@ function solve_case(
     time_limit = 45.0,
     feasibility_only = false,
     transport = nothing,
+    tunnel_opening = nothing,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -553,6 +560,7 @@ function solve_case(
         time_limit,
         feasibility_only,
         transport,
+        tunnel_opening,
     )
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds

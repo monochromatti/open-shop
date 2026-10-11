@@ -5,6 +5,7 @@ function validate_inputs(c)
         s.junctions,
         s.boundaries,
         s.tunnels,
+        s.tunnel_interlocks,
         s.plants,
         s.generators,
         s.river_junctions,
@@ -25,6 +26,7 @@ function validate_inputs(c)
             s.junctions,
             s.boundaries,
             s.tunnels,
+            s.tunnel_interlocks,
             s.plants,
             s.generators,
             s.river_junctions,
@@ -64,6 +66,7 @@ function validate_inputs(c)
         e.source in ns && e.target in ns && e.source!=e.target || error("Tunnel connection")
         e.discharge_river===nothing || any(r.name==e.discharge_river for r in s.rivers) || error("Tunnel discharge river")
         e.resistance>0 && e.capacity>=0 && 0<=e.opening<=1 || error("Tunnel limits")
+        _validate_tunnel_positions(e)
         if e.gate_loss_factor_curve!==nothing
             curve=e.gate_loss_factor_curve
             first(curve.x)<=0 && last(curve.x)>=1 ||
@@ -71,6 +74,15 @@ function validate_inputs(c)
             all(curve.y .>= 0) ||
                 throw(ArgumentError("$(e.name): gate loss factors must be nonnegative"))
         end
+    end
+    tunnel_names=Set(e.name for e in s.tunnels)
+    for interlock in s.tunnel_interlocks
+        length(unique(interlock.tunnels))==length(interlock.tunnels) ||
+            throw(ArgumentError("duplicate tunnel in interlock $(interlock.name)"))
+        all(n->n in tunnel_names,interlock.tunnels) ||
+            throw(ArgumentError("unknown tunnel in interlock $(interlock.name)"))
+        0<=interlock.min_open<=interlock.max_open<=length(interlock.tunnels) ||
+            throw(ArgumentError("invalid open-count bounds for interlock $(interlock.name)"))
     end
     for p in s.plants
         p.source in ns && p.target in ns || error("Plant connection")

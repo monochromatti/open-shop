@@ -28,6 +28,11 @@ Opening zero fixes its flow to zero. Capacity bounds both directions. The global
 model expresses signed flow using positive and negative parts and a direction
 binary, retaining the exact quadratic loss law. SCIP can infer a fixed direction
 during presolve. Reversible links retain both directions.
+With a supplied gate-loss curve, the positive-opening law instead uses
+`H_a-H_b = (k + gate_loss(opening))*Q*abs(Q)`.
+Openings are prescribed by default. Listed gate positions enable discrete
+choices, open-count interlocks and movement costs; see
+[tunnel gates](tunnel-gates.md) for their quadratic representation.
 
 ## Generation and operation
 
@@ -107,12 +112,15 @@ The maximized objective is
 \sum_t \pi_t\Delta t_t\sum_g P_{g,t}
 -\sum_{g,t}(c^{start}_g s^{up}_{g,t}+c^{stop}_g s^{down}_{g,t})
 -C_{release}
+-C_{gate}
 +\sum_i w_i(V_{i,T}-V_{i,0})
 +\sum_r w_r(W_{r,T}-W_{r,0}).
 ```
 
 Release penalties use declared shortfall volumes. Constant initial inventories
 are subtracted so they do not inflate the objective or relative-gap denominator.
+Gate movement cost sums `coefficient * abs(opening - previous_opening)` at
+interval starts, including the first change from the supplied initial position.
 
 ## Feasibility and certificates
 
@@ -126,6 +134,8 @@ Tiny solver boundary errors are recorded and normalized only for discharge
 between −1e−6 and zero, or a gate at most 1e−8 outside [0,1]. The resulting
 controls receive a fresh physical reconstruction, objective and audit. No
 storage, head or hydraulic state is clipped. Larger control violations fail.
+Selectable tunnel openings are snapped only within 1e−6 of a listed position;
+the resulting exact positions must satisfy prescriptions and interlocks.
 
 The reported relative gap is `max(0,U-L)/max(1,abs(L))`, provided U encloses L
 within 1e−6 objective units. A global certificate requires that interval to meet
@@ -134,6 +144,8 @@ for the discrete model, rather than an interval-arithmetic proof. When
 `fixed_u` is supplied, that model restricts commitment to the supplied matrix;
 its certificate is conditional on those on/off decisions. `commitment_fixed`
 and `certificate_scope` identify this restriction in the returned result.
+Fixing `fixed_tunnel_opening` similarly makes the certificate conditional on
+that complete opening matrix. `fixed_u` alone leaves eligible tunnel gates free.
 
 A native `OPTIMAL` result is withheld as a certificate when SCIP performed LP iterations but returned no finite first root LP bound. An observed numerical failure produced this combination and an upper bound below a separately audited feasible schedule. The native result remains in diagnostics. This conservative guard is not a general proof against floating-point solver errors.
 

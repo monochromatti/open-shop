@@ -55,11 +55,13 @@ function replay_audit(
             clamp(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), 1, length(c.prices))
             for t in 1:(length(grid) - 1)
         ]
+        opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
         z=dispatch_from_controls(
             fine,
             x["u"][:, indices],
             x["generator_q"][:, indices],
-            x["gate"][:, indices],
+            x["gate"][:, indices];
+            tunnel_opening=opening[:,indices],
         )
         audit=z["validation"]
         merge!(violations, audit["residuals"])
@@ -159,6 +161,7 @@ function solve_verified(
     time_limit = 45.0,
     feasibility_only = false,
     warm = nothing,
+    tunnel_opening = nothing,
     operational_margin = 0.0,
 )
     isfinite(time_limit) && time_limit>0 ||
@@ -175,6 +178,12 @@ function solve_verified(
         throw(ArgumentError("initial candidate control grid differs from requested grid"))
     isfinite(operational_margin) && operational_margin >= 0 ||
         throw(ArgumentError("nonnegative finite operational_margin required"))
+    openings=tunnel_opening===nothing ? nothing :
+        _physical_tunnel_openings(c,tunnel_opening)
+    if initial!==nothing && openings!==nothing
+        _physical_tunnel_openings(c,get(initial,"tunnel_opening",nothing))==openings ||
+            throw(ArgumentError("initial candidate tunnel openings differ from requested openings"))
+    end
     began=time()
     attempts=Any[]
     cc=c
@@ -195,6 +204,7 @@ function solve_verified(
             operational_margin = power_margin,
             time_limit = time_limit,
             feasibility_only = feasibility_only,
+            tunnel_opening = openings,
         )
         audit=haskey(x, "objective") ?
               replay_audit(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
@@ -250,9 +260,11 @@ function solve_verified(
             ) for t in 1:(length(nextgrid) - 1)
         ]
         uu=uu[:, idx]
+        openings=_physical_tunnel_openings(cc,get(x,"tunnel_opening",nothing))[:,idx]
         cc=with_grid(cc, nextgrid)
         warm=try
-            dispatch_from_controls(cc, uu, x["generator_q"][:, idx], x["gate"][:, idx])
+            dispatch_from_controls(cc, uu, x["generator_q"][:, idx], x["gate"][:, idx];
+                tunnel_opening=openings)
         catch
             nothing
         end

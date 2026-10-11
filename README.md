@@ -4,8 +4,8 @@ Hydropower scheduling in Julia, with nonlinear hydraulic equations and global
 optimality bounds from SCIP.
 
 OpenSHOP models reservoirs, generating units, shared hydraulic networks and
-delayed rivers as named objects. It chooses unit commitment and dispatch in one
-bounded mixed-integer nonlinear model. An independent chronological simulator
+delayed rivers as named objects. It chooses unit commitment, eligible tunnel
+gates and dispatch in one bounded mixed-integer nonlinear model. An independent chronological simulator
 checks the returned controls, water balance and operating limits.
 
 This is a generation scheduling library. It does not yet provide complete
@@ -41,6 +41,8 @@ required discharge, plant dwell and directional ramps to a two-unit station.
 The [mixed-source river example](examples/mixed_source_network.jl) routes two
 plants and natural inflow through delayed reaches; [river networks](docs/river-networks.md)
 describes direct plant/tunnel connections and flow-dependent travel time.
+The [tunnel-gate example](examples/tunnel_gates.jl) optimizes two reservoir
+supplies with a gate interlock and chronological movement costs.
 
 ## Solving a schedule
 
@@ -69,6 +71,7 @@ Inspect `feasible_lower_bound`, `global_bound`, `relative_gap`, `status` and
 Construction and first-call compilation consume the time allowance; extraction
 and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 `fixed_u` restricts both the search and its certificate to that commitment.
+Eligible tunnel gates still remain optimization decisions under `fixed_u`.
 
 The solver uses one exact table representation: SOS2 coordinates for linear
 curves and shared quadratic products for discharge PCHIP interpolation. It
@@ -119,6 +122,7 @@ nonlinear iterations and hydraulic acceptance costs.
 ## Model and data
 
 - Nonlinear head–storage curves, signed tunnel losses, tabulated gate losses and flow conservation.
+- Discrete tunnel gate positions, interlocks and chronological gate movement costs.
 - Turbine tables, electrical efficiency curves and aggregate plant limits.
 - Unit and plant on/off rules, minimum up/down times, maintenance and transition costs.
 - Prescribed power/discharge schedules and directional power, flow, storage and level ramps.
@@ -128,6 +132,7 @@ nonlinear iterations and hydraulic acceptance costs.
 The [level-channel example](examples/level_channels.jl) combines signed reservoir exchange, tabulated tunnel gate losses and unit commitment.
 
 See [supplied channel and gate-loss curves](docs/channel-curves.md), [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
+[discrete tunnel gates](docs/tunnel-gates.md),
 [equations and certificate scope](docs/model.md)
 and [benchmark results](docs/benchmarks.md).
 

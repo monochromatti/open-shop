@@ -30,8 +30,17 @@ Base.@kwdef struct Tunnel
     resistance::Float64
     capacity::Float64
     opening::Float64=1.0
+    gate_positions::Vector{Float64}=Float64[] # empty keeps opening prescribed
+    initial_opening::Union{Nothing,Float64}=nothing
+    gate_adjustment_cost::Float64=0.0 # cost per absolute position change
     gate_loss_factor_curve::Union{Nothing,TableCurve}=nothing # added q|q| resistance by gate position
     discharge_river::Union{Nothing,Symbol}=nothing # forward outfall; target remains hydraulic head reference
+end
+Base.@kwdef struct TunnelInterlock
+    name::Symbol
+    tunnels::Vector{Symbol}
+    min_open::Int=0
+    max_open::Int=length(tunnels)
 end
 Base.@kwdef struct Plant
     name::Symbol
@@ -123,6 +132,7 @@ Base.@kwdef struct HydroSystem
     junctions::Vector{Junction}
     boundaries::Vector{Boundary}
     tunnels::Vector{Tunnel}
+    tunnel_interlocks::Vector{TunnelInterlock}=TunnelInterlock[]
     plants::Vector{Plant}
     generators::Vector{Generator}
     river_junctions::Vector{RiverJunction}=RiverJunction[]

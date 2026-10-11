@@ -76,7 +76,7 @@ function _global_capacity_bounds(c, nd, rd)
         for t in 1:T
             lo=hi=opinterval(c, r.name, :inflow, t, r.inflow)
             for e in tunnels
-                cap=opinterval(c, e.name, :opening, t, e.opening)==0 ? 0.0 :
+                cap=all(iszero,tunnel_allowed_positions(c,e,t)) ? 0.0 :
                     opinterval(c, e.name, :capacity, t, e.capacity)
                 sign=water_incidence(e,r.name)
                 if e.discharge_river===nothing

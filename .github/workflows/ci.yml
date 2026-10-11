@@ -31,3 +31,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/single_reservoir.jl
       - name: Run the hydraulic response example
         run: julia --pkgimages=no --project=. examples/level_channels.jl
+      - name: Run the tunnel gate example
+        run: julia --pkgimages=no --project=. examples/tunnel_gates.jl

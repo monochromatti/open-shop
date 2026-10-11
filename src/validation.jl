@@ -54,6 +54,22 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         push!(errors, "missing or nonfinite objective")
         return finish()
     end
+    TA,adjustment_cost=try
+        opening=_tunnel_opening_input(c,get(result,"tunnel_opening",nothing))
+        validate_tunnel_openings(c,opening;tolerance=min(tolerance,1e-6))
+        (opening,tunnel_adjustment_cost(c,opening))
+    catch e
+        push!(errors,"invalid tunnel_opening: "*sprint(showerror,e))
+        return finish()
+    end
+    if haskey(result,"gate_adjustment_cost")
+        cost=result["gate_adjustment_cost"]
+        if !(cost isa Real && isfinite(cost))
+            push!(errors,"nonfinite or malformed gate_adjustment_cost")
+            return finish()
+        end
+        record("gate_adjustment_cost_relative",[(cost-adjustment_cost)/max(1.0,abs(adjustment_cost))])
+    end
     V=result["V"]
     H=result["H"]
     Q=result["tunnel_q"]
@@ -94,7 +110,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
             "tunnel_loss_$(e.name)",
             [
                 tunnel_loss_residual(e, H[ix[e.source], t]-H[ix[e.target], t], Q[i, t],
-                    opinterval(c, e.name, :opening, t, e.opening)) for t in 1:T
+                    TA[i,t]) for t in 1:T
             ],
         )
     end
@@ -381,7 +397,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         exchange=cumsum(dt .* (external .- inflow))
         record("global_water", (@view inventory[2:end]) .- initial .+ 0.0036 .* exchange)
         operating_cost=transition_costs(c,u)
-        objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-operating_cost +
+        objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-operating_cost-adjustment_cost +
                   sum(
                       r.water_value*(V[i, end]-r.v0) for (i, r) in enumerate(s.reservoirs);
                       init = 0.0,
@@ -399,12 +415,13 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
     end
     try
-        replay=simulate(c, GQ, ga; transport = nd)
+        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA)
         replay["converged"] || push!(
             errors,
             "independent forward replay did not converge in the river-law domain",
         )
         record("replay_residual", [replay["residual"]])
+        record("replay_tunnel_opening",replay["tunnel_opening"]-TA)
         for key in ["V", "H", "tunnel_q", "power", "river_release", "arrival_volume"]
             record("replay_$key", replay[key]-result[key])
         end

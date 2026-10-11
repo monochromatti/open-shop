@@ -39,6 +39,7 @@ function propose_commitment(
     set_silent(m)
     set_optimizer_attribute(m, "mip_rel_gap", 0.002)
     states=_joint_states!(m,c)
+    gates=_tunnel_gate_states!(m,c)
     u=states.u
     @variable(m, V[1:R, 1:(T + 1)])
     @variable(m, Q[1:E, 1:T])
@@ -47,6 +48,8 @@ function propose_commitment(
     @variable(m, release_shortfall[1:D, 1:T]>=0)
     constrain_flow_requirements!(m, c, gq, rq)
     alpha=zeros(G, T)
+    reference_heads=similar(alpha)
+    selectable=any(x->!(x isa Number),gates.opening)
     for (j, g) in enumerate(s.generators), t in 1:T
         h=g.hbest
         if reference!==nothing && haskey(reference, "H")
@@ -64,6 +67,7 @@ function propose_commitment(
         end
         qref=clamp(g.qbest, g.qmin, g.qmax)
         alpha[j, t]=power(g, qref, h)/qref
+        reference_heads[j,t]=h
         qlo=opvalue(c, g.name, :qmin, c.grid[t], g.qmin)
         qhi=opvalue(c, g.name, :qmax, c.grid[t], g.qmax)
         if g.turbine_table!==nothing
@@ -74,10 +78,19 @@ function propose_commitment(
         phi=opvalue(c, g.name, :pmax, c.grid[t], g.pmax)
         @constraint(m, gq[j, t]>=qlo*u[j, t])
         @constraint(m, gq[j, t]<=qhi*u[j, t])
-        @constraint(m, alpha[j, t]*gq[j, t]>=plo*u[j, t])
-        @constraint(m, alpha[j, t]*gq[j, t]<=phi*u[j, t])
+        if !selectable
+            @constraint(m, alpha[j, t]*gq[j, t]>=plo*u[j, t])
+            @constraint(m, alpha[j, t]*gq[j, t]<=phi*u[j, t])
+        end
     end
-    P=[alpha[j, t]*gq[j, t] for j in 1:G, t in 1:T]
+    P=selectable ? _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,reference) :
+        [alpha[j, t]*gq[j, t] for j in 1:G, t in 1:T]
+    if selectable
+        for (j,g) in enumerate(s.generators),t in 1:T
+            @constraint(m,P[j,t]>=opinterval(c,g.name,:pmin,t,g.pmin)*u[j,t])
+            @constraint(m,P[j,t]<=opinterval(c,g.name,:pmax,t,g.pmax)*u[j,t])
+        end
+    end
     constrain_dispatch_operations!(m,c,u,P,gq,rq; transitions=states, proposal=true)
     constrain_reservoir_ramps!(m,c,V) # Only linear storage ramps belong to the proposal.
     for (i, r) in enumerate(s.reservoirs)
@@ -89,10 +102,15 @@ function propose_commitment(
         fix(V[i, 1], r.v0; force = true)
     end
     for (j, e) in enumerate(s.tunnels), t in 1:T
-        cap=opvalue(c, e.name, :opening, c.grid[t], e.opening)==0 ? 0.0 :
-            opvalue(c, e.name, :capacity, c.grid[t], e.capacity)
+        cap=opinterval(c,e.name,:capacity,t,e.capacity)
+        opened=gates.open[j,t]
+        opened isa Number && (cap*=opened)
         set_lower_bound(Q[j, t], e.discharge_river===nothing ? -cap : 0.0)
         set_upper_bound(Q[j, t], cap)
+        if !(opened isa Number)
+            @constraint(m,Q[j,t]<=cap*opened)
+            e.discharge_river===nothing && @constraint(m,Q[j,t]>=-cap*opened)
+        end
     end
     injections=river_injections(c,rq,gq,Q)
     arrivals=Matrix{Any}(undef, D, T)
@@ -151,8 +169,8 @@ function propose_commitment(
         )
     end
     constrain_river_sources!(m,c,rq,arrivals,injections)
-    # Hydraulic node continuity is retained, but pressure-loss equations and
-    # nonlinear outlet laws are deliberately absent from this proposal model.
+    # Hydraulic continuity is retained. Selectable gates use the affine/secant
+    # pressure surrogate above; nonlinear outlet laws are absent from proposals.
     for i in 1:(R + length(s.junctions)), t in 1:T
         name=nodes(s)[i]
         net=sum(
@@ -215,7 +233,7 @@ function propose_commitment(
         Max,
         sum(
             c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T
-        )-transition_costs(c,u; transitions=states)+water_scale*valuechange-sum(
+        )-transition_costs(c,u; transitions=states)-gates.cost+water_scale*valuechange-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
                 t,
@@ -246,6 +264,7 @@ function propose_commitment(
         result["u"]=round.(Int, value.(u))
         result["generator_q"]=value.(gq)
         result["river_release"]=value.(rq)
+        result["tunnel_opening"]=_canonical_tunnel_openings(c,value.(gates.opening))
         result["proposal_objective"]=objective_value(m)
     end
     result["total_seconds"]=time()-started
