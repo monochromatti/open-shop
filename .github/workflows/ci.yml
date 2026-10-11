@@ -29,3 +29,5 @@ jobs:
         run: python3 -m unittest discover -s examples/tokke_vinje -p "test_*.py"
       - name: Run the public example
         run: julia --pkgimages=no --project=. examples/single_reservoir.jl
+      - name: Run the hydraulic response example
+        run: julia --pkgimages=no --project=. examples/level_channels.jl

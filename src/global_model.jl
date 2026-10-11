@@ -165,13 +165,14 @@ function _build_global_dispatch(
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=opinterval(c, e.name, :opening, t, e.opening)
+        factor, resistance=tunnel_coefficients(e, opening)
         qlo,qhi=-cap,cap
         set_lower_bound(q[i, t], (e.discharge_river===nothing ? qlo : max(0.0,qlo))/50)
         set_upper_bound(q[i, t], qhi/50)
         if opening==0
             fix(q[i, t], 0; force = true)
         elseif e.discharge_river!==nothing
-            @constraint(m,(opening*(H[ix[e.source],t]-H[ix[e.target],t])-e.resistance*Q[i,t]^2)/100==0)
+            @constraint(m,(factor*(H[ix[e.source],t]-H[ix[e.target],t])-resistance*Q[i,t]^2)/100==0)
         else
             qp=@variable(
                 m,
@@ -191,7 +192,7 @@ function _build_global_dispatch(
             @constraint(m, Q[i, t]==qp-qm)
             @constraint(
                 m,
-                (opening*(H[ix[e.source], t]-H[ix[e.target], t])-e.resistance*(qp^2-qm^2))/100==0
+                (factor*(H[ix[e.source], t]-H[ix[e.target], t])-resistance*(qp^2-qm^2))/100==0
             )
         end
     end
@@ -368,9 +369,25 @@ function _build_global_dispatch(
         for t in 1:T
             cap=opinterval(c, r.name, :capacity, t, r.capacity)
             set_upper_bound(rq[i, t], cap/100)
-            set_lower_bound(rq[i,t],opinterval(c,r.name,:inflow,t,r.inflow)/100)
+            set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/100)
             set_lower_bound(a[i, t], opinterval(c, r.name, :gate_min, t, r.gate_min))
             set_upper_bound(a[i, t], opinterval(c, r.name, :gate_max, t, 1.0))
+            if is_channel(r)
+                fix(a[i,t],0.0;force=true)
+                fix(shortfall_release[i,t],0.0;force=true)
+                upstream,downstream=H[ix[r.source],t],H[ix[r.target],t]
+                src,dst=node_bounds[(r.source,t)],node_bounds[(r.target,t)]
+                dlo,dhi=src[1]-dst[2],src[2]-dst[1]
+                delta=@variable(m,lower_bound=dlo,upper_bound=dhi,base_name="channel_delta_$(i)_$(t)")
+                @constraint(m,delta==upstream-downstream)
+                ref=channel_reference(r,upstream,downstream)
+                rlo,rhi=r.delta_level_ref_up_flow_curve===nothing ? dst : src
+                flow=_global_level_flow!(m,channel_curve(r),delta,ref,dlo,dhi,rlo,rhi;
+                    name=Symbol("channel_flow_",i,"_",t))
+                @constraint(m,(RQ[i,t]-flow)/100==0)
+                arrivals[i,t]=0.0036*dt[t]*RQ[i,t]
+                continue
+            end
             requirement=opinterval(c, r.name, :min_release, t, 0.0)
             penalty=opinterval(c, r.name, :release_penalty, t, 0.0)
             set_upper_bound(shortfall_release[i, t], 0.0036*dt[t]*max(0.0, requirement))

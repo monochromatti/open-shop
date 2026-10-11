@@ -85,7 +85,10 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 Float64.(
             r.arrival_window_grid[findfirst(==(time), r.arrival_window_grid):end],
         )
-        if exact
+        if is_channel(r)
+            history_grid=[Float64(time)-1.0,Float64(time)]
+            history_release=[0.0]
+        elseif exact
             cohorts=routed["release_cohorts"][i]
             executed=release_history(cohorts.grid, cohorts.release, time)
             history_grid=vcat(r.history_grid, executed.grid[2:end])

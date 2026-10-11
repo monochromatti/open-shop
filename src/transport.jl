@@ -363,7 +363,7 @@ function route_network_exact(
     source_release=injections===nothing ? river_injections(c,source_release,generator_q,tunnel_q) : injections
     size(source_release)==(length(c.system.rivers), length(c.grid)-1) ||
         throw(DimensionMismatch("source releases"))
-    all(isfinite, source_release) && all(>=(0), source_release) ||
+    all(isfinite, source_release) && all(is_channel(c.system.rivers[d]) || source_release[d,t]>=0 for d in axes(source_release,1),t in axes(source_release,2)) ||
         throw(ArgumentError("source releases must be finite and nonnegative"))
     data=_transport_data(c, transport; arrival_grid = grid)
     D=length(c.system.rivers)
@@ -393,7 +393,7 @@ function route_network_exact(
                 source_release,
             ) for t in knots[1:(end - 1)]
         ]
-        all(x->x<=c.system.rivers[d].capacity+1e-10, q) || throw(
+        all(x->river_flow_valid(c.system.rivers[d],x),q) || throw(
             ArgumentError(
                 "instantaneous release exceeds capacity of $(c.system.rivers[d].name)",
             ),

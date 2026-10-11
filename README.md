@@ -118,14 +118,16 @@ nonlinear iterations and hydraulic acceptance costs.
 
 ## Model and data
 
-- Nonlinear head–storage curves, signed tunnel losses and flow conservation.
+- Nonlinear head–storage curves, signed tunnel losses, tabulated gate losses and flow conservation.
 - Turbine tables, electrical efficiency curves and aggregate plant limits.
 - Unit and plant on/off rules, minimum up/down times, maintenance and transition costs.
 - Prescribed power/discharge schedules and directional power, flow, storage and level ramps.
-- River confluences, release laws, finite travel times and environmental limits.
+- River confluences, signed delta-level channels, release laws, finite travel times and environmental limits.
 - Time-dependent operating restrictions, aggregate flow observations and restart state.
 
-See [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
+The [level-channel example](examples/level_channels.jl) combines signed reservoir exchange, tabulated tunnel gate losses and unit commitment.
+
+See [supplied channel and gate-loss curves](docs/channel-curves.md), [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
 [equations and certificate scope](docs/model.md)
 and [benchmark results](docs/benchmarks.md).
 

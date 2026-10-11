@@ -41,14 +41,14 @@ function _global_capacity_bounds(c, nd, rd)
             lo=hi=nd.arrival_history[i, t]
             for (d, k, v) in nd.arrival_terms[i, t]
                 z=v*release_cap[d, k]
-                lo+=min(0.0, z)
+                lo+=is_channel(s.rivers[d]) ? -abs(z) : min(0.0,z)
                 hi+=max(0.0, z)
             end
         else
             lo=hi=rd["history_arrival"][i, t]
             B=rd["B"][i]
             for k in 1:T
-                l,h=river_transfer_range(r,collect(view(B,t,k,:)),0.0,release_cap[i,k])
+                l,h=river_transfer_range(r,collect(view(B,t,k,:)),river_flow_lower(r,release_cap[i,k]),release_cap[i,k])
                 l*=0.0036*dt[k]
                 h*=0.0036*dt[k]
                 lo+=l
@@ -97,7 +97,8 @@ function _global_capacity_bounds(c, nd, rd)
             for j in river_out
                 natural=opinterval(c,s.rivers[j].name,:inflow,t,s.rivers[j].inflow)
                 lo-=release_cap[j,t]-natural
-                # Reservoir outlets cannot withdraw negative water.
+                is_channel(s.rivers[j]) && (hi+=release_cap[j,t])
+                # Ordinary reservoir outlets cannot withdraw negative water.
             end
             for j in river_in
                 lo+=al[j, t]/(0.0036*dt[t])

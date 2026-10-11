@@ -4,11 +4,14 @@ const MOI=JuMP.MOI
 include("routing.jl")
 using .RiverRouting
 include("curves.jl")
+include("level_flow_curves.jl")
 include("types.jl")
 include("curve_physics.jl")
+include("tunnel_physics.jl")
 include("polynomial_tables.jl")
 include("tensor_tables.jl")
 include("distributed_routing.jl")
+include("channel_physics.jl")
 include("operations.jl")
 include("commitment_controls.jl")
 include("operating_constraints.jl")
@@ -48,6 +51,8 @@ export Reservoir,
     OperationalSeries,
     FlowRequirement,
     TableCurve,
+    LevelFlowCurve,
+    level_flow_value,
     TurbineTable,
     CompiledTransport,
     nodes,
