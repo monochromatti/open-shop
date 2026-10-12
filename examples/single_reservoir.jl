@@ -34,10 +34,7 @@ system = HydroSystem(
     reservoirs = [lake],
     plants = [plant],
     generators = [unit],
-    junctions = Junction[],
     boundaries = [Boundary(name = :Tailwater, head = 20.0)],
-    tunnels = Tunnel[],
-    rivers = River[],
 )
 case = ScheduleCase(
     name = "single_reservoir",

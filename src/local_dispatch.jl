@@ -22,38 +22,18 @@ function _build_dispatch(
     validate_inputs(c)
     admissible(c, u) || error("Invalid commitment")
     s=c.system
-    node_names=nodes(s)
+    topology = HydraulicTopology(s)
+    node_names = topology.node_names
     T=length(c.prices)
     R=length(s.reservoirs)
     N=length(node_names)
     E=length(s.tunnels)
     G=length(s.generators)
     D=length(s.rivers)
-    ix=nodeindex(s)
+    ix = topology.node_index
     dt=diff(c.grid)
-    generator_plants=[plantof(s, g) for g in s.generators]
-    plant_generators=Dict(
-        plant.name=>findall(g->g.plant==plant.name, s.generators) for plant in s.plants
-    )
-    tunnel_incidence=[
-        [
-            (j, water_incidence(e,name)) for
-            (j, e) in enumerate(s.tunnels) if e.target==name || e.source==name
-        ] for name in node_names
-    ]
-    generator_incidence=[
-        [
-            (j, water_incidence(plant,name)) for
-            (j, plant) in enumerate(generator_plants) if
-            plant.target==name || plant.source==name
-        ] for name in node_names
-    ]
-    river_incidence=[
-        [
-            (j, r.target==name, r.source==name) for
-            (j, r) in enumerate(s.rivers) if r.target==name || r.source==name
-        ] for name in node_names
-    ]
+    generator_plants = s.plants[topology.generator_plant]
+    plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
     m=Model()
     set_silent(m)
     openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
@@ -373,33 +353,7 @@ function _build_dispatch(
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
-    for i in 1:(R + length(s.junctions)), t in 1:T
-        net=sum(sign*Q[j, t] for (j, sign) in tunnel_incidence[i]; init = 0.0)
-        net+=sum(sign*GQ[j, t] for (j, sign) in generator_incidence[i]; init = 0.0)
-        net+=sum(
-            (incoming ? arrivals[j, t]/(0.0036*dt[t]) : 0)-(outgoing ? RQ[j, t]-opinterval(c,s.rivers[j].name,:inflow,t,s.rivers[j].inflow) : 0) for
-            (j, incoming, outgoing) in river_incidence[i];
-            init = 0.0,
-        )
-        if i<=R
-            @constraint(
-                m,
-                (
-                    V[i, t + 1]-V[i, t]-0.0036*dt[t]*(
-                        net+opinterval(
-                            c,
-                            s.reservoirs[i].name,
-                            :inflow,
-                            t,
-                            s.reservoirs[i].inflow,
-                        )
-                    )
-                )/s.reservoirs[i].vmax==0
-            )
-        else
-            @constraint(m, net/50==0)
-        end
-    end
+    constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     operating_cost=transition_costs(c,u)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-operating_cost+sum(
@@ -535,6 +489,20 @@ function _local_optimizer!(m, solver, time_limit)
     end
 end
 
+"""
+    solve_case(case; u=ones(Int, length(case.system.generators), length(case.prices)),
+               tunnel_opening=nothing, time_limit=45.0, warm=nothing, ...)
+
+Optimize continuous dispatch with Ipopt for fixed commitment `u[unit, interval]`
+and fixed tunnel gate positions. Gate positions default to the case's prescribed
+schedule; this routine never searches discrete states. Use [`solve`](@ref) for
+the global mixed-integer problem, or [`schedule_case`](@ref) to prepare a feasible
+schedule by combining MILP proposals with nonlinear dispatch.
+
+Returns a dictionary with status and timing. When a solution exists, it also
+contains physical arrays, `"objective"` and `"validation"`; check validation
+before using those arrays. A local optimum is not a global certificate.
+"""
 function solve_case(
     c;
     u = ones(Int, length(c.system.generators), length(c.prices)),

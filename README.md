@@ -134,6 +134,7 @@ The [level-channel example](examples/level_channels.jl) combines signed reservoi
 See [supplied channel and gate-loss curves](docs/channel-curves.md), [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
 [discrete tunnel gates](docs/tunnel-gates.md),
 [equations and certificate scope](docs/model.md)
+[numerical design and Julia API](docs/numerical-design.md),
 and [benchmark results](docs/benchmarks.md).
 
 The [Tokke–Vinje example](examples/tokke_vinje/README.md) fetches SINTEF's public
