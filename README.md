@@ -88,7 +88,7 @@ See the [benchmark results](docs/benchmarks.md) and
 bound and runtime tradeoffs.
 
 `solve(case)` prepares a feasible start before SCIP's full nonlinear integer
-search. Preparation uses HiGHS MILP commitment and gate proposals, followed by a
+search. Preparation uses SCIP MILP commitment and gate proposals, followed by a
 sparse JuMP nonlinear model solved by Ipopt. Local dispatch prepares interval
 bounds and routing
 expressions separately from the physical constraints, retaining explicit
@@ -101,7 +101,8 @@ seconds. Unused time remains available to SCIP. It starts with the original
 operating limits and can retry a failed finer replay with measured power or
 arrival margins, retaining the requested decision grid. The global model always
 uses the original limits and remains free to change every commitment and gate
-decision. See the [workflow comparison](docs/solver-workflow.md).
+decision. See the [workflow comparison](docs/solver-workflow.md) and
+[proposal solver confirmation](docs/proposal-solvers.md).
 
 `preparation_seconds`, `preparation_accepted` and `prepared_objective` report
 this accelerator's contribution. `preparation_time_limit=0` disables it for

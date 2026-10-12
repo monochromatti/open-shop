@@ -2,7 +2,7 @@
 
 julia_version = "1.13.1"
 manifest_format = "2.1"
-project_hash = "ff0fa6a9b0bca01dae7d01f3a60ee9df86eb3345"
+project_hash = "a0735ace293c4dc14d84d1a0c232c1295ac53b45"
 
 [[deps.ASL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -107,20 +107,6 @@ version = "1.4.6"
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "781609d7-10c4-51f6-84f2-b8444358ff6d"
 version = "6.3.0+2"
-
-[[deps.HiGHS]]
-deps = ["HiGHS_jll", "LinearAlgebra", "MathOptIIS", "MathOptInterface", "OpenBLAS32_jll", "PrecompileTools", "SparseArrays"]
-git-tree-sha1 = "096cba93cdc8dd80451b7fa1cabfe3f34572f998"
-registries = "General"
-uuid = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
-version = "1.26.0"
-
-[[deps.HiGHS_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Zlib_jll", "libblastrampoline_jll"]
-git-tree-sha1 = "d4e63f395d10590fcece8d35005dd7b9a4862635"
-registries = "General"
-uuid = "8fd58aa0-07eb-5a78-9b36-339c94fd15ea"
-version = "1.15.1+3"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "XML2_jll", "Xorg_libpciaccess_jll"]
@@ -306,13 +292,6 @@ deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
 uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 version = "1.11.0"
 
-[[deps.MathOptIIS]]
-deps = ["MathOptInterface"]
-git-tree-sha1 = "3b3d69130d8ab8c39d5fa4d30e20a8e6428c9d37"
-registries = "General"
-uuid = "8c4f8055-bd93-4160-a86b-a0c04941dbff"
-version = "0.2.0"
-
 [[deps.MathOptInterface]]
 deps = ["CodecBzip2", "CodecZlib", "ForwardDiff", "JSON", "LinearAlgebra", "MutableArithmetics", "NaNMath", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays", "SpecialFunctions", "Test"]
 git-tree-sha1 = "637aa0115265323850b125287833341a6f7b9b54"
@@ -379,10 +358,10 @@ uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
 version = "0.8.7+0"
 
 [[deps.OpenSHOP]]
-deps = ["Dates", "HiGHS", "Ipopt", "JSON3", "JuMP", "LinearAlgebra", "Random", "SCIP", "SHA", "Statistics"]
+deps = ["Dates", "Ipopt", "JSON3", "JuMP", "LinearAlgebra", "Random", "SCIP", "SHA", "Statistics"]
 path = "."
 uuid = "dcda3ab0-7d4c-4e43-a9c0-29e6b5c342b7"
-version = "0.1.0"
+version = "0.7.0"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "Libdl"]

@@ -1,3 +1,9 @@
+const _PROPOSAL_OPTIMIZER = optimizer_with_attributes(
+    SCIP.Optimizer,
+    "parallel/maxnthreads" => 1,
+    "numerics/feastol" => 1e-8,
+)
+
 """A linear surrogate proposes commitments; its objective/bound is NOT a bound
 for the nonlinear scheduling problem. Every proposed commitment needs an NLP.
 """
@@ -10,7 +16,7 @@ function propose_commitment(
     radius = nothing,
     deadline = Inf,
     transport = nothing,
-    optimizer = HiGHS.Optimizer,
+    optimizer = _PROPOSAL_OPTIMIZER,
 )
     started=time()
     validate_inputs(c)

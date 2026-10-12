@@ -1,4 +1,4 @@
-using Test, JuMP, OpenSHOP, HiGHS
+using Test, JuMP, OpenSHOP, SCIP
 
 function power_hull_test_residual(m,assigned)
     maximum(all_constraints(m;include_variable_in_set_constraints=true);init=0.0) do ref
@@ -148,7 +148,7 @@ end
 @testset "Complete hull rejects sequential-product optimism" begin
     # Asymmetric boxes and differently positioned factors create a strict gap.
     # Actual q*h*eta=3.0; recursive McCormick permits4.11; joint hull permits3.705.
-    m=Model(HiGHS.Optimizer);set_silent(m)
+    m=Model(optimizer_with_attributes(SCIP.Optimizer, "numerics/feastol" => 1e-9));set_silent(m)
     @variable(m,1<=q<=2);@variable(m,2<=h<=5);@variable(m,0.3<=eta<=0.9)
     @constraint(m,q==1.25);@constraint(m,h==3.2);@constraint(m,eta==0.75)
     @variable(m,0.3<=flow<=1.8);@variable(m,0<=p<=1)

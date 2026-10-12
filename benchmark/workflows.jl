@@ -3,14 +3,15 @@ include("diagnose.jl")
 include("tunnel-gates.jl")
 using HiGHS, SCIP
 
-function workflow_trial(c, method; budget, output, preparation_fraction=0.4)
+function workflow_trial(c, method; budget, output, preparation_fraction=0.4,
+    highs_single_thread=true)
     started=time()
     prepared=nothing
     first_validated=nothing
     initial=nothing
     if method!=:scip
         factory=method==:highs_ipopt ?
-            optimizer_with_attributes(HiGHS.Optimizer,"threads"=>1) :
+            (highs_single_thread ? optimizer_with_attributes(HiGHS.Optimizer,"threads"=>1) : HiGHS.Optimizer) :
             optimizer_with_attributes(SCIP.Optimizer,"parallel/maxnthreads"=>1,
                 "numerics/feastol"=>1e-8)
         preparation_budget=min(60.0,preparation_fraction*budget)
@@ -41,8 +42,10 @@ function workflow_trial(c, method; budget, output, preparation_fraction=0.4)
     return Dict(
         "case"=>c.name,"method"=>string(method),"budget_seconds"=>budget,
         "preparation_fraction"=>method==:scip ? 0.0 : preparation_fraction,
+        "proposal_thread_policy"=>method==:highs_ipopt && !highs_single_thread ? "HiGHS default" : "one thread",
         "preparation_seconds"=>preparation_seconds,
         "preparation_accepted"=>prepared===nothing ? false : prepared["accepted"],
+        "global_start_valid"=>get(get(result,"start_audit",Dict()),"valid",nothing),
         "prepared_objective"=>initial===nothing ? nothing : initial["objective"],
         "first_validated_observed_seconds"=>first_validated,
         "global_allowance_seconds"=>remaining,

@@ -15,7 +15,7 @@ function schedule_case(
     max_refinements = 2,
     operational_margin = 0.0,
     time_limit = Inf,
-    proposal_optimizer = HiGHS.Optimizer,
+    proposal_optimizer = _PROPOSAL_OPTIMIZER,
     refine_grid = true,
 )
     time_limit>0 && !isnan(time_limit) ||

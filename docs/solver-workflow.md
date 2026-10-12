@@ -1,6 +1,6 @@
 # Solver workflow
 
-OpenSHOP keeps HiGHS commitment proposals, Ipopt nonlinear dispatch and SCIP's
+OpenSHOP uses SCIP commitment proposals, Ipopt nonlinear dispatch and SCIP's
 full nonlinear integer search. The public entry point is `solve(case)`, with one
 shared time allowance. A prepared schedule supplies a complete feasible start;
 its unit and gate choices remain free in SCIP.
@@ -13,11 +13,12 @@ schedules. SCIP's installed build already calls Ipopt internally: the native
 statistics record those solves. External dispatch adds a smaller physical model
 with fixed discrete choices and direct turbine evaluation.
 
-Replacing HiGHS with SCIP in the proposal MILP reduces some preparation times,
-but does not dominate delivered objective quality. The conservative choice is
-to retain HiGHS and simplify the interface. This is an empirical choice for the
-current preparation algorithm, not a claim that three solver packages are
-mathematically necessary.
+The initial comparison below retained HiGHS because neither proposal solver
+dominated objective quality and runtime on every input. The subsequent
+[confirmation](proposal-solvers.md) weighs comparable quality, useful runtime
+and dependency cost across twelve inputs, and selects SCIP. HiGHS is now used
+only to reproduce benchmarks. Both comparisons use the same proposal equations
+and direct nonlinear dispatch.
 
 ## Matched comparison
 
@@ -92,10 +93,10 @@ The result reports `preparation_seconds`, `preparation_accepted` and
 accelerator with `preparation_time_limit=0`. The lower-level preparation and
 dispatch functions remain available for explicit numerical experiments.
 
-HiGHS's process-wide thread scheduler is left unchanged by the library. The
-comparison runner configures its single-thread factories before any HiGHS
-solve. Forcing a different thread count inside a library call conflicts with
-previous HiGHS instances in the same process.
+The comparison runner configures HiGHS's process-wide thread scheduler before
+its first solve. Forcing a different thread count later conflicts with previous
+HiGHS instances in that process. This concerns the optional benchmark environment;
+the production library no longer loads HiGHS.
 [HiGHS.jl thread documentation](https://github.com/jump-dev/HiGHS.jl#threads).
 
 ## Reproduction
@@ -110,9 +111,10 @@ and the existing importer, including its documented operating-rule exclusions.
 
 ```sh
 nix develop
+julia --pkgimages=no --project=benchmark -e 'using Pkg; Pkg.instantiate()'
 python examples/tokke_vinje/fetch.py
 python examples/tokke_vinje/import.py --hours 6 24
-julia --pkgimages=no --project=. -e '
+julia --pkgimages=no --project=benchmark -e '
     include("benchmark/workflows.jl")
     benchmark_workflows("results/workflows",
         ["distributed", "tables", "gates6", "gates24", "tokke6", "tokke24"];
@@ -124,8 +126,8 @@ The current source retains the original hydraulic start during replay retries.
 The records distinguish the earlier retry and allocation experiments rather
 than treating them as measurements of this selected policy.
 
-The complete suite passes 19,515 assertions in 125 test sets. A fresh process
-also checks the public `solve` entry point with default HiGHS settings: the
+The initial validation passed 19,515 assertions in 125 test sets. A fresh
+process checked the public `solve` entry point with the original HiGHS default: the
 24-hour synthetic network and six-hour Tokke–Vinje use 60 seconds each, and
 24-hour Tokke–Vinje uses 120 seconds. All three produce accepted schedules,
 complete SCIP starts and passing fourfold replay. The latter delivers objective

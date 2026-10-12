@@ -4464,12 +4464,6 @@
     "cpu": "apple-m1",
     "timing_scope": "shared construction/preparation/SCIP allowance; final audits may overrun; loading and warmup excluded"
   },
-  "selection": {
-    "workflow": "HiGHS commitment proposals, Ipopt dispatch, SCIP global solve",
-    "preparation_fraction": 0.8,
-    "preparation_cap_seconds": 60,
-    "criterion": "retain the existing proposal engine because neither replacement dominates validated objective and runtime across cases"
-  },
   "quality_timing_scope": "Post-hoc time to observed acceptance within 0.1% of the best delivered objective on that input across these campaigns; this reference is not an optimality proof. SCIP candidates are audited only after optimize! returns.",
   "public_api": [
     {
@@ -4705,5 +4699,13 @@
       "campaign": "stable-start",
       "case": "tokke24"
     }
-  ]
+  ],
+  "initial_selection": {
+    "workflow": "HiGHS commitment proposals, Ipopt dispatch, SCIP global solve",
+    "preparation_fraction": 0.8,
+    "preparation_cap_seconds": 60,
+    "criterion": "retain the existing proposal engine because neither replacement dominates validated objective and runtime across cases"
+  },
+  "superseded_by": "proposal-solvers.json",
+  "public_api_scope": "Original HiGHS proposal default, before the confirmation switch to SCIP"
 }

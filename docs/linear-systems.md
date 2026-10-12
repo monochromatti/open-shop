@@ -1,8 +1,9 @@
 # Local linear systems
 
-This study targets the nonlinear dispatch inside `schedule_case`. HiGHS still
-proposes commitments, and independent hydraulic and river replay still accepts
-controls. SCIP's global search is outside these measurements.
+This study measured the nonlinear dispatch inside `schedule_case`, using
+HiGHS commitment proposals and independent hydraulic and river replay. SCIP's
+global search was outside the measurements. The current proposal solver is
+SCIP; see the [proposal comparison](proposal-solvers.md).
 
 ## Where the time goes
 

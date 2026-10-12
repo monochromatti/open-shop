@@ -126,7 +126,8 @@ weights ζ:
 P \leq \sum_j a_j\nu_j + \sum_k b_k\zeta_k.
 ```
 
-A small HiGHS LP minimizes this envelope at the current root point. Bernstein
+The experiment used a small HiGHS LP to minimize this envelope at the current
+root point. The production separator uses SCIP's native LP interface. Bernstein
 coefficient inequalities cover every original polynomial cell and linear
 extension. An independent residual check supplies a conservative correction.
 The electrical-efficiency upper bound also covers negative hydraulic

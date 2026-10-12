@@ -1,4 +1,4 @@
-using Test, JuMP, OpenSHOP, HiGHS
+using Test, JuMP, OpenSHOP, SCIP
 
 @testset "Table-coordinate certificates cover interpolation and extensions" begin
     support,evaluations,hits,seconds=OpenSHOP._table_power_support_cache()
@@ -191,7 +191,7 @@ end
 
 @testset "Table bounds tighten the joint-product relaxation" begin
     table=TurbineTable([1.0,3.0],[1.0,2.0],[.9 .3;.9 .3],fill(1.0,2),fill(2.0,2))
-    m=Model(HiGHS.Optimizer);set_silent(m)
+    m=Model(optimizer_with_attributes(SCIP.Optimizer, "numerics/feastol" => 1e-9));set_silent(m)
     @variable(m,1<=q<=2);@variable(m,1<=h<=3)
     eta=@variable(m,lower_bound=.3,upper_bound=.9,base_name="eta_1_1")
     @variable(m,0<=p<=.1)
