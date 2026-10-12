@@ -119,7 +119,7 @@ uneven grids, so midpoint timing is an explicit OpenSHOP convention.
 
 Global optimization retains binary unit commitment throughout the horizon.
 Selective fractional commitment through SHOP `mip_flag`/`mip_length` is not
-implemented. The HiGHS proposal uses the same commitment, discharge schedules
+implemented. The MILP proposal uses the same commitment, discharge schedules
 and linear ramp constraints, but omits exact power schedules and nonlinear
 reservoir level ramps: its approximate power conversion cannot establish their
 physical feasibility. Nonlinear dispatch and validation enforce all supplied

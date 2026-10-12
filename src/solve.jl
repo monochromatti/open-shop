@@ -124,9 +124,16 @@ end
 
 """
     solve(case; time_limit=60.0, relative_gap=1e-3, absolute_gap=0.0,
-          initial=nothing, fixed_u=nothing, fixed_tunnel_opening=nothing)
+          initial=nothing, fixed_u=nothing, fixed_tunnel_opening=nothing,
+          preparation_time_limit=min(60.0, 0.8time_limit), operational_margin=0.0)
 
 Optimize generation, unit commitment and eligible tunnel gates with native SCIP.
+Without a supplied initial schedule or fixed discrete controls, bounded MILP
+proposals and Ipopt dispatch first prepare a replay-valid start. These choices
+do not restrict SCIP's search. Preparation receives at most 80% of the total
+allowance, capped at 60 seconds; unused time remains available to SCIP.
+`preparation_time_limit=0` skips this accelerator. `operational_margin` tightens
+only preparation; the global model retains the original physical restrictions.
 `diagnostics_path` optionally writes a native SCIP
 progress log and an accompanying `.statistics.json` file with native plugin
 and LP counters. Returned `scip_diagnostics` and `scip_statistics` are
@@ -142,7 +149,7 @@ declared discrete hydraulic model, under numerical solver tolerances. Supplying
 `fixed_u` makes the certificate conditional on that commitment matrix;
 `fixed_tunnel_opening` makes it conditional on the supplied gate positions.
 
-The time allowance includes construction and optimization; extraction/replay
+The time allowance includes preparation, construction and optimization; extraction/replay
 can overrun it and are included in `total_seconds`. Julia compilation is also
 included if this is the first call in a process.
 """
@@ -156,6 +163,8 @@ function solve(
     fixed_tunnel_opening = nothing,
     replay = true,
     diagnostics_path = nothing,
+    preparation_time_limit = min(60.0, 0.8time_limit),
+    operational_margin = 0.0,
 )
     isfinite(time_limit) && time_limit > 0 ||
         throw(ArgumentError("positive finite time_limit required"))
@@ -163,6 +172,10 @@ function solve(
         throw(ArgumentError("relative_gap must lie in [0,1)"))
     isfinite(absolute_gap) && absolute_gap >= 0 ||
         throw(ArgumentError("nonnegative finite absolute_gap required"))
+    isfinite(preparation_time_limit) && 0<=preparation_time_limit<=time_limit ||
+        throw(ArgumentError("preparation_time_limit must lie in [0,time_limit]"))
+    isfinite(operational_margin) && operational_margin>=0 ||
+        throw(ArgumentError("nonnegative finite operational_margin required"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
     began = time()
     result = Dict{String,Any}(
@@ -190,7 +203,24 @@ function solve(
             all(r -> r.deterministic_delay !== nothing, c.system.rivers),
         "requested_relative_gap" => relative_gap,
         "requested_absolute_gap" => absolute_gap,
+        "preparation_seconds" => 0.0,
+        "preparation_accepted" => false,
+        "prepared_objective" => nothing,
     )
+    if initial===nothing && fixed_u===nothing && fixed_tunnel_opening===nothing &&
+       preparation_time_limit>0
+        prepared=schedule_case(c;time_limit=preparation_time_limit,
+            proposal_time_limit=min(5.0,preparation_time_limit/4),
+            nlp_time_limit=min(20.0,preparation_time_limit),max_refinements=1,
+            refine_grid=false,operational_margin)
+        result["preparation_seconds"]=time()-began
+        result["preparation_accepted"]=prepared["accepted"]
+        if prepared["accepted"]
+            initial=prepared["solution"]
+            result["prepared_objective"]=initial["objective"]
+        end
+    end
+    construction_started=time()
     best = nothing
     if initial !== nothing
         initial_audit = validate(c, initial)
@@ -235,8 +265,8 @@ function solve(
     result["variable_count"] = num_variables(b.m)
     result["constraint_count"] =
         num_constraints(b.m; count_variable_in_set_constraints = false)
-    result["construction_seconds"] = time() - began
-    remaining = time_limit - result["construction_seconds"]
+    result["construction_seconds"] = time() - construction_started
+    remaining = time_limit - (time()-began)
     if remaining > 0
         factory=SCIP.Optimizer
         if diagnostics_path!==nothing

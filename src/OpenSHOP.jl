@@ -1,5 +1,5 @@
 module OpenSHOP
-using JuMP, Ipopt, SCIP, HiGHS, JSON3, LinearAlgebra, Random, SHA, Dates, Statistics
+using JuMP, Ipopt, SCIP, JSON3, LinearAlgebra, Random, SHA, Dates, Statistics
 const MOI=JuMP.MOI
 include("routing.jl")
 using .RiverRouting

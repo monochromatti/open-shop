@@ -22,7 +22,7 @@ Options:
 schedule, a result with a solution field, or just u/generator_q/gate controls.
 Cold loading, seed reconstruction and warmup are reported separately. Per-solve
 allowances are not an end-to-end preparation deadline. The runner never invokes
-SCIP or changes solver settings. Full local results accompany scalar summaries.
+global search or changes solver settings. Full local results accompany scalar summaries.
 """
 
 function options(args)

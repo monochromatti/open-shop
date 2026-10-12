@@ -1,9 +1,9 @@
 # Schedule generation
 
-This study measures `schedule_case`: HiGHS proposes unit commitments, Ipopt
-dispatches each unique proposal with the nonlinear equations, and independent
-hydraulic replay accepts the resulting controls. Global SCIP search is outside
-this experiment.
+This study measured `schedule_case` with HiGHS commitment proposals, Ipopt
+nonlinear dispatch and independent hydraulic replay. Global SCIP search was
+outside the experiment. The current proposal solver is SCIP; see the
+[proposal comparison](proposal-solvers.md).
 
 The selected change recovers usable local output and avoids a repeated original
 equation audit. Existing nonlinear starting values and commitment proposals are

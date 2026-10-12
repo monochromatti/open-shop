@@ -1,0 +1,5249 @@
+{
+  "preparation": {
+    "records": [
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 1,
+        "proposal_seconds": 0.011754989624023438,
+        "best_observed_objective": 14860.12926569638,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.018280982971191406,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.00364175,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.030655860900878906,
+        "time_within_0.01_of_best": 0.030362844467163086,
+        "time_within_0.001_of_best": 0.030362844467163086,
+        "events": [
+          {
+            "seconds": 0.009217023849487305,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.030362844467163086,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 1,
+        "proposal_seconds": 0.020473718643188477,
+        "best_observed_objective": 14860.12926569638,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.018990278244018555,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.003562083,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.0401768684387207,
+        "time_within_0.01_of_best": 0.039865970611572266,
+        "time_within_0.001_of_best": 0.039865970611572266,
+        "events": [
+          {
+            "seconds": 0.00986790657043457,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.039865970611572266,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 2,
+        "proposal_seconds": 0.020576000213623047,
+        "best_observed_objective": 14860.12926569638,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.01864790916442871,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.00359475,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.03990316390991211,
+        "time_within_0.01_of_best": 0.039579153060913086,
+        "time_within_0.001_of_best": 0.039579153060913086,
+        "events": [
+          {
+            "seconds": 0.009502172470092773,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.039579153060913086,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 2,
+        "proposal_seconds": 0.011890172958374023,
+        "best_observed_objective": 14860.12926569638,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.01830911636352539,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.003626708,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.030825138092041016,
+        "time_within_0.01_of_best": 0.03052520751953125,
+        "time_within_0.001_of_best": 0.03052520751953125,
+        "events": [
+          {
+            "seconds": 0.009327173233032227,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.03052520751953125,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 3,
+        "proposal_seconds": 0.011780261993408203,
+        "best_observed_objective": 14860.12926569638,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.018105745315551758,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.0036565,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.030495166778564453,
+        "time_within_0.01_of_best": 0.030188798904418945,
+        "time_within_0.001_of_best": 0.030188798904418945,
+        "events": [
+          {
+            "seconds": 0.009173870086669922,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.030188798904418945,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 3,
+        "proposal_seconds": 0.020714998245239258,
+        "best_observed_objective": 14860.12926569638,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14860.12926569638,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.018865108489990234,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.003664708,
+        "fourfold_replay": true,
+        "label": "distributed",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 22427.328870667607,
+          "transition_cost": 0,
+          "reservoir_value_change": -8795.072988405926,
+          "river_value_change": 1227.8733834346986
+        },
+        "total_seconds": 0.040235042572021484,
+        "time_within_0.01_of_best": 0.039927005767822266,
+        "time_within_0.001_of_best": 0.039927005767822266,
+        "events": [
+          {
+            "seconds": 0.009495019912719727,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.039927005767822266,
+            "objective": 14860.12926569638
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00012382037768632337,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "proposal_seconds": 14.80336880683899,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.856123924255371,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.057506875,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.66114616394043,
+        "time_within_0.01_of_best": 17.060849905014038,
+        "time_within_0.001_of_best": 17.060849905014038,
+        "events": [
+          {
+            "seconds": 17.060849905014038,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.660377979278564,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "proposal_seconds": 0.9235069751739502,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.913514137268066,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.057224209,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.838706016540527,
+        "time_within_0.01_of_best": 3.1971189975738525,
+        "time_within_0.001_of_best": 3.1971189975738525,
+        "events": [
+          {
+            "seconds": 3.1971189975738525,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.837922096252441,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "proposal_seconds": 0.9218640327453613,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.87051796913147,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.057288208,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.794064044952393,
+        "time_within_0.01_of_best": 3.1956558227539062,
+        "time_within_0.001_of_best": 3.1956558227539062,
+        "events": [
+          {
+            "seconds": 3.1956558227539062,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.793287992477417,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "proposal_seconds": 14.815279960632324,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.8370678424835205,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.058054417,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.6540048122406,
+        "time_within_0.01_of_best": 17.067795038223267,
+        "time_within_0.001_of_best": 17.067795038223267,
+        "events": [
+          {
+            "seconds": 17.067795038223267,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.653223991394043,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 3,
+        "proposal_seconds": 14.800719976425171,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.836207151412964,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.057164625,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.63859486579895,
+        "time_within_0.01_of_best": 17.04942297935486,
+        "time_within_0.001_of_best": 17.04942297935486,
+        "events": [
+          {
+            "seconds": 17.04942297935486,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.637829065322876,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 3,
+        "proposal_seconds": 0.918658971786499,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.972198963165283,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.0766685,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.89252495765686,
+        "time_within_0.01_of_best": 3.3078150749206543,
+        "time_within_0.001_of_best": 3.3078150749206543,
+        "events": [
+          {
+            "seconds": 3.3078150749206543,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.891754150390625,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "proposal_seconds": 14.811665773391724,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.831859111785889,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.073641834,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.64519190788269,
+        "time_within_0.01_of_best": 17.061115980148315,
+        "time_within_0.001_of_best": 17.061115980148315,
+        "events": [
+          {
+            "seconds": 17.061115980148315,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.644418954849243,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "proposal_seconds": 0.9159209728240967,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.847481966018677,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.05740675,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.765066146850586,
+        "time_within_0.01_of_best": 3.1731960773468018,
+        "time_within_0.001_of_best": 3.1731960773468018,
+        "events": [
+          {
+            "seconds": 3.1731960773468018,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.7642951011657715,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "proposal_seconds": 0.9151530265808105,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.960933208465576,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057634667,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.893631935119629,
+        "time_within_0.01_of_best": 3.1992127895355225,
+        "time_within_0.001_of_best": 3.1992127895355225,
+        "events": [
+          {
+            "seconds": 3.1992127895355225,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.892861843109131,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "proposal_seconds": 14.80689001083374,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.859231948852539,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057385167,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.667800903320312,
+        "time_within_0.01_of_best": 17.069658994674683,
+        "time_within_0.001_of_best": 17.069658994674683,
+        "events": [
+          {
+            "seconds": 17.069658994674683,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.667031049728394,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 3,
+        "proposal_seconds": 14.836107969284058,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.835281133651733,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057298917,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 20.67304301261902,
+        "time_within_0.01_of_best": 17.067668914794922,
+        "time_within_0.001_of_best": 17.067668914794922,
+        "events": [
+          {
+            "seconds": 17.067668914794922,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 20.67227602005005,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 3,
+        "proposal_seconds": 0.933319091796875,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.843301057815552,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057470833,
+        "fourfold_replay": true,
+        "label": "gates24",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.778288125991821,
+        "time_within_0.01_of_best": 3.1603751182556152,
+        "time_within_0.001_of_best": 3.1603751182556152,
+        "events": [
+          {
+            "seconds": 3.1603751182556152,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.77753210067749,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 1,
+        "proposal_seconds": 14.980278968811035,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 9.37808609008789,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.112596083,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 24.360377073287964,
+        "time_within_0.01_of_best": 22.265727996826172,
+        "time_within_0.001_of_best": 22.265727996826172,
+        "events": [
+          {
+            "seconds": 22.265727996826172,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 24.35959506034851,
+            "objective": 168633.19864503312
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 1,
+        "proposal_seconds": 2.3759450912475586,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.42394709587097,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.112783584,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.801891088485718,
+        "time_within_0.01_of_best": 9.696576833724976,
+        "time_within_0.001_of_best": 9.696576833724976,
+        "events": [
+          {
+            "seconds": 9.696576833724976,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.801100969314575,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 2,
+        "proposal_seconds": 2.4948878288269043,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.429686307907104,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.128070375,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.92656683921814,
+        "time_within_0.01_of_best": 9.83146595954895,
+        "time_within_0.001_of_best": 9.83146595954895,
+        "events": [
+          {
+            "seconds": 9.83146595954895,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.925776958465576,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 2,
+        "proposal_seconds": 14.984143018722534,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 9.161569118499756,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.1128895,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 24.147693872451782,
+        "time_within_0.01_of_best": 22.25910186767578,
+        "time_within_0.001_of_best": 22.25910186767578,
+        "events": [
+          {
+            "seconds": 22.25910186767578,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 24.146920919418335,
+            "objective": 168633.19864503312
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 3,
+        "proposal_seconds": 14.992570161819458,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 9.194637060165405,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.159167,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 24.1892249584198,
+        "time_within_0.01_of_best": 22.290110111236572,
+        "time_within_0.001_of_best": 22.290110111236572,
+        "events": [
+          {
+            "seconds": 22.290110111236572,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 24.18841814994812,
+            "objective": 168633.19864503312
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 3,
+        "proposal_seconds": 2.5165228843688965,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.369803190231323,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.121896708,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.888352870941162,
+        "time_within_0.01_of_best": 9.816511869430542,
+        "time_within_0.001_of_best": 9.816511869430542,
+        "events": [
+          {
+            "seconds": 9.816511869430542,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.887528896331787,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 1,
+        "proposal_seconds": 14.96495795249939,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.290186882019043,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.11244125,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 31.25710892677307,
+        "time_within_0.01_of_best": 22.19840407371521,
+        "time_within_0.001_of_best": 22.19840407371521,
+        "events": [
+          {
+            "seconds": 22.19840407371521,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 31.256351947784424,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 1,
+        "proposal_seconds": 2.3625199794769287,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.316565990447998,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.244582166,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.681084871292114,
+        "time_within_0.01_of_best": 9.608356952667236,
+        "time_within_0.001_of_best": 9.608356952667236,
+        "events": [
+          {
+            "seconds": 9.608356952667236,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.680318117141724,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 2,
+        "proposal_seconds": 2.3580358028411865,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.278303146362305,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.112204208,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.638288021087646,
+        "time_within_0.01_of_best": 9.578639030456543,
+        "time_within_0.001_of_best": 9.578639030456543,
+        "events": [
+          {
+            "seconds": 9.578639030456543,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.63752007484436,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 2,
+        "proposal_seconds": 14.936983346939087,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.289342164993286,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.127117792,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 31.228285789489746,
+        "time_within_0.01_of_best": 22.19219183921814,
+        "time_within_0.001_of_best": 22.19219183921814,
+        "events": [
+          {
+            "seconds": 22.19219183921814,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 31.22751784324646,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 3,
+        "proposal_seconds": 14.952453136444092,
+        "best_observed_objective": 169231.7494640503,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "TIME_LIMIT",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.265169858932495,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.159728166,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 31.21959686279297,
+        "time_within_0.01_of_best": 22.187742948532104,
+        "time_within_0.001_of_best": 22.187742948532104,
+        "events": [
+          {
+            "seconds": 22.187742948532104,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 31.218826055526733,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "6acfdc6dab4a9c9e5d154b18a4f1aa97860f43d6951fd6f1acb4b10189128702",
+        "repeat": 3,
+        "proposal_seconds": 2.4746859073638916,
+        "best_observed_objective": 169231.7494640503,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 169231.7494640503,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 16.270033836364746,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.123157,
+        "fourfold_replay": true,
+        "label": "gates48",
+        "objective_components": {
+          "gate_cost": 180,
+          "release_penalty": 0,
+          "electricity_revenue": 169788.53908249,
+          "transition_cost": 0,
+          "reservoir_value_change": -378.24486329776755,
+          "river_value_change": 1.4552448580861892
+        },
+        "total_seconds": 18.746674060821533,
+        "time_within_0.01_of_best": 9.716026067733765,
+        "time_within_0.001_of_best": 9.716026067733765,
+        "events": [
+          {
+            "seconds": 9.716026067733765,
+            "objective": 169231.7494640503
+          },
+          {
+            "seconds": 18.745911121368408,
+            "objective": 168651.52804257857
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.704790843694354e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 1,
+        "proposal_seconds": 1.153397798538208,
+        "best_observed_objective": 14023.477006044915,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.2259747982025146,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.016295125,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 2.380774974822998,
+        "time_within_0.01_of_best": 1.8572919368743896,
+        "time_within_0.001_of_best": 1.8572919368743896,
+        "events": [
+          {
+            "seconds": 1.8572919368743896,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 2.379971981048584,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 1,
+        "proposal_seconds": 0.18528223037719727,
+        "best_observed_objective": 14023.477006044915,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.2462139129638672,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.016188084,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 1.4328479766845703,
+        "time_within_0.01_of_best": 0.9099271297454834,
+        "time_within_0.001_of_best": 0.9099271297454834,
+        "events": [
+          {
+            "seconds": 0.9099271297454834,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 1.4321019649505615,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 2,
+        "proposal_seconds": 0.18523097038269043,
+        "best_observed_objective": 14023.477006044915,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.2294278144836426,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.037584375,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 1.4160408973693848,
+        "time_within_0.01_of_best": 0.8914530277252197,
+        "time_within_0.001_of_best": 0.8914530277252197,
+        "events": [
+          {
+            "seconds": 0.8914530277252197,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 1.4152820110321045,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 2,
+        "proposal_seconds": 1.161350965499878,
+        "best_observed_objective": 14023.477006044915,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.229731798171997,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.016291834,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 2.392475128173828,
+        "time_within_0.01_of_best": 1.8678719997406006,
+        "time_within_0.001_of_best": 1.8678719997406006,
+        "events": [
+          {
+            "seconds": 1.8678719997406006,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 2.391716957092285,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 3,
+        "proposal_seconds": 1.1491501331329346,
+        "best_observed_objective": 14023.477006044915,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.2253501415252686,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.016340958,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 2.375854969024658,
+        "time_within_0.01_of_best": 1.8516209125518799,
+        "time_within_0.001_of_best": 1.8516209125518799,
+        "events": [
+          {
+            "seconds": 1.8516209125518799,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 2.3751049041748047,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 3,
+        "proposal_seconds": 0.18526601791381836,
+        "best_observed_objective": 14023.477006044915,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 14023.477006044915,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.2238569259643555,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.016302542,
+        "fourfold_replay": true,
+        "label": "gates6",
+        "objective_components": {
+          "gate_cost": 20,
+          "release_penalty": 0,
+          "electricity_revenue": 14116.967399507741,
+          "transition_cost": 0,
+          "reservoir_value_change": -97.560696933038,
+          "river_value_change": 24.07030347021248
+        },
+        "total_seconds": 1.4105048179626465,
+        "time_within_0.01_of_best": 0.8870158195495605,
+        "time_within_0.001_of_best": 0.8870158195495605,
+        "events": [
+          {
+            "seconds": 0.8870158195495605,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 1.4097449779510498,
+            "objective": 13984.36981865967
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 6.876140901113104e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 1,
+        "proposal_seconds": 12.983912944793701,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.812485218048096,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056947334,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 18.798020124435425,
+        "time_within_0.01_of_best": 15.202281951904297,
+        "time_within_0.001_of_best": 15.202281951904297,
+        "events": [
+          {
+            "seconds": 15.202281951904297,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 18.797261953353882,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 1,
+        "proposal_seconds": 1.0292048454284668,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.935607194900513,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057173208,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.9664459228515625,
+        "time_within_0.01_of_best": 3.2446210384368896,
+        "time_within_0.001_of_best": 3.2446210384368896,
+        "events": [
+          {
+            "seconds": 3.2446210384368896,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.965687990188599,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 2,
+        "proposal_seconds": 0.9819259643554688,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.831741094589233,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056980458,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.815300941467285,
+        "time_within_0.01_of_best": 3.229965925216675,
+        "time_within_0.001_of_best": 3.229965925216675,
+        "events": [
+          {
+            "seconds": 3.229965925216675,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.814543962478638,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 2,
+        "proposal_seconds": 12.967129945755005,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.823003053665161,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056913083,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 18.791775226593018,
+        "time_within_0.01_of_best": 15.203521013259888,
+        "time_within_0.001_of_best": 15.203521013259888,
+        "events": [
+          {
+            "seconds": 15.203521013259888,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 18.791011095046997,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 3,
+        "proposal_seconds": 12.940405130386353,
+        "best_observed_objective": 84634.30249452242,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.811402797698975,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057393541,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 18.753473043441772,
+        "time_within_0.01_of_best": 15.181566953659058,
+        "time_within_0.001_of_best": 15.181566953659058,
+        "events": [
+          {
+            "seconds": 15.181566953659058,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 18.75269103050232,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "c0801ac014d665c189fcb98d10ecb37f7f75818920e3238051f551e98edbec65",
+        "repeat": 3,
+        "proposal_seconds": 0.9806191921234131,
+        "best_observed_objective": 84634.30249452242,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 84634.30249452242,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 5.8353071212768555,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.05708975,
+        "fourfold_replay": true,
+        "label": "gates_restricted",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84925.30238637171,
+          "transition_cost": 0,
+          "reservoir_value_change": -192.4055559578214,
+          "river_value_change": 1.405664108528498
+        },
+        "total_seconds": 6.8175740242004395,
+        "time_within_0.01_of_best": 3.2391440868377686,
+        "time_within_0.001_of_best": 3.2391440868377686,
+        "events": [
+          {
+            "seconds": 3.2391440868377686,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 6.816807985305786,
+            "objective": 84361.53516185505
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 8.681989527303813e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 1,
+        "proposal_seconds": 15.486382961273193,
+        "best_observed_objective": 93664.72563854967,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 93647.98373014084,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "TIME_LIMIT"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.0476188659667969,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057187417,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 93831.89818414503,
+          "transition_cost": 0,
+          "reservoir_value_change": -212.55770250160134,
+          "river_value_change": 28.643248497412458
+        },
+        "total_seconds": 16.535633087158203,
+        "time_within_0.01_of_best": 15.969179153442383,
+        "time_within_0.001_of_best": 16.534877061843872,
+        "events": [
+          {
+            "seconds": 15.969179153442383,
+            "objective": 93478.41827830885
+          },
+          {
+            "seconds": 16.534877061843872,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.1620034570114512e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 1,
+        "proposal_seconds": 1.4789807796478271,
+        "best_observed_objective": 93664.72563854967,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 93664.72563854967,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 2.1731019020080566,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057425875,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 900,
+          "release_penalty": 0,
+          "electricity_revenue": 94517.79958405138,
+          "transition_cost": 0,
+          "reservoir_value_change": 39.871579831796225,
+          "river_value_change": 7.054474666500937
+        },
+        "total_seconds": 3.653743028640747,
+        "time_within_0.01_of_best": 3.109171152114868,
+        "time_within_0.001_of_best": 3.109171152114868,
+        "events": [
+          {
+            "seconds": 3.109171152114868,
+            "objective": 93664.72563854967
+          },
+          {
+            "seconds": 3.6529641151428223,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.2638488087191035e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 2,
+        "proposal_seconds": 1.4246199131011963,
+        "best_observed_objective": 93664.72563854967,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 93664.72563854967,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 2.213008165359497,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.07288025,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 900,
+          "release_penalty": 0,
+          "electricity_revenue": 94517.79958405138,
+          "transition_cost": 0,
+          "reservoir_value_change": 39.871579831796225,
+          "river_value_change": 7.054474666500937
+        },
+        "total_seconds": 3.6393039226531982,
+        "time_within_0.01_of_best": 3.0931758880615234,
+        "time_within_0.001_of_best": 3.0931758880615234,
+        "events": [
+          {
+            "seconds": 3.0931758880615234,
+            "objective": 93664.72563854967
+          },
+          {
+            "seconds": 3.6385109424591064,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.2638488087191035e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 2,
+        "proposal_seconds": 15.387744903564453,
+        "best_observed_objective": 93664.72563854967,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 93647.98373014084,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "TIME_LIMIT"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.0437970161437988,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057241459,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 93831.89818414503,
+          "transition_cost": 0,
+          "reservoir_value_change": -212.55770250160134,
+          "river_value_change": 28.643248497412458
+        },
+        "total_seconds": 16.43319821357727,
+        "time_within_0.01_of_best": 15.868402004241943,
+        "time_within_0.001_of_best": 16.432438135147095,
+        "events": [
+          {
+            "seconds": 15.868402004241943,
+            "objective": 93478.41827830885
+          },
+          {
+            "seconds": 16.432438135147095,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.1620034570114512e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 3,
+        "proposal_seconds": 15.376783847808838,
+        "best_observed_objective": 93664.72563854967,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 93647.98373014084,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "TIME_LIMIT"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 1.0284161567687988,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.077994958,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 93831.89818414503,
+          "transition_cost": 0,
+          "reservoir_value_change": -212.55770250160134,
+          "river_value_change": 28.643248497412458
+        },
+        "total_seconds": 16.406857013702393,
+        "time_within_0.01_of_best": 15.857117891311646,
+        "time_within_0.001_of_best": 16.406086921691895,
+        "events": [
+          {
+            "seconds": 15.857117891311646,
+            "objective": 93478.41827830885
+          },
+          {
+            "seconds": 16.406086921691895,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.1620034570114512e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "31089993a38aed0e77b770a5bb4ba86b2ed97c316872cec98feeb9cbd87f82d5",
+        "repeat": 3,
+        "proposal_seconds": 1.424954891204834,
+        "best_observed_objective": 93664.72563854967,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 93664.72563854967,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 2.205923080444336,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.07414325,
+        "fourfold_replay": true,
+        "label": "gates_volatile",
+        "objective_components": {
+          "gate_cost": 900,
+          "release_penalty": 0,
+          "electricity_revenue": 94517.79958405138,
+          "transition_cost": 0,
+          "reservoir_value_change": 39.871579831796225,
+          "river_value_change": 7.054474666500937
+        },
+        "total_seconds": 3.632539987564087,
+        "time_within_0.01_of_best": 3.088287115097046,
+        "time_within_0.001_of_best": 3.088287115097046,
+        "events": [
+          {
+            "seconds": 3.088287115097046,
+            "objective": 93664.72563854967
+          },
+          {
+            "seconds": 3.6317710876464844,
+            "objective": 93647.98373014084
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 1.2638488087191035e-06,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 1,
+        "proposal_seconds": 15.10337781906128,
+        "best_observed_objective": 85073.56891347296,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 6.883342981338501,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056863375,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 21.98835301399231,
+        "time_within_0.01_of_best": 19.066057920455933,
+        "time_within_0.001_of_best": 19.066057920455933,
+        "events": [
+          {
+            "seconds": 19.066057920455933,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 21.98758888244629,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 1,
+        "proposal_seconds": 0.8974599838256836,
+        "best_observed_objective": 85073.56891347296,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 7.044084787368774,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056948542,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 7.94318413734436,
+        "time_within_0.01_of_best": 4.908200025558472,
+        "time_within_0.001_of_best": 4.908200025558472,
+        "events": [
+          {
+            "seconds": 4.908200025558472,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 7.942424058914185,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 2,
+        "proposal_seconds": 0.8949680328369141,
+        "best_observed_objective": 85073.56891347296,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 6.902825117111206,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056825333,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 7.799438953399658,
+        "time_within_0.01_of_best": 4.877810955047607,
+        "time_within_0.001_of_best": 4.877810955047607,
+        "events": [
+          {
+            "seconds": 4.877810955047607,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 7.798675060272217,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 2,
+        "proposal_seconds": 15.100856065750122,
+        "best_observed_objective": 85073.56891347296,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 6.920677185058594,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056804833,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 22.0231831073761,
+        "time_within_0.01_of_best": 19.08379602432251,
+        "time_within_0.001_of_best": 19.08379602432251,
+        "events": [
+          {
+            "seconds": 19.08379602432251,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 22.022422075271606,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 3,
+        "proposal_seconds": 15.091581106185913,
+        "best_observed_objective": 85073.56891347296,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "TIME_LIMIT",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 6.905313730239868,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.057787083,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 21.998547077178955,
+        "time_within_0.01_of_best": 19.074443101882935,
+        "time_within_0.001_of_best": 19.074443101882935,
+        "events": [
+          {
+            "seconds": 19.074443101882935,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 21.99777913093567,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "7fc0d580626331754ae6e4af5bfb88e4660978d7fe2c1d153ea78598ce9b975d",
+        "repeat": 3,
+        "proposal_seconds": 0.8964071273803711,
+        "best_observed_objective": 85073.56891347296,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 85073.56891347296,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 6.915441274642944,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.056943375,
+        "fourfold_replay": true,
+        "label": "gates_wet",
+        "objective_components": {
+          "gate_cost": 100,
+          "release_penalty": 0,
+          "electricity_revenue": 84903.43969325174,
+          "transition_cost": 0,
+          "reservoir_value_change": 268.65567654271007,
+          "river_value_change": 1.47354367851068
+        },
+        "total_seconds": 7.813500165939331,
+        "time_within_0.01_of_best": 4.893915891647339,
+        "time_within_0.001_of_best": 4.893915891647339,
+        "events": [
+          {
+            "seconds": 4.893915891647339,
+            "objective": 85073.56891347296
+          },
+          {
+            "seconds": 7.812740802764893,
+            "objective": 84800.59411369925
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 9.257694557618379e-07,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 1,
+        "proposal_seconds": 0.0453488826751709,
+        "best_observed_objective": 9851.173809225029,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7291240692138672,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004088166,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.7750189304351807,
+        "time_within_0.01_of_best": 0.7551779747009277,
+        "time_within_0.001_of_best": 0.7551779747009277,
+        "events": [
+          {
+            "seconds": 0.013152122497558594,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7551779747009277,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7748029232025146,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 1,
+        "proposal_seconds": 0.03186511993408203,
+        "best_observed_objective": 9851.173809225029,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7545890808105469,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004068417,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.7870409488677979,
+        "time_within_0.01_of_best": 0.767341136932373,
+        "time_within_0.001_of_best": 0.767341136932373,
+        "events": [
+          {
+            "seconds": 0.013571977615356445,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.767341136932373,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7868320941925049,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 2,
+        "proposal_seconds": 0.03182387351989746,
+        "best_observed_objective": 9851.173809225029,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7280738353729248,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004059666,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.7604701519012451,
+        "time_within_0.01_of_best": 0.7406258583068848,
+        "time_within_0.001_of_best": 0.7406258583068848,
+        "events": [
+          {
+            "seconds": 0.01322484016418457,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7406258583068848,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7602519989013672,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 2,
+        "proposal_seconds": 0.04411196708679199,
+        "best_observed_objective": 9851.173809225029,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7266068458557129,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004058792,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.77128005027771,
+        "time_within_0.01_of_best": 0.7515590190887451,
+        "time_within_0.001_of_best": 0.7515590190887451,
+        "events": [
+          {
+            "seconds": 0.013396978378295898,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7515590190887451,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7710719108581543,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 3,
+        "proposal_seconds": 0.04424405097961426,
+        "best_observed_objective": 9851.173809225029,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7302970886230469,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004090125,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.7751131057739258,
+        "time_within_0.01_of_best": 0.7552859783172607,
+        "time_within_0.001_of_best": 0.7552859783172607,
+        "events": [
+          {
+            "seconds": 0.013585805892944336,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7552859783172607,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7748987674713135,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 3,
+        "proposal_seconds": 0.031775712966918945,
+        "best_observed_objective": 9851.173809225029,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 9851.173809225029,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 0.7525629997253418,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.004048625,
+        "fourfold_replay": true,
+        "label": "tables",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 10826.573818839393,
+          "transition_cost": 160,
+          "reservoir_value_change": -809.4598249193959,
+          "river_value_change": -5.940184694968593
+        },
+        "total_seconds": 0.7849211692810059,
+        "time_within_0.01_of_best": 0.7651889324188232,
+        "time_within_0.001_of_best": 0.7651889324188232,
+        "events": [
+          {
+            "seconds": 0.013458967208862305,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7651889324188232,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.7847030162811279,
+            "objective": 9030.065961996765
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 4.738431869100168e-13,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "proposal_seconds": 0.566807746887207,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 743597.7233854465,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.81779384613037,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.358353333,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 507688.0868969471,
+          "transition_cost": 7057,
+          "reservoir_value_change": 242966.63648849938,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 24.387687921524048,
+        "time_within_0.01_of_best": 24.386471033096313,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.6218159198760986,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 24.386471033096313,
+            "objective": 743597.7233854465
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006516707108694675,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "proposal_seconds": 0.6161129474639893,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 746913.4584887451,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.754910945892334,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.360835209,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 507675.6810771209,
+          "transition_cost": 6530,
+          "reservoir_value_change": 245767.7774116242,
+          "river_value_change": 5.820766091346741e-11
+        },
+        "total_seconds": 24.374072074890137,
+        "time_within_0.01_of_best": 24.372864961624146,
+        "time_within_0.001_of_best": 24.372864961624146,
+        "events": [
+          {
+            "seconds": 2.611117124557495,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 24.372864961624146,
+            "objective": 746913.4584887451
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006284923615496041,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "proposal_seconds": 0.6206080913543701,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747136.2725216282,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.74181604385376,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.360105875,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 502613.079119227,
+          "transition_cost": 6530,
+          "reservoir_value_change": 251053.19340240114,
+          "river_value_change": 2.9103830456733704e-11
+        },
+        "total_seconds": 24.365571975708008,
+        "time_within_0.01_of_best": 24.364266872406006,
+        "time_within_0.001_of_best": 24.364266872406006,
+        "events": [
+          {
+            "seconds": 2.644083023071289,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 24.364266872406006,
+            "objective": 747136.2725216282
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006337568108705227,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "proposal_seconds": 0.5657272338867188,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 742702.3290634577,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.80882215499878,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.361994667,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 506694.42078534985,
+          "transition_cost": 7057,
+          "reservoir_value_change": 243064.9082781078,
+          "river_value_change": 2.9103830456733704e-11
+        },
+        "total_seconds": 24.377566814422607,
+        "time_within_0.01_of_best": 24.37636089324951,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.5989649295806885,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 24.37636089324951,
+            "objective": 742702.3290634577
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006513983454929928,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 3,
+        "proposal_seconds": 0.5698940753936768,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": -2073741.6682660119,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.774555921554565,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.35655275,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 569412.180805266,
+          "transition_cost": 2480,
+          "reservoir_value_change": -2640673.849071278,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 24.3475341796875,
+        "time_within_0.01_of_best": null,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.6406660079956055,
+            "objective": -2073741.6682660119
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000300437502774642,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 3,
+        "proposal_seconds": 0.6170146465301514,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747296.0935367522,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.747425079345703,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.362504875,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 504324.4310191174,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249501.66251763474,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 24.367467880249023,
+        "time_within_0.01_of_best": 24.366267919540405,
+        "time_within_0.001_of_best": 24.366267919540405,
+        "events": [
+          {
+            "seconds": 2.601736068725586,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 24.366267919540405,
+            "objective": 747296.0935367522
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006333705799121958,
+        "accepted": true,
+        "dispatch_count": 2
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "proposal_seconds": 0.5521702766418457,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 743102.3091279786,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.72265672683716,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.3717675,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 509300.3168574615,
+          "transition_cost": 7057,
+          "reservoir_value_change": 240858.99227051713,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.27826714515686,
+        "time_within_0.01_of_best": 40.35543894767761,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.8098039627075195,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 40.35543894767761,
+            "objective": 743102.3091279786
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006503508641841904,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "proposal_seconds": 0.6099700927734375,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747359.3562719859,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.788058042526245,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.362751125,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 504140.32851385424,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249749.02775813168,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.40141177177429,
+        "time_within_0.01_of_best": 35.175519943237305,
+        "time_within_0.001_of_best": 35.175519943237305,
+        "events": [
+          {
+            "seconds": 2.610743999481201,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 35.175519943237305,
+            "objective": 747359.3562719859
+          },
+          {
+            "seconds": 60.40022897720337,
+            "objective": 739825.8882584923
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006336573189003047,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "proposal_seconds": 0.6101419925689697,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747359.3562719859,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.794702768325806,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.368255291,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 504140.32851385424,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249749.02775813168,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.40821599960327,
+        "time_within_0.01_of_best": 35.12485909461975,
+        "time_within_0.001_of_best": 35.12485909461975,
+        "events": [
+          {
+            "seconds": 2.6751091480255127,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 35.12485909461975,
+            "objective": 747359.3562719859
+          },
+          {
+            "seconds": 60.40699505805969,
+            "objective": 739591.4184895178
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006336573189003047,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "proposal_seconds": 0.5647528171539307,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 743102.3091279786,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.91329312324524,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.36942925,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 509300.3168574615,
+          "transition_cost": 7057,
+          "reservoir_value_change": 240858.99227051713,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.4814178943634,
+        "time_within_0.01_of_best": 40.647361040115356,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.6295268535614014,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 40.647361040115356,
+            "objective": 743102.3091279786
+          },
+          {
+            "seconds": 60.480209827423096,
+            "objective": -1467269.1563772254
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006503508641841904,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 3,
+        "proposal_seconds": 0.5516197681427002,
+        "best_observed_objective": 747359.3562719859,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 743102.3091279786,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.8469979763031,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.360696042,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 509300.3168574615,
+          "transition_cost": 7057,
+          "reservoir_value_change": 240858.99227051713,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.40202713012695,
+        "time_within_0.01_of_best": 40.66023802757263,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.6241371631622314,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 40.66023802757263,
+            "objective": 743102.3091279786
+          },
+          {
+            "seconds": 60.40083312988281,
+            "objective": -1467655.5367664273
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006503508641841904,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 3,
+        "proposal_seconds": 0.6058516502380371,
+        "best_observed_objective": 747359.3562719859,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747359.3562719859,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.79854774475098,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.359845458,
+        "fourfold_replay": true,
+        "label": "tokke24",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 504140.32851385424,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249749.02775813168,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.40776801109314,
+        "time_within_0.01_of_best": 34.883002042770386,
+        "time_within_0.001_of_best": 34.883002042770386,
+        "events": [
+          {
+            "seconds": 2.6374499797821045,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 34.883002042770386,
+            "objective": 747359.3562719859
+          },
+          {
+            "seconds": 60.40657711029053,
+            "objective": 739822.1806167274
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006336573189003047,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "proposal_seconds": 0.11520695686340332,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.990169048309326,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.101444084,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 24.107685089111328,
+        "time_within_0.01_of_best": 15.093400955200195,
+        "time_within_0.001_of_best": 15.093400955200195,
+        "events": [
+          {
+            "seconds": 5.049316883087158,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 15.093400955200195,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.10649085044861,
+            "objective": 217711.13132467275
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "proposal_seconds": 0.1198129653930664,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.998764753341675,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.100527583,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 24.121047973632812,
+        "time_within_0.01_of_best": 14.930357217788696,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.858578205108643,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.930357217788696,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.428977012634277,
+            "objective": 196867.9985202602
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "proposal_seconds": 0.10803484916687012,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 24.010363817214966,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.099149875,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 24.12085485458374,
+        "time_within_0.01_of_best": 14.9564528465271,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.8747570514678955,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.9564528465271,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.474879026412964,
+            "objective": 196867.9985202602
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "proposal_seconds": 0.11505484580993652,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.986814975738525,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.092526,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 24.10420513153076,
+        "time_within_0.01_of_best": 14.917492151260376,
+        "time_within_0.001_of_best": 14.917492151260376,
+        "events": [
+          {
+            "seconds": 4.879829168319702,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.917492151260376,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.103012084960938,
+            "objective": 217709.8849547792
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 3,
+        "proposal_seconds": 0.11473512649536133,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.98916506767273,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.10099625,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 24.10626983642578,
+        "time_within_0.01_of_best": 14.905631065368652,
+        "time_within_0.001_of_best": 14.905631065368652,
+        "events": [
+          {
+            "seconds": 4.8602988719940186,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.905631065368652,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.105077981948853,
+            "objective": 217711.4427087119
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 3,
+        "proposal_seconds": 0.1204826831817627,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 23.997934103012085,
+        "budget_seconds": 24,
+        "fourfold_seconds": 0.100419291,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 24.120901823043823,
+        "time_within_0.01_of_best": 14.938905954360962,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.859678030014038,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.938905954360962,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.444786071777344,
+            "objective": 196867.9985202602
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "proposal_seconds": 0.1148366928100586,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 43.510072231292725,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.0915575,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 43.627546072006226,
+        "time_within_0.01_of_best": 14.929419994354248,
+        "time_within_0.001_of_best": 14.929419994354248,
+        "events": [
+          {
+            "seconds": 4.881962776184082,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.929419994354248,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.892082929611206,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 33.39714980125427,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 43.62630581855774,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 5
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "proposal_seconds": 0.1080019474029541,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 33.5233633518219,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.09053025,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 33.6338529586792,
+        "time_within_0.01_of_best": 14.963953971862793,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.878543853759766,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.963953971862793,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.464074850082397,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 33.632654905319214,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "proposal_seconds": 0.10789108276367188,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 33.46323084831238,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.090790292,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 33.57361102104187,
+        "time_within_0.01_of_best": 14.934421062469482,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.869973182678223,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.934421062469482,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.42364001274109,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 33.57240700721741,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "proposal_seconds": 0.11533808708190918,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 43.62023186683655,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.090615917,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 43.73829698562622,
+        "time_within_0.01_of_best": 14.933924913406372,
+        "time_within_0.001_of_best": 14.933924913406372,
+        "events": [
+          {
+            "seconds": 4.88149881362915,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.933924913406372,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.896920919418335,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 33.42157793045044,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 43.73709177970886,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 5
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 3,
+        "proposal_seconds": 0.1148982048034668,
+        "best_observed_objective": 219711.48698956455,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 219711.48698956455,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 43.451399087905884,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.091386,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 222464.6105588334,
+          "transition_cost": 2601,
+          "reservoir_value_change": -152.12356926884422,
+          "river_value_change": -5.4569682106375694e-12
+        },
+        "total_seconds": 43.56892395019531,
+        "time_within_0.01_of_best": 14.952006101608276,
+        "time_within_0.001_of_best": 14.952006101608276,
+        "events": [
+          {
+            "seconds": 4.885177135467529,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.952006101608276,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 24.892071962356567,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 33.40650010108948,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 43.567728996276855,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+        "accepted": true,
+        "dispatch_count": 5
+      },
+      {
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 3,
+        "proposal_seconds": 0.10783886909484863,
+        "best_observed_objective": 219711.48698956455,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 217625.41359041265,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 33.5452139377594,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.099670083,
+        "fourfold_replay": true,
+        "label": "tokke6",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 230842.75107796956,
+          "transition_cost": 2386,
+          "reservoir_value_change": -10831.337487556912,
+          "river_value_change": -1.8189894035458565e-12
+        },
+        "total_seconds": 33.65569305419922,
+        "time_within_0.01_of_best": 14.961057186126709,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 4.877110004425049,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 14.961057186126709,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 23.466037034988403,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 33.65435004234314,
+            "objective": 213401.77390789066
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.000204217340865398,
+        "accepted": true,
+        "dispatch_count": 4
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 1,
+        "proposal_seconds": 0.4610779285430908,
+        "best_observed_objective": 826917.4094759574,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 825856.33564136,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.970433950424194,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.426675917,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476006.67089840537,
+          "transition_cost": 30450,
+          "reservoir_value_change": 380299.66474295466,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.43487095832825,
+        "time_within_0.01_of_best": 38.50375008583069,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.632240056991577,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 38.50375008583069,
+            "objective": 825856.33564136
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938763786441427,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 1,
+        "proposal_seconds": 0.620124101638794,
+        "best_observed_objective": 826917.4094759574,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 826917.4094759574,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.756837129592896,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.395131459,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476092.76159519056,
+          "transition_cost": 30122,
+          "reservoir_value_change": 380946.64788076683,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.380351066589355,
+        "time_within_0.01_of_best": 38.19047498703003,
+        "time_within_0.001_of_best": 38.19047498703003,
+        "events": [
+          {
+            "seconds": 2.6138129234313965,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 38.19047498703003,
+            "objective": 826917.4094759574
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938197563355232,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 2,
+        "proposal_seconds": 0.6159610748291016,
+        "best_observed_objective": 826917.4094759574,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 826917.4094759574,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.77375626564026,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.400183625,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476092.76159519056,
+          "transition_cost": 30122,
+          "reservoir_value_change": 380946.64788076683,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.39314579963684,
+        "time_within_0.01_of_best": 37.93481397628784,
+        "time_within_0.001_of_best": 37.93481397628784,
+        "events": [
+          {
+            "seconds": 2.61167311668396,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 37.93481397628784,
+            "objective": 826917.4094759574
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938197563355232,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 2,
+        "proposal_seconds": 0.46175312995910645,
+        "best_observed_objective": 826917.4094759574,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 825856.33564136,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.95847487449646,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.4188105,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476006.67089840537,
+          "transition_cost": 30450,
+          "reservoir_value_change": 380299.66474295466,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.42364001274109,
+        "time_within_0.01_of_best": 38.23738193511963,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.5954020023345947,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 38.23738193511963,
+            "objective": 825856.33564136
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938763786441427,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 3,
+        "proposal_seconds": 0.4770939350128174,
+        "best_observed_objective": 826917.4094759574,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 825856.33564136,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.958547830581665,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.417664375,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476006.67089840537,
+          "transition_cost": 30450,
+          "reservoir_value_change": 380299.66474295466,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.43901014328003,
+        "time_within_0.01_of_best": 38.164291858673096,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 2.6118569374084473,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 38.164291858673096,
+            "objective": 825856.33564136
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938763786441427,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "7a294253fa638f8b9021586e19667b8e110b7965590c4a3ddfe8fa0a003519c9",
+        "repeat": 3,
+        "proposal_seconds": 0.6056599617004395,
+        "best_observed_objective": 826917.4094759574,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 826917.4094759574,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 60.00052809715271,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.39590875,
+        "fourfold_replay": true,
+        "label": "tokke_prices",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 476092.76159519056,
+          "transition_cost": 30122,
+          "reservoir_value_change": 380946.64788076683,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.609619140625,
+        "time_within_0.01_of_best": 37.82580804824829,
+        "time_within_0.001_of_best": 37.82580804824829,
+        "events": [
+          {
+            "seconds": 2.6120951175689697,
+            "objective": -2072588.4978177086
+          },
+          {
+            "seconds": 37.82580804824829,
+            "objective": 826917.4094759574
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0007938197563355232,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 1,
+        "proposal_seconds": 0.5332460403442383,
+        "best_observed_objective": 747112.1751175132,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 742941.648019386,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.85261392593384,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.359251041,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 507133.3334912251,
+          "transition_cost": 7057,
+          "reservoir_value_change": 242865.31452816093,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.38921904563904,
+        "time_within_0.01_of_best": 39.7475380897522,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 0.9982459545135498,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 39.7475380897522,
+            "objective": 742941.648019386
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006568795304637831,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 1,
+        "proposal_seconds": 0.5519301891326904,
+        "best_observed_objective": 747112.1751175132,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747112.1751175132,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.829038858413696,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.360956375,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 503765.5840334767,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249876.59108403645,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.39154005050659,
+        "time_within_0.01_of_best": 35.611571073532104,
+        "time_within_0.001_of_best": 35.611571073532104,
+        "events": [
+          {
+            "seconds": 0.998737096786499,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 35.611571073532104,
+            "objective": 747112.1751175132
+          },
+          {
+            "seconds": 60.38314509391785,
+            "objective": 739466.3535634876
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006357961175602611,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 2,
+        "proposal_seconds": 0.5498812198638916,
+        "best_observed_objective": 747112.1751175132,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747112.1751175132,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.97462010383606,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.369121166,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 503765.5840334767,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249876.59108403645,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.52789306640625,
+        "time_within_0.01_of_best": 35.5745689868927,
+        "time_within_0.001_of_best": 35.5745689868927,
+        "events": [
+          {
+            "seconds": 0.9891958236694336,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 35.5745689868927,
+            "objective": 747112.1751175132
+          },
+          {
+            "seconds": 60.526665925979614,
+            "objective": 738941.6146359756
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006357961175602611,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 2,
+        "proposal_seconds": 0.5342049598693848,
+        "best_observed_objective": 747112.1751175132,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 742941.648019386,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.89694619178772,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.359294625,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 507133.3334912251,
+          "transition_cost": 7057,
+          "reservoir_value_change": 242865.31452816093,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.43451690673828,
+        "time_within_0.01_of_best": 39.59761691093445,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 0.994636058807373,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 39.59761691093445,
+            "objective": 742941.648019386
+          },
+          {
+            "seconds": 60.433305978775024,
+            "objective": 738544.6817111514
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006568795304637831,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 3,
+        "proposal_seconds": 0.5290350914001465,
+        "best_observed_objective": 747112.1751175132,
+        "method": "highs",
+        "attempt_errors": [],
+        "objective": 742941.648019386,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.88217306137085,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.360708167,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 507133.3334912251,
+          "transition_cost": 7057,
+          "reservoir_value_change": 242865.31452816093,
+          "river_value_change": -2.9103830456733704e-11
+        },
+        "total_seconds": 60.41469693183899,
+        "time_within_0.01_of_best": 39.6542592048645,
+        "time_within_0.001_of_best": null,
+        "events": [
+          {
+            "seconds": 0.9903120994567871,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 39.6542592048645,
+            "objective": 742941.648019386
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006568795304637831,
+        "accepted": true,
+        "dispatch_count": 3
+      },
+      {
+        "case_sha256": "9706301edc4d9577a72d1d81b6c4438496d4f06ef7db2a43c3f5c8875db9d8a5",
+        "repeat": 3,
+        "proposal_seconds": 0.6874659061431885,
+        "best_observed_objective": 747112.1751175132,
+        "method": "scip",
+        "attempt_errors": [],
+        "objective": 747112.1751175132,
+        "proposal_statuses": [
+          "OPTIMAL",
+          "OPTIMAL",
+          "OPTIMAL"
+        ],
+        "fourfold_errors": [],
+        "proposal_count": 3,
+        "dispatch_seconds": 59.700528144836426,
+        "budget_seconds": 60,
+        "fourfold_seconds": 0.361537541,
+        "fourfold_replay": true,
+        "label": "tokke_wet",
+        "objective_components": {
+          "gate_cost": 0,
+          "release_penalty": 0,
+          "electricity_revenue": 503765.5840334767,
+          "transition_cost": 6530,
+          "reservoir_value_change": 249876.59108403645,
+          "river_value_change": 0.0
+        },
+        "total_seconds": 60.3983678817749,
+        "time_within_0.01_of_best": 35.67954707145691,
+        "time_within_0.001_of_best": 35.67954707145691,
+        "events": [
+          {
+            "seconds": 1.0260770320892334,
+            "objective": -2034545.9094858747
+          },
+          {
+            "seconds": 35.67954707145691,
+            "objective": 747112.1751175132
+          },
+          {
+            "seconds": 60.39016008377075,
+            "objective": 739367.215074575
+          }
+        ],
+        "fourfold_storage_difference_Mm3": 0.0006357961175602611,
+        "accepted": true,
+        "dispatch_count": 3
+      }
+    ],
+    "julia_version": "1.13.1",
+    "cpu": "apple-m1",
+    "source_sha256": "657ab6e9a93f91e5ffc55016aebe919269c043687bd9cd1c352d7479cc463b44",
+    "julia_threads": 1,
+    "blas_threads": 1,
+    "quality_scope": "first independently accepted preparation event within 0.1% or 1% of best fourfold-valid delivered objective on the same input across all measured budgets; empirical, not optimality",
+    "timing_scope": "preparation only; loading and warmups excluded; fourfold replay outside measured preparation",
+    "comparison_commit": "3c15c7c",
+    "solver_versions": {
+      "HiGHS.jl": "1.26.0",
+      "SCIP.jl": "0.12.8",
+      "SCIP": "10.0.3",
+      "Ipopt.jl": "1.16.0",
+      "Ipopt": "3.14.19",
+      "JuMP": "1.32.0",
+      "HiGHS": "1.15.1",
+      "MathOptInterface": "1.54.0"
+    }
+  },
+  "ordinary_settings": [
+    {
+      "variables": 8244,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 19,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 0.633452,
+        "first_lp_seconds": 0.685356,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 104852.63612963642,
+        "nodes": 1,
+        "lp_iterations": 39958,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 85723.9742169569,
+        "root_upper_bound": 85723.9742169569,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 84634.30246598335,
+        "native_solve_seconds": 9.747689,
+        "cuts_applied": 1570
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000263
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 4.461825132369995
+        },
+        {
+          "water_scale": 0.7,
+          "status": "TIME_LIMIT",
+          "total_seconds": 5.192478895187378
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 4.332727909088135
+        }
+      ],
+      "method": "highs_ipopt",
+      "constraints": 15594,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.1307661533355713,
+      "objective": 84634.30246598308,
+      "on_intervals": 144,
+      "preparation_fraction": 0.8,
+      "case": "twelve-reservoir gates 24h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 30,
+      "candidate_error": null,
+      "label": "gates24",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 7.303484821363782e-07,
+      "total_seconds": 30.13076615333557,
+      "replay_errors": [],
+      "prepared_objective": 84634.30249452242,
+      "relative_gap": 0.01287506033870596,
+      "global_allowance_seconds": 10.078315019607544,
+      "first_validated_observed_seconds": 16.265339136123657,
+      "preparation_attempts": [
+        {
+          "seconds": 2.277567148208618,
+          "elapsed_seconds": 16.265339136123657,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 84634.30249452242
+        },
+        {
+          "seconds": 3.602644920349121,
+          "elapsed_seconds": 19.868174076080322,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 84361.53516185505
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 8.681989811520907e-07,
+      "preparation_seconds": 19.921684980392456,
+      "proposal_thread_policy": "HiGHS default",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 85723.9742169569,
+      "native_first_solution_seconds": 0.012266
+    },
+    {
+      "variables": 8244,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 29,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 0.63605,
+        "first_lp_seconds": 0.68384,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 104852.63612963642,
+        "nodes": 1,
+        "lp_iterations": 87399,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 85722.65443703308,
+        "root_upper_bound": 85722.65443703308,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 84634.30246598335,
+        "native_solve_seconds": 22.847917,
+        "cuts_applied": 1804
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000269
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 0.3043491840362549
+        },
+        {
+          "water_scale": 0.7,
+          "status": "OPTIMAL",
+          "total_seconds": 0.30092597007751465
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 0.3054239749908447
+        }
+      ],
+      "method": "scip_ipopt",
+      "constraints": 15594,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.13153600692749023,
+      "objective": 84634.30246598308,
+      "on_intervals": 144,
+      "preparation_fraction": 0.8,
+      "case": "twelve-reservoir gates 24h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 30,
+      "candidate_error": null,
+      "label": "gates24",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 7.303484821363782e-07,
+      "total_seconds": 30.13153600692749,
+      "replay_errors": [],
+      "prepared_objective": 84634.30249452242,
+      "relative_gap": 0.01285946642600896,
+      "global_allowance_seconds": 23.175718069076538,
+      "first_validated_observed_seconds": 3.1731648445129395,
+      "preparation_attempts": [
+        {
+          "seconds": 2.2617299556732178,
+          "elapsed_seconds": 3.1731648445129395,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 84634.30249452242
+        },
+        {
+          "seconds": 3.597292184829712,
+          "elapsed_seconds": 6.770658016204834,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 84361.53516185505
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 8.681989811520907e-07,
+      "preparation_seconds": 6.824281930923462,
+      "proposal_thread_policy": "one thread",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 85722.65443703308,
+      "native_first_solution_seconds": 0.012291
+    },
+    {
+      "variables": 6439,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 12,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 0.204655,
+        "first_lp_seconds": 0.32344,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 237245.74637017213,
+        "nodes": 1,
+        "lp_iterations": 38409,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 233579.00660977975,
+        "root_upper_bound": 233579.00660977975,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 217625.41359043098,
+        "native_solve_seconds": 5.140558,
+        "cuts_applied": 958
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000254
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 0.03789997100830078
+        },
+        {
+          "water_scale": 0.7,
+          "status": "OPTIMAL",
+          "total_seconds": 0.04805397987365723
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 0.036536216735839844
+        }
+      ],
+      "method": "scip_ipopt",
+      "constraints": 9035,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.15328097343444824,
+      "objective": 217625.41359041265,
+      "on_intervals": 78,
+      "preparation_fraction": 0.8,
+      "case": "tokke_vinje_operating_6h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 30,
+      "candidate_error": null,
+      "label": "tokke6",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 0.00016339459793357491,
+      "total_seconds": 30.15328097343445,
+      "replay_errors": [],
+      "prepared_objective": 217625.41359041265,
+      "relative_gap": 0.0733075827687706,
+      "global_allowance_seconds": 5.713408946990967,
+      "first_validated_observed_seconds": 4.896294116973877,
+      "preparation_attempts": [
+        {
+          "seconds": 4.895473957061768,
+          "elapsed_seconds": 4.896294116973877,
+          "stage": "feasibility",
+          "accepted": true,
+          "objective": -2291090.9411756266
+        },
+        {
+          "seconds": 9.973156929016113,
+          "elapsed_seconds": 14.99220895767212,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 217625.41359041265
+        },
+        {
+          "seconds": 8.520471096038818,
+          "elapsed_seconds": 23.51283597946167,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 196867.9985202602
+        },
+        {
+          "seconds": 0.5888240337371826,
+          "elapsed_seconds": 24.101798057556152,
+          "stage": "dispatch",
+          "accepted": false,
+          "objective": null
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 0.000204217340865398,
+      "preparation_seconds": 24.286591053009033,
+      "proposal_thread_policy": "one thread",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 233579.00660977975,
+      "native_first_solution_seconds": 0.007969
+    },
+    {
+      "variables": 6439,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 13,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 0.20898599999999998,
+        "first_lp_seconds": 0.37341799999999997,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 237245.7247166858,
+        "nodes": 1,
+        "lp_iterations": 34465,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 233510.84763553445,
+        "root_upper_bound": 233510.84763553445,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 219711.48698952675,
+        "native_solve_seconds": 5.174143,
+        "cuts_applied": 971
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000255
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 0.034635066986083984
+        },
+        {
+          "water_scale": 0.7,
+          "status": "OPTIMAL",
+          "total_seconds": 0.032292842864990234
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 0.0475468635559082
+        }
+      ],
+      "method": "highs_ipopt",
+      "constraints": 9035,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.15373921394348145,
+      "objective": 219711.48698956455,
+      "on_intervals": 73,
+      "preparation_fraction": 0.8,
+      "case": "tokke_vinje_operating_6h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 30,
+      "candidate_error": null,
+      "label": "tokke6",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 0.00016308604034520613,
+      "total_seconds": 30.15373921394348,
+      "replay_errors": [],
+      "prepared_objective": 219711.48698956455,
+      "relative_gap": 0.06280673275232673,
+      "global_allowance_seconds": 5.731292963027954,
+      "first_validated_observed_seconds": 5.058535099029541,
+      "preparation_attempts": [
+        {
+          "seconds": 5.057737112045288,
+          "elapsed_seconds": 5.058535099029541,
+          "stage": "feasibility",
+          "accepted": true,
+          "objective": -2291090.9411756266
+        },
+        {
+          "seconds": 9.92389702796936,
+          "elapsed_seconds": 15.097157001495361,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 219711.48698956455
+        },
+        {
+          "seconds": 9.006472110748291,
+          "elapsed_seconds": 24.103766202926636,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 217709.8849547792
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+      "preparation_seconds": 24.268707036972046,
+      "proposal_thread_policy": "HiGHS default",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 233510.84763553445,
+      "native_first_solution_seconds": 0.00794
+    },
+    {
+      "variables": 26213,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 3,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 1.945072,
+        "first_lp_seconds": 15.152325,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 802506.519433573,
+        "nodes": 1,
+        "lp_iterations": 106986,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 797316.813351481,
+        "root_upper_bound": 797316.813351481,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 743102.3091279349,
+        "native_solve_seconds": 57.606832,
+        "cuts_applied": 1679
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000263
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 0.1904308795928955
+        },
+        {
+          "water_scale": 0.7,
+          "status": "OPTIMAL",
+          "total_seconds": 0.14223313331604004
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 0.21102595329284668
+        }
+      ],
+      "method": "highs_ipopt",
+      "constraints": 36640,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.4649169445037842,
+      "objective": 743102.3091279786,
+      "on_intervals": 185,
+      "preparation_fraction": 0.8,
+      "case": "tokke_vinje_operating_24h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 120,
+      "candidate_error": null,
+      "label": "tokke24",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 0.0005202861797037883,
+      "total_seconds": 120.46491694450378,
+      "replay_errors": [],
+      "prepared_objective": 743102.3091279786,
+      "relative_gap": 0.07295698527316166,
+      "global_allowance_seconds": 59.45587611198425,
+      "first_validated_observed_seconds": 2.668498992919922,
+      "preparation_attempts": [
+        {
+          "seconds": 2.667180061340332,
+          "elapsed_seconds": 2.668498992919922,
+          "stage": "feasibility",
+          "accepted": true,
+          "objective": -2073741.6682660119
+        },
+        {
+          "seconds": 37.10601592063904,
+          "elapsed_seconds": 40.31879806518555,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 743102.3091279786
+        },
+        {
+          "seconds": 20.062558889389038,
+          "elapsed_seconds": 60.38170504570007,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": -1467269.1563772254
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 0.0006503508641841904,
+      "preparation_seconds": 60.54412388801575,
+      "proposal_thread_policy": "HiGHS default",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 797316.813351481,
+      "native_first_solution_seconds": 0.036092
+    },
+    {
+      "variables": 26213,
+      "native_statistics": {
+        "source": "SCIP native statistics; objective bounds in physical units",
+        "stage": "SCIP_STAGE_SOLVING",
+        "last_node_separation_rounds": 2,
+        "total_nodes": 1,
+        "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+        "presolving_seconds": 1.9328159999999999,
+        "first_lp_seconds": 15.790901,
+        "solutions_stored": 1,
+        "first_root_lp_upper_bound": 802506.5226774495,
+        "nodes": 1,
+        "lp_iterations": 96366,
+        "solutions_found": 1,
+        "available": true,
+        "final_upper_bound": 798233.4475240896,
+        "root_upper_bound": 798233.4475240896,
+        "raw_status": "SCIP_STATUS_TIMELIMIT",
+        "native_incumbent_objective": 747359.3562719725,
+        "native_solve_seconds": 54.81031,
+        "cuts_applied": 1321
+      },
+      "native_nlp_solvers": {
+        "ipopt": {
+          "iter_limit": 0,
+          "solves": 0,
+          "unknown": 0,
+          "description": "Ipopt interface",
+          "locally_infeasible": 0,
+          "time_limit": 0,
+          "numeric_error": 0,
+          "feasible": 0,
+          "out_of_memory": 0,
+          "lower_obj_limit": 0,
+          "problems": 1,
+          "local_optimum": 0,
+          "global_optimum": 0,
+          "time_per_iteration": 0,
+          "interrupt": 0,
+          "other": 0,
+          "okay": 0,
+          "solve_time": 0,
+          "globally_infeasible": 0,
+          "unbounded": 0,
+          "iterations": 0,
+          "license_error": 0,
+          "eval_error": 0,
+          "problem_time": 0.000265
+        }
+      },
+      "proposals": [
+        {
+          "water_scale": 1,
+          "status": "OPTIMAL",
+          "total_seconds": 0.25386500358581543
+        },
+        {
+          "water_scale": 0.7,
+          "status": "OPTIMAL",
+          "total_seconds": 0.18153810501098633
+        },
+        {
+          "water_scale": 1.3,
+          "status": "OPTIMAL",
+          "total_seconds": 0.17038702964782715
+        }
+      ],
+      "method": "scip_ipopt",
+      "constraints": 36640,
+      "global_start_valid": true,
+      "budget_overrun_seconds": 0.9311251640319824,
+      "objective": 747359.3562719859,
+      "on_intervals": 178,
+      "preparation_fraction": 0.8,
+      "case": "tokke_vinje_operating_24h",
+      "solver_error": null,
+      "incumbent_source": "initial",
+      "budget_seconds": 120,
+      "candidate_error": null,
+      "label": "tokke24",
+      "fourfold_replay": true,
+      "fourfold_errors": [],
+      "preparation_accepted": true,
+      "replay_storage_difference_Mm3": 0.0005069281743210752,
+      "total_seconds": 120.93112516403198,
+      "replay_errors": [],
+      "prepared_objective": 747359.3562719859,
+      "relative_gap": 0.06807179280644358,
+      "global_allowance_seconds": 56.833860874176025,
+      "first_validated_observed_seconds": 2.9079790115356445,
+      "preparation_attempts": [
+        {
+          "seconds": 2.9066450595855713,
+          "elapsed_seconds": 2.9079790115356445,
+          "stage": "feasibility",
+          "accepted": true,
+          "objective": -2073741.6682660119
+        },
+        {
+          "seconds": 31.6060528755188,
+          "elapsed_seconds": 35.120465993881226,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 747359.3562719859
+        },
+        {
+          "seconds": 25.259730100631714,
+          "elapsed_seconds": 60.380549907684326,
+          "stage": "dispatch",
+          "accepted": true,
+          "objective": 739825.8882584923
+        }
+      ],
+      "fourfold_storage_difference_Mm3": 0.0006336573189003047,
+      "preparation_seconds": 63.166139125823975,
+      "proposal_thread_policy": "one thread",
+      "global_certificate": false,
+      "accepted": true,
+      "status": "TIME_LIMIT",
+      "upper_bound": 798233.4475240896,
+      "native_first_solution_seconds": 0.035596
+    }
+  ],
+  "ordinary_settings_scope": "Six matched whole-workflow checks: 30 seconds for gates24/tokke6 and 120 seconds for tokke24. HiGHS uses its library thread default; SCIP uses one thread. Input-specific warmup schedules are discarded. The final SCIP daily check is an isolated rerun after briefly overlapping test startup; timings from the discarded run are not used.",
+  "cold_public_api": {
+    "highs_loaded": false,
+    "load_seconds": 1.391714096069336,
+    "objective": 1327.9262150984105,
+    "case": "single_reservoir",
+    "load_and_example_seconds": 60.612447023391724,
+    "budget_seconds": 180,
+    "total_seconds": 43.46834588050842,
+    "relative_gap": 7.725538675465575e-06,
+    "preparation_seconds": 34.14934206008911,
+    "global_certificate": true,
+    "accepted": true
+  },
+  "cold_scope": "Fresh Julia process with the production environment, first solve on the single-reservoir example. Loading, full example elapsed time and solve-reported elapsed time are separate; no warm-up call.",
+  "selection": {
+    "workflow": "SCIP proposals and global search, Ipopt nonlinear dispatch",
+    "criterion": "Comparable accepted schedule quality and reliability, useful runtime, and one fewer production solver dependency. A subpercent isolated objective tradeoff is accepted; no input-dependent solver selection.",
+    "benchmark_only_dependency": "HiGHS"
+  },
+  "validation": {
+    "assertions": 19515,
+    "testsets": 125,
+    "public_examples": [
+      "single_reservoir",
+      "level_channels",
+      "tunnel_gates"
+    ],
+    "all_examples_accepted_and_certified": true,
+    "highs_in_production_manifest": false,
+    "highs_in_test_environment": false
+  }
+}

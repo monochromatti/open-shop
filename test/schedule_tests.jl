@@ -22,6 +22,59 @@ function warm_dispatch_fixture(; rivers = true, minimum_power = 0.1)
         prices = [50.0, 90.0], operations = operations)
 end
 
+@testset "Shared preparation deadline" begin
+    c=warm_dispatch_fixture()
+    u=zeros(Int,2,2)
+    expired=solve_verified(c;u,deadline=time()-1,max_refinements=2)
+    @test !expired["accepted"]
+    @test expired["solution"]===nothing
+    @test isempty(expired["attempts"])
+    @test expired["case"].grid==c.grid
+
+    # Auditing a supplied schedule remains necessary even when no optimization
+    # time remains. A deadline must never turn stale acceptance into evidence.
+    x=dispatch_from_controls(c,u,zeros(2,2),ones(1,2))
+    audited=solve_verified(c;u,initial=x,deadline=time()-1,max_refinements=0)
+    @test audited["accepted"]
+    damaged=deepcopy(x)
+    damaged["power"][1]=1.0
+    rejected=solve_verified(c;u,initial=damaged,deadline=time()-1,max_refinements=0)
+    @test !rejected["accepted"]
+
+    prepared=schedule_case(c;time_limit=1e-9)
+    @test !prepared["accepted"]
+    @test prepared["solution"]===nothing
+    @test isempty(prepared["proposals"])
+    @test all(isempty(a["steps"]) for a in prepared["attempts"])
+    for invalid in (0.0,-1.0,NaN)
+        @test_throws ArgumentError schedule_case(c;time_limit=invalid)
+    end
+    @test_throws ArgumentError solve_verified(c;deadline=NaN)
+end
+
+@testset "Replay margins preserve the requested decision grid" begin
+    base=warm_dispatch_fixture(;rivers=false)
+    lake=OpenSHOP._river_replace(only(base.system.reservoirs);inflow=80.0)
+    units=[OpenSHOP._river_replace(g;pmax=2.0) for g in base.system.generators]
+    system=OpenSHOP._river_replace(base.system;reservoirs=[lake],generators=units)
+    c=OpenSHOP._river_replace(base;system)
+    u=[1 1;0 0]
+    verified=solve_verified(c;u,max_refinements=1,refine_grid=false,time_limit=10.0)
+    @test verified["accepted"]
+    @test verified["case"].grid==c.grid
+    @test verified["solution"]["u"]==u
+    @test length(verified["attempts"])==2
+    if length(verified["attempts"])==2
+        first,last=verified["attempts"]
+        @test first["model_valid"]
+        @test !first["replay"]["valid"]
+        @test first["operational_margin_MW"]==0.0
+        @test last["operational_margin_MW"]>0.0
+        @test last["replay"]["valid"]
+        @test first["intervals"]==last["intervals"]==length(c.prices)
+    end
+end
+
 @testset "Local reconstruction corrects controls and recomputes physical values" begin
     c=warm_dispatch_fixture()
     u=zeros(Int, 2, 2)

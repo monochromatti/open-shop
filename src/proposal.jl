@@ -1,3 +1,9 @@
+const _PROPOSAL_OPTIMIZER = optimizer_with_attributes(
+    SCIP.Optimizer,
+    "parallel/maxnthreads" => 1,
+    "numerics/feastol" => 1e-8,
+)
+
 """A linear surrogate proposes commitments; its objective/bound is NOT a bound
 for the nonlinear scheduling problem. Every proposed commitment needs an NLP.
 """
@@ -10,6 +16,7 @@ function propose_commitment(
     radius = nothing,
     deadline = Inf,
     transport = nothing,
+    optimizer = _PROPOSAL_OPTIMIZER,
 )
     started=time()
     validate_inputs(c)
@@ -35,9 +42,9 @@ function propose_commitment(
                 "compiled deterministic transport cannot serve distributed proposal",
             ),
         )
-    m=Model(HiGHS.Optimizer)
+    m=Model(optimizer)
     set_silent(m)
-    set_optimizer_attribute(m, "mip_rel_gap", 0.002)
+    set_attribute(m, MOI.RelativeGapTolerance(), 0.002)
     states=_joint_states!(m,c)
     gates=_tunnel_gate_states!(m,c)
     u=states.u

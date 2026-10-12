@@ -1,5 +1,9 @@
 # Benchmarks
 
+The [solver-workflow comparison](solver-workflow.md) tests SCIP alone and two
+prepared workflows under a shared end-to-end allowance, and documents the
+current public `solve(case)` path.
+
 The [schedule-generation study](scheduling-performance.md) measures feasible
 schedule preparation independently of global search. The subsequent
 [linear-system study](linear-systems.md) isolates Ipopt's sparse solves and checks

@@ -96,6 +96,11 @@ end
             initial,
         )
         @test !result["commitment_fixed"]
+        @test result["preparation_seconds"]>=0.0
+        if initial!==nothing
+            @test result["preparation_seconds"]==0.0
+            @test !result["preparation_accepted"]
+        end
         @test result["solution"]!==nothing
         if result["solution"]!==nothing
             solution=result["solution"]
@@ -129,6 +134,19 @@ end
             end
         end
     end
+end
+
+@testset "Solve preparation controls" begin
+    c=analytic_global_fixture(:on).case
+    cold=solve(c;time_limit=20.0,preparation_time_limit=0)
+    @test cold["accepted"]
+    @test cold["global_certificate"]
+    @test cold["preparation_seconds"]==0.0
+    @test !cold["preparation_accepted"]
+    for invalid in (-1.0,Inf,NaN,21.0)
+        @test_throws ArgumentError solve(c;time_limit=20.0,preparation_time_limit=invalid)
+    end
+    @test_throws ArgumentError solve(c;operational_margin=-1.0)
 end
 
 @testset "A fixed-commitment certificate states its conditional scope" begin

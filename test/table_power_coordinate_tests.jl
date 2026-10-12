@@ -1,7 +1,7 @@
-using Test, JuMP, OpenSHOP, HiGHS
+using Test, JuMP, OpenSHOP, SCIP
 
 function coordinate_relaxation(nodes; affine=false, known=nothing)
-    m = Model(HiGHS.Optimizer)
+    m = Model(optimizer_with_attributes(SCIP.Optimizer, "numerics/feastol" => 1e-9))
     set_silent(m)
     @variable(m, 0 <= u <= 1)
     known !== nothing && fix(u, known; force=true)
@@ -78,7 +78,7 @@ end
 
 function coordinate_strength_witness(nodes, weights_value, u_value, moment_value, coefficients;
     shared=false, affine=false)
-    m = Model(HiGHS.Optimizer)
+    m = Model(optimizer_with_attributes(SCIP.Optimizer, "numerics/feastol" => 1e-9))
     set_silent(m)
     @variable(m, 0 <= u <= 1)
     fix(u, u_value; force=true)

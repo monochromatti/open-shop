@@ -60,7 +60,7 @@ end
     @test b.plant_lower==[0 0 1 1]
     @test !admissible(c,zeros(Int,2,4))
     @test admissible(c,[0 0 1 0;0 0 0 1])
-    m=JuMP.Model(OpenSHOP.HiGHS.Optimizer)
+    m=JuMP.Model(OpenSHOP.SCIP.Optimizer)
     JuMP.set_silent(m)
     states=OpenSHOP._joint_states!(m,c)
     @test all(isnothing,states.plant_u) # No unnecessary dwell-state auxiliaries.
@@ -97,7 +97,7 @@ end
         end
         true
     end
-    m=JuMP.Model(OpenSHOP.HiGHS.Optimizer)
+    m=JuMP.Model(OpenSHOP.SCIP.Optimizer)
     JuMP.set_silent(m)
     states=OpenSHOP._joint_states!(m,c)
     @test all(x->x isa JuMP.VariableRef,states.plant_u)
@@ -108,6 +108,9 @@ end
         for j in 1:2,t in 1:4
             JuMP.fix(states.u[j,t],u[j,t];force=true)
         end
+        # Each fixed assignment is an independent feasibility problem. Start
+        # with a fresh optimizer rather than retaining earlier MIP starts.
+        JuMP.set_optimizer(m, OpenSHOP.SCIP.Optimizer)
         JuMP.optimize!(m)
         status=JuMP.termination_status(m)
         @test status==(accepted ? OpenSHOP.MOI.OPTIMAL : OpenSHOP.MOI.INFEASIBLE)

@@ -43,7 +43,8 @@ case = ScheduleCase(
     prices = [100.0],
 )
 
-result = solve(case; time_limit = 60.0, relative_gap = 1e-4)
+# The shared allowance includes Julia compilation on the first call.
+result = solve(case; time_limit = 180.0, relative_gap = 1e-4)
 println("Status: ", result["status"])
 println("Accepted: ", result["accepted"])
 println("Certified: ", result["global_certificate"])

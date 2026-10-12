@@ -170,11 +170,11 @@ function benchmark_cases(case_paths;output,time_limit=60.,repeats=1,commitments=
                     stem="warmup-$(mode)"
                     try
                         log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
-                        result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,diagnostics_path=log_path)
+                        result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,diagnostics_path=log_path,preparation_time_limit=0)
                         # A compilation-heavy construction can exhaust the first
                         # allowance before exercising native solve and extraction.
                         if result["status"]=="CONSTRUCTION_BUDGET_EXHAUSTED"
-                            result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,diagnostics_path=log_path)
+                            result=solve(c;initial=solve_initial,fixed_u,time_limit=10.,relative_gap,diagnostics_path=log_path,preparation_time_limit=0)
                         end
                         writejson(joinpath(folder,stem*".json"),result)
                     catch error
@@ -200,7 +200,7 @@ function benchmark_cases(case_paths;output,time_limit=60.,repeats=1,commitments=
                         log_path=diagnostics ? joinpath(folder,stem*".log") : nothing
                         began=time()
                         try
-                            result=solve(c;initial=solve_initial,fixed_u,time_limit,relative_gap,diagnostics_path=log_path)
+                            result=solve(c;initial=solve_initial,fixed_u,time_limit,relative_gap,diagnostics_path=log_path,preparation_time_limit=0)
                             row["harness_seconds"]=time()-began
                             upper=get(result,"global_bound",nothing)
                             consistent=upper===nothing || graph_lower===nothing || upper>=graph_lower-1e-6
