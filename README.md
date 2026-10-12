@@ -68,8 +68,8 @@ Two checks have different meanings:
 A time limit can leave a useful feasible schedule with an unfinished proof.
 Inspect `feasible_lower_bound`, `global_bound`, `relative_gap`, `status` and
 `total_seconds`. Solver termination alone is not an optimality certificate.
-Construction and first-call compilation consume the time allowance; extraction
-and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
+Preparation, construction and first-call compilation consume the time allowance.
+Extraction and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
 `fixed_u` restricts both the search and its certificate to that commitment.
 Eligible tunnel gates still remain optimization decisions under `fixed_u`.
 
@@ -87,25 +87,26 @@ See the [benchmark results](docs/benchmarks.md) and
 [coupled relaxation experiments](docs/coupled-relaxations.md) for measured schedule,
 bound and runtime tradeoffs.
 
-For larger cases, a feasible initial schedule can help the global search:
-
-```julia
-prepared = schedule_case(case; proposal_time_limit=5.0,
-    nlp_time_limit=15.0, max_refinements=0)
-initial = prepared["accepted"] ? prepared["solution"] : nothing
-result = solve(case; initial, time_limit=60.0)
-```
-
-Preparation uses HiGHS commitment proposals and one sparse JuMP nonlinear
-model solved by Ipopt. Local dispatch prepares interval bounds and routing
+`solve(case)` prepares a feasible start before SCIP's full nonlinear integer
+search. Preparation uses HiGHS MILP commitment and gate proposals, followed by a
+sparse JuMP nonlinear model solved by Ipopt. Local dispatch prepares interval
+bounds and routing
 expressions separately from the physical constraints, retaining explicit
 storage, head, flow and power variables. Its objective is a feasible lower
 bound; SCIP supplies the global upper bound.
 The [linear-system study](docs/linear-systems.md) profiles this dispatch and
 compares sparse solvers, curvature systems and native right-hand-side batching.
-The proposal and NLP limits apply to each invocation: preparation tries three
-MILP proposals and may dispatch several candidate commitments. Its total time
-is reported separately from `solve`'s allowance. An initial schedule must
+Preparation receives at most 80% of the shared time allowance, capped at 60
+seconds. Unused time remains available to SCIP. It starts with the original
+operating limits and can retry a failed finer replay with measured power or
+arrival margins, retaining the requested decision grid. The global model always
+uses the original limits and remains free to change every commitment and gate
+decision. See the [workflow comparison](docs/solver-workflow.md).
+
+`preparation_seconds`, `preparation_accepted` and `prepared_objective` report
+this accelerator's contribution. `preparation_time_limit=0` disables it for
+diagnostics. Supplied `initial` schedules and explicitly fixed discrete controls
+skip automatic preparation. An initial schedule must
 use the same grid and pass a complete algebraic feasibility check. If a better
 discrete candidate fails replay, a replay-valid initial schedule is retained and
 its gap is recomputed against the global bound.

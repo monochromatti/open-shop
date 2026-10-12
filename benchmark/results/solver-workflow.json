@@ -1,0 +1,4709 @@
+{
+  "comparison": {
+    "records": [
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.268893,
+          "first_lp_seconds": 0.004251999999999978,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3654,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530803596,
+          "root_upper_bound": 14860.239530803596,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.129952650926,
+          "native_solve_seconds": 0.37853899999999996,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.012454,
+            "iterations": 30,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523976,
+        "on_intervals": 12,
+        "preparation_fraction": 0,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": 9.911184473981871e-05,
+        "total_seconds": 0.44382619857788086,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": 7.396589562519014e-06,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": 0.44382619857788086,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530803596,
+        "native_first_solution_seconds": 0.187119,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.44382619857788086
+      },
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.165162,
+          "first_lp_seconds": 0.0044570000000000165,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3653,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530133153,
+          "root_upper_bound": 14860.239530133153,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.130124771727,
+          "native_solve_seconds": 0.273005,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.01153,
+            "iterations": 27,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0045239925384521484
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.004078865051269531
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0042150020599365234
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523991,
+        "on_intervals": 12,
+        "preparation_fraction": 0.4,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 9.911184473965218e-05,
+        "total_seconds": 0.39969301223754883,
+        "replay_errors": [],
+        "prepared_objective": 14860.12926569638,
+        "relative_gap": 7.396544444630834e-06,
+        "global_allowance_seconds": 59.94322609901428,
+        "first_validated_observed_seconds": 0.010601043701171875,
+        "preparation_attempts": [
+          {
+            "seconds": 0.010257959365844727,
+            "elapsed_seconds": 0.010601043701171875,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.011576175689697266,
+            "elapsed_seconds": 0.03512692451477051,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14860.12926569638
+          }
+        ],
+        "preparation_seconds": 0.05677390098571777,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530133153,
+        "native_first_solution_seconds": 0.084631,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.03512692451477051
+      },
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.165938,
+          "first_lp_seconds": 0.004650000000000015,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3653,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530133153,
+          "root_upper_bound": 14860.239530133153,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.130124771727,
+          "native_solve_seconds": 0.275073,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.011759,
+            "iterations": 27,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.008051156997680664
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.007097005844116211
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.007817983627319336
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523991,
+        "on_intervals": 12,
+        "preparation_fraction": 0.4,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 9.911184473965218e-05,
+        "total_seconds": 0.4146411418914795,
+        "replay_errors": [],
+        "prepared_objective": 14860.12926569638,
+        "relative_gap": 7.396544444630834e-06,
+        "global_allowance_seconds": 59.932621002197266,
+        "first_validated_observed_seconds": 0.011192083358764648,
+        "preparation_attempts": [
+          {
+            "seconds": 0.01087498664855957,
+            "elapsed_seconds": 0.011192083358764648,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.01122903823852539,
+            "elapsed_seconds": 0.045530080795288086,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14860.12926569638
+          }
+        ],
+        "preparation_seconds": 0.06737899780273438,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530133153,
+        "native_first_solution_seconds": 0.083698,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.045530080795288086
+      },
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.165368,
+          "first_lp_seconds": 0.004507000000000011,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3653,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530133153,
+          "root_upper_bound": 14860.239530133153,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.130124771727,
+          "native_solve_seconds": 0.276339,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.012083,
+            "iterations": 27,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.007421970367431641
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0072519779205322266
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0072710514068603516
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523991,
+        "on_intervals": 12,
+        "preparation_fraction": 0.4,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 9.911184473965218e-05,
+        "total_seconds": 0.4119420051574707,
+        "replay_errors": [],
+        "prepared_objective": 14860.12926569638,
+        "relative_gap": 7.396544444630834e-06,
+        "global_allowance_seconds": 59.93563914299011,
+        "first_validated_observed_seconds": 0.010798931121826172,
+        "preparation_attempts": [
+          {
+            "seconds": 0.010473966598510742,
+            "elapsed_seconds": 0.010798931121826172,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.010662078857421875,
+            "elapsed_seconds": 0.04352903366088867,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14860.12926569638
+          }
+        ],
+        "preparation_seconds": 0.0643608570098877,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530133153,
+        "native_first_solution_seconds": 0.084172,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.04352903366088867
+      },
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.26867599999999997,
+          "first_lp_seconds": 0.004215000000000024,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3654,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530803596,
+          "root_upper_bound": 14860.239530803596,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.129952650926,
+          "native_solve_seconds": 0.376398,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.01179,
+            "iterations": 30,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523976,
+        "on_intervals": 12,
+        "preparation_fraction": 0,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": 9.911184473981871e-05,
+        "total_seconds": 0.44269490242004395,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": 7.396589562519014e-06,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": 0.44269490242004395,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530803596,
+        "native_first_solution_seconds": 0.189077,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.44269490242004395
+      },
+      {
+        "variables": 312,
+        "case_sha256": "95ad89d18063bbee71a9e9c2e33f4506dbf81a37e1d0e708e20258c8d58e70bf",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 13,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.165406,
+          "first_lp_seconds": 0.004165000000000002,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 15065.786211560127,
+          "nodes": 1,
+          "lp_iterations": 3653,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14860.239530133153,
+          "root_upper_bound": 14860.239530133153,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14860.130124771727,
+          "native_solve_seconds": 0.274649,
+          "cuts_applied": 150
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 1,
+            "solve_time": 0.012032,
+            "iterations": 27,
+            "local_optimum": 1,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0050280094146728516
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.004369020462036133
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.004103899002075195
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 499,
+        "budget_overrun_seconds": 0,
+        "objective": 14860.129616523991,
+        "on_intervals": 12,
+        "preparation_fraction": 0.4,
+        "case": "choice_active_distributed_2h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "distributed",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 9.911184473965218e-05,
+        "total_seconds": 0.4027829170227051,
+        "replay_errors": [],
+        "prepared_objective": 14860.12926569638,
+        "relative_gap": 7.396544444630834e-06,
+        "global_allowance_seconds": 59.94347405433655,
+        "first_validated_observed_seconds": 0.011013984680175781,
+        "preparation_attempts": [
+          {
+            "seconds": 0.010684013366699219,
+            "elapsed_seconds": 0.011013984680175781,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 10200.193154849992
+          },
+          {
+            "seconds": 0.010751962661743164,
+            "elapsed_seconds": 0.035385847091674805,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14860.12926569638
+          }
+        ],
+        "preparation_seconds": 0.05652594566345215,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14860.239530133153,
+        "native_first_solution_seconds": 0.083875,
+        "best_observed_objective": 14860.129616523991,
+        "within_0_1_percent_of_best_observed_seconds": 0.035385847091674805
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 7,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.937394,
+          "first_lp_seconds": 0.00807800000000003,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.8915288639,
+          "nodes": 7,
+          "lp_iterations": 4906,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.314566855188,
+          "root_upper_bound": 9851.314566855188,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.227400350916,
+          "native_solve_seconds": 1.525536,
+          "cuts_applied": 44
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 4,
+            "solve_time": 0.072639,
+            "iterations": 117,
+            "local_optimum": 4,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.227255301177,
+        "on_intervals": 8,
+        "preparation_fraction": 0,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": 4.694022948115162e-13,
+        "total_seconds": 1.6094961166381836,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": 8.863012876264204e-06,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": 1.6094961166381836,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.314566855188,
+        "native_first_solution_seconds": 1.523751,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 1.6094961166381836
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.031139999999999998,
+          "first_lp_seconds": 0.007091999999999994,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.891527625283,
+          "nodes": 1,
+          "lp_iterations": 1602,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.353060336514,
+          "root_upper_bound": 9851.353060336514,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.173809230539,
+          "native_solve_seconds": 0.102045,
+          "cuts_applied": 21
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 3,
+            "solve_time": 0.068787,
+            "iterations": 117,
+            "local_optimum": 3,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015697002410888672
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015376806259155273
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015411138534545898
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.173809230502,
+        "on_intervals": 8,
+        "preparation_fraction": 0.4,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 6.732392421326949e-13,
+        "total_seconds": 1.0590829849243164,
+        "replay_errors": [],
+        "prepared_objective": 9851.173809225029,
+        "relative_gap": 1.8195913449839986e-05,
+        "global_allowance_seconds": 59.13687705993652,
+        "first_validated_observed_seconds": 0.015059947967529297,
+        "preparation_attempts": [
+          {
+            "seconds": 0.014780044555664062,
+            "elapsed_seconds": 0.015059947967529297,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7596759796142578,
+            "elapsed_seconds": 0.8213639259338379,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.02257990837097168,
+            "elapsed_seconds": 0.8440158367156982,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9030.065961996765
+          }
+        ],
+        "preparation_seconds": 0.8631229400634766,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.353060336514,
+        "native_first_solution_seconds": 0.00126,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 0.8213639259338379
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.030806,
+          "first_lp_seconds": 0.006702,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.891527625283,
+          "nodes": 1,
+          "lp_iterations": 1602,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.353060336514,
+          "root_upper_bound": 9851.353060336514,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.173809230539,
+          "native_solve_seconds": 0.10081,
+          "cuts_applied": 21
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 3,
+            "solve_time": 0.069035,
+            "iterations": 117,
+            "local_optimum": 3,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.012186050415039062
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.012068986892700195
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.012892961502075195
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.173809230502,
+        "on_intervals": 8,
+        "preparation_fraction": 0.4,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 6.732392421326949e-13,
+        "total_seconds": 1.0829269886016846,
+        "replay_errors": [],
+        "prepared_objective": 9851.173809225029,
+        "relative_gap": 1.8195913449839986e-05,
+        "global_allowance_seconds": 59.14960193634033,
+        "first_validated_observed_seconds": 0.01608896255493164,
+        "preparation_attempts": [
+          {
+            "seconds": 0.015811920166015625,
+            "elapsed_seconds": 0.01608896255493164,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7574410438537598,
+            "elapsed_seconds": 0.8108279705047607,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.021657943725585938,
+            "elapsed_seconds": 0.8325839042663574,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9030.065961996765
+          }
+        ],
+        "preparation_seconds": 0.850398063659668,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.353060336514,
+        "native_first_solution_seconds": 0.001277,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 0.8108279705047607
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.031515999999999995,
+          "first_lp_seconds": 0.0068050000000000055,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.891527625283,
+          "nodes": 1,
+          "lp_iterations": 1602,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.353060336514,
+          "root_upper_bound": 9851.353060336514,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.173809230539,
+          "native_solve_seconds": 0.102224,
+          "cuts_applied": 21
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 3,
+            "solve_time": 0.069241,
+            "iterations": 117,
+            "local_optimum": 3,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.012941122055053711
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.012420892715454102
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.011714935302734375
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.173809230502,
+        "on_intervals": 8,
+        "preparation_fraction": 0.4,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 6.732392421326949e-13,
+        "total_seconds": 1.0485329627990723,
+        "replay_errors": [],
+        "prepared_objective": 9851.173809225029,
+        "relative_gap": 1.8195913449839986e-05,
+        "global_allowance_seconds": 59.14843392372131,
+        "first_validated_observed_seconds": 0.015478134155273438,
+        "preparation_attempts": [
+          {
+            "seconds": 0.015206098556518555,
+            "elapsed_seconds": 0.015478134155273438,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7580528259277344,
+            "elapsed_seconds": 0.8107531070709229,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.022622108459472656,
+            "elapsed_seconds": 0.8334650993347168,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9030.065961996765
+          }
+        ],
+        "preparation_seconds": 0.8515660762786865,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.353060336514,
+        "native_first_solution_seconds": 0.001509,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 0.8107531070709229
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 7,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.940237,
+          "first_lp_seconds": 0.007726000000000011,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.8915288639,
+          "nodes": 7,
+          "lp_iterations": 4906,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.314566855188,
+          "root_upper_bound": 9851.314566855188,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.227400350916,
+          "native_solve_seconds": 1.5316809999999998,
+          "cuts_applied": 44
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 4,
+            "solve_time": 0.073528,
+            "iterations": 117,
+            "local_optimum": 4,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.227255301177,
+        "on_intervals": 8,
+        "preparation_fraction": 0,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "solver",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": 4.694022948115162e-13,
+        "total_seconds": 1.6169719696044922,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": 8.863012876264204e-06,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": 1.6169719696044922,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.314566855188,
+        "native_first_solution_seconds": 1.529833,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 1.6169719696044922
+      },
+      {
+        "variables": 723,
+        "case_sha256": "317492292231c65a17b382d60585091c5242411d395e95d367fb6f16d2d72d82",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.032678,
+          "first_lp_seconds": 0.006560999999999997,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 9873.891527625283,
+          "nodes": 1,
+          "lp_iterations": 1602,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9851.353060336514,
+          "root_upper_bound": 9851.353060336514,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 9851.173809230539,
+          "native_solve_seconds": 0.10296699999999999,
+          "cuts_applied": 21
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 3,
+            "solve_time": 0.068676,
+            "iterations": 117,
+            "local_optimum": 3,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015791893005371094
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015902042388916016
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.015891075134277344
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 1605,
+        "budget_overrun_seconds": 0,
+        "objective": 9851.173809230502,
+        "on_intervals": 8,
+        "preparation_fraction": 0.4,
+        "case": "choice_tables_two_station_8h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tables",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 6.732392421326949e-13,
+        "total_seconds": 1.0913329124450684,
+        "replay_errors": [],
+        "prepared_objective": 9851.173809225029,
+        "relative_gap": 1.8195913449839986e-05,
+        "global_allowance_seconds": 59.13578414916992,
+        "first_validated_observed_seconds": 0.014880895614624023,
+        "preparation_attempts": [
+          {
+            "seconds": 0.014523983001708984,
+            "elapsed_seconds": 0.014880895614624023,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": 3849.4525376506376
+          },
+          {
+            "seconds": 0.7604598999023438,
+            "elapsed_seconds": 0.8230619430541992,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9851.173809225029
+          },
+          {
+            "seconds": 0.02248692512512207,
+            "elapsed_seconds": 0.8456277847290039,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 9030.065961996765
+          }
+        ],
+        "preparation_seconds": 0.8642158508300781,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 9851.353060336514,
+        "native_first_solution_seconds": 0.001528,
+        "best_observed_objective": 9851.227255301177,
+        "within_0_1_percent_of_best_observed_seconds": 0.8230619430541992
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 9797,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.701882,
+          "first_lp_seconds": 0.0315430000000001,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 17264.222298410416,
+          "nodes": 9797,
+          "lp_iterations": 220260,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 14138.624067123828,
+          "root_upper_bound": 14222.011873030027,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.939732,
+          "cuts_applied": 57151
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 17,
+            "solve_time": 1.83564,
+            "iterations": 743,
+            "local_optimum": 7,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0.051908016204833984,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.051908016204834,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 14138.624067123828,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 3,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.17646099999999998,
+          "first_lp_seconds": 0.031048999999999993,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 17264.222298462002,
+          "nodes": 1,
+          "lp_iterations": 49522,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14036.150944561285,
+          "root_upper_bound": 14036.150944561285,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14023.477006036486,
+          "native_solve_seconds": 6.376008,
+          "cuts_applied": 130
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.157798,
+            "iterations": 110,
+            "local_optimum": 2,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.41744399070739746
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.510443925857544
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.31645798683166504
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0,
+        "objective": 14023.477006036508,
+        "on_intervals": 36,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 4.974322607154136e-07,
+        "total_seconds": 9.200649976730347,
+        "replay_errors": [],
+        "prepared_objective": 14023.477006044915,
+        "relative_gap": 0.0009037657721634187,
+        "global_allowance_seconds": 57.34276509284973,
+        "first_validated_observed_seconds": 2.022632122039795,
+        "preparation_attempts": [
+          {
+            "seconds": 0.7776589393615723,
+            "elapsed_seconds": 2.022632122039795,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 0.5828661918640137,
+            "elapsed_seconds": 2.6056790351867676,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 13984.36981865967
+          }
+        ],
+        "preparation_seconds": 2.6572349071502686,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14036.150944561285,
+        "native_first_solution_seconds": 0.003247,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": 2.022632122039795
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 3,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.175086,
+          "first_lp_seconds": 0.031354999999999994,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 17264.222298462002,
+          "nodes": 1,
+          "lp_iterations": 49522,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14036.150944561285,
+          "root_upper_bound": 14036.150944561285,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14023.477006036486,
+          "native_solve_seconds": 6.3512129999999996,
+          "cuts_applied": 130
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.161443,
+            "iterations": 110,
+            "local_optimum": 2,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06731605529785156
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06910109519958496
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06700682640075684
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0,
+        "objective": 14023.477006036508,
+        "on_intervals": 36,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 4.974322607154136e-07,
+        "total_seconds": 8.155427932739258,
+        "replay_errors": [],
+        "prepared_objective": 14023.477006044915,
+        "relative_gap": 0.0009037657721634187,
+        "global_allowance_seconds": 58.36014413833618,
+        "first_validated_observed_seconds": 1.0139389038085938,
+        "preparation_attempts": [
+          {
+            "seconds": 0.8098959922790527,
+            "elapsed_seconds": 1.0139389038085938,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 0.5733959674835205,
+            "elapsed_seconds": 1.5874619483947754,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 13984.36981865967
+          }
+        ],
+        "preparation_seconds": 1.6398558616638184,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14036.150944561285,
+        "native_first_solution_seconds": 0.003634,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": 1.0139389038085938
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 3,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.176887,
+          "first_lp_seconds": 0.030917,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 17264.222298462002,
+          "nodes": 1,
+          "lp_iterations": 49522,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14036.150944561285,
+          "root_upper_bound": 14036.150944561285,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14023.477006036486,
+          "native_solve_seconds": 6.328579,
+          "cuts_applied": 130
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.160272,
+            "iterations": 110,
+            "local_optimum": 2,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06800603866577148
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06852412223815918
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.06691694259643555
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0,
+        "objective": 14023.477006036508,
+        "on_intervals": 36,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 4.974322607154136e-07,
+        "total_seconds": 8.122334003448486,
+        "replay_errors": [],
+        "prepared_objective": 14023.477006044915,
+        "relative_gap": 0.0009037657721634187,
+        "global_allowance_seconds": 58.36847901344299,
+        "first_validated_observed_seconds": 0.9724030494689941,
+        "preparation_attempts": [
+          {
+            "seconds": 0.768280029296875,
+            "elapsed_seconds": 0.9724030494689941,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 0.6081390380859375,
+            "elapsed_seconds": 1.5806479454040527,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 13984.36981865967
+          }
+        ],
+        "preparation_seconds": 1.6315209865570068,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14036.150944561285,
+        "native_first_solution_seconds": 0.003237,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": 0.9724030494689941
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 9797,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.717663,
+          "first_lp_seconds": 0.03253199999999978,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 17264.222298410416,
+          "nodes": 9797,
+          "lp_iterations": 220341,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 14138.624067123828,
+          "root_upper_bound": 14222.011873030027,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.938552,
+          "cuts_applied": 57151
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 17,
+            "solve_time": 1.834487,
+            "iterations": 743,
+            "local_optimum": 7,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0.04994010925292969,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.04994010925293,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 14138.624067123828,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 2070,
+        "case_sha256": "fbc06f196c70a094bc738fa35cec6a75b15913c0e1fd7597f4731be211401b70",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 3,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.179505,
+          "first_lp_seconds": 0.03142600000000001,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 17264.222298462002,
+          "nodes": 1,
+          "lp_iterations": 49522,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 14036.150944561285,
+          "root_upper_bound": 14036.150944561285,
+          "raw_status": "SCIP_STATUS_GAPLIMIT",
+          "native_incumbent_objective": 14023.477006036486,
+          "native_solve_seconds": 6.373839,
+          "cuts_applied": 130
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.161734,
+            "iterations": 110,
+            "local_optimum": 2,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.41387391090393066
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.5080418586730957
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.31479907035827637
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 3876,
+        "budget_overrun_seconds": 0,
+        "objective": 14023.477006036508,
+        "on_intervals": 36,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 4.974322607154136e-07,
+        "total_seconds": 9.237304925918579,
+        "replay_errors": [],
+        "prepared_objective": 14023.477006044915,
+        "relative_gap": 0.0009037657721634187,
+        "global_allowance_seconds": 57.299631118774414,
+        "first_validated_observed_seconds": 2.067944049835205,
+        "preparation_attempts": [
+          {
+            "seconds": 0.8305850028991699,
+            "elapsed_seconds": 2.067944049835205,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 14023.477006044915
+          },
+          {
+            "seconds": 0.5799670219421387,
+            "elapsed_seconds": 2.648033857345581,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 13984.36981865967
+          }
+        ],
+        "preparation_seconds": 2.700368881225586,
+        "global_certificate": true,
+        "accepted": true,
+        "status": "OPTIMAL",
+        "upper_bound": 14036.150944561285,
+        "native_first_solution_seconds": 0.003578,
+        "best_observed_objective": 14023.477006036508,
+        "within_0_1_percent_of_best_observed_seconds": 2.067944049835205
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 429,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 12.033581,
+          "first_lp_seconds": 0.29115999999999964,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 104852.63612690261,
+          "nodes": 429,
+          "lp_iterations": 157964,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 86193.60627330089,
+          "root_upper_bound": 86290.15561905468,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.702193,
+          "cuts_applied": 5201
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.73201,
+            "iterations": 48,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.051763057708740234,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.05176305770874,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 59.999999046325684,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 9.5367431640625e-07,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 86193.60627330089,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 35,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.769826,
+          "first_lp_seconds": 0.7279059999999999,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 104852.63612963642,
+          "nodes": 1,
+          "lp_iterations": 131322,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 85721.54311434375,
+          "root_upper_bound": 85721.54311434375,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 84634.30246598335,
+          "native_solve_seconds": 37.720282,
+          "cuts_applied": 1822
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "TIME_LIMIT",
+            "total_seconds": 5.226786136627197
+          },
+          {
+            "water_scale": 0.7,
+            "status": "TIME_LIMIT",
+            "total_seconds": 5.228714942932129
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 5.021819829940796
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.14224004745483398,
+        "objective": 84634.30246598308,
+        "on_intervals": 144,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 7.303484821363782e-07,
+        "total_seconds": 60.142240047454834,
+        "replay_errors": [],
+        "prepared_objective": 84634.30249452242,
+        "relative_gap": 0.01284633554813846,
+        "global_allowance_seconds": 38.088335037231445,
+        "first_validated_observed_seconds": 17.94233989715576,
+        "preparation_attempts": [
+          {
+            "seconds": 2.4641740322113037,
+            "elapsed_seconds": 17.94233989715576,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 3.9112069606781006,
+            "elapsed_seconds": 21.853839874267578,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84361.53516185505
+          }
+        ],
+        "preparation_seconds": 21.911664962768555,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 85721.54311434375,
+        "native_first_solution_seconds": 0.013688,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": 17.94233989715576
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 37,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.7281449999999999,
+          "first_lp_seconds": 0.7272740000000001,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 104852.63612963642,
+          "nodes": 1,
+          "lp_iterations": 185330,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 85721.54311434375,
+          "root_upper_bound": 85721.54311434375,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 84634.30246598335,
+          "native_solve_seconds": 52.225378,
+          "cuts_applied": 1822
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.3303701877593994
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.33359289169311523
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.329272985458374
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.14017295837402344,
+        "objective": 84634.30246598308,
+        "on_intervals": 144,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 7.303484821363782e-07,
+        "total_seconds": 60.14017295837402,
+        "replay_errors": [],
+        "prepared_objective": 84634.30249452242,
+        "relative_gap": 0.01284633554813846,
+        "global_allowance_seconds": 52.5873441696167,
+        "first_validated_observed_seconds": 3.450598955154419,
+        "preparation_attempts": [
+          {
+            "seconds": 2.4565911293029785,
+            "elapsed_seconds": 3.450598955154419,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 3.904076099395752,
+            "elapsed_seconds": 7.354885816574097,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84361.53516185505
+          }
+        ],
+        "preparation_seconds": 7.412655830383301,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 85721.54311434375,
+        "native_first_solution_seconds": 0.014829,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": 3.450598955154419
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 37,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.726569,
+          "first_lp_seconds": 0.734132,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 104852.63612963642,
+          "nodes": 1,
+          "lp_iterations": 183868,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 85721.54311434375,
+          "root_upper_bound": 85721.54311434375,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 84634.30246598335,
+          "native_solve_seconds": 51.923654,
+          "cuts_applied": 1822
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.33552980422973633
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.3362898826599121
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.39336299896240234
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.14287495613098145,
+        "objective": 84634.30246598308,
+        "on_intervals": 144,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 7.303484821363782e-07,
+        "total_seconds": 60.14287495613098,
+        "replay_errors": [],
+        "prepared_objective": 84634.30249452242,
+        "relative_gap": 0.01284633554813846,
+        "global_allowance_seconds": 52.44192099571228,
+        "first_validated_observed_seconds": 3.4910459518432617,
+        "preparation_attempts": [
+          {
+            "seconds": 2.4250731468200684,
+            "elapsed_seconds": 3.4910459518432617,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 4.009487867355347,
+            "elapsed_seconds": 7.500755071640015,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84361.53516185505
+          }
+        ],
+        "preparation_seconds": 7.55807900428772,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 85721.54311434375,
+        "native_first_solution_seconds": 0.012996,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": 3.4910459518432617
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 452,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 12.004397,
+          "first_lp_seconds": 0.28876799999999925,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 104852.63612690261,
+          "nodes": 452,
+          "lp_iterations": 158624,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 86193.1695357405,
+          "root_upper_bound": 86290.15561905468,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.698644,
+          "cuts_applied": 5338
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 2,
+            "solve_time": 0.723594,
+            "iterations": 48,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.051434993743896484,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.0514349937439,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 86193.1695357405,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 8244,
+        "case_sha256": "030594410ea730f0d8aca948d786384eedfbaea06679d738130d5c8cf5f7d64a",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 35,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.7563219999999999,
+          "first_lp_seconds": 0.7553780000000001,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 104852.63612963642,
+          "nodes": 1,
+          "lp_iterations": 126645,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 85721.54311434375,
+          "root_upper_bound": 85721.54311434375,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 84634.30246598335,
+          "native_solve_seconds": 37.690917999999996,
+          "cuts_applied": 1822
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "TIME_LIMIT",
+            "total_seconds": 5.2225501537323
+          },
+          {
+            "water_scale": 0.7,
+            "status": "TIME_LIMIT",
+            "total_seconds": 5.230695962905884
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 5.054424047470093
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 15594,
+        "budget_overrun_seconds": 0.1953139305114746,
+        "objective": 84634.30246598308,
+        "on_intervals": 144,
+        "preparation_fraction": 0.4,
+        "case": "twelve-reservoir gates 24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "gates24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 7.303484821363782e-07,
+        "total_seconds": 60.195313930511475,
+        "replay_errors": [],
+        "prepared_objective": 84634.30249452242,
+        "relative_gap": 0.01284633554813846,
+        "global_allowance_seconds": 38.05653405189514,
+        "first_validated_observed_seconds": 17.97182607650757,
+        "preparation_attempts": [
+          {
+            "seconds": 2.4633491039276123,
+            "elapsed_seconds": 17.97182607650757,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84634.30249452242
+          },
+          {
+            "seconds": 3.913625955581665,
+            "elapsed_seconds": 21.885726928710938,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 84361.53516185505
+          }
+        ],
+        "preparation_seconds": 21.94346594810486,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 85721.54311434375,
+        "native_first_solution_seconds": 0.015045,
+        "best_observed_objective": 84634.30246598308,
+        "within_0_1_percent_of_best_observed_seconds": 17.97182607650757
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1347,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.23932799999999999,
+          "first_lp_seconds": 0.748188,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 237245.4152057253,
+          "nodes": 1347,
+          "lp_iterations": 246708,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 233273.1941890961,
+          "root_upper_bound": 233547.7388160325,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.27744,
+          "cuts_applied": 14707
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 7,
+            "solve_time": 2.50372,
+            "iterations": 254,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.051116943359375,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.051116943359375,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233273.1941890961,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 45,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.242918,
+          "first_lp_seconds": 0.35997300000000004,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.72471570355,
+          "nodes": 1,
+          "lp_iterations": 188424,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233429.6704548251,
+          "root_upper_bound": 233429.6704548251,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 219709.38984690292,
+          "native_solve_seconds": 35.081784,
+          "cuts_applied": 980
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.034668922424316406
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03372502326965332
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.05605792999267578
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.17157387733459473,
+        "objective": 219709.38984695837,
+        "on_intervals": 73,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0001630840535256084,
+        "total_seconds": 60.171573877334595,
+        "replay_errors": [],
+        "prepared_objective": 219709.38984695837,
+        "relative_gap": 0.062447402077006296,
+        "global_allowance_seconds": 35.707242012023926,
+        "first_validated_observed_seconds": 5.612184047698975,
+        "preparation_attempts": [
+          {
+            "seconds": 5.611310958862305,
+            "elapsed_seconds": 5.612184047698975,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 11.175251007080078,
+            "elapsed_seconds": 16.912153005599976,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 219709.38984695837
+          },
+          {
+            "seconds": 7.2171690464019775,
+            "elapsed_seconds": 24.12947988510132,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217707.14456403314
+          }
+        ],
+        "preparation_seconds": 24.292757987976074,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233429.6704548251,
+        "native_first_solution_seconds": 0.009388,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": 16.912153005599976
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 33,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.24520499999999998,
+          "first_lp_seconds": 0.34422400000000003,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.7211084111,
+          "nodes": 1,
+          "lp_iterations": 180574,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233417.38309358334,
+          "root_upper_bound": 233417.38309358334,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 217705.73291132678,
+          "native_solve_seconds": 35.065215,
+          "cuts_applied": 1053
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.04051685333251953
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.038459062576293945
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03946399688720703
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.18023300170898438,
+        "objective": 217705.73291136633,
+        "on_intervals": 78,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0001633955894533301,
+        "total_seconds": 60.180233001708984,
+        "replay_errors": [],
+        "prepared_objective": 217705.73291136633,
+        "relative_gap": 0.07216920736126702,
+        "global_allowance_seconds": 35.68488907814026,
+        "first_validated_observed_seconds": 5.649320125579834,
+        "preparation_attempts": [
+          {
+            "seconds": 5.6484599113464355,
+            "elapsed_seconds": 5.649320125579834,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 11.051197052001953,
+            "elapsed_seconds": 16.819229125976562,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217705.73291136633
+          },
+          {
+            "seconds": 5.513187885284424,
+            "elapsed_seconds": 22.332597017288208,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196872.14715853066
+          },
+          {
+            "seconds": 1.783524990081787,
+            "elapsed_seconds": 24.11628007888794,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.31511092185974,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233417.38309358334,
+        "native_first_solution_seconds": 0.008953,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 33,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.246171,
+          "first_lp_seconds": 0.34851399999999993,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.7211084111,
+          "nodes": 1,
+          "lp_iterations": 180373,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233417.38309358334,
+          "root_upper_bound": 233417.38309358334,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 217705.73291132678,
+          "native_solve_seconds": 35.057839,
+          "cuts_applied": 1053
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.04044699668884277
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0383610725402832
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03937101364135742
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.18080401420593262,
+        "objective": 217705.73291136633,
+        "on_intervals": 78,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0001633955894533301,
+        "total_seconds": 60.18080401420593,
+        "replay_errors": [],
+        "prepared_objective": 217705.73291136633,
+        "relative_gap": 0.07216920736126702,
+        "global_allowance_seconds": 35.68671798706055,
+        "first_validated_observed_seconds": 5.783942937850952,
+        "preparation_attempts": [
+          {
+            "seconds": 5.783033847808838,
+            "elapsed_seconds": 5.783942937850952,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 11.077641010284424,
+            "elapsed_seconds": 16.980026960372925,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217705.73291136633
+          },
+          {
+            "seconds": 5.54684591293335,
+            "elapsed_seconds": 22.527037858963013,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196872.14715853066
+          },
+          {
+            "seconds": 1.6048989295959473,
+            "elapsed_seconds": 24.132086992263794,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.313282012939453,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233417.38309358334,
+        "native_first_solution_seconds": 0.010029,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1358,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.238924,
+          "first_lp_seconds": 0.755764,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 237245.4152057253,
+          "nodes": 1358,
+          "lp_iterations": 247358,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 233273.1941890961,
+          "root_upper_bound": 233547.7388160325,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 59.43717,
+          "cuts_applied": 14816
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 7,
+            "solve_time": 2.508535,
+            "iterations": 254,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.051278114318847656,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.05127811431885,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233273.1941890961,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 45,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.243413,
+          "first_lp_seconds": 0.357487,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.72471570355,
+          "nodes": 1,
+          "lp_iterations": 187748,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233429.6704548251,
+          "root_upper_bound": 233429.6704548251,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 219709.38984690292,
+          "native_solve_seconds": 35.080047,
+          "cuts_applied": 980
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.0353548526763916
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03250384330749512
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.056002140045166016
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.16992783546447754,
+        "objective": 219709.38984695837,
+        "on_intervals": 73,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0001630840535256084,
+        "total_seconds": 60.16992783546448,
+        "replay_errors": [],
+        "prepared_objective": 219709.38984695837,
+        "relative_gap": 0.062447402077006296,
+        "global_allowance_seconds": 35.7016019821167,
+        "first_validated_observed_seconds": 5.640271902084351,
+        "preparation_attempts": [
+          {
+            "seconds": 5.639377117156982,
+            "elapsed_seconds": 5.640271902084351,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 11.137014865875244,
+            "elapsed_seconds": 16.90141797065735,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 219709.38984695837
+          },
+          {
+            "seconds": 7.230687141418457,
+            "elapsed_seconds": 24.13225483894348,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217707.02988704471
+          }
+        ],
+        "preparation_seconds": 24.2983980178833,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233429.6704548251,
+        "native_first_solution_seconds": 0.009795,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": 16.90141797065735
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.4340289999999998,
+          "first_lp_seconds": 24.230753999999997,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 802506.5875985274,
+          "nodes": 1,
+          "lp_iterations": 101599,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 799219.5997072486,
+          "root_upper_bound": 799219.5997072486,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 58.358362,
+          "cuts_applied": 1315
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.05200600624084473,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.052006006240845,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 799219.5997072486,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.480849,
+          "first_lp_seconds": 17.166921000000002,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 802506.576686792,
+          "nodes": 1,
+          "lp_iterations": 67091,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 802506.576686792,
+          "root_upper_bound": 802506.576686792,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 33.617806,
+          "cuts_applied": 782
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.20510506629943848
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.14411401748657227
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2461080551147461
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.5006699562072754,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 60.500669956207275,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 1.386984834691497,
+        "global_allowance_seconds": 35.63063406944275,
+        "first_validated_observed_seconds": 3.4778800010681152,
+        "preparation_attempts": [
+          {
+            "seconds": 3.476541042327881,
+            "elapsed_seconds": 3.4778800010681152,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 20.183445930480957,
+            "elapsed_seconds": 24.25730800628662,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.36936593055725,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 802506.576686792,
+        "native_first_solution_seconds": 0.043253,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.460048,
+          "first_lp_seconds": 17.285135999999998,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 802506.576686792,
+          "nodes": 1,
+          "lp_iterations": 67062,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 802506.576686792,
+          "root_upper_bound": 802506.576686792,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 33.756932,
+          "cuts_applied": 782
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2823939323425293
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.18543791770935059
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2517058849334717
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.5050089359283447,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 60.505008935928345,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 1.386984834691497,
+        "global_allowance_seconds": 35.78302502632141,
+        "first_validated_observed_seconds": 3.088650941848755,
+        "preparation_attempts": [
+          {
+            "seconds": 3.087225914001465,
+            "elapsed_seconds": 3.088650941848755,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 20.2898268699646,
+            "elapsed_seconds": 24.098673105239868,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.21697497367859,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 802506.576686792,
+        "native_first_solution_seconds": 0.042618,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.473758,
+          "first_lp_seconds": 17.267446,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 802506.576686792,
+          "nodes": 1,
+          "lp_iterations": 66886,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 802506.576686792,
+          "root_upper_bound": 802506.576686792,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 33.602624,
+          "cuts_applied": 782
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.28472900390625
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.1874990463256836
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.21500205993652344
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.5042500495910645,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 60.504250049591064,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 1.386984834691497,
+        "global_allowance_seconds": 35.63189387321472,
+        "first_validated_observed_seconds": 3.025207996368408,
+        "preparation_attempts": [
+          {
+            "seconds": 3.0238349437713623,
+            "elapsed_seconds": 3.025207996368408,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 20.52372097969055,
+            "elapsed_seconds": 24.23677086830139,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.36810612678528,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 802506.576686792,
+        "native_first_solution_seconds": 0.042767,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.435479,
+          "first_lp_seconds": 24.303762,
+          "solutions_stored": 0,
+          "first_root_lp_upper_bound": 802506.5875985274,
+          "nodes": 1,
+          "lp_iterations": 101307,
+          "solutions_found": 0,
+          "available": true,
+          "final_upper_bound": 799219.5997072486,
+          "root_upper_bound": 799219.5997072486,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": null,
+          "native_solve_seconds": 58.34353,
+          "cuts_applied": 1315
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [],
+        "method": "scip",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.05210709571838379,
+        "objective": null,
+        "on_intervals": null,
+        "preparation_fraction": 0,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": null,
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": false,
+        "replay_storage_difference_Mm3": null,
+        "total_seconds": 60.052107095718384,
+        "replay_errors": [],
+        "prepared_objective": null,
+        "relative_gap": null,
+        "global_allowance_seconds": 60,
+        "first_validated_observed_seconds": null,
+        "preparation_attempts": [],
+        "preparation_seconds": 0,
+        "global_certificate": false,
+        "accepted": false,
+        "status": "TIME_LIMIT",
+        "upper_bound": 799219.5997072486,
+        "native_first_solution_seconds": null,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 1,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.457777,
+          "first_lp_seconds": 17.395691,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 802506.576686792,
+          "nodes": 1,
+          "lp_iterations": 66550,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 802506.576686792,
+          "root_upper_bound": 802506.576686792,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 33.601471,
+          "cuts_applied": 782
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.19242596626281738
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.14554095268249512
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2602579593658447
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.5135560035705566,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.4,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 60.51355600357056,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 1.386984834691497,
+        "global_allowance_seconds": 35.60560393333435,
+        "first_validated_observed_seconds": 3.4577651023864746,
+        "preparation_attempts": [
+          {
+            "seconds": 3.4562480449676514,
+            "elapsed_seconds": 3.4577651023864746,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 20.21324110031128,
+            "elapsed_seconds": 24.269811153411865,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 24.39439606666565,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 802506.576686792,
+        "native_first_solution_seconds": 0.04275,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      }
+    ],
+    "julia_version": "1.13.1",
+    "first_validated_scope": "first independent acceptance observed by the workflow; SCIP incumbents are audited only after optimize! returns",
+    "source_sha256": "f40a271a99abe220b10dadc9f4bc26f4f09064374cc3ae2ca440e398f5127cbb",
+    "julia_threads": 1,
+    "blas_threads": 1,
+    "cpu": "apple-m1",
+    "timing_scope": "shared construction/preparation/SCIP allowance; final audits may overrun; loading and warmup excluded"
+  },
+  "allocation": {
+    "records": [
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.973158,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 24477,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 9.482172,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.21136713027954102
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.14155197143554688
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.23902201652526855
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.4765310287475586,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 60.47653102874756,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 5.348815819881383,
+        "global_allowance_seconds": 11.487696886062622,
+        "first_validated_observed_seconds": 2.9521360397338867,
+        "preparation_attempts": [
+          {
+            "seconds": 2.950855016708374,
+            "elapsed_seconds": 2.9521360397338867,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 37.10717010498047,
+            "elapsed_seconds": 40.65184497833252,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          },
+          {
+            "seconds": 7.707050085067749,
+            "elapsed_seconds": 48.35923790931702,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.51230311393738,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.038856,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.967938,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 24182,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 747362.3143024633,
+          "native_solve_seconds": 9.380321,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2707030773162842
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.17288804054260254
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.17719697952270508
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.471390962600708,
+        "objective": 747362.314302453,
+        "on_intervals": 178,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005068562976333624,
+        "total_seconds": 60.47139096260071,
+        "replay_errors": [],
+        "prepared_objective": 747362.314302453,
+        "relative_gap": 11.066865562681803,
+        "global_allowance_seconds": 11.46897006034851,
+        "first_validated_observed_seconds": 2.6006391048431396,
+        "preparation_attempts": [
+          {
+            "seconds": 2.599367141723633,
+            "elapsed_seconds": 2.6006391048431396,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 36.839158058166504,
+            "elapsed_seconds": 40.061156034469604,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 747362.314302453
+          },
+          {
+            "seconds": 8.314465999603271,
+            "elapsed_seconds": 48.37596917152405,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.53102993965149,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.036943,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": 40.061156034469604
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.978253,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 24182,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 747362.3143024633,
+          "native_solve_seconds": 9.683203,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2558298110961914
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.16736292839050293
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.19582486152648926
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.4854440689086914,
+        "objective": 747362.314302453,
+        "on_intervals": 178,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005068562976333624,
+        "total_seconds": 60.48544406890869,
+        "replay_errors": [],
+        "prepared_objective": 747362.314302453,
+        "relative_gap": 11.066865562681803,
+        "global_allowance_seconds": 11.505271911621094,
+        "first_validated_observed_seconds": 2.61873197555542,
+        "preparation_attempts": [
+          {
+            "seconds": 2.6174800395965576,
+            "elapsed_seconds": 2.61873197555542,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 37.100318908691406,
+            "elapsed_seconds": 40.33864998817444,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 747362.314302453
+          },
+          {
+            "seconds": 8.003119945526123,
+            "elapsed_seconds": 48.34211087226868,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.494728088378906,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.037148,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": 40.33864998817444
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.921301,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 23430,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": -2073741.6682660296,
+          "native_solve_seconds": 26.513407,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.18946003913879395
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.14395809173583984
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2564380168914795
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 17.45233678817749,
+        "objective": -2073741.6682660119,
+        "on_intervals": 336,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00024036912617653172,
+        "total_seconds": 77.45233678817749,
+        "replay_errors": [],
+        "prepared_objective": -2073741.6682660119,
+        "relative_gap": 5.348815819881383,
+        "global_allowance_seconds": 11.49181604385376,
+        "first_validated_observed_seconds": 2.6485278606414795,
+        "preparation_attempts": [
+          {
+            "seconds": 2.6472339630126953,
+            "elapsed_seconds": 2.6485278606414795,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 37.29140496253967,
+            "elapsed_seconds": 40.530380964279175,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          },
+          {
+            "seconds": 7.834059953689575,
+            "elapsed_seconds": 48.36477494239807,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.50818395614624,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.035797,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      }
+    ],
+    "julia_version": "1.13.1",
+    "first_validated_scope": "first independent acceptance observed by the workflow; SCIP incumbents are audited only after optimize! returns",
+    "source_sha256": "fa9983f5c679fb0a1967ae3898afb77652806c0799a33581cdade0bf2c7288f2",
+    "julia_threads": 1,
+    "blas_threads": 1,
+    "cpu": "apple-m1",
+    "timing_scope": "shared construction/preparation/SCIP allowance; final audits may overrun; loading and warmup excluded"
+  },
+  "stable_starts": {
+    "records": [
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.591897,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 22386,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 743102.3091279349,
+          "native_solve_seconds": 7.758002,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.19616985321044922
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.13851118087768555
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.23627686500549316
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.5515508651733398,
+        "objective": 743102.3091279786,
+        "on_intervals": 185,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005202861797037883,
+        "total_seconds": 60.55155086517334,
+        "replay_errors": [],
+        "prepared_objective": 743102.3091279786,
+        "relative_gap": 11.136041649346147,
+        "global_allowance_seconds": 11.436984062194824,
+        "first_validated_observed_seconds": 2.6573469638824463,
+        "preparation_attempts": [
+          {
+            "seconds": 2.6560380458831787,
+            "elapsed_seconds": 2.6573469638824463,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 37.4328830242157,
+            "elapsed_seconds": 40.661762952804565,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 743102.3091279786
+          },
+          {
+            "seconds": 7.725350856781006,
+            "elapsed_seconds": 48.38746500015259,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.563015937805176,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.04929,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 2.059348,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 24048,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 747359.3562719725,
+          "native_solve_seconds": 8.653419,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.26329898834228516
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.16964411735534668
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.19594407081604004
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.47762489318847656,
+        "objective": 747359.3562719859,
+        "on_intervals": 178,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005069281743210752,
+        "total_seconds": 60.47762489318848,
+        "replay_errors": [],
+        "prepared_objective": 747359.3562719859,
+        "relative_gap": 11.06691332304725,
+        "global_allowance_seconds": 11.505953073501587,
+        "first_validated_observed_seconds": 3.2236931324005127,
+        "preparation_attempts": [
+          {
+            "seconds": 3.2223060131073,
+            "elapsed_seconds": 3.2236931324005127,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 32.33781886100769,
+            "elapsed_seconds": 36.19103002548218,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 747359.3562719859
+          },
+          {
+            "seconds": 12.153467178344727,
+            "elapsed_seconds": 48.344855070114136,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.49404692649841,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.038012,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": 36.19103002548218
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.9944009999999999,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 24048,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 747359.3562719725,
+          "native_solve_seconds": 8.62014,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2671208381652832
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.16869616508483887
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.1757340431213379
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.4854121208190918,
+        "objective": 747359.3562719859,
+        "on_intervals": 178,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005069281743210752,
+        "total_seconds": 60.48541212081909,
+        "replay_errors": [],
+        "prepared_objective": 747359.3562719859,
+        "relative_gap": 11.06691332304725,
+        "global_allowance_seconds": 11.494258880615234,
+        "first_validated_observed_seconds": 2.6212220191955566,
+        "preparation_attempts": [
+          {
+            "seconds": 2.6199820041656494,
+            "elapsed_seconds": 2.6212220191955566,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 32.13701915740967,
+            "elapsed_seconds": 35.370354890823364,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 747359.3562719859
+          },
+          {
+            "seconds": 12.988640069961548,
+            "elapsed_seconds": 48.359330892562866,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.505741119384766,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.038861,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": 35.370354890823364
+      },
+      {
+        "variables": 26213,
+        "case_sha256": "aa2677f02a3d180ec3faf5fd679d00274bfbb3a140e2d078dc70a33ead6fff77",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 0,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 1.9749970000000001,
+          "first_lp_seconds": 0,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": null,
+          "nodes": 1,
+          "lp_iterations": 25713,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 9018320.573302444,
+          "root_upper_bound": 9018320.573302444,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 743102.3091279349,
+          "native_solve_seconds": 8.657333,
+          "cuts_applied": 0
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.195526123046875
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.13885211944580078
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.2386949062347412
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 36640,
+        "budget_overrun_seconds": 0.48042893409729004,
+        "objective": 743102.3091279786,
+        "on_intervals": 185,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_24h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke24",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.0005202861797037883,
+        "total_seconds": 60.48042893409729,
+        "replay_errors": [],
+        "prepared_objective": 743102.3091279786,
+        "relative_gap": 11.136041649346147,
+        "global_allowance_seconds": 11.502910137176514,
+        "first_validated_observed_seconds": 2.6473019123077393,
+        "preparation_attempts": [
+          {
+            "seconds": 2.6460399627685547,
+            "elapsed_seconds": 2.6473019123077393,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2073741.6682660119
+          },
+          {
+            "seconds": 37.590306997299194,
+            "elapsed_seconds": 40.8112690448761,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 743102.3091279786
+          },
+          {
+            "seconds": 7.531139850616455,
+            "elapsed_seconds": 48.3427460193634,
+            "stage": "dispatch",
+            "accepted": false,
+            "objective": null
+          }
+        ],
+        "preparation_seconds": 48.497089862823486,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 9018320.573302444,
+        "native_first_solution_seconds": 0.03736,
+        "best_observed_objective": 747362.314302453,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 14,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.213894,
+          "first_lp_seconds": 0.38351900000000005,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.7247166858,
+          "nodes": 1,
+          "lp_iterations": 73280,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233510.84763553445,
+          "root_upper_bound": 233510.84763553445,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 219711.48698952675,
+          "native_solve_seconds": 14.747419,
+          "cuts_applied": 971
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03331398963928223
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03126096725463867
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.051676034927368164
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.1560530662536621,
+        "objective": 219711.48698956455,
+        "on_intervals": 73,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00016308604034520613,
+        "total_seconds": 60.15605306625366,
+        "replay_errors": [],
+        "prepared_objective": 219711.48698956455,
+        "relative_gap": 0.06280673275232673,
+        "global_allowance_seconds": 15.689996004104614,
+        "first_validated_observed_seconds": 4.982299089431763,
+        "preparation_attempts": [
+          {
+            "seconds": 4.98147988319397,
+            "elapsed_seconds": 4.982299089431763,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 10.003672122955322,
+            "elapsed_seconds": 15.102478981018066,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 10.208943128585815,
+            "elapsed_seconds": 25.311557054519653,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 8.524610042572021,
+            "elapsed_seconds": 33.836304903030396,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 10.234619855880737,
+            "elapsed_seconds": 44.07106399536133,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 213401.77390789066
+          }
+        ],
+        "preparation_seconds": 44.310003995895386,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233510.84763553445,
+        "native_first_solution_seconds": 0.008298,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": 15.102478981018066
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 1,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 27,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.233538,
+          "first_lp_seconds": 0.35682499999999995,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.74637017213,
+          "nodes": 1,
+          "lp_iterations": 146598,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233560.14120949112,
+          "root_upper_bound": 233560.14120949112,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 217625.41359043098,
+          "native_solve_seconds": 25.093225,
+          "cuts_applied": 979
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.037132978439331055
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03425097465515137
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03573489189147949
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.15450215339660645,
+        "objective": 217625.41359041265,
+        "on_intervals": 78,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00016339459793357491,
+        "total_seconds": 60.154502153396606,
+        "replay_errors": [],
+        "prepared_objective": 217625.41359041265,
+        "relative_gap": 0.07322089528141612,
+        "global_allowance_seconds": 26.00435495376587,
+        "first_validated_observed_seconds": 4.941089153289795,
+        "preparation_attempts": [
+          {
+            "seconds": 4.940330982208252,
+            "elapsed_seconds": 4.941089153289795,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 10.008753061294556,
+            "elapsed_seconds": 15.057208061218262,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 8.563863039016724,
+            "elapsed_seconds": 23.621225118637085,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 10.1753568649292,
+            "elapsed_seconds": 33.7967209815979,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 213401.77390789066
+          }
+        ],
+        "preparation_seconds": 33.99564504623413,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233560.14120949112,
+        "native_first_solution_seconds": 0.008067,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 27,
+          "total_nodes": 1,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.208108,
+          "first_lp_seconds": 0.325744,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.74637017213,
+          "nodes": 1,
+          "lp_iterations": 146778,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233560.14120949112,
+          "root_upper_bound": 233560.14120949112,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 217625.41359043098,
+          "native_solve_seconds": 24.940049,
+          "cuts_applied": 979
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.037229061126708984
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03461194038391113
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03618812561035156
+          }
+        ],
+        "method": "scip_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.15477800369262695,
+        "objective": 217625.41359041265,
+        "on_intervals": 78,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00016339459793357491,
+        "total_seconds": 60.15477800369263,
+        "replay_errors": [],
+        "prepared_objective": 217625.41359041265,
+        "relative_gap": 0.07322089528141612,
+        "global_allowance_seconds": 25.868376970291138,
+        "first_validated_observed_seconds": 5.090684175491333,
+        "preparation_attempts": [
+          {
+            "seconds": 5.08992600440979,
+            "elapsed_seconds": 5.090684175491333,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 9.98542594909668,
+            "elapsed_seconds": 15.18439507484436,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 8.540982007980347,
+            "elapsed_seconds": 23.72553300857544,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 10.202931880950928,
+            "elapsed_seconds": 33.92860507965088,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 213401.77390789066
+          }
+        ],
+        "preparation_seconds": 34.13162302970886,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233560.14120949112,
+        "native_first_solution_seconds": 0.00816,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": null
+      },
+      {
+        "variables": 6439,
+        "case_sha256": "3fce1cf1617ef354d5bce5defd85afc187840c98296fd1c50b342ea458464cef",
+        "repeat": 2,
+        "native_statistics": {
+          "source": "SCIP native statistics; objective bounds in physical units",
+          "stage": "SCIP_STAGE_SOLVING",
+          "last_node_separation_rounds": 2,
+          "total_nodes": 9,
+          "root_bound_note": "SCIP original-problem root bound; unavailable/sentinel is null, not a proof",
+          "presolving_seconds": 0.20655199999999999,
+          "first_lp_seconds": 0.37127199999999994,
+          "solutions_stored": 1,
+          "first_root_lp_upper_bound": 237245.7247166858,
+          "nodes": 9,
+          "lp_iterations": 74792,
+          "solutions_found": 1,
+          "available": true,
+          "final_upper_bound": 233510.84763553445,
+          "root_upper_bound": 233510.84763553445,
+          "raw_status": "SCIP_STATUS_TIMELIMIT",
+          "native_incumbent_objective": 219711.48698952675,
+          "native_solve_seconds": 15.15878,
+          "cuts_applied": 1070
+        },
+        "native_nlp_solvers": {
+          "ipopt": {
+            "solves": 0,
+            "solve_time": 0,
+            "iterations": 0,
+            "local_optimum": 0,
+            "locally_infeasible": 0
+          }
+        },
+        "proposals": [
+          {
+            "water_scale": 1,
+            "status": "OPTIMAL",
+            "total_seconds": 0.03297686576843262
+          },
+          {
+            "water_scale": 0.7,
+            "status": "OPTIMAL",
+            "total_seconds": 0.030965089797973633
+          },
+          {
+            "water_scale": 1.3,
+            "status": "OPTIMAL",
+            "total_seconds": 0.051306962966918945
+          }
+        ],
+        "method": "highs_ipopt",
+        "constraints": 9035,
+        "budget_overrun_seconds": 0.15791106224060059,
+        "objective": 219711.48698956455,
+        "on_intervals": 73,
+        "preparation_fraction": 0.8,
+        "case": "tokke_vinje_operating_6h",
+        "solver_error": null,
+        "incumbent_source": "initial",
+        "budget_seconds": 60,
+        "candidate_error": null,
+        "label": "tokke6",
+        "preparation_accepted": true,
+        "replay_storage_difference_Mm3": 0.00016308604034520613,
+        "total_seconds": 60.1579110622406,
+        "replay_errors": [],
+        "prepared_objective": 219711.48698956455,
+        "relative_gap": 0.06280673275232673,
+        "global_allowance_seconds": 16.072187900543213,
+        "first_validated_observed_seconds": 4.883188009262085,
+        "preparation_attempts": [
+          {
+            "seconds": 4.882396936416626,
+            "elapsed_seconds": 4.883188009262085,
+            "stage": "feasibility",
+            "accepted": true,
+            "objective": -2291090.9411756266
+          },
+          {
+            "seconds": 9.952692985534668,
+            "elapsed_seconds": 14.951386213302612,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 219711.48698956455
+          },
+          {
+            "seconds": 10.015980958938599,
+            "elapsed_seconds": 24.967512130737305,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 217625.41359041265
+          },
+          {
+            "seconds": 8.514039993286133,
+            "elapsed_seconds": 33.48169302940369,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 196867.9985202602
+          },
+          {
+            "seconds": 10.208776950836182,
+            "elapsed_seconds": 43.690606117248535,
+            "stage": "dispatch",
+            "accepted": true,
+            "objective": 213401.77390789066
+          }
+        ],
+        "preparation_seconds": 43.92781209945679,
+        "global_certificate": false,
+        "accepted": true,
+        "status": "TIME_LIMIT",
+        "upper_bound": 233510.84763553445,
+        "native_first_solution_seconds": 0.00815,
+        "best_observed_objective": 219711.48698956455,
+        "within_0_1_percent_of_best_observed_seconds": 14.951386213302612
+      }
+    ],
+    "julia_version": "1.13.1",
+    "first_validated_scope": "first independent acceptance observed by the workflow; SCIP incumbents are audited only after optimize! returns",
+    "source_sha256": "29daf7bcf7320f109bb4a9ad45577e3fc8089318c8f44018bf57dbe0f1a05db0",
+    "julia_threads": 1,
+    "blas_threads": 1,
+    "cpu": "apple-m1",
+    "timing_scope": "shared construction/preparation/SCIP allowance; final audits may overrun; loading and warmup excluded"
+  },
+  "selection": {
+    "workflow": "HiGHS commitment proposals, Ipopt dispatch, SCIP global solve",
+    "preparation_fraction": 0.8,
+    "preparation_cap_seconds": 60,
+    "criterion": "retain the existing proposal engine because neither replacement dominates validated objective and runtime across cases"
+  },
+  "quality_timing_scope": "Post-hoc time to observed acceptance within 0.1% of the best delivered objective on that input across these campaigns; this reference is not an optimality proof. SCIP candidates are audited only after optimize! returns.",
+  "public_api": [
+    {
+      "start_valid": true,
+      "objective": 84634.30246598308,
+      "case": "gates24",
+      "bound": 85721.54311434375,
+      "budget_seconds": 60,
+      "fourfold_replay": true,
+      "total_seconds": 60.08357000350952,
+      "relative_gap": 0.01284633554813846,
+      "fourfold_storage_difference_Mm3": 8.681989811520907e-07,
+      "preparation_seconds": 19.91038179397583,
+      "accepted": true
+    },
+    {
+      "start_valid": true,
+      "objective": 219711.48698956455,
+      "case": "tokke6",
+      "bound": 233510.84763553445,
+      "budget_seconds": 60,
+      "fourfold_replay": true,
+      "total_seconds": 60.13792610168457,
+      "relative_gap": 0.06280673275232673,
+      "fourfold_storage_difference_Mm3": 0.00020383552910629987,
+      "preparation_seconds": 46.4361310005188,
+      "accepted": true
+    },
+    {
+      "start_valid": true,
+      "objective": 742898.0773950411,
+      "case": "tokke24",
+      "bound": 797351.9136126015,
+      "budget_seconds": 120,
+      "fourfold_replay": true,
+      "total_seconds": 120.4474470615387,
+      "relative_gap": 0.07329920196926844,
+      "fourfold_storage_difference_Mm3": 0.0006499137302924396,
+      "preparation_seconds": 60.39033818244934,
+      "accepted": true
+    }
+  ],
+  "fourfold_checks": [
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "distributed"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "distributed"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "distributed"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "distributed"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "tables"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "tables"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "tables"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "tables"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates6"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates6"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates6"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates6"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates24"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates24"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates24"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "final",
+      "case": "gates24"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke6"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke6"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke6"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke6"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke24"
+    },
+    {
+      "method": "highs_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke24"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 1,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke24"
+    },
+    {
+      "method": "scip_ipopt",
+      "fourfold_replay": true,
+      "repeat": 2,
+      "errors": [],
+      "campaign": "stable-start",
+      "case": "tokke24"
+    }
+  ]
+}

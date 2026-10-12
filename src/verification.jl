@@ -149,6 +149,8 @@ margin can be introduced after a failed replay to cover the measured numerical
 shortfall. `operational_margin` requests initial power/envelope tightening
 when optimizing a candidate; a supplied `initial` is audited as supplied.
 All attempts, margins and actual solution grids are returned.
+`refine_grid=false` retains the decision grid and only reoptimizes with measured
+replay margins. This allows a prepared start to serve the same global model.
 """
 function solve_verified(
     c::ScheduleCase;
@@ -163,12 +165,17 @@ function solve_verified(
     warm = nothing,
     tunnel_opening = nothing,
     operational_margin = 0.0,
+    deadline = Inf,
+    refine_grid = true,
 )
     isfinite(time_limit) && time_limit>0 ||
         throw(ArgumentError("positive finite per-solve time limit required"))
+    isnan(deadline) && throw(ArgumentError("invalid dispatch deadline"))
     replay_factor isa Integer && replay_factor>=2 ||
         throw(ArgumentError("acceptance requires replay_factor >= 2"))
-    max_refinements>=0 || throw(ArgumentError("negative refinement budget"))
+    max_refinements isa Integer && max_refinements>=0 ||
+        throw(ArgumentError("nonnegative integer refinement budget required"))
+    refine_grid isa Bool || throw(ArgumentError("refine_grid must be boolean"))
     initial!==nothing &&
         (!haskey(initial, "u") || initial["u"]!=u) &&
         throw(
@@ -191,8 +198,10 @@ function solve_verified(
     margin=0.0
     power_margin=operational_margin
     x=initial
-    audit=nothing
+    audit=Dict("valid"=>false,"errors"=>["dispatch deadline exhausted"])
     for iteration in 0:max_refinements
+        remaining=min(time_limit,deadline-time())
+        iteration==0 && initial!==nothing || remaining>0 || break
         x=iteration==0 && initial!==nothing ? initial :
           solve_case(
             cc;
@@ -202,7 +211,7 @@ function solve_verified(
             warm = warm,
             arrival_margin = margin,
             operational_margin = power_margin,
-            time_limit = time_limit,
+            time_limit = remaining,
             feasibility_only = feasibility_only,
             tunnel_opening = openings,
         )
@@ -243,7 +252,7 @@ function solve_verified(
             );
             init = 0.0,
         )
-        shortfall>1e-4 && (margin=max(margin, shortfall+0.02))
+        shortfall>1e-4 && (margin+=shortfall+0.02)
         power_shortfall=maximum(
             (
                 value for (name, value) in get(audit, "violations", Dict()) if
@@ -251,7 +260,16 @@ function solve_verified(
             );
             init = 0.0,
         )
-        power_shortfall>1e-4 && (power_margin=max(power_margin, 1.5power_shortfall+0.002))
+        power_shortfall>1e-4 && (power_margin+=1.5power_shortfall+0.002)
+        if !refine_grid
+            # The measured shortfall is additional to the existing tightening.
+            # Without a new margin, repeating this same discretization has no
+            # numerical justification; storage/transport errors need a new grid.
+            shortfall>1e-4 || power_shortfall>1e-4 || break
+            # Retain the original hydraulic start. The rejected candidate lies
+            # on bounds that this retry tightens and can stall restoration.
+            continue
+        end
         nextgrid=refined_grid(cc.grid)
         idx=[
             min(

@@ -10,6 +10,7 @@ function propose_commitment(
     radius = nothing,
     deadline = Inf,
     transport = nothing,
+    optimizer = HiGHS.Optimizer,
 )
     started=time()
     validate_inputs(c)
@@ -35,9 +36,9 @@ function propose_commitment(
                 "compiled deterministic transport cannot serve distributed proposal",
             ),
         )
-    m=Model(HiGHS.Optimizer)
+    m=Model(optimizer)
     set_silent(m)
-    set_optimizer_attribute(m, "mip_rel_gap", 0.002)
+    set_attribute(m, MOI.RelativeGapTolerance(), 0.002)
     states=_joint_states!(m,c)
     gates=_tunnel_gate_states!(m,c)
     u=states.u
