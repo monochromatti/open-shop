@@ -32,8 +32,11 @@ Floating pressure components fix one head coordinate while retaining every
 physical balance row. Incompatible water injections still fail convergence.
 
 Public callers pass physical objects and control arrays. These internal types
-hold the normalized data for a numerical step. Result dictionaries retain their
-JSON representation and are assembled outside the residual kernel.
+hold the normalized data for a numerical step. Normalization checks the
+Float64 values and preserves exact zero/nonzero control states; overflow and
+control underflow raise an input error. Supplied sparse routing matrices retain
+their sparse storage. Result dictionaries retain their JSON representation and
+are assembled outside the residual kernel.
 
 ## Extending the model
 
@@ -108,8 +111,8 @@ one Julia and one BLAS thread. Package loading and compilation are excluded.
 
 | Replay | Before | After | Allocated before | Allocated after |
 |---|---:|---:|---:|---:|
-| Fixed delay | 9.66 ms | 1.91 ms | 10.76 MB | 2.23 MB |
-| Distributed delay | 13.13 ms | 1.58 ms | 17.51 MB | 1.87 MB |
+| Fixed delay | 9.66 ms | 1.71 ms | 10.76 MB | 2.23 MB |
+| Distributed delay | 13.13 ms | 1.59 ms | 17.51 MB | 1.87 MB |
 
 Storage, heads and power match exactly in these cases. The largest flow
 difference is 3.6e-15 m³/s. Local and global variable/constraint counts are

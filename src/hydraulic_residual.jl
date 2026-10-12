@@ -23,6 +23,35 @@ struct HydraulicStepData{M, S}
 end
 
 function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, transfer, network)
+    previous_storage = Vector{Float64}(Vprev)
+    duration = Float64(dt)
+    discharge = Vector{Float64}(generator_q)
+    river_gate = Vector{Float64}(gate)
+    tunnel_opening = Vector{Float64}(opening)
+    previous_arrival = Vector{Float64}(arrival)
+    current_transfer = Matrix{Float64}(transfer)
+    current_network = network === nothing ? nothing : Float64.(network)
+    isfinite(duration) && duration > 0 ||
+        throw(ArgumentError("duration must remain finite and positive in Float64"))
+    all(
+        A -> all(isfinite, A),
+        (
+            previous_storage,
+            discharge,
+            river_gate,
+            tunnel_opening,
+            previous_arrival,
+            current_transfer,
+        ),
+    ) && (current_network === nothing || all(isfinite, current_network)) ||
+        throw(ArgumentError("hydraulic inputs must remain finite in Float64"))
+    # Exact zero identifies closed gates and inactive generating units. Reject
+    # underflow instead of changing that physical state during normalization.
+    for (original, normalized) in
+        ((generator_q, discharge), (gate, river_gate), (opening, tunnel_opening))
+        all(i -> iszero(original[i]) == iszero(normalized[i]), eachindex(normalized)) ||
+            throw(ArgumentError("nonzero hydraulic controls must remain nonzero in Float64"))
+    end
     topology = HydraulicTopology(s)
     nr, nj = length(s.reservoirs), length(s.junctions)
     fixed = zeros(nr + nj)
@@ -31,7 +60,7 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
     end
     for i in eachindex(fixed)
         for (j, sign) in topology.generator_incidence[i]
-            fixed[i] += sign * generator_q[j]
+            fixed[i] += sign * discharge[j]
         end
     end
     active = findall(r -> r.law != :junction, s.rivers)
@@ -40,14 +69,14 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
     HydraulicStepData(
         s,
         topology,
-        Vector{Float64}(Vprev),
-        Float64(dt),
-        Vector{Float64}(generator_q),
-        Vector{Float64}(gate),
-        Vector{Float64}(opening),
-        Vector{Float64}(arrival),
-        Matrix{Float64}(transfer),
-        network === nothing ? nothing : Matrix{Float64}(network),
+        previous_storage,
+        duration,
+        discharge,
+        river_gate,
+        tunnel_opening,
+        previous_arrival,
+        current_transfer,
+        current_network,
         river_source_indices(s),
         active,
         _forward_river_order(s),

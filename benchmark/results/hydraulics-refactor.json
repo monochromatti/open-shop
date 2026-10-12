@@ -9,9 +9,9 @@
   "results": {
     "deterministic": {
       "before_seconds": 0.0096555,
-      "after_seconds": 0.001905833,
+      "after_seconds": 0.0017115,
       "before_bytes": 10757312,
-      "after_bytes": 2227744,
+      "after_bytes": 2226688,
       "maximum_absolute_differences": {
         "V": 0,
         "H": 0.0,
@@ -30,9 +30,9 @@
     },
     "distributed": {
       "before_seconds": 0.013131083,
-      "after_seconds": 0.001584666,
+      "after_seconds": 0.001593083,
       "before_bytes": 17506928,
-      "after_bytes": 1869392,
+      "after_bytes": 1867472,
       "maximum_absolute_differences": {
         "V": 0,
         "H": 0.0,
@@ -49,5 +49,6 @@
         "global_constraints": 2625
       }
     }
-  }
+  },
+  "after_description": "equation-shaped residual with Float64 normalization checks and sparse operator preservation"
 }

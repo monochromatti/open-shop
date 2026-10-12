@@ -7,6 +7,10 @@ arrivals are evaluated inside Newton's residual, coupled to storage and heads.
 For deterministic transport, `current_network` maps local injections to arrivals;
 upstream water entering a confluence is represented by those same source pulses.
 Operational bounds are reported, never imposed by clipping physical states.
+State and control inputs are normalized to Float64. Values that overflow, or
+nonzero controls that underflow to zero, throw `ArgumentError`. Sparse
+`current_network` matrices retain their sparse storage. All rate/state inputs
+are vectors, and transfer inputs are matrices.
 """
 function forward_step(
     s::HydroSystem,
@@ -25,19 +29,16 @@ function forward_step(
     nr, nj, ne, nd=length(s.reservoirs), length(s.junctions), length(s.tunnels), length(s.rivers)
     ng=length(s.generators)
     ta=tunnel_opening===nothing ? [t.opening for t in s.tunnels] : tunnel_opening
-    length(Vprev)==nr &&
-    length(generator_q)==ng &&
-    length(gate)==nd &&
-    length(river_arrival)==nd &&
+    Vprev isa AbstractVector && length(Vprev)==nr &&
+    generator_q isa AbstractVector && length(generator_q)==ng &&
+    gate isa AbstractVector && length(gate)==nd &&
+    river_arrival isa AbstractVector && length(river_arrival)==nd &&
     ta isa AbstractVector &&
     length(ta)==ne || throw(DimensionMismatch("forward inputs"))
-    size(current_transfer, 1)==nd &&
+    current_transfer isa AbstractMatrix && size(current_transfer, 1)==nd &&
     size(current_transfer, 2)>=maximum((length(r.curves) for r in s.rivers); init = 1) ||
         throw(DimensionMismatch("current transfer fractions"))
-    isfinite(dt) &&
-    dt>0 &&
-    all(isfinite, vcat(Vprev, generator_q, gate, ta, river_arrival, vec(current_transfer))) ||
-        throw(ArgumentError("finite state and positive duration required"))
+    isfinite(dt) && dt>0 || throw(ArgumentError("finite positive duration required"))
     all(>=(0), generator_q) &&
     all(x->0<=x<=1, gate) &&
     all(x->0<=x<=1, ta) &&
@@ -45,8 +46,8 @@ function forward_step(
     all(x->0<=x<=1, current_transfer) ||
         throw(ArgumentError("invalid controls or arrival fractions"))
     current_network === nothing ||
-        (size(current_network) == (nd, nd) && all(isfinite, current_network)) ||
-        throw(ArgumentError("current network must be a finite river-by-river matrix"))
+        (current_network isa AbstractMatrix && size(current_network) == (nd, nd)) ||
+        throw(ArgumentError("current network must be a river-by-river matrix"))
     isfinite(tolerance) && tolerance > 0 ||
         throw(ArgumentError("positive finite tolerance required"))
     max_iterations isa Integer && max_iterations >= 0 ||

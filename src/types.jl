@@ -155,9 +155,12 @@ end
     River(; name, target, curves, capacity, water_value, ...)
 
 A routed reach with flow in m³/s, travel time in hours and inventory in Mm³.
-`source` may name a reservoir or another river. Plants and tunnels can feed it
-through `discharge_river`. Supply `deterministic_delay` for a fixed travel time,
-or `curves` for distributed responses. Reservoir outlets use the selected
+`source` names a reservoir or explicit river confluence. A direct river
+connection uses the upstream `target` to name the downstream reach, whose
+`source` is `:auto`; call [`normalize_river_connections`](@ref) before using
+that system. Plants and tunnels can feed a reach through `discharge_river`.
+Supply `deterministic_delay` and `curves=[]` for a fixed travel time, or
+`curves` for distributed responses. Reservoir outlets use the selected
 `law`; a `:delta` channel instead exchanges water instantaneously according to
 one supplied delta-level response curve.
 """
