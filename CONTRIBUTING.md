@@ -32,5 +32,6 @@ Use kernel inference/allocation checks only where they protect a measured numeri
 property. Report compilation separately from warm timings, and do not describe a
 replay improvement as an end-to-end solver speedup.
 
-See [numerical design](docs/numerical-design.md) for the equation layout and
-[the replay benchmark](benchmark/hydraulics.jl) for comparable warm measurements.
+The [paper](paper/paper.typ) states the model and solution method. Update it
+when changing physical equations, interpolation or certificate scope. Keep
+experiment outputs outside the repository.

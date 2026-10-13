@@ -1,6 +1,6 @@
 # River networks
 
-A delayed reach carries water from its upstream release to its downstream arrival. Instantaneous reservoir-to-reservoir channels instead use signed [delta-level flow curves](channel-curves.md).
+A delayed reach carries water from its upstream release to its downstream arrival. Instantaneous reservoir-to-reservoir channels instead use signed [delta-level flow curves](input.md).
 Reservoir outlets, plant discharges, directed tunnel outfalls, upstream reaches
 and natural inflow can supply it. Water in transit belongs to the river inventory
 until it arrives; it is not credited to downstream storage early.
@@ -28,8 +28,8 @@ natural water at its top; an inflow-only reach also uses `source=:auto`.
 `OperationalSeries(attribute=:inflow, ...)` supplies time-dependent natural
 inflow. Input changes must lie on scheduling edges.
 
-`normalize_river_connections(system)` compiles direct connections from Julia
-objects; `readcase` and `case_from_dict` do this automatically. Inferred
+`ScheduleCase` compiles direct connections from native Julia objects;
+`readcase` and `case_from_dict` use the same construction. Inferred
 confluences are internal zero-storage nodes and disappear from `case_dict`.
 Users do not need to declare a RiverJunction. Explicit junctions remain
 supported for existing inputs.
@@ -83,10 +83,6 @@ flows covering zero through capacity; intermediate references are allowed.
 At release flow `q`, only the neighboring reference distributions are blended.
 The chosen distribution stays with the original cohort, including on restart.
 The supplied probabilities must sum to one; invalid inputs are rejected.
-
-OpenSHOP selects the distribution using contemporaneous release flow. SHOP
-selects it using flow from the previous optimization iteration, so identical
-input curves do not establish identical numerical schedules.
 
 For multiple references the global model uses one shared SOS2 flow coordinate
 per release; arrival, pointwise observations and terminal inventory all use

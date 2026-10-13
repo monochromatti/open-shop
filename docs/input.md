@@ -36,12 +36,12 @@ optimized intervals free. `TunnelInterlock` counts strictly positive member
 positions in each interval, between `min_open` and `max_open`. Movement cost is
 `gate_adjustment_cost * abs(opening - previous_opening)`, including the first
 interval relative to `initial_opening` or the static opening. It has no duration
-multiplier. See [discrete tunnel gates](tunnel-gates.md) for controls and solver
+multiplier. See [discrete tunnel gates](api.md) for controls and solver
 scope.
 
 `min_efficiency` is a lower bound on a running unit's turbine efficiency and defaults to zero. It is independent of the electrical-efficiency curve.
 
-River `law` is `controlled`, `orifice`, `weir`, `junction` or `delta`. The delta law uses supplied reference-level flow tables for a signed, zero-delay channel between reservoirs; see [channel and gate-loss curves](channel-curves.md). For controlled outlets, reservoir withdrawal is `(operating capacity - natural inflow) * gate`; total reach release adds natural inflow. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
+River `law` is `controlled`, `orifice`, `weir`, `junction` or `delta`. The delta law uses supplied reference-level flow tables for a signed, zero-delay channel between reservoirs; see [channel and gate-loss curves](api.md). For controlled outlets, reservoir withdrawal is `(operating capacity - natural inflow) * gate`; total reach release adds natural inflow. Orifice release is `coefficient * gate * sqrt(head - crest)`. Weir release is `coefficient * (head - crest)^1.5` with an uncontrolled gate of one. `allow_dry=true` replaces negative head above crest by zero. A discharge table replaces the analytic outlet relationship. Environmental arrivals use `interval_average` or `pointwise`; supplied `arrival_window_grid` declares the windows for interval-average requirements.
 
 ## Shared streams and direct river links
 
@@ -92,7 +92,7 @@ Operating minimum/maximum restrictions tighten their static object bounds. Gate 
 
 `maintenance=1` makes a unit unavailable; a plant outage makes every member unit unavailable. Forced states, schedules and initial minimum-duration restrictions are intersected: one input cannot overwrite another. `power` and `discharge` prescribe hard interval schedules. They are inactive before their first knot; an explicit zero schedule forces the affected unit or plant off. Positive schedules require an operating unit, while positive `pmin`/`qmin` alone do not force operation.
 
-Plant `qmax` defaults to no additional aggregate discharge restriction. Directional plant power ramps inherit `ramp` when omitted; other omitted ramp limits are disabled. See [operating rules](operating-rules.md) for timing, history, equations, and differences from SHOP inputs.
+Plant `qmax` defaults to no additional aggregate discharge restriction. Directional plant power ramps inherit `ramp` when omitted; other omitted ramp limits are disabled. See [operating rules](operating-rules.md) for timing and history conventions.
 
 ## Flow observations
 
@@ -125,4 +125,4 @@ Refinement retains these rules and their physical input times. Independent equat
 | Water value and release penalty | objective currency/Mm³ |
 | Efficiency, gate, opening and delay probability | dimensionless |
 
-Unknown fields at the case, object, table, delay-curve or operation level raise an error. Missing required fields, invalid bounds, unsupported laws/interpolation, unknown endpoints, duplicate names/series and invalid topology also fail input validation. OpenSHOP does not import arbitrary proprietary SHOP files or infer physical calibration from names. Keep the case and returned schedule together: changing the grid changes schedule dimensions and the discrete optimization problem.
+Unknown fields at the case, object, table, delay-curve or operation level raise an error. Missing required fields, invalid bounds, unsupported laws/interpolation, unknown endpoints, duplicate names/series and invalid topology also fail input validation. Inputs use this documented profile; physical calibration must be supplied explicitly. Keep the case and returned schedule together: changing the grid changes schedule dimensions and the discrete optimization problem.

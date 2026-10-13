@@ -1,28 +1,23 @@
 # OpenSHOP
 
-Hydropower scheduling in Julia, with nonlinear hydraulic equations and global
-optimality bounds from SCIP.
+A Julia library for nonlinear hydropower scheduling on connected watercourses.
+It models reservoirs, generating units, shared pressure networks, gates,
+instantaneous channels and delayed rivers. SCIP searches the mixed-integer
+nonlinear model; an independent chronological simulator checks the controls.
 
-OpenSHOP models reservoirs, generating units, shared hydraulic networks and
-delayed rivers as named objects. It chooses unit commitment, eligible tunnel
-gates and dispatch in one bounded mixed-integer nonlinear model. An independent chronological simulator
-checks the returned controls, water balance and operating limits.
-
-This is a generation scheduling library. It does not yet provide complete
-compatibility with SINTEF SHOP. Pumping, reserve markets and stochastic scenarios
-are outside the current model.
+The [paper](paper/paper.pdf) states the complete physical and operational model,
+its algebraic formulation and solution method. The editable source is
+[paper/paper.typ](paper/paper.typ).
 
 ## Installation
-
-Install from GitHub into a Julia environment:
 
 ```julia
 using Pkg
 Pkg.add(url="https://github.com/monochromatti/open-shop")
 ```
 
-The tested toolchain is Julia 1.13 on macOS and Linux. The repository pins
-its Julia packages and provides a Nix development shell for both platforms.
+The tested toolchain is Julia 1.13 on macOS and Linux. For development, the
+repository pins its Julia packages and provides a Nix shell:
 
 ```sh
 git clone https://github.com/monochromatti/open-shop.git
@@ -34,129 +29,62 @@ cd open-shop
 
 Without Nix, use `julia --project=.` instead of `./scripts/julia.sh`.
 
-The [single-reservoir example](examples/single_reservoir.jl) constructs a case
-from Julia objects and solves it against a known optimum.
-The [operating-rules example](examples/operating_rules.jl) adds maintenance,
-required discharge, plant dwell and directional ramps to a two-unit station.
-The [mixed-source river example](examples/mixed_source_network.jl) routes two
-plants and natural inflow through delayed reaches; [river networks](docs/river-networks.md)
-describes direct plant/tunnel connections and flow-dependent travel time.
-The [tunnel-gate example](examples/tunnel_gates.jl) optimizes two reservoir
-supplies with a gate interlock and chronological movement costs.
-
-## Solving a schedule
+## Use
 
 ```julia
 using OpenSHOP
 
 case = readcase("watercourse.json")
 result = solve(case; time_limit=60.0, relative_gap=1e-3)
-
 if result.accepted
     schedule = result.solution
     writejson("schedule.json", schedule)
 end
 ```
 
-Two checks have different meanings:
+`accepted` means the equations, operating restrictions and finer replay passed.
+`global_certificate` means the schedule's validated interval-model objective and
+SCIP's enclosing upper bound meet the requested gap. The two checks are separate:
+an interval-model certificate can coexist with a failed finer replay.
+A useful schedule may be returned before that gap closes.
 
-| Result | Meaning |
-|---|---|
-| `accepted` | The schedule passed the equations, operating constraints and finer chronological replay. |
-| `global_certificate` | Its validated objective and SCIP's enclosing global upper bound meet the requested gap for the discrete optimization model. |
+Construct cases with native named Julia objects or JSON. The
+[API guide](docs/api.md) explains solving, replay, results and restart;
+[input objects and units](docs/input.md), [operating rules](docs/operating-rules.md)
+and [river networks](docs/river-networks.md) describe case data.
 
-A time limit can leave a useful feasible schedule with an unfinished proof.
-Inspect `feasible_lower_bound`, `global_bound`, `relative_gap`, `status` and
-`total_seconds`. Solver termination alone is not an optimality certificate.
-Preparation, construction and first-call compilation consume the time allowance.
-Extraction and replay can overrun it, recorded in `budget_overrun_seconds`. Passing
-`fixed_u` restricts both the search and its certificate to that commitment.
-Eligible tunnel gates still remain optimization decisions under `fixed_u`.
+Examples cover a [single reservoir](examples/single_reservoir.jl),
+[station operating rules](examples/operating_rules.jl),
+[many-to-one river connections](examples/mixed_source_network.jl),
+[signed channels](examples/level_channels.jl) and
+[discrete tunnel gates](examples/tunnel_gates.jl).
+The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
+case from an external public dataset; upstream data are not bundled.
 
-The solver uses one exact table representation: SOS2 coordinates for linear
-curves and shared quadratic products for discharge PCHIP interpolation. It
-preserves the supplied table values and slopes. Units at the same plant share
-hydraulic head and compatible table coordinates. Fixed unit states restrict
-table domains to their physical branch. Shared on-state weights, a joint power
-envelope and a bounded separator for certified power supports strengthen SCIP's
-relaxation while retaining the exact equations.
-Ordinary bound tightening uses a smaller iteration allowance to improve proof
-progress on shorter horizons; larger watercourses can still spend the full
-budget at the root. See the [root-proof comparison](docs/root-proof.md).
-See the [benchmark results](docs/benchmarks.md) and
-[coupled relaxation experiments](docs/coupled-relaxations.md) for measured schedule,
-bound and runtime tradeoffs.
+## Scope
 
-`solve(case)` prepares a feasible start before SCIP's full nonlinear integer
-search. Preparation uses SCIP MILP commitment and gate proposals, followed by a
-sparse JuMP nonlinear model solved by Ipopt. Local dispatch prepares interval
-bounds and routing
-expressions separately from the physical constraints, retaining explicit
-storage, head, flow and power variables. Its objective is a feasible lower
-bound; SCIP supplies the global upper bound.
-The [linear-system study](docs/linear-systems.md) profiles this dispatch and
-compares sparse solvers, curvature systems and native right-hand-side batching.
-Preparation receives at most 80% of the shared time allowance, capped at 60
-seconds. Unused time remains available to SCIP. It starts with the original
-operating limits and can retry a failed finer replay with measured power or
-arrival margins, retaining the requested decision grid. The global model always
-uses the original limits and remains free to change every commitment and gate
-decision. See the [workflow comparison](docs/solver-workflow.md) and
-[proposal solver confirmation](docs/proposal-solvers.md).
+Generation is deterministic. Head–storage relationships, signed quadratic
+pressure losses, turbine and electrical efficiencies, finite gate choices,
+commitment, schedules, directional ramps, environmental requirements and river
+transit are explicit parts of the model. Constitutive functions must be supplied
+and calibrated. Pumping, reserve markets, stochastic scenarios, river geometry
+and transient pressure dynamics are outside the current model.
 
-`preparation_seconds`, `preparation_accepted` and `prepared_objective` report
-this accelerator's contribution. `preparation_time_limit=0` disables it for
-diagnostics. Supplied `initial` schedules and explicitly fixed discrete controls
-skip automatic preparation. An initial schedule must
-use the same grid and pass a complete algebraic feasibility check. If a better
-discrete candidate fails replay, a replay-valid initial schedule is retained and
-its gap is recomputed against the global bound.
+Feasible-start preparation uses SCIP MILP proposals and Ipopt nonlinear dispatch.
+The full SCIP search retains the original nonlinear equations. JuMP provides
+the common algebraic interface; Julia also hosts physical reconstruction and
+sparse river transport. See the paper for interpolation and certificate scope.
 
-Candidate preparation also accepts `operational_margin` in MW to keep
-controls away from active power and turbine-envelope limits during replay.
-This can make a narrow operating range infeasible; it is not a replay
-guarantee. SCIP always uses the original case restrictions.
+## Paper
 
-The [schedule-generation comparison](docs/scheduling-performance.md) measures
-preparation separately, including time to useful schedules, accepted objectives,
-nonlinear iterations and hydraulic acceptance costs.
+The repository includes the typeset article, its Typst source and bibliography.
+With Typst installed, run `make -C paper`. Alternatively, use the pinned Nix shell:
 
-## Model and data
-
-- Nonlinear head–storage curves, signed tunnel losses, tabulated gate losses and flow conservation.
-- Discrete tunnel gate positions, interlocks and chronological gate movement costs.
-- Turbine tables, electrical efficiency curves and aggregate plant limits.
-- Unit and plant on/off rules, minimum up/down times, maintenance and transition costs.
-- Prescribed power/discharge schedules and directional power, flow, storage and level ramps.
-- River confluences, signed delta-level channels, release laws, finite travel times and environmental limits.
-- Time-dependent operating restrictions, aggregate flow observations and restart state.
-
-The [level-channel example](examples/level_channels.jl) combines signed reservoir exchange, tabulated tunnel gate losses and unit commitment.
-
-See [supplied channel and gate-loss curves](docs/channel-curves.md), [input objects and units](docs/input.md), [operating rules](docs/operating-rules.md),
-[discrete tunnel gates](docs/tunnel-gates.md),
-[equations and certificate scope](docs/model.md),
-[numerical design and Julia API](docs/numerical-design.md),
-and [benchmark results](docs/benchmarks.md).
-
-The [Tokke–Vinje example](examples/tokke_vinje/README.md) fetches SINTEF's public
-source dataset and reconstructs a documented generation benchmark. The default
-profile includes supplied seasonal minimum-flow and reservoir storage rules. Its
-mapping report identifies supported attributes, conditional waivers and exclusions.
-Upstream data are not bundled with this repository.
-
-## Why Julia and SCIP.jl?
-
-JuMP provides the algebraic model, while SCIP.jl sends it to the native SCIP
-solver. SCIP performs the nonlinear search; a bounded Julia separator supplies
-certified power cuts.
-Julia also hosts the typed network data, sparse transport compilation and
-independent physical simulator. Keeping these in one language avoids a second
-model implementation. [SCIP.jl](https://jump.dev/JuMP.jl/stable/packages/SCIP/)
-exposes the solver's C API and MathOptInterface.
+```sh
+nix develop .#paper -c make -C paper
+```
 
 ## License
 
-OpenSHOP is MIT licensed. SCIP is Apache-2.0 licensed. External datasets retain
-their own terms. OpenSHOP is independent of SINTEF SHOP and does not include its
-source code or require its license.
+The package and paper are MIT licensed. SCIP is Apache-2.0 licensed.
+External datasets retain their own terms.

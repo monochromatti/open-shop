@@ -6,7 +6,9 @@
   in {
     devShells = nixpkgs.lib.genAttrs systems (system: let
       pkgs = import nixpkgs { inherit system; };
-    in { default = pkgs.mkShell {
+    in {
+    paper = pkgs.mkShell { packages = [ pkgs.typst pkgs.gnumake ]; };
+    default = pkgs.mkShell {
       packages = [ pkgs.julia-bin (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];
       shellHook = ''
         export JULIA_DEPOT_PATH="$PWD/.depot"
