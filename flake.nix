@@ -6,12 +6,8 @@
   in {
     devShells = nixpkgs.lib.genAttrs systems (system: let
       pkgs = import nixpkgs { inherit system; };
-      paperTex = pkgs.texlive.combine {
-        inherit (pkgs.texlive) scheme-small collection-fontsrecommended
-          amsmath booktabs geometry hyperref microtype pgf;
-      };
     in {
-    paper = pkgs.mkShell { packages = [ paperTex pkgs.gnumake ]; };
+    paper = pkgs.mkShell { packages = [ pkgs.typst pkgs.gnumake ]; };
     default = pkgs.mkShell {
       packages = [ pkgs.julia-bin (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];
       shellHook = ''

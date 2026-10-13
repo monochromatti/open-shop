@@ -32,6 +32,6 @@ Use kernel inference/allocation checks only where they protect a measured numeri
 property. Report compilation separately from warm timings, and do not describe a
 replay improvement as an end-to-end solver speedup.
 
-The [paper](paper/paper.tex) states the model and solution method. Update it
+The [paper](paper/paper.typ) states the model and solution method. Update it
 when changing physical equations, interpolation or certificate scope. Keep
 experiment outputs outside the repository.

@@ -7,7 +7,7 @@ nonlinear model; an independent chronological simulator checks the controls.
 
 The [paper](paper/paper.pdf) states the complete physical and operational model,
 its algebraic formulation and solution method. The editable source is
-[paper/paper.tex](paper/paper.tex).
+[paper/paper.typ](paper/paper.typ).
 
 ## Installation
 
@@ -77,8 +77,8 @@ sparse river transport. See the paper for interpolation and certificate scope.
 
 ## Paper
 
-The repository includes the typeset article and its self-contained LaTeX source.
-With a LaTeX installation, run `make -C paper`. Alternatively:
+The repository includes the typeset article, its Typst source and bibliography.
+With Typst installed, run `make -C paper`. Alternatively, use the pinned Nix shell:
 
 ```sh
 nix develop .#paper -c make -C paper
