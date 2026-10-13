@@ -301,6 +301,10 @@ Here $q_g^*$ and $h_g^*$ are reference operating conditions, $eta_g^0$ is
 their turbine efficiency, and nonnegative $alpha_g,beta_g$ describe its
 decrease away from them. Tables interpolate linearly in head and either
 linearly or with shape-preserving cubics in discharge.
+A single reference head requires an explicit assumption that efficiency and
+the discharge envelope are independent of head. The actual hydraulic head
+still enters @eq:power. Operating limits are supplied separately from
+efficiency knots, with explicit linear continuation required outside the data.
 
 Turbine efficiency converts hydraulic power to shaft power. Electrical
 efficiency $e_g$ accounts for the remaining conversion to electrical output.
@@ -378,8 +382,9 @@ $ F_(r j) (s) = sum_ell w_(r j ell)
   min{1, max{0, frac(s - delta_(r j ell), delta_(r j,ell+1) - delta_(r j ell))}}. $ <eq:cdf>
 
 Entry flow may change the travel response. For two or more nonnegative, strictly increasing reference
-flows covering the admissible entry range, interpolate between the neighboring
-distributions. In the following equations, SOS2 is a _special ordered set of
+flows covering zero through reach capacity, interpolate between the neighboring
+distributions. A missing zero-flow reference is rejected. Zero flow releases
+no water. In the following equations, SOS2 is a _special ordered set of
 type 2_: at most two weights may be nonzero, and their indices must be adjacent.
 
 $ theta_(r k j) >= 0, quad sum_j theta_(r k j) = 1, quad
@@ -758,7 +763,8 @@ weights on distant knots could produce points away from the curve.
 For a turbine table, discharge weights $lambda_i$ and head weights $mu_j$
 each satisfy the corresponding SOS2 and coordinate constraints. Let $E_(i j)$
 be efficiencies at the knots. Linear interpolation in head combines the
-values $eta_j$ on the neighboring head curves. A shape-preserving cubic in
+values $eta_j$ on the neighboring head curves. For head-independent data,
+each head vertex uses the same efficiency column. A shape-preserving cubic in
 discharge~@fritsch is represented by adding corrections to the linear curve:
 
 $ w_i = lambda_i lambda_(i+1), quad r_i = lambda_i w_i, \

@@ -70,6 +70,9 @@ transit are explicit parts of the model. Constitutive functions must be supplied
 and calibrated. Pumping, reserve markets, stochastic scenarios, river geometry
 and transient pressure dynamics are outside the current model.
 
+[Curve policies](docs/curves.md) explains single-head turbine data, explicit
+extrapolation and zero-flow river-delay coverage, with hand-calculated examples.
+
 Feasible-start preparation uses SCIP MILP proposals and Ipopt nonlinear dispatch.
 The full SCIP search retains the original nonlinear equations. JuMP provides
 the common algebraic interface; Julia also hosts physical reconstruction and

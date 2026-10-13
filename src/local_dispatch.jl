@@ -79,14 +79,14 @@ function _build_dispatch(
         if g.turbine_table!==nothing && any(t->u[i, t]!=0, 1:T)
             table=g.turbine_table
             (
-                table_operator(
+                turbine_flow_operator(
                     m,
-                    TableCurve(table.heads, table.qmin);
+                    table, table.qmin;
                     name = Symbol("qlo_", i),
                 ),
-                table_operator(
+                turbine_flow_operator(
                     m,
-                    TableCurve(table.heads, table.qmax);
+                    table, table.qmax;
                     name = Symbol("qhi_", i),
                 ),
             )

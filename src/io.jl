@@ -27,6 +27,7 @@ function _read_turbine(x)
             "qmax",
             "interpolation",
             "head_extrapolation",
+            "discharge_extrapolation",
         ),
         "turbine table",
     )
@@ -41,6 +42,7 @@ function _read_turbine(x)
         Float64.(x["qmax"]);
         interpolation = Symbol(get(x, "interpolation", "bilinear")),
         head_extrapolation = Symbol(get(x, "head_extrapolation", "error")),
+        discharge_extrapolation = Symbol(get(x, "discharge_extrapolation", "error")),
     )
 end
 function _read_object(T, x)
@@ -127,7 +129,8 @@ _table_dict(t::TableCurve) = Dict("x"=>t.x, "y"=>t.y)
 _table_dict(t::LevelFlowCurve) = Dict("reference_levels"=>t.reference_levels,"curves"=>_table_dict.(t.curves))
 _table_dict(t::TurbineTable) = Dict(
     string(f)=>getfield(t, f) for f in
-    (:heads, :discharge, :efficiency, :qmin, :qmax, :interpolation, :head_extrapolation)
+    (:heads, :discharge, :efficiency, :qmin, :qmax, :interpolation,
+        :head_extrapolation, :discharge_extrapolation)
 )
 function component_dict(x)
     Dict(

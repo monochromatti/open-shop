@@ -26,6 +26,8 @@ function forward_step(
     tolerance = 1e-9,
     max_iterations = 100,
 )
+    validate_delay_curves(s)
+    validate_curve_data(s)
     nr, nj, ne, nd=length(s.reservoirs), length(s.junctions), length(s.tunnels), length(s.rivers)
     ng=length(s.generators)
     ta=tunnel_opening===nothing ? [t.opening for t in s.tunnels] : tunnel_opening
@@ -310,6 +312,8 @@ function simulate(
     tunnel_opening = nothing,
 )
     s=c.system
+    validate_delay_curves(s)
+    validate_curve_data(s)
     ng, nd=length(s.generators), length(s.rivers)
     T=length(grid)-1
     size(generator_q)==(ng, length(c.grid)-1) && size(gate)==(nd, length(c.grid)-1) ||

@@ -36,10 +36,11 @@ function validate_curve_data(s::HydroSystem)
     for g in s.generators
         c=g.turbine_table
         if c!==nothing
-            c.head_extrapolation==:linear ||
+            c.head_extrapolation in (:linear, :constant) ||
                 first(c.heads)<=g.hmin<=g.hmax<=last(c.heads) ||
                 throw(ArgumentError("$(g.name): turbine table must cover operating head"))
-            first(c.discharge)<=g.qmin<=g.qmax<=last(c.discharge) ||
+            c.discharge_extrapolation==:linear ||
+                first(c.discharge)<=g.qmin<=g.qmax<=last(c.discharge) ||
                 throw(ArgumentError("$(g.name): turbine table must cover discharge bounds"))
             all(c.qmin .<= g.qmax) && all(c.qmax .>= g.qmin) || throw(
                 ArgumentError(
