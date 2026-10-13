@@ -1,29 +1,12 @@
-// A self-contained article: no external Typst packages or fonts are required.
-#set document(title: "Nonlinear hydropower scheduling with coupled hydraulics and delayed river networks")
-#set page(paper: "a4", margin: 25mm, numbering: "1")
-#set text(font: "New Computer Modern", size: 10pt, lang: "en")
-#set par(justify: true, leading: 0.55em, spacing: 0.7em)
-#set heading(numbering: "1.1")
-#set math.equation(numbering: "(1)", supplement: none)
-#show heading.where(level: 1): set text(size: 12pt)
-#show heading.where(level: 2): set text(size: 10.5pt)
-#show math.equation: set block(above: 0.65em, below: 0.65em)
-#show figure.caption: set text(size: 9pt)
-#show ref: it => {
-  if it.element != none and it.element.func() == math.equation {
-    link(it.target, numbering("(1)", ..counter(math.equation).at(it.element.location())))
-  } else {
-    it
-  }
-}
+#import "style.typ": article, title-block, abstract-block, accent, muted, rule
+#show: article
 
-#align(center, text(size: 17pt)[
-  Nonlinear hydropower scheduling with coupled hydraulics
+#title-block[
+  Nonlinear hydropower scheduling \
+  with coupled hydraulics \
   and delayed river networks
-])
-#v(0.8em)
-#block(inset: (x: 8mm))[
-  #align(center)[*Abstract*]
+]
+#abstract-block[
   Short-term hydropower scheduling must decide when to generate and how much
   water to release. The water available to downstream plants depends on
   earlier releases and river travel times. Reservoir levels and shared tunnel
@@ -184,35 +167,36 @@ as an implicit midpoint step. If $Z_i$ is nonlinear, its value at the average
 volume is generally different from the average of its endpoint values.
 
 #figure(
-  block(width: 160mm, height: 37mm)[
-    #let node(x, body) = place(top + left, dx: x, dy: 22mm,
-      box(width: 24mm, height: 13mm, stroke: 0.5pt, radius: 2pt,
-        align(center + horizon, text(size: 8pt, body))))
+  block(width: 144mm, height: 40mm)[
+    #let node(x, body) = place(top + left, dx: x, dy: 23mm,
+      box(width: 24mm, height: 14mm, stroke: 0.5pt + rule,
+        fill: rgb("#f3f6f7"), radius: 1pt,
+        align(center + horizon, text(size: 9pt, body))))
     #let arrow(x) = {
-      place(top + left, dx: x, dy: 28.5mm, line(length: 10mm, stroke: 0.5pt))
-      place(top + left, dx: x + 8.5mm, dy: 27.7mm,
-        line(end: (1.5mm, 0.8mm), stroke: 0.5pt))
-      place(top + left, dx: x + 8.5mm, dy: 29.3mm,
-        line(end: (1.5mm, -0.8mm), stroke: 0.5pt))
+      place(top + left, dx: x, dy: 30mm, line(length: 6mm, stroke: 0.6pt + accent))
+      place(top + left, dx: x + 4.5mm, dy: 29.2mm,
+        line(end: (1.5mm, 0.8mm), stroke: 0.6pt + accent))
+      place(top + left, dx: x + 4.5mm, dy: 30.8mm,
+        line(end: (1.5mm, -0.8mm), stroke: 0.6pt + accent))
     }
     #node(0mm, [Reservoir A \ $V_A, H_A$])
-    #node(34mm, [Pressure \ junction $H_J$])
-    #node(68mm, [Plant \ $q_1 + q_2$])
-    #node(102mm, [Reach \ inventory $W$])
-    #node(136mm, [Reservoir B \ $V_B, H_B$])
-    #for x in (24mm, 58mm, 92mm, 126mm) { arrow(x) }
-    #place(top + left, dx: 17mm, dy: 17mm, text(size: 8pt)[tunnel $Q$])
-    #place(top + left, dx: 92mm, dy: 17mm, text(size: 8pt)[release])
-    #place(top + left, dx: 127mm, dy: 17mm, text(size: 8pt)[arrival])
-    #place(top + left, line(start: (148mm, 22mm), end: (148mm, 8mm),
-      stroke: (thickness: 0.5pt, dash: "dashed")))
-    #place(top + left, line(start: (148mm, 8mm), end: (80mm, 8mm),
-      stroke: (thickness: 0.5pt, dash: "dashed")))
-    #place(top + left, line(start: (80mm, 8mm), end: (80mm, 22mm),
-      stroke: (thickness: 0.5pt, dash: "dashed")))
-    #place(top + left, line(start: (79.2mm, 20.5mm), end: (80mm, 22mm), stroke: 0.5pt))
-    #place(top + left, line(start: (80.8mm, 20.5mm), end: (80mm, 22mm), stroke: 0.5pt))
-    #place(top + left, dx: 86mm, dy: 2mm, text(size: 8pt)[outlet head reference])
+    #node(30mm, [Pressure \ junction $H_J$])
+    #node(60mm, [Plant \ $q_1 + q_2$])
+    #node(90mm, [Reach \ inventory $W$])
+    #node(120mm, [Reservoir B \ $V_B, H_B$])
+    #for x in (24mm, 54mm, 84mm, 114mm) { arrow(x) }
+    #place(top + left, dx: 17mm, dy: 17mm, text(size: 8pt, fill: muted)[tunnel $Q$])
+    #place(top + left, dx: 81mm, dy: 17mm, text(size: 8pt, fill: muted)[release])
+    #place(top + left, dx: 112mm, dy: 17mm, text(size: 8pt, fill: muted)[arrival])
+    #place(top + left, line(start: (132mm, 23mm), end: (132mm, 8mm),
+      stroke: (thickness: 0.5pt, paint: muted, dash: "dashed")))
+    #place(top + left, line(start: (132mm, 8mm), end: (72mm, 8mm),
+      stroke: (thickness: 0.5pt, paint: muted, dash: "dashed")))
+    #place(top + left, line(start: (72mm, 8mm), end: (72mm, 23mm),
+      stroke: (thickness: 0.5pt, paint: muted, dash: "dashed")))
+    #place(top + left, line(start: (71.2mm, 21.5mm), end: (72mm, 23mm), stroke: 0.5pt + muted))
+    #place(top + left, line(start: (72.8mm, 21.5mm), end: (72mm, 23mm), stroke: 0.5pt + muted))
+    #place(top + left, dx: 78mm, dy: 2mm, text(size: 8pt, fill: muted)[outlet head reference])
   ],
   caption: [Solid arrows show where the water goes. The dashed connection specifies
     the plant's outlet head. Water reaches reservoir B after traveling through
@@ -280,11 +264,13 @@ the target head alone. Total plant discharge raises the tailwater by
 $T_p (q_(p t))>=0$. We model shared penstocks as tunnels, whose friction
 loss depends on the combined discharge of the units they supply.
 
+#block(breakable: false)[
 The binary state $u_(g t)$ selects an idle unit or its running range:
 
 $ u_(g t) in {0, 1}, quad
   underline(q)_(g t) u_(g t) <= q_(g t) <= overline(q)_(g t) u_(g t), quad
   underline(P)_(g t) u_(g t) <= P_(g t) <= overline(P)_(g t) u_(g t). $ <eq:onoff>
+]
 
 The electrical output is the available hydraulic power multiplied by turbine
 and electrical efficiencies:
@@ -435,6 +421,7 @@ $R$ within a reference-flow interval, multiplying the arrival fraction by
 released volume gives a quadratic dependence on $R$. Interpolating arrival
 volumes directly would give a different travel response.
 
+#block(breakable: false)[
 When all reaches have fixed travel times $delta_r>=0$, we propagate the
 piecewise-constant entry stream $tilde(R)_r (s)$ through the network. Each
 reach shifts its stream by its delay. At a confluence, the shifted upstream
@@ -443,6 +430,7 @@ streams are added:
 $ f_r (s) = tilde(R)_r (s - delta_r), quad
   tilde(R)_r (s) = L_r (s) + sum_(s' -> r) f_(s') (s), \
   A_(r t) = kappa integral_(tau_t)^(tau_(t+1)) f_r (s) dif s. $ <eq:deterministic>
+]
 
 The confluence relation applies for $s>=0$. At a reservoir source,
 $tilde(R)_r (s)=n_(r t)+d_(r t)$ on $[tau_t,tau_(t+1))$.
@@ -505,12 +493,14 @@ Both transfers cancel in the sum. Total stored and in-transit water changes
 only through natural inflows and external exchanges, including when an
 instantaneous connection carries reversed flow.
 
+#block(breakable: false)[
 Environmental requirements can constrain reach entry
 $R_(r t)>=R_(r t)^min$, average arrival over a specified time window $J$,
 or arrival at every instant:
 
 $ integral_J f_r (s) dif s >= integral_J f_r^min (s) dif s, quad
   f_r (s) >= f_r^min (s). $ <eq:environment>
+]
 
 The supplied policy chooses the window or pointwise arrival constraint.
 Distributed arrival rates from rectangular cohorts are piecewise linear.
@@ -590,13 +580,16 @@ Reservoir volume and level ramps instead constrain vertex changes
 $V_(i,t+1)-V_(i t)$ and $Z_i (V_(i,t+1))-Z_i (V_(i t))$, with rate integrals
 over $[tau_t,tau_(t+1)]$. The ramp limits apply between recorded states.
 
+#block(breakable: false)[
 A tunnel interlock limits how many gates in a group $cal(E)_ell$ may be
 open at once. With $o_(e t)=bold(1)[b_(e t)>0]$,
 
 $ underline(N)_(ell t) <= sum_(e in cal(E)_ell) o_(e t) <= overline(N)_(ell t). $ <eq:interlock>
+]
 
 A positive position counts as open even when its flow is zero.
 
+#block(breakable: false)[
 = Economic objective
 
 Generation at price $pi_t$ per MWh earns $pi_t Delta_t P_(g t)$.
@@ -609,6 +602,7 @@ $ cal(V) = & sum_t pi_t Delta_t sum_g P_(g t)
   & - sum_(e,t) c_(e t)^b abs(b_(e t) - b_(e,t-1))
   - sum_(r,t) c_(r t)^r xi_(r t) \
   & + sum_i v_i (V_(i T) - V_(i 0)) + sum_r v_r (W_(r T) - W_(r 0)). $ <eq:objective>
+]
 
 Starts, stops and gate movements are charged once per event, without a duration
 multiplier. The first gate comparison uses its supplied initial position.
@@ -626,6 +620,116 @@ that penalty, the entry minimum is hard and $xi=0$. Arrival minima and
 aggregate flow requirements remain hard. Subtracting the values of the
 initial inventories removes a constant from the reported objective and
 leaves the optimal decisions unchanged.
+
+= Solving the model and checking a schedule
+<sec:solution>
+
+== Finding feasible controls
+
+We build the models in JuMP~@jump. SCIP first solves a MILP approximation
+to propose unit states and gate positions. We fix those choices and use
+Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
+hydraulic laws. The procedure may try several proposals within a time
+budget. Candidates that pass the checks below become starting solutions
+for the full SCIP search~@scip, which can change the discrete choices.
+
+The MILP objective approximates @eq:objective and gives no enclosing bound.
+Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
+problem. A stationary solution need not be globally optimal.
+
+== Reconstructing the water trajectory
+
+An independent integration holds the selected unit discharges and openings
+fixed and recovers the resulting water trajectory. At each interval, Newton's
+method solves jointly for ending storage, junction heads, tunnel flows and
+active outlet releases. With a delay shorter than the interval, some current
+release arrives before the interval ends and belongs in the same hydraulic
+solve. Equation @eq:power then gives electrical output.
+
+In some isolated pressure components, the equations determine only head
+differences. A common shift in all heads leaves the flows unchanged.
+We choose one reference head for the numerical solve and keep every water
+balance. We can then shift the recovered heads to satisfy the junction
+bounds if the bounds admit such a shift.
+
+We accept a reconstructed schedule only if it satisfies the interval equations
+and operating restrictions. We repeat the integration on a finer grid using
+the same controls. Schedules and ramps are checked over their original
+operating windows. We compare storage at the original vertices, total water,
+cumulative arrivals and terminal inventory. For the specified volume
+tolerance $epsilon_V$ and relative objective tolerance $epsilon_(cal(V))$,
+the reconstruction must satisfy
+
+$ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
+  max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
+  abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
+
+The comparison estimates the effect of time discretization for the chosen
+controls. It does not give a rigorous bound on continuous-time hydraulic error.
+
+== Bounding the remaining objective improvement
+
+A feasible schedule gives an achievable objective value $L$. Global search
+provides an upper bound $U$ that no feasible schedule in the declared model
+can exceed. SCIP obtains such bounds from relaxations, tightens them and
+branches on discrete choices or continuous variable ranges. A region can
+be discarded when its bound cannot improve the current feasible value.
+
+#block(breakable: false)[
+A _relaxation_ enlarges the feasible set. Its maximum is an upper bound on
+the scheduling objective because every feasible schedule is still in that set.
+The enlarged set may allow flow, head and efficiency values whose power
+exceeds the physical conversion law. A _valid inequality_ holds for every
+feasible schedule and can exclude some of these excessive values.
+]
+
+The algebraic curve representations and bound constructions are given in
+@sec:graphs.
+
+Here $L$ is the independently reconstructed value of a schedule feasible for
+the interval model, and $U$ must be a finite enclosing bound. The absolute
+and relative limits on possible improvement are
+
+$ g_"abs" = max(0, U-L), quad g_"rel" = frac(max(0, U-L), max(1, abs(L))). $ <eq:gap>
+
+If $L=100$ and $U=103$, improvement is limited to $3$ monetary units, or
+$3\%$ under this definition. There may be no better schedule at all.
+The constant subtraction of initial water values in @eq:objective affects
+the relative gap's denominator, so $L$ and $U$ must use that same objective.
+
+A certificate states that the requested absolute or relative gap has been
+met for the interval model, interpolation rules and finite gate sets.
+Fixing discrete choices makes the certificate conditional on those choices.
+A schedule may meet the interval-model gap and fail the finer-grid checks.
+Neither test certifies a continuous-time optimum. The numerical certificate
+uses solver tolerances and floating-point bounds. It does not rigorously
+enclose every rounding error in the solver and polynomial calculations.
+
+#block(breakable: false)[
+= Discussion
+
+The hydraulic equations let changes in reservoir levels and shared tunnel
+flows affect dispatch during optimization. River inventory accounts for
+released water until it reaches the next node. Using these nonlinear laws
+can be computationally expensive. Even with commitment fixed, the continuous
+problem is nonconvex, and a large network may take substantial time to close
+the objective gap.
+
+Model accuracy also depends on the input curves. Finer integration can expose
+an inadequate time grid, but it cannot correct a miscalibrated efficiency or
+travel-time response. Tunnel positions absent from the declared finite set
+are excluded from the search. The objective certificate applies to this
+finite model, with its specified curves and control grid. Changing those
+assumptions requires solving a new problem.
+]
+
+#block(above: 1.6em, below: 0pt, sticky: true)[
+  #line(length: 100%, stroke: 0.5pt + rule)
+  #v(6pt)
+  #text(size: 9pt, fill: muted, smallcaps[Appendix])
+]
+#counter(heading).update(0)
+#set heading(numbering: "A.1", supplement: [Appendix])
 
 = Representing curves and strengthening bounds
 <sec:graphs>
@@ -720,28 +824,22 @@ using $r>=0$ and $r^2=ell$.
 
 == Upper bounds for global optimization
 
-#block(breakable: false)[
-A _relaxation_ enlarges the feasible set. Its maximum is an upper bound on
-the scheduling objective because every feasible schedule is still in that set.
-The enlarged set may allow flow, head and efficiency values whose power
-exceeds the physical conversion law. A _valid inequality_ holds for every
-feasible schedule and can exclude some of these excessive values.
-]
-
 We bound variables using storage and equipment limits. Water balances
 propagate initial and terminal restrictions through the horizon to narrow
 these ranges. The bounds must hold for every admissible schedule.
 
+#block(breakable: false)[
 We omit unit and time indices in the following bounds.
 For a running unit with nonnegative $q,h,eta$, let $overline(e)$ bound its
 electrical efficiency. Then $p^"ub" (q,h)=gamma overline(e) q h eta(q,h)$
 is an upper bound on physical electrical power. It is polynomial within
 each interpolation cell even when @eq:power is implicit in $P$.
 Suppose a plane $a q+b h+c$ bounds this polynomial throughout the running
-domain, with $b>=0$. For a head lower bound $h_*$ valid in both operating
+domain, with #box[$b>=0$]. For a head lower bound $h_*$ valid in both operating
 states, the following inequality includes the idle state:
 
 $ P <= a q + b(h - h_*) + (c + b h_*) u. $ <eq:support>
+]
 
 When the unit runs, it reduces to $P<=a q+b h+c$. When it is idle,
 $P=q=0$ and the right side is nonnegative. To establish $c$, we bound the
@@ -782,97 +880,6 @@ The constraints give $zeta=mu$ when $u=1$, and $zeta=0$ when $u=0$ without
 fixing the idle hydraulic head. Discharge weights support analogous bounds
 along the other table axis. We may add further planes during the search after verifying each over its
 complete domain.
-
-= Solving the model and checking a schedule
-<sec:solution>
-
-== Finding feasible controls
-
-We build the models in JuMP~@jump. SCIP first solves a MILP approximation
-to propose unit states and gate positions. We fix those choices and use
-Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
-hydraulic laws. The procedure may try several proposals within a time
-budget. Candidates that pass the checks below become starting solutions
-for the full SCIP search~@scip, which can change the discrete choices.
-
-The MILP objective approximates @eq:objective and gives no enclosing bound.
-Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
-problem. A stationary solution need not be globally optimal.
-
-== Reconstructing the water trajectory
-
-An independent integration holds the selected unit discharges and openings
-fixed and recovers the resulting water trajectory. At each interval, Newton's
-method solves jointly for ending storage, junction heads, tunnel flows and
-active outlet releases. With a delay shorter than the interval, some current
-release arrives before the interval ends and belongs in the same hydraulic
-solve. Equation @eq:power then gives electrical output.
-
-In some isolated pressure components, the equations determine only head
-differences. A common shift in all heads leaves the flows unchanged.
-We choose one reference head for the numerical solve and keep every water
-balance. We can then shift the recovered heads to satisfy the junction
-bounds if the bounds admit such a shift.
-
-We accept a reconstructed schedule only if it satisfies the interval equations
-and operating restrictions. We repeat the integration on a finer grid using
-the same controls. Schedules and ramps are checked over their original
-operating windows. We compare storage at the original vertices, total water,
-cumulative arrivals and terminal inventory. For the specified volume
-tolerance $epsilon_V$ and relative objective tolerance $epsilon_(cal(V))$,
-the reconstruction must satisfy
-
-$ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
-  max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
-  abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
-
-The comparison estimates the effect of time discretization for the chosen
-controls. It does not give a rigorous bound on continuous-time hydraulic error.
-
-== Bounding the remaining objective improvement
-
-A feasible schedule gives an achievable objective value $L$. Global search
-provides an upper bound $U$ that no feasible schedule in the declared model
-can exceed. SCIP obtains such bounds from relaxations, tightens them and
-branches on discrete choices or continuous variable ranges. A region can
-be discarded when its bound cannot improve the current feasible value.
-
-Here $L$ is the independently reconstructed value of a schedule feasible for
-the interval model, and $U$ must be a finite enclosing bound. The absolute
-and relative limits on possible improvement are
-
-$ g_"abs" = max(0, U-L), quad g_"rel" = frac(max(0, U-L), max(1, abs(L))). $ <eq:gap>
-
-If $L=100$ and $U=103$, improvement is limited to $3$ monetary units, or
-$3\%$ under this definition. There may be no better schedule at all.
-The constant subtraction of initial water values in @eq:objective affects
-the relative gap's denominator, so $L$ and $U$ must use that same objective.
-
-A certificate states that the requested absolute or relative gap has been
-met for the interval model, interpolation rules and finite gate sets.
-Fixing discrete choices makes the certificate conditional on those choices.
-A schedule may meet the interval-model gap and fail the finer-grid checks.
-Neither test certifies a continuous-time optimum. The numerical certificate
-uses solver tolerances and floating-point bounds. It does not rigorously
-enclose every rounding error in the solver and polynomial calculations.
-
-#block(breakable: false)[
-= Discussion
-
-The hydraulic equations let changes in reservoir levels and shared tunnel
-flows affect dispatch during optimization. River inventory accounts for
-released water until it reaches the next node. Using these nonlinear laws
-can be computationally expensive. Even with commitment fixed, the continuous
-problem is nonconvex, and a large network may take substantial time to close
-the objective gap.
-
-Model accuracy also depends on the input curves. Finer integration can expose
-an inadequate time grid, but it cannot correct a miscalibrated efficiency or
-travel-time response. Tunnel positions absent from the declared finite set
-are excluded from the search. The objective certificate applies to this
-finite model, with its specified curves and control grid. Changing those
-assumptions requires solving a new problem.
-]
 
 #block(breakable: false)[
   #bibliography("references.bib", style: "ieee", title: "References")
