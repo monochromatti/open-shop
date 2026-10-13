@@ -96,8 +96,7 @@ function mixed_source_fixture(;distributed=false)
         boundaries=[Boundary(name=:Sea,head=0.0)],tunnels,plants,generators,rivers)
     raw=ScheduleCase(;name=distributed ? "mixed_sources_distributed" : "mixed_sources_exact",
         system,grid,prices=[35.0,80.0,45.0,100.0,30.0,70.0],operations)
-    # Round trip through the public representation compiles direct connections.
-    case=case_from_dict(case_dict(raw))
+    case=raw
     u=[1 1 1 0 1 1;1 1 1 1 1 1;1 0 1 1 0 1]
     q=[10.0 9.0 11.0 0.0 10.0 8.0;6.0 6.5 6.0 6.0 5.5 6.0;
         4.0 0.0 3.0 3.5 0.0 4.0]

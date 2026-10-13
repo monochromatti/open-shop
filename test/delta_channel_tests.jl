@@ -49,7 +49,7 @@ end
         @test rest["V"]≈x["V"][:,3:end] atol=1e-10
         @test rest["river_release"]≈flow[:,3:end] atol=1e-9
         if direction!=0
-            broken=deepcopy(x)
+            broken=OpenSHOP.schedule_dict(x)
             broken["river_release"].=-broken["river_release"]
             @test !validate(c,broken)["valid"]
         end
@@ -99,7 +99,7 @@ end
         @test JuMP.has_values(b.m)
         if JuMP.has_values(b.m)
             raw=OpenSHOP._dispatch_values(b)
-            raw["u"]=zeros(Int,0,3)
+            @test raw.commitment==zeros(Int,0,3)
             @test validate(c,raw)["valid"]
             @test raw["river_release"]≈flow atol=1e-5
             @test raw["V"]≈expected atol=1e-7

@@ -131,7 +131,6 @@ function _add_table_power_bounds!(b,c)
     m=b.m
     haskey(m.ext,:global_table_power_bounds_profile) &&
         throw(ArgumentError("table power bounds have already been added"))
-    tensors=get(m.ext,:global_tensor_turbines,nothing)
     hulls=get(m.ext,:global_power_hulls,nothing)
     records=_TablePowerCoordinateRecord[]
     supports=_TablePowerSupportCoordinate[]
@@ -158,7 +157,7 @@ function _add_table_power_bounds!(b,c)
         if isempty(electrical)||!all(isfinite,electrical)||minimum(electrical)<0
             skipped["electrical"]+=1;continue
         end
-        tensor=tensors===nothing ? nothing : get(tensors,"turbine_$(i)_$(t)",nothing)
+        tensor=b.graphs.generator_graphs[i,t].turbine
         hull=hulls===nothing ? nothing : get(hulls,"power_hull_$(i)_$(t)",nothing)
         if tensor===nothing || hull===nothing
             skipped["graph_or_hull"]+=1;continue

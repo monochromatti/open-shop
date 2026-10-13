@@ -4,6 +4,8 @@ The unknown vector is `[Vnew; junction_head; tunnel_q; outlet_release]`.
 Storage is in Mm³, heads in metres, rates in m³/s, and duration in hours.
 `network` is either a same-interval river transfer matrix or `nothing` for
 flow-dependent response curves. The type parameter specializes that choice.
+Physical curves and connectivity remain fixed; interval inflows and operating
+capacities are numerical arrays. Replay reuses topology and source indices.
 """
 struct HydraulicStepData{M, S}
     system::HydroSystem
@@ -20,9 +22,22 @@ struct HydraulicStepData{M, S}
     active_rivers::Vector{Int}
     river_order::Vector{Int}
     fixed_inflow::Vector{Float64}
+    river_inflow::Vector{Float64}
+    tunnel_capacity::Vector{Float64}
+    river_capacity::Vector{Float64}
 end
 
-function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, transfer, network)
+function HydraulicStepData(
+    s, Vprev, dt, generator_q, gate, arrival, opening, transfer, network;
+    topology = HydraulicTopology(s),
+    sources = river_source_indices(s),
+    active_rivers = findall(r -> r.law != :junction, s.rivers),
+    river_order = _forward_river_order(s),
+    reservoir_inflow = [r.inflow for r in s.reservoirs],
+    river_inflow = [r.inflow for r in s.rivers],
+    tunnel_capacity = [e.capacity for e in s.tunnels],
+    river_capacity = [r.capacity for r in s.rivers],
+)
     previous_storage = Vector{Float64}(Vprev)
     duration = Float64(dt)
     discharge = Vector{Float64}(generator_q)
@@ -31,6 +46,15 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
     previous_arrival = Vector{Float64}(arrival)
     current_transfer = Matrix{Float64}(transfer)
     current_network = network === nothing ? nothing : Float64.(network)
+    reservoir_inflow = Vector{Float64}(reservoir_inflow)
+    river_inflow = Vector{Float64}(river_inflow)
+    tunnel_capacity = Vector{Float64}(tunnel_capacity)
+    river_capacity = Vector{Float64}(river_capacity)
+    length(reservoir_inflow) == length(s.reservoirs) &&
+    length(river_inflow) == length(s.rivers) &&
+    length(tunnel_capacity) == length(s.tunnels) &&
+    length(river_capacity) == length(s.rivers) ||
+        throw(DimensionMismatch("hydraulic inflows and operating capacities"))
     isfinite(duration) && duration > 0 ||
         throw(ArgumentError("duration must remain finite and positive in Float64"))
     all(
@@ -42,6 +66,10 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
             tunnel_opening,
             previous_arrival,
             current_transfer,
+            reservoir_inflow,
+            river_inflow,
+            tunnel_capacity,
+            river_capacity,
         ),
     ) && (current_network === nothing || all(isfinite, current_network)) ||
         throw(ArgumentError("hydraulic inputs must remain finite in Float64"))
@@ -52,19 +80,15 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
         all(i -> iszero(original[i]) == iszero(normalized[i]), eachindex(normalized)) ||
             throw(ArgumentError("nonzero hydraulic controls must remain nonzero in Float64"))
     end
-    topology = HydraulicTopology(s)
     nr, nj = length(s.reservoirs), length(s.junctions)
     fixed = zeros(nr + nj)
-    for (i, reservoir) in enumerate(s.reservoirs)
-        fixed[i] = reservoir.inflow
-    end
+    copyto!(fixed, 1, reservoir_inflow, 1, nr)
     for i in eachindex(fixed)
         for (j, sign) in topology.generator_incidence[i]
             fixed[i] += sign * discharge[j]
         end
     end
-    active = findall(r -> r.law != :junction, s.rivers)
-    all(d -> 1 <= topology.river_source[d] <= nr, active) ||
+    all(d -> 1 <= topology.river_source[d] <= nr, active_rivers) ||
         throw(ArgumentError("operational river law requires reservoir source"))
     HydraulicStepData(
         s,
@@ -77,10 +101,13 @@ function HydraulicStepData(s, Vprev, dt, generator_q, gate, arrival, opening, tr
         previous_arrival,
         current_transfer,
         current_network,
-        river_source_indices(s),
-        active,
-        _forward_river_order(s),
+        sources,
+        active_rivers,
+        river_order,
         fixed,
+        river_inflow,
+        tunnel_capacity,
+        river_capacity,
     )
 end
 
@@ -115,8 +142,9 @@ function midpoint_heads!(h, x, data::HydraulicStepData)
     h
 end
 
-function outlet_flow(r::River, h, gate, source, target)
-    is_channel(r) ? channel_flow(r, h[source], h[target]) : river_law_value(r, h[source], gate)
+function outlet_flow(r::River, h, gate, source, target; inflow=r.inflow, capacity=r.capacity)
+    is_channel(r) ? channel_flow(r, h[source], h[target]) :
+        river_law_value(r, h[source], gate; inflow, capacity)
 end
 
 # Clamping only extends trial-point residuals. Accepted releases are checked
@@ -143,7 +171,7 @@ function river_rates!(work, x, data::HydraulicStepData)
         injection[d] = if data.sources.reservoirs[d]
             release[d]
         else
-            river.inflow +
+            data.river_inflow[d] +
             sum(data.generator_q[j] for j in data.sources.generators[d]; init = 0.0) +
             sum(x[nr + nj + j] for j in data.sources.tunnels[d]; init = 0.0)
         end
@@ -188,7 +216,7 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
     end
     for (d, river) in enumerate(s.rivers)
         source, target = topology.river_source[d], topology.river_target[d]
-        1 <= source <= base && (net[source] -= work.release[d] - river.inflow)
+        1 <= source <= base && (net[source] -= work.release[d] - data.river_inflow[d])
         1 <= target <= base && (net[target] += work.arrival[d])
     end
     for i in 1:nr
@@ -204,12 +232,14 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
     end
     for (k, d) in enumerate(data.active_rivers)
         residual[nq + k] =
-            x[nq + k] - s.rivers[d].inflow - outlet_flow(
+            x[nq + k] - data.river_inflow[d] - outlet_flow(
                 s.rivers[d],
                 h,
                 data.gate[d],
                 topology.river_source[d],
                 topology.river_target[d],
+                inflow = data.river_inflow[d],
+                capacity = data.river_capacity[d],
             )
     end
     residual

@@ -38,19 +38,19 @@ function main()
     initial=dispatch_from_controls(case,ones(Int,1,3),fill(5.0,1,3),zeros(0,3);
         tunnel_opening=[1.0 1.0 1.0;0.0 0.0 0.0])
     result=OpenSHOP.solve(case;initial,time_limit=60.0,relative_gap=1e-4)
-    result["accepted"] || error("No gate schedule passed physical validation and finer replay")
-    schedule=result["solution"]
+    result.accepted || error("No gate schedule passed physical validation and finer replay")
+    schedule=result.solution
     # At q=5, each open intake loses R*q²=25 m. The expected switch is
     # HighLake → LowLake → HighLake; reservoir depletion lowers these heads.
     head=[74.9991,54.9991,74.9973]
     expected=sum(case.prices .* (0.00981*0.9*5.0 .* head))-20.0
-    isapprox(schedule["objective"],expected;atol=1e-3) ||
+    isapprox(schedule.objective,expected;atol=1e-3) ||
         error("Returned schedule did not reach the independently calculated optimum")
-    println("Tunnel gate positions (rows: HighIntake, LowIntake): ",schedule["tunnel_opening"])
-    println("Adjustment cost: ",schedule["gate_adjustment_cost"])
-    println("Objective: ",schedule["objective"])
-    println("Accepted: ",result["accepted"])
-    println("Global certificate: ",result["global_certificate"])
+    println("Tunnel gate positions (rows: HighIntake, LowIntake): ",schedule.tunnel_opening)
+    println("Adjustment cost: ",schedule.gate_adjustment_cost)
+    println("Objective: ",schedule.objective)
+    println("Accepted: ",result.accepted)
+    println("Global certificate: ",result.global_certificate)
 end
 end
 

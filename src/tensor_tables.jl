@@ -1,5 +1,31 @@
 # Exact tensor interpolation with independent one-dimensional SOS2 coordinates.
 # Cubic corrections share discharge products across all head columns.
+struct _TensorCoordinate
+    name::String
+    x::Union{Float64,VariableRef,AffExpr}
+    nodes::Vector{Float64}
+    weights::Vector{Union{Float64,VariableRef}}
+end
+
+struct _TensorTableGraph
+    coordinate::_TensorCoordinate
+    values::Vector{Float64}
+    y::VariableRef
+end
+
+struct _TensorTurbineGraph
+    qcoordinate::_TensorCoordinate
+    hcoordinate::_TensorCoordinate
+    nodal::Matrix{Float64}
+    A::Matrix{Float64}
+    B::Matrix{Float64}
+    w::Dict{Int,VariableRef}
+    r::Dict{Int,VariableRef}
+    s::Dict{Int,AffExpr}
+    columns::Vector{VariableRef}
+    eta::VariableRef
+end
+
 function _global_tensor_coordinate!(m, x, nodes; name)
     nn=Float64.(nodes)
     !isempty(nn) && all(isfinite,nn) && all(diff(nn).>0) ||
@@ -19,7 +45,7 @@ function _global_tensor_coordinate!(m, x, nodes; name)
         n>2 && @constraint(m,ww in SOS2(collect(1.0:n)))
         ww
     end
-    data=(name=string(name),x=x,nodes=nn,weights=weights)
+    data=_TensorCoordinate(string(name),x,nn,weights)
     push!(get!(m.ext,:global_tensor_coordinates,Any[]),data)
     key!==nothing && (cache[key]=data)
     data
@@ -44,15 +70,18 @@ function _global_tensor_coordinate_weights(nodes,x)
     weights
 end
 
-function _global_tensor_table!(m,c::TableCurve,x,lo,hi;name=gensym(:tensor_table))
+function _global_tensor_table_graph!(m,c::TableCurve,x,lo,hi;name=gensym(:tensor_table))
     coord=_global_tensor_coordinate!(m,x,_global_tensor_nodes(c.x,lo,hi);name)
     values=[table_value(c,z;extrapolation=:linear) for z in coord.nodes]
     all(isfinite,values) || throw(ArgumentError("tensor table extension bounds overflow"))
     y=@variable(m,lower_bound=minimum(values),upper_bound=maximum(values),base_name=string(name))
     @constraint(m,y==sum(values[i]*coord.weights[i] for i in eachindex(values)))
-    get!(m.ext,:global_tensor_tables,Dict{String,Any}())[string(name)]=(coordinate=coord,values=values,y=y)
-    y
+    graph=_TensorTableGraph(coord,values,y)
+    get!(m.ext,:global_tensor_tables,Dict{String,Any}())[string(name)]=graph
+    graph
 end
+
+_global_tensor_table!(args...;kwargs...) = _global_tensor_table_graph!(args...;kwargs...).y
 
 # Coefficients in the local [0,1] discharge coordinate at a supplied head.
 # Each extension segment keeps its original secant, even for PCHIP tables.
@@ -69,7 +98,7 @@ function _global_tensor_polynomial(c,ql,qr,h)
     _global_shift_polynomial(coefficients,(ql-c.discharge[i])/dq,(qr-ql)/dq)
 end
 
-function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
+function _global_tensor_turbine_graph!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
     name=gensym(:tensor_turbine))
     qc=_global_tensor_coordinate!(m,q,_global_tensor_nodes(c.discharge,qlo,qhi);name="$(name)_q")
     hc=_global_tensor_coordinate!(m,h,_global_tensor_nodes(c.heads,hlo,hhi);name="$(name)_h")
@@ -97,7 +126,7 @@ function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
     active=[i for i in 1:(nq-1) if any(!iszero,view(A,i,:)) || any(!iszero,view(B,i,:))]
     w=Dict{Int,VariableRef}()
     r=Dict{Int,VariableRef}()
-    s=Dict{Int,Any}()
+    s=Dict{Int,AffExpr}()
     for i in active
         r[i]=@variable(m,lower_bound=0,upper_bound=4/27+1e-12,base_name="$(name)_r[$i]")
         w[i]=@variable(m,lower_bound=0,upper_bound=1/4+1e-12,base_name="$(name)_w[$i]")
@@ -119,11 +148,12 @@ function _global_tensor_turbine!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
     end
     eta=@variable(m,lower_bound=minimum(first,ranges),upper_bound=maximum(last,ranges),base_name=string(name))
     @constraint(m,eta==sum(columns[j]*hc.weights[j] for j in 1:nh))
-    get!(m.ext,:global_tensor_turbines,Dict{String,Any}())[string(name)]=
-        (qcoordinate=qc,hcoordinate=hc,nodal=nodal,A=A,B=B,w=w,r=r,s=s,
-         columns=columns,eta=eta)
-    eta
+    graph=_TensorTurbineGraph(qc,hc,nodal,A,B,w,r,s,columns,eta)
+    get!(m.ext,:global_tensor_turbines,Dict{String,Any}())[string(name)]=graph
+    graph
 end
+
+_global_tensor_turbine!(args...;kwargs...) = _global_tensor_turbine_graph!(args...;kwargs...).eta
 
 # Values for every turbine-specific auxiliary. Shared coordinate weights are
 # included so callers can merge these dictionaries with the physical start.

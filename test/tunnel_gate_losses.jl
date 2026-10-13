@@ -50,7 +50,7 @@ end
         @test remainder["validation"]["valid"]
         @test remainder["tunnel_q"]≈x["tunnel_q"][:,2:end] atol=1e-8
         @test remainder["V"]≈x["V"][:,2:end] atol=1e-10
-        bad=deepcopy(x)
+        bad=OpenSHOP.schedule_dict(x)
         bad["tunnel_q"][1,2]*=0.5
         @test !validate(c,bad)["valid"]
     end
@@ -86,7 +86,7 @@ end
         @test JuMP.has_values(b.m)
         if JuMP.has_values(b.m)
             raw=OpenSHOP._dispatch_values(b)
-            raw["u"]=zeros(Int,0,3)
+            @test raw.commitment==zeros(Int,0,3)
             @test validate(c,raw)["valid"]
             @test vec(raw["tunnel_q"])≈expected atol=1e-5
             @test vec(raw["V"])≈storage atol=1e-7

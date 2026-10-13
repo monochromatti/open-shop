@@ -93,12 +93,12 @@ function measure(c,u,warm,attributes,folder,index;warmup=false)
     acceptance_started=time()
     if has_values(b.m)
         x=OpenSHOP._dispatch_values(b)
-        x["u"]=u
-        x["grid"]=copy(c.grid)
-        x["validation"]=validate(c,x;transport=b.transport)
+        x.diagnostics["validation"]=validate(c,x;transport=b.transport)
         result["raw_validation"]=x["validation"]
         result["raw_objective"]=x["objective"]
-        x["validation"]["valid"] || OpenSHOP._repair_dispatch!(c,x;transport=b.transport)
+        if !x.diagnostics["validation"]["valid"]
+            x=OpenSHOP._repair_dispatch!(c,x,result;transport=b.transport)
+        end
         result["solution"]=x
         if x["validation"]["valid"]
             audit=replay_audit(c,x)

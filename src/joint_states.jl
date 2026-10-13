@@ -65,7 +65,7 @@ end
 function _joint_states!(m,c;relaxed=false,fixed_u=nothing,free_mask=nothing,incumbent=nothing)
     G,T=length(c.system.generators),length(c.prices)
     bounds=_commitment_bounds(c)
-    start=incumbent===nothing ? ones(Int,G,T) : copy(incumbent["u"])
+    start=incumbent===nothing ? ones(Int,G,T) : copy(_schedule_input(incumbent;case=c).commitment)
     size(start)==(G,T) || throw(ArgumentError("incorrect incumbent shape"))
     if fixed_u!==nothing
         _commitment_admissible(c,fixed_u;bounds) || throw(ArgumentError("invalid fixed commitment"))

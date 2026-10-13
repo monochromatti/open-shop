@@ -101,7 +101,6 @@ function _add_power_hull!(b,c)
     haskey(m.ext,:global_power_hulls) && throw(ArgumentError("power hull has already been added"))
     records=Dict{String,_PowerHullRecord}()
     m.ext[:global_power_hulls]=records
-    tensors=get(m.ext,:global_tensor_turbines,nothing)
     before_variables=num_variables(m)
     before_constraints=num_constraints(m;count_variable_in_set_constraints=false)
     skipped=Dict("fixed_off"=>0,"empty_on_box"=>0,"electrical"=>0)
@@ -111,9 +110,9 @@ function _add_power_hull!(b,c)
         if _power_hull_fixed_off(u)
             skipped["fixed_off"]+=1;continue
         end
-        hd=b.shared_heads[(plantof(c.system,g).name,t)]
-        tensor=tensors===nothing ? nothing : get(tensors,"turbine_$(i)_$(t)",nothing)
-        eta=tensor===nothing ? variable_by_name(m,"eta_$(i)_$(t)") : tensor.eta
+        graph=b.graphs.generator_graphs[i,t]
+        hd=graph.head.head
+        eta=graph.efficiency
         fullhead=_power_hull_bounds(hd);fulleta=_power_hull_bounds(eta)
         qbox=(max(0.0,opinterval(c,g.name,:qmin,t,g.qmin)),
               min(g.qmax,opinterval(c,g.name,:qmax,t,g.qmax)))

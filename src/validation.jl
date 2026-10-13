@@ -3,7 +3,19 @@
 Residuals use physical units except objective (relative error). Terminal minimum
 up/down obligations are reported for continuation rather than silently discarded.
 """
-function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing)
+function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing)
+    schedule=try
+        _schedule_input(result; case=c)
+    catch error
+        return Dict("valid"=>false,"max_residual"=>Inf,
+            "residuals"=>Dict{String,Float64}(),
+            "errors"=>["missing or malformed schedule: "*sprint(showerror,error)],
+            "terminal_commitment_obligations"=>Any[])
+    end
+    _validate_schedule(c, schedule; tolerance, transport)
+end
+
+function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, transport=nothing)
     errors=String[]
     residuals=Dict{String,Float64}()
     obligations=Any[]
@@ -28,29 +40,29 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
     G=length(s.generators)
     D=length(s.rivers)
     ix=nodeindex(s)
-    dimensions=Dict(
-        "V"=>(R, T+1),
-        "H"=>(length(nodes(s)), T),
-        "tunnel_q"=>(length(s.tunnels), T),
-        "generator_q"=>(G, T),
-        "power"=>(G, T),
-        "river_release"=>(D, T),
-        "gate"=>(D, T),
-        "arrival_volume"=>(D, T),
-        "u"=>(G, T),
-        "terminal_transit"=>(D,),
+    dimensions=(
+        ("V",result.storage,(R,T+1)),
+        ("H",result.head,(length(nodes(s)),T)),
+        ("tunnel_q",result.tunnel_q,(length(s.tunnels),T)),
+        ("generator_q",result.generator_q,(G,T)),
+        ("power",result.power,(G,T)),
+        ("river_release",result.river_release,(D,T)),
+        ("gate",result.gate,(D,T)),
+        ("arrival_volume",result.arrival_volume,(D,T)),
+        ("u",result.commitment,(G,T)),
+        ("terminal_transit",result.terminal_transit,(D,)),
     )
-    for (key, shape) in dimensions
-        if !haskey(result, key) || size(result[key])!=shape
-            push!(errors, "missing or malformed $key")
+    for (key,array,shape) in dimensions
+        if size(array)!=shape
+            push!(errors,"missing or malformed $key")
             return finish()
         end
-        if !all(isfinite, result[key])
-            push!(errors, "nonfinite $key")
+        if !all(isfinite,array)
+            push!(errors,"nonfinite $key")
             return finish()
         end
     end
-    if !haskey(result, "objective") || !isfinite(result["objective"])
+    if !isfinite(result.objective)
         push!(errors, "missing or nonfinite objective")
         return finish()
     end
@@ -63,22 +75,22 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         return finish()
     end
     if haskey(result,"gate_adjustment_cost")
-        cost=result["gate_adjustment_cost"]
+        cost=result.gate_adjustment_cost
         if !(cost isa Real && isfinite(cost))
             push!(errors,"nonfinite or malformed gate_adjustment_cost")
             return finish()
         end
         record("gate_adjustment_cost_relative",[(cost-adjustment_cost)/max(1.0,abs(adjustment_cost))])
     end
-    V=result["V"]
-    H=result["H"]
-    Q=result["tunnel_q"]
-    GQ=result["generator_q"]
-    P=result["power"]
-    RQ=result["river_release"]
-    A=result["arrival_volume"]
-    ga=result["gate"]
-    u=result["u"]
+    V=result.storage
+    H=result.head
+    Q=result.tunnel_q
+    GQ=result.generator_q
+    P=result.power
+    RQ=result.river_release
+    A=result.arrival_volume
+    ga=result.gate
+    u=result.commitment
     admissible(c, u) ||
         push!(errors, "invalid binary commitment or minimum up/down history")
     record("initial_storage", V[:, 1]-[r.v0 for r in s.reservoirs])
@@ -289,14 +301,9 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
             end
             expected=[
                 river_law_value(
-                    r.law==:controlled ?
-                    _river_replace(
-                        r;
-                        capacity = opinterval(c, r.name, :capacity, t, r.capacity),
-                        inflow=opinterval(c,r.name,:inflow,t,r.inflow),
-                    ) : r,
-                    H[ix[r.source], t],
-                    ga[d, t],
+                    r, H[ix[r.source],t], ga[d,t];
+                    capacity=opinterval(c,r.name,:capacity,t,r.capacity),
+                    inflow=opinterval(c,r.name,:inflow,t,r.inflow),
                 )+opinterval(c,r.name,:inflow,t,r.inflow) for t in 1:T
             ]
             record("river_law_$(r.name)", RQ[d, :]-expected)
@@ -318,15 +325,15 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
     bound("hard_release_requirements", requirements.hard)
     if any(opinterval(c, r.name, :release_penalty, t, 0.0)>0 for r in s.rivers, t in 1:T)
         if !haskey(result, "shortfall_release") ||
-           size(result["shortfall_release"])!=(D, T) ||
+           size(result.shortfall_release)!=(D, T) ||
            !haskey(result, "release_penalty_cost")
             push!(errors, "missing soft release accounting")
         else
-            record("release_shortfall", result["shortfall_release"]-requirements.shortfall)
+            record("release_shortfall", result.shortfall_release-requirements.shortfall)
             record(
                 "release_penalty_cost",
                 [
-                    (result["release_penalty_cost"]-requirements.cost)/max(
+                    (result.release_penalty_cost-requirements.cost)/max(
                         1.0,
                         abs(requirements.cost),
                     ),
@@ -371,7 +378,7 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         routed=exact ? route_network_exact(c, RQ; transport = nd,injections) : route_network(c, RQ;injections)
         record("routing_release", routed["release"]-RQ)
         record("routing_arrival", routed["arrival_volume"]-A)
-        record("terminal_transit", routed["transit"][:, end]-result["terminal_transit"])
+        record("terminal_transit", routed["transit"][:, end]-result.terminal_transit)
         W=routed["transit"]
         external=zeros(T)
         for b in s.boundaries
@@ -409,22 +416,28 @@ function validate(c::ScheduleCase, result; tolerance = 1e-4, transport = nothing
         objective-=requirements.cost
         record(
             "objective_relative",
-            [(objective-result["objective"])/max(1.0, abs(objective))],
+            [(objective-result.objective)/max(1.0, abs(objective))],
         )
     catch e
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
     end
     try
         replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA)
-        replay["converged"] || push!(
+        replay.converged || push!(
             errors,
             "independent forward replay did not converge in the river-law domain",
         )
-        record("replay_residual", [replay["residual"]])
-        record("replay_tunnel_opening",replay["tunnel_opening"]-TA)
-        record("replay_H",_pressure_replay_difference(s,TA,GQ,H,replay["H"]))
-        for key in ["V", "tunnel_q", "power", "river_release", "arrival_volume"]
-            record("replay_$key", replay[key]-result[key])
+        record("replay_residual", [replay.residual])
+        record("replay_tunnel_opening",replay.tunnel_opening-TA)
+        record("replay_H",_pressure_replay_difference(s,TA,GQ,H,replay.head))
+        for (name, actual, expected) in (
+            ("V",replay.storage,result.storage),
+            ("tunnel_q",replay.tunnel_q,result.tunnel_q),
+            ("power",replay.power,result.power),
+            ("river_release",replay.river_release,result.river_release),
+            ("arrival_volume",replay.arrival_volume,result.arrival_volume),
+        )
+            record("replay_$name",actual-expected)
         end
     catch e
         push!(errors, "independent forward replay failed: $(sprint(showerror,e))")

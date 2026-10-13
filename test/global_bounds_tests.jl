@@ -234,7 +234,7 @@ end
     for direction in (0.,1.)
         b=OpenSHOP._build_global_dispatch(c;joint=true)
         OpenSHOP.JuMP.fix(OpenSHOP.JuMP.variable_by_name(b.m,"tunnel_direction_1_1"),direction;force=true)
-        probe=deepcopy(initial)
+        probe=OpenSHOP.schedule_dict(initial)
         probe["tunnel_q"][1,1]=direction==1 ? -1e-10 : 1e-10
         @test OpenSHOP._lift_start!(b,c,probe)["valid"]
         probe["tunnel_q"][1,1]=direction==1 ? -1. : 1.

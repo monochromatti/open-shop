@@ -6,6 +6,7 @@ using .RiverRouting
 include("curves.jl")
 include("level_flow_curves.jl")
 include("types.jl")
+include("results.jl")
 include("algebra.jl")
 include("curve_physics.jl")
 include("tunnel_physics.jl")
@@ -25,9 +26,11 @@ include("transport.jl")
 include("temporal.jl")
 include("pressure_references.jl")
 include("hydraulic_residual.jl")
+include("trajectories.jl")
 include("forward.jl")
 include("joint_states.jl")
 include("dispatch_data.jl")
+include("economics.jl")
 include("local_dispatch.jl")
 include("validation.jl")
 include("proposal_hydraulics.jl")
@@ -44,7 +47,8 @@ include("table_power_bounds.jl")
 include("power_cuts.jl")
 include("global_model.jl")
 include("solve.jl")
-export Reservoir,
+export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
+    Reservoir,
     Junction,
     Boundary,
     Tunnel,

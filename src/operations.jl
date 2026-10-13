@@ -290,31 +290,10 @@ function arrival_requirement_violation(c, r, grid, q)
     )
 end
 
-# Snapshot physical exogenous inputs for an independent hydraulic step.
-# Routing calibration capacity is never changed by an operating restriction.
-function operational_system(c, a, b)
-    isempty(c.operations) && return c.system
-    s=c.system
-    reservoirs=[
-        _river_replace(r; inflow = opaverage(c, r.name, :inflow, a, b, r.inflow)) for
-        r in s.reservoirs
-    ]
-    tunnels=[
-        _river_replace(e; opening = opaverage(c, e.name, :opening, a, b, e.opening),
-            capacity=opaverage(c,e.name,:capacity,a,b,e.capacity)) for
-        e in s.tunnels
-    ]
-    rivers=[
-        _river_replace(r; inflow=opaverage(c,r.name,:inflow,a,b,r.inflow),
-            capacity=r.law in (:controlled,:delta) ? opaverage(c,r.name,:capacity,a,b,r.capacity) : r.capacity)
-        for r in s.rivers
-    ]
-    _river_replace(s; reservoirs, tunnels, rivers)
-end
-function river_law_value(r, h, a)
+function river_law_value(r, h, a; inflow=r.inflow, capacity=r.capacity)
     r.discharge_curve!==nothing &&
         return a*table_value(r.discharge_curve, h; extrapolation = :linear)
-    r.law==:controlled && return max(0.0,r.capacity-r.inflow)*a
+    r.law==:controlled && return max(0.0,capacity-inflow)*a
     r.law==:orifice && return r.coefficient*a*sqrt(max(h-r.crest, 0.0))
     r.law==:weir && return r.coefficient*max(h-r.crest, 0.0)^1.5
     throw(ArgumentError("unsupported river law"))

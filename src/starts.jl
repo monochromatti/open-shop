@@ -14,197 +14,132 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
     for v in variables
         set_start_value(v, nothing)
     end
-    byname=Dict(name(v)=>v for v in variables)
-    function put(n, x)
-        haskey(byname, n) || return
+    function put(variable, x)
+        variable===nothing && return
         y=Float64(x)
-        isfinite(y) || error("nonfinite lift $n")
-        assigned[byname[n]]=y
-        set_start_value(byname[n], y)
+        isfinite(y) || error("nonfinite lift for $(name(variable))")
+        assigned[variable]=y
+        set_start_value(variable, y)
     end
-    function table(n, curve, x, lo, hi)
-        haskey(byname, n) || return
-        tensor=get(get(b.m.ext,:global_tensor_tables,Dict()),n,nothing)
-        if tensor!==nothing
-            weights=OpenSHOP._global_tensor_coordinate_weights(tensor.coordinate.nodes,x)
-            for (v,z) in zip(tensor.coordinate.weights,weights)
-                v isa VariableRef && put(name(v),z)
-            end
-            put(n,OpenSHOP.table_value(curve,x;extrapolation=:linear))
-            return
+    function table(graph, curve, x)
+        graph===nothing && return
+        weights=_global_tensor_coordinate_weights(graph.coordinate.nodes,x)
+        for (variable,value) in zip(graph.coordinate.weights,weights)
+            variable isa VariableRef && put(variable,value)
         end
-        error("missing table graph: $n")
-    end
-    function turbine(n, curve, q, h, hlo, hhi, qmax)
-        tensor=get(get(b.m.ext,:global_tensor_turbines,Dict()),n,nothing)
-        if tensor!==nothing
-            for (v,z) in OpenSHOP._global_tensor_turbine_values(tensor,q,h)
-                put(name(v),z)
-            end
-            # Evaluate the physical table independently of the graph algebra.
-            put(n,OpenSHOP.turbine_efficiency(curve,q,h;extrapolation=:linear))
-            return
-        end
-        error("missing turbine graph: $n")
+        # Evaluate the physical curve independently of the interpolation rows.
+        put(graph.y,table_value(curve,x;extrapolation=:linear))
     end
     try
-        OpenSHOP.validate(c, warm)["valid"] || error("seed fails original physical audit")
+        validate(c, warm)["valid"] || error("seed fails original physical audit")
+        physical=_schedule_input(warm;case=c)
         s=c.system
         T=length(c.prices)
-        ix=OpenSHOP.nodeindex(s)
-        openings=get(warm,"tunnel_opening",tunnel_opening_schedule(c))
-        for (variable,val) in _tunnel_gate_values(b.gates,c,openings)
-            put(name(variable),val)
+        ix=nodeindex(s)
+        openings=physical.tunnel_opening
+        for (variable,value) in _tunnel_gate_values(b.gates,c,openings)
+            put(variable,value)
         end
-        for v in variables
-            is_fixed(v) && put(name(v), fix_value(v))
+        for variable in variables
+            is_fixed(variable) && put(variable,fix_value(variable))
         end
-        for (i, r) in enumerate(s.reservoirs), t in 1:(T + 1)
-            put("v[$i,$t]", warm["V"][i, t]/r.vmax)
+        for (i,r) in enumerate(s.reservoirs), t in 1:(T+1)
+            put(b.v[i,t],physical.storage[i,t]/r.vmax)
+            table(b.graphs.reservoir_vertices[i,t],r.level_curve,physical.storage[i,t])
         end
-        for i in axes(warm["H"], 1), t in 1:T
-            put("h[$i,$t]", warm["H"][i, t]/250)
+        for i in axes(physical.head,1), t in 1:T
+            put(b.h[i,t],physical.head[i,t]/250)
         end
-        for (i, e) in enumerate(s.tunnels), t in 1:T
-            q=warm["tunnel_q"][i, t]
-            put("q[$i,$t]", q/50)
-            put("tunnel_positive_$(i)_$(t)", max(q, 0.0))
-            put("tunnel_negative_$(i)_$(t)", max(-q, 0.0))
-            put("gate_loss_$(i)_$(t)",q*abs(q)/2500)
-            put("gate_open_head_$(i)_$(t)",openings[i,t]>0 ?
-                warm["H"][ix[e.source],t]-warm["H"][ix[e.target],t] : 0.0)
-            # A zero-flow residual must not overwrite a fixed auxiliary branch.
-            # The physical and split-flow equations are still audited below.
-            direction="tunnel_direction_$(i)_$(t)"
-            choice=haskey(byname,direction) && is_fixed(byname[direction]) ?
-                fix_value(byname[direction]) : (openings[i,t]>0 && q>=0 ? 1.0 : 0.0)
-            put(direction, choice)
+        for (i,e) in enumerate(s.tunnels), t in 1:T
+            q=physical.tunnel_q[i,t]
+            put(b.q[i,t],q/50)
+            graph=b.graphs.tunnel_losses[i,t]
+            graph===nothing && continue
+            put(graph.positive,max(q,0.0))
+            put(graph.negative,max(-q,0.0))
+            put(graph.signed_square,q*abs(q)/2500)
+            put(graph.open_head,openings[i,t]>0 ?
+                physical.head[ix[e.source],t]-physical.head[ix[e.target],t] : 0.0)
+            # Fixed direction branches remain fixed even at zero flow.
+            direction=graph.direction
+            choice=direction!==nothing && is_fixed(direction) ? fix_value(direction) :
+                (openings[i,t]>0 && q>=0 ? 1.0 : 0.0)
+            put(direction,choice)
         end
-        heads=Dict{Tuple{Symbol,Int},String}()
-        for (i, g) in enumerate(s.generators), t in 1:T
-            q=warm["generator_q"][i, t]
-            p=warm["power"][i, t]
-            u=warm["u"][i, t]
-            put("gq[$i,$t]", q/50)
-            put("p[$i,$t]", p/40)
-            put("u[$i,$t]", u)
-            prior=t==1 ? g.initial_on : warm["u"][i, t - 1]
-            put("su[$i,$t]", max(0, u-prior))
-            put("sd[$i,$t]", max(0, prior-u))
-            pl=OpenSHOP.plantof(s, g)
-            total=sum(
-                warm["generator_q"][j, t] for
-                (j, z) in enumerate(s.generators) if z.plant==pl.name
-            )
-            n="net_head_$(i)_$(t)"
-            haskey(byname, n) && (heads[(pl.name, t)]=n)
-            actual=heads[(pl.name, t)]
-            hv=byname[actual]
-            receiver=warm["H"][ix[pl.target], t]
-            h=warm["H"][ix[pl.source], t]-OpenSHOP.outlet_head(pl, receiver)-OpenSHOP.tailwater(
-                pl,
-                total,
-            )
-            put(n, h)
-            outlet="outlet_head_$(i)_$(t)"
-            if haskey(byname, outlet)
-                j=ix[pl.target]
-                lo, hi=if j<=length(s.reservoirs)
-                    r=s.reservoirs[j]
-                    (b.domains.hlo[j, t], b.domains.hhi[j, t])
-                elseif j<=length(s.reservoirs)+length(s.junctions)
-                    r=s.junctions[j - length(s.reservoirs)]
-                    (r.hmin, r.hmax)
-                else
-                    (receiver, receiver)
-                end
-                floor=pl.outlet_head_floor
-                table(
-                    outlet,
-                    OpenSHOP.TableCurve([lo, floor, hi], [floor, floor, hi]),
-                    receiver,
-                    lo,
-                    hi,
-                )
+        for (i,g) in enumerate(s.generators), t in 1:T
+            q,p,u=physical.generator_q[i,t],physical.power[i,t],physical.commitment[i,t]
+            put(b.gq[i,t],q/50)
+            put(b.p[i,t],p/40)
+            if b.transitions!==nothing
+                put(b.transitions.u[i,t],u)
+                prior=t==1 ? g.initial_on : physical.commitment[i,t-1]
+                put(b.transitions.su[i,t],max(0,u-prior))
+                put(b.transitions.sd[i,t],max(0,prior-u))
             end
-            pl.tailwater_curve!==nothing && table(
-                "tailwater_$(i)_$(t)",
-                pl.tailwater_curve,
-                total,
-                0.0,
-                sum(z.qmax for z in s.generators if z.plant==pl.name),
-            )
-            if g.turbine_table===nothing
-                put("eta_$(i)_$(t)", OpenSHOP.efficiency(g, q, h))
+            plant=plantof(s,g)
+            total=sum(physical.generator_q[j,t] for (j,z) in enumerate(s.generators)
+                if z.plant==plant.name)
+            graph=b.graphs.generator_graphs[i,t]
+            receiver=physical.head[ix[plant.target],t]
+            h=physical.head[ix[plant.source],t]-outlet_head(plant,receiver)-tailwater(plant,total)
+            put(graph.head.head,h)
+            if graph.head.outlet!==nothing
+                floor=plant.outlet_head_floor
+                nodes=graph.head.outlet.coordinate.nodes
+                table(graph.head.outlet,TableCurve(nodes,max.(nodes,floor)),receiver)
+            end
+            table(graph.head.tailwater,plant.tailwater_curve,total)
+            if graph.turbine===nothing
+                put(graph.efficiency,efficiency(g,q,h))
             else
-                turbine(
-                    "turbine_$(i)_$(t)",
-                    g.turbine_table,
-                    q,
-                    h,
-                    lower_bound(hv),
-                    upper_bound(hv),
-                    g.qmax,
-                )
-                table(
-                    "qlo_$(i)_$(t)",
-                    OpenSHOP.TableCurve(g.turbine_table.heads, g.turbine_table.qmin),
-                    h,
-                    lower_bound(hv),
-                    upper_bound(hv),
-                )
-                table(
-                    "qhi_$(i)_$(t)",
-                    OpenSHOP.TableCurve(g.turbine_table.heads, g.turbine_table.qmax),
-                    h,
-                    lower_bound(hv),
-                    upper_bound(hv),
-                )
-            end
-            g.generator_efficiency_curve!==nothing &&
-                table("electrical_$(i)_$(t)", g.generator_efficiency_curve, p, 0.0, g.pmax)
-        end
-        for (i, r) in enumerate(s.reservoirs), t in 1:T
-            r.level_curve===nothing && continue
-            lo=(b.domains.lower[i, t]+b.domains.lower[i, t + 1])/2
-            hi=(b.domains.upper[i, t]+b.domains.upper[i, t + 1])/2
-            table(
-                "level_$(i)_$(t)",
-                r.level_curve,
-                (warm["V"][i, t]+warm["V"][i, t + 1])/2,
-                lo,
-                hi,
-            )
-        end
-        shortfall=OpenSHOP.release_requirements(c, warm["river_release"]).shortfall
-        for (i, r) in enumerate(s.rivers), t in 1:T
-            put("rq[$i,$t]", warm["river_release"][i, t]/100)
-            put("a[$i,$t]", warm["gate"][i, t])
-            put("shortfall_release[$i,$t]", shortfall[i, t])
-            if is_channel(r)
-                upstream,downstream=warm["H"][ix[r.source],t],warm["H"][ix[r.target],t]
-                delta=upstream-downstream
-                put("channel_delta_$(i)_$(t)",delta)
-                graph=b.m.ext[:global_level_flow_tables]["channel_flow_$(i)_$(t)"]
-                for (variable,val) in _global_level_flow_values(graph,delta,channel_reference(r,upstream,downstream))
-                    put(name(variable),val)
+                for (variable,value) in _global_tensor_turbine_values(graph.turbine,q,h)
+                    put(variable,value)
                 end
-                continue
+                put(graph.efficiency,turbine_efficiency(g.turbine_table,q,h;extrapolation=:linear))
+                table(graph.flow_min,TableCurve(g.turbine_table.heads,g.turbine_table.qmin),h)
+                table(graph.flow_max,TableCurve(g.turbine_table.heads,g.turbine_table.qmax),h)
             end
-            r.law==:junction && continue
-
-            h=warm["H"][ix[r.source], t]
-            r.discharge_curve!==nothing && table(
-                "river_law_$(i)_$(t)",
-                r.discharge_curve,
-                h,
-                first(r.discharge_curve.x),
-                last(r.discharge_curve.x),
-            )
-            wet=max(h-r.crest, 0.0)
-            put("wet_$(i)_$(t)", wet)
-            put("wet_root_$(i)_$(t)", sqrt(wet))
-            put("wet_branch_$(i)_$(t)", h>=r.crest ? 1.0 : 0.0)
+            table(graph.electrical,g.generator_efficiency_curve,p)
+        end
+        if b.transitions!==nothing
+            states=b.transitions
+            for (i,plant) in enumerate(s.plants), t in 1:T
+                states.plant_u[i,t]===nothing && continue
+                members=states.bounds.members[i]
+                u=any(physical.commitment[j,t]==1 for j in members) ? 1.0 : 0.0
+                prior=t==1 ? states.bounds.plant_initial_on[i] :
+                    (any(physical.commitment[j,t-1]==1 for j in members) ? 1.0 : 0.0)
+                put(states.plant_u[i,t],u)
+                put(states.plant_su[i,t],max(0,u-prior))
+                put(states.plant_sd[i,t],max(0,prior-u))
+            end
+        end
+        for (i,r) in enumerate(s.reservoirs), t in 1:T
+            table(b.graphs.reservoir_levels[i,t],r.level_curve,
+                (physical.storage[i,t]+physical.storage[i,t+1])/2)
+        end
+        shortfall=release_requirements(c,physical.river_release).shortfall
+        for (i,r) in enumerate(s.rivers), t in 1:T
+            put(b.rq[i,t],physical.river_release[i,t]/100)
+            put(b.a[i,t],physical.gate[i,t])
+            put(b.shortfall_release[i,t],shortfall[i,t])
+            graph=b.graphs.river_graphs[i,t]
+            if is_channel(r)
+                upstream,downstream=physical.head[ix[r.source],t],physical.head[ix[r.target],t]
+                delta=upstream-downstream
+                put(graph.delta,delta)
+                for (variable,value) in _global_level_flow_values(graph.channel,delta,
+                    channel_reference(r,upstream,downstream))
+                    put(variable,value)
+                end
+            elseif r.law!=:junction
+                h=physical.head[ix[r.source],t]
+                table(graph.discharge,r.discharge_curve,h)
+                wet=max(h-r.crest,0.0)
+                put(graph.wet,wet)
+                put(graph.root,sqrt(wet))
+                put(graph.branch,h>=r.crest ? 1.0 : 0.0)
+            end
         end
         _lift_distributed_references!(b.m, assigned)
         _lift_power_hulls!(b.m, assigned)

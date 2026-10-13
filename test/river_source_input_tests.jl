@@ -5,7 +5,7 @@
     badplant=OpenSHOP._river_replace(s.plants[1];discharge_river=:Missing)
     badsystem=OpenSHOP._river_replace(s;plants=vcat([badplant],s.plants[2:end]))
     @test_throws ArgumentError normalize_river_connections(badsystem)
-    @test_throws ErrorException OpenSHOP.validate_inputs(OpenSHOP._river_replace(c;system=badsystem))
+    @test_throws ArgumentError OpenSHOP._river_replace(c;system=badsystem)
     # Builders also validate manually assembled Julia systems. A redirected
     # discharge cannot disappear into a reach whose source is a reservoir.
     badplant=OpenSHOP._river_replace(s.plants[1];discharge_river=:ReceiverOutlet)

@@ -88,16 +88,23 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         x[base + k]=tunnel_flow(t, dh, ta[k])
     end
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+outlet_flow(
+        x[nq + k]=data.river_inflow[d]+outlet_flow(
             s.rivers[d],
             h,
             gate[d],
             topology.river_source[d],
             topology.river_target[d],
+            inflow = data.river_inflow[d],
+            capacity = data.river_capacity[d],
         )
     end
     if initial_guess!==nothing
-        if initial_guess isa AbstractDict
+        if initial_guess isa HydraulicStep
+            x[1:nr].=initial_guess.storage
+            x[(nr + 1):base].=initial_guess.head[(nr + 1):base]
+            x[(base + 1):nq].=initial_guess.tunnel_q
+            x[(nq + 1):end].=initial_guess.river_release[active]
+        elseif initial_guess isa AbstractDict
             x[1:nr].=initial_guess["Vnew"]
             x[(nr + 1):base].=initial_guess["H"][(nr + 1):base]
             x[(base + 1):nq].=initial_guess["tunnel_q"]
@@ -115,24 +122,27 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
     # Exact law evaluation removes Newton roundoff from a shut outlet. Its
     # storage consequence is included in the recomputed convergence residual.
     for (k, d) in enumerate(active)
-        x[nq + k]=s.rivers[d].inflow+outlet_flow(
+        x[nq + k]=data.river_inflow[d]+outlet_flow(
             s.rivers[d],
             h,
             gate[d],
             topology.river_source[d],
             topology.river_target[d],
+            inflow = data.river_inflow[d],
+            capacity = data.river_capacity[d],
         )
     end
     river_rates!(work, x, data)
     release, arrival, injection = work.release, work.arrival, work.injection
     gh=[
         begin
-            plant=plantof(s, g)
+            p=topology.generator_plant[i]
+            plant=s.plants[p]
             h[ix[plant.source]]-outlet_head(plant, h[ix[plant.target]]) - tailwater(
                 plant,
-                sum(generator_q[j] for (j, z) in enumerate(s.generators) if z.plant==g.plant),
+                sum(generator_q[j] for j in topology.plant_generators[p]; init = 0.0),
             )
-        end for g in s.generators
+        end for i in eachindex(s.generators)
     ]
     pw=[power(g, generator_q[i], gh[i]) for (i, g) in enumerate(s.generators)]
     exchange=zeros(length(s.boundaries))
@@ -144,61 +154,57 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         boundary!(t.source, -x[base + i])
         t.discharge_river===nothing && boundary!(t.target, x[base + i])
     end
-    for (i, g) in enumerate(s.generators)
-        p=plantof(s, g)
+    for i in eachindex(s.generators)
+        p=s.plants[topology.generator_plant[i]]
         boundary!(p.source, -generator_q[i])
         p.discharge_river===nothing && boundary!(p.target, generator_q[i])
     end
     for (i, r) in enumerate(s.rivers)
-        boundary!(r.source, -(release[i]-r.inflow))
+        boundary!(r.source, -(release[i]-data.river_inflow[i]))
         boundary!(r.target, arrival[i])
     end
     residual = maximum(abs, hydraulic_residual!(similar(x), x, data, work); init = 0.0)
     domain=all(isfinite, vcat(x, h, pw, release, arrival)) &&
-           all(_forward_domain(r, release[d]) for (d, r) in enumerate(s.rivers)) &&
+           all(
+               _forward_domain(r, release[d];
+                   capacity = r.law in (:controlled,:delta) ? data.river_capacity[d] : r.capacity)
+               for (d, r) in enumerate(s.rivers)
+           ) &&
            all(
                t.discharge_river===nothing || x[base + i]>=-1e-10 for (i, t) in enumerate(s.tunnels)
            )
-    violations=Dict(
-        "storage"=>maximum(
+    violations=HydraulicBoundViolations(
+        maximum(
             (max(r.vmin-x[i], x[i]-r.vmax, 0.0) for (i, r) in enumerate(s.reservoirs));
             init = 0.0,
         ),
-        "tunnel_flow"=>maximum(
+        maximum(
             (
                 max(
-                    abs(x[base + i])-r.capacity,
+                    abs(x[base + i])-data.tunnel_capacity[i],
                     r.discharge_river===nothing ? 0.0 : -x[base + i],
                     0.0,
                 ) for (i, r) in enumerate(s.tunnels)
             );
             init = 0.0,
         ),
-        "river_flow"=>maximum(
+        maximum(
             (
-                max(river_flow_lower(r, r.capacity)-release[d], release[d]-r.capacity, 0.0) for
+                max(
+                    river_flow_lower(r, data.river_capacity[d])-release[d],
+                    release[d]-data.river_capacity[d],
+                    0.0,
+                ) for
                 (d, r) in enumerate(s.rivers)
             );
             init = 0.0,
         ),
     )
-    Dict(
-        "Vnew"=>x[1:nr],
-        "H"=>h,
-        "tunnel_q"=>x[(base + 1):nq],
-        "tunnel_opening"=>copy(ta),
-        "river_release"=>release,
-        "river_injection"=>injection,
-        "river_arrival"=>arrival,
-        "generator_head"=>gh,
-        "power"=>pw,
-        "residual"=>residual,
-        "converged"=>isfinite(residual) && residual<=tolerance && domain,
-        "iterations"=>iterations,
-        "boundary_net_inflow"=>exchange,
-        "routing_domain_valid"=>domain,
-        "bound_violations"=>violations,
-        "law_domain_valid"=>all(
+    HydraulicStep(
+        x[1:nr], h, x[(base + 1):nq], copy(ta), release, injection, arrival,
+        gh, pw, residual, isfinite(residual) && residual<=tolerance && domain,
+        iterations, exchange, domain, violations,
+        all(
             is_channel(s.rivers[d]) ||
                 s.rivers[d].law==:controlled ||
                 s.rivers[d].allow_dry ||
@@ -241,8 +247,8 @@ function _forward_weights(r, q)
     refs=[c.reference_flow for c in r.curves]
     RiverRouting.blend(r.curves, clamp(q, first(refs), last(refs)))
 end
-function _forward_domain(r, q)
-    river_flow_valid(r, q; tolerance = 1e-9) || return false
+function _forward_domain(r, q; capacity=r.capacity)
+    isfinite(q) && river_flow_lower(r, capacity)-1e-9<=q<=capacity+1e-9 || return false
     _forward_atom(r) ||
         length(r.curves)==1 ||
         first(r.curves).reference_flow-1e-10<=q<=last(r.curves).reference_flow+1e-9
@@ -282,9 +288,9 @@ Independent chronological replay with coupled same-step river arrivals.
 interval]` is a river outlet opening in [0,1]. `tunnel_opening[tunnel, interval]`
 is required when tunnels have selectable positions. Input arrays are read-only.
 
-Returns a dictionary with storage `V[reservoir, vertex]` in Mm³, midpoint heads
-`H[node, interval]` in metres, `power[unit, interval]` in MW, river releases in
-m³/s, arrivals/transit in Mm³, and convergence diagnostics. A converged physical
+Returns a [`HydraulicTrajectory`](@ref) with `storage[reservoir, vertex]` in Mm³,
+midpoint `head[node, interval]` in metres, `power[unit, interval]` in MW, river
+releases in m³/s, arrivals/transit in Mm³, and convergence diagnostics. A converged physical
 trajectory can violate operating limits; use [`dispatch_from_controls`](@ref)
 to reconstruct and validate a complete schedule. Malformed inputs throw an
 `ArgumentError` or `DimensionMismatch`.
@@ -308,6 +314,8 @@ function simulate(
     T=length(grid)-1
     size(generator_q)==(ng, length(c.grid)-1) && size(gate)==(nd, length(c.grid)-1) ||
         throw(DimensionMismatch("schedule dimensions"))
+    all(>=(0), generator_q) && all(x -> 0<=x<=1, gate) ||
+        throw(ArgumentError("invalid generator discharges or river gates"))
     RiverRouting.check_grid(grid)
     first(grid)==first(c.grid) && last(grid)==last(c.grid) ||
         throw(ArgumentError("replay grid must span original horizon"))
@@ -318,9 +326,13 @@ function simulate(
     ga=gate[:, indices]
     ta=_physical_tunnel_openings(c, tunnel_opening)[:, indices]
     nr=length(s.reservoirs)
+    topology=HydraulicTopology(s)
+    sources=river_source_indices(s)
+    active_rivers=findall(r -> r.law != :junction, s.rivers)
+    river_order=_forward_river_order(s)
     V=zeros(nr, T+1)
     V[:, 1].=[r.v0 for r in s.reservoirs]
-    H=zeros(length(nodes(s)), T)
+    H=zeros(length(topology.node_names), T)
     Q=zeros(length(s.tunnels), T)
     P=zeros(ng, T)
     R=zeros(nd, T)
@@ -328,7 +340,11 @@ function simulate(
     A=zeros(nd, T)
     W=zeros(nd, T+1)
     out=zeros(T)
-    steps=Any[]
+    steps=HydraulicStep[]
+    reservoir_inflow=zeros(nr)
+    river_inflow=zeros(nd)
+    tunnel_capacity=zeros(length(s.tunnels))
+    river_capacity=zeros(nd)
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
     nc_case=_river_replace(c; grid = Float64.(grid), prices = zeros(T))
     ndat=exact ? _transport_data(nc_case, transport) : nothing
@@ -336,8 +352,8 @@ function simulate(
         transport!==nothing &&
         throw(ArgumentError("compiled deterministic transport cannot serve distributed replay"))
     B=exact ? Array{Float64, 3}[] : [_forward_coefficients(grid, r) for r in s.rivers]
-    # forward_step still checks the reference-curve column shape, even when
-    # the exact network matrix supersedes those reference fractions.
+    # Retain reference-curve column dimensions even when the exact network
+    # matrix supplies the current arrivals instead of reference fractions.
     nc=exact ? maximum((length(r.curves) for r in s.rivers); init = 1) :
        maximum((size(b, 3) for b in B); init = 1)
     transfer=zeros(nd, nc)
@@ -374,28 +390,44 @@ function simulate(
                 end
             end
         end
-        ss=operational_system(c, grid[t], grid[t + 1])
-        z=forward_step(
-            ss,
-            V[:, t],
+        for (i, r) in enumerate(s.reservoirs)
+            reservoir_inflow[i]=opaverage(c, r.name, :inflow, grid[t], grid[t + 1], r.inflow)
+        end
+        for (i, e) in enumerate(s.tunnels)
+            tunnel_capacity[i]=opaverage(c, e.name, :capacity, grid[t], grid[t + 1], e.capacity)
+        end
+        for (d, r) in enumerate(s.rivers)
+            river_inflow[d]=opaverage(c, r.name, :inflow, grid[t], grid[t + 1], r.inflow)
+            river_capacity[d]=opaverage(c, r.name, :capacity, grid[t], grid[t + 1], r.capacity)
+        end
+        data=HydraulicStepData(
+            s,
+            @view(V[:, t]),
             dt,
-            gq[:, t],
-            ga[:, t],
-            A[:, t]/(0.0036dt);
-            tunnel_opening = ta[:, t],
-            current_transfer = transfer,
-            current_network = network,
+            @view(gq[:, t]),
+            @view(ga[:, t]),
+            A[:, t]/(0.0036dt),
+            @view(ta[:, t]),
+            transfer,
+            network;
+            topology, sources, active_rivers, river_order,
+            reservoir_inflow, river_inflow, tunnel_capacity, river_capacity,
+        )
+        z=_forward_step(
+            data;
             initial_guess = isempty(steps) ? nothing : last(steps),
+            tolerance = 1e-9,
+            max_iterations = 100,
         )
         push!(steps, z)
-        V[:, t + 1].=z["Vnew"]
-        H[:, t].=z["H"]
-        Q[:, t].=z["tunnel_q"]
-        P[:, t].=z["power"]
-        R[:, t].=z["river_release"]
-        L[:, t].=z["river_injection"]
-        out[t]=sum(z["boundary_net_inflow"])
-        A[:, t].=0.0036dt .* z["river_arrival"]
+        V[:, t + 1].=z.storage
+        H[:, t].=z.head
+        Q[:, t].=z.tunnel_q
+        P[:, t].=z.power
+        R[:, t].=z.river_release
+        L[:, t].=z.river_injection
+        out[t]=sum(z.boundary_net_inflow)
+        A[:, t].=0.0036dt .* z.river_arrival
         for (d, r) in enumerate(s.rivers)
             if !exact
                 for (l, w) in _forward_weights(r, R[d, t])
@@ -405,22 +437,10 @@ function simulate(
             W[d, t + 1]=W[d, t]+0.0036dt*R[d, t]-A[d, t]
         end
     end
-    Dict(
-        "grid"=>collect(grid),
-        "V"=>V,
-        "H"=>H,
-        "tunnel_q"=>Q,
-        "tunnel_opening"=>ta,
-        "generator_q"=>gq,
-        "gate"=>ga,
-        "power"=>P,
-        "river_release"=>R,
-        "arrival_volume"=>A,
-        "transit"=>W,
-        "boundary_outflow"=>out,
-        "converged"=>all(z["converged"] && z["law_domain_valid"] for z in steps),
-        "residual"=>maximum((z["residual"] for z in steps); init = 0.0),
-        "steps"=>steps,
+    HydraulicTrajectory(
+        collect(grid), V, H, Q, ta, gq, ga, P, R, L, A, W, out,
+        all(z.converged && z.law_domain_valid for z in steps),
+        maximum((z.residual for z in steps); init = 0.0), steps,
     )
 end
 

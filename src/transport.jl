@@ -554,11 +554,12 @@ function transport_audit(
     max_internal_intervals = 2048,
     transport = nothing,
 )
+    x=_schedule_input(x; case=c)
     routed=route_network_controlled(
         c,
-        x["river_release"];
-        generator_q=get(x,"generator_q",nothing),
-        tunnel_q=get(x,"tunnel_q",nothing),
+        x.river_release;
+        generator_q=x.generator_q,
+        tunnel_q=x.tunnel_q,
         absolute_tolerance,
         max_refinements,
         max_internal_intervals,
@@ -566,10 +567,10 @@ function transport_audit(
     )
     discrepancy=maximum(
         abs,
-        cumsum(routed["arrival_volume"]-x["arrival_volume"]; dims = 2);
+        cumsum(routed["arrival_volume"]-x.arrival_volume; dims = 2);
         init = 0.0,
     )
-    terminal=maximum(abs, routed["transit"][:, end]-x["terminal_transit"]; init = 0.0)
+    terminal=maximum(abs, routed["transit"][:, end]-x.terminal_transit; init = 0.0)
     Dict(
         "accepted"=>routed["converged"] &&
                     max(discrepancy, terminal)+max(

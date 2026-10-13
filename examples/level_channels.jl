@@ -28,10 +28,10 @@ case=ScheduleCase(name="supplied lake responses",system=system,grid=collect(0.0:
     prices=[-20.0,80.0,120.0,-10.0],operations=[
         OperationalSeries(object=:PressureLink,attribute=:opening,times=[2.0],values=[0.0])])
 result=OpenSHOP.solve(case;time_limit=60.0,relative_gap=1e-3)
-result["accepted"] || error("No schedule passed physical validation and finer replay")
-solution=result["solution"]
-println("Objective: ",solution["objective"])
-println("Unit commitment: ",vec(solution["u"]))
-println("Signed channel discharge (m³/s): ",vec(solution["river_release"]))
-println("Pressure-link discharge (m³/s): ",vec(solution["tunnel_q"]))
-println("Global certificate: ",result["global_certificate"])
+result.accepted || error("No schedule passed physical validation and finer replay")
+solution=result.solution
+println("Objective: ",solution.objective)
+println("Unit commitment: ",vec(solution.commitment))
+println("Signed channel discharge (m³/s): ",vec(solution.river_release))
+println("Pressure-link discharge (m³/s): ",vec(solution.tunnel_q))
+println("Global certificate: ",result.global_certificate)

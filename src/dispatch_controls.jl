@@ -37,9 +37,8 @@ Reconstruct and validate a physical schedule from prescribed controls.
 and `gate[river, interval]` is an outlet opening in [0,1]. Supply an explicit
 `tunnel_opening[tunnel, interval]` for selectable tunnel gates.
 
-Returns the physical arrays described by [`simulate`](@ref), with commitment
-under `"u"`, the economic `"objective"`, and `"validation"`. Inspect
-`result["validation"]["valid"]` before using the schedule. Invalid commitment
+Returns a [`Schedule`](@ref) with physical arrays, `commitment` and `objective`.
+Inspect `schedule.diagnostics["validation"]["valid"]` before using it. Invalid commitment
 or nonconvergent integration throws `ArgumentError`. No bound, gate or state
 is clipped, and the input arrays are not mutated. This function does not optimize.
 """
@@ -63,76 +62,56 @@ function dispatch_from_controls(
             ),
         )
     z=simulate(c, q, gate; transport = nd, tunnel_opening)
-    z["converged"] || throw(ArgumentError("forward reconstruction did not converge"))
+    z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     s=c.system
     dt=diff(c.grid)
     T=length(dt)
-    x=Dict{String, Any}(
-        "case"=>c.name,
-        "grid"=>copy(c.grid),
-        "status"=>status,
-        "solver"=>"independent_forward",
-        "u"=>copy(u),
-        "generator_q"=>copy(q),
-        "gate"=>copy(gate),
-        "V"=>z["V"],
-        "H"=>z["H"],
-        "tunnel_q"=>z["tunnel_q"],
-        "tunnel_opening"=>z["tunnel_opening"],
-        "power"=>z["power"],
-        "river_release"=>z["river_release"],
-        "arrival_volume"=>z["arrival_volume"],
-        "terminal_transit"=>z["transit"][:, end],
-    )
-    req=release_requirements(c, x["river_release"])
-    x["shortfall_release"]=req.shortfall
-    x["release_penalty_cost"]=req.cost
+    req=release_requirements(c, z.river_release)
     operating_cost=transition_costs(c, u)
-    adjustment_cost=tunnel_adjustment_cost(c, x["tunnel_opening"])
-    x["gate_adjustment_cost"]=adjustment_cost
-    x["objective"]=sum(
-                       c.prices[t]*dt[t]*x["power"][j, t] for j in eachindex(s.generators), t in 1:T;
-                       init = 0.0,
-                   )-operating_cost-req.cost-adjustment_cost +
-                   sum(
-                       r.water_value*(x["V"][i, end]-r.v0) for (i, r) in enumerate(s.reservoirs);
-                       init = 0.0,
-                   ) +
-                   sum(
-                       r.water_value*(z["transit"][i, end]-z["transit"][i, 1]) for
-                       (i, r) in enumerate(s.rivers);
-                       init = 0.0,
-                   )
-    x["validation"]=validate(c, x; transport = nd)
+    adjustment_cost=tunnel_adjustment_cost(c, z.tunnel_opening)
+    objective=sum(c.prices[t]*dt[t]*z.power[j,t]
+        for j in eachindex(s.generators), t in 1:T; init=0.0) -
+        operating_cost-req.cost-adjustment_cost +
+        sum(r.water_value*(z.storage[i,end]-r.v0)
+            for (i,r) in enumerate(s.reservoirs); init=0.0) +
+        sum(r.water_value*(z.transit[i,end]-z.transit[i,1])
+            for (i,r) in enumerate(s.rivers); init=0.0)
+    x=Schedule(copy(c.grid), copy(u), z.storage, z.head, z.tunnel_q,
+        z.tunnel_opening, Matrix{Float64}(q), z.power, Matrix{Float64}(gate),
+        z.river_release, z.arrival_volume, z.transit[:,end], req.shortfall,
+        objective, adjustment_cost, req.cost,
+        Dict{String,Any}("case"=>c.name,"status"=>status,"solver"=>"independent_forward"))
+    x.diagnostics["validation"]=validate(c, x; transport=nd)
     x
 end
 
 """Correct bounded solver roundoff, then independently rebuild all physical values."""
 function _reconstruct_candidate(c, raw; transport = nothing)
-    admissible(c, raw["u"]) || throw(ArgumentError("inadmissible commitment"))
-    q, gate = copy(raw["generator_q"]), copy(raw["gate"])
+    raw=_schedule_input(raw; case=c)
+    admissible(c, raw.commitment) || throw(ArgumentError("inadmissible commitment"))
+    q, gate = copy(raw.generator_q), copy(raw.gate)
     all(isfinite, q) && all(isfinite, gate) || throw(ArgumentError("nonfinite controls"))
     all(x -> x >= -1e-6, q) || throw(ArgumentError("negative discharge"))
     all(x -> -1e-8 <= x <= 1 + 1e-8, gate) || throw(ArgumentError("gate outside bounds"))
-    for k in eachindex(q, raw["u"])
-        raw["u"][k]==0 || continue
+    for k in eachindex(q, raw.commitment)
+        raw.commitment[k]==0 || continue
         abs(q[k])<=1e-6 || throw(ArgumentError("nonzero discharge at an off unit"))
         q[k]=0.0
     end
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
-    raw_opening=_tunnel_opening_input(c, get(raw, "tunnel_opening", nothing))
+    raw_opening=_tunnel_opening_input(c, raw.tunnel_opening)
     ta=_physical_tunnel_openings(c, raw_opening)
     correction = (
-        flow = maximum(abs, q .- raw["generator_q"]; init = 0.0),
-        gate = maximum(abs, gate .- raw["gate"]; init = 0.0),
+        flow = maximum(abs, q .- raw.generator_q; init = 0.0),
+        gate = maximum(abs, gate .- raw.gate; init = 0.0),
         tunnel_opening = maximum(
             abs,
             ta .- get(raw, "fractional_tunnel_opening", raw_opening);
             init = 0.0,
         ),
     )
-    x = dispatch_from_controls(c, raw["u"], q, gate; transport, tunnel_opening = ta)
+    x = dispatch_from_controls(c, raw.commitment, q, gate; transport, tunnel_opening = ta)
     x, correction
 end
 
@@ -166,12 +145,11 @@ function _dispatch_start(c, u, warm)
         diagnostics["ignored_reason"]="warm tunnel_opening: "*sprint(showerror, e)
         return nothing, diagnostics
     end
-    normalized=if haskey(warm, "tunnel_opening") && warm["tunnel_opening"]==opening
-        warm
-    else
-        updated=copy(warm)
-        updated["tunnel_opening"]=opening
-        updated
+    normalized=try
+        warm isa Schedule && warm.tunnel_opening==opening ? warm : _schedule_input(warm;case=c)
+    catch error
+        diagnostics["ignored_reason"]="warm schedule: "*sprint(showerror,error)
+        return nothing,diagnostics
     end
     diagnostics["used"]=true
     normalized, diagnostics

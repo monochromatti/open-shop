@@ -157,8 +157,7 @@ end
 A routed reach with flow in m³/s, travel time in hours and inventory in Mm³.
 `source` names a reservoir or explicit river confluence. A direct river
 connection uses the upstream `target` to name the downstream reach, whose
-`source` is `:auto`; call [`normalize_river_connections`](@ref) before using
-that system. Plants and tunnels can feed a reach through `discharge_river`.
+`source` is `:auto`; `ScheduleCase` resolves these connections during construction. Plants and tunnels can feed a reach through `discharge_river`.
 Supply `deterministic_delay` and `curves=[]` for a fixed travel time, or
 `curves` for distributed responses. Reservoir outlets use the selected
 `law`; a `:delta` channel instead exchanges water instantaneously according to
@@ -245,7 +244,16 @@ Base.@kwdef struct ScheduleCase
     prices::Vector{Float64}
     operations::Vector{OperationalSeries} = OperationalSeries[]
     flow_requirements::Vector{FlowRequirement} = FlowRequirement[]
+    function ScheduleCase(name::String, system::HydroSystem, grid::Vector{Float64},
+        prices::Vector{Float64}, operations::Vector{OperationalSeries},
+        flow_requirements::Vector{FlowRequirement})
+        new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements)
+    end
 end
+ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements) =
+    ScheduleCase(String(name), system, Vector{Float64}(grid), Vector{Float64}(prices),
+        Vector{OperationalSeries}(operations), Vector{FlowRequirement}(flow_requirements))
+
 nodes(s) = vcat(
     [r.name for r in s.reservoirs],
     [r.name for r in s.junctions],
