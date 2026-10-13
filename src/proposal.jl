@@ -23,6 +23,7 @@ function propose_commitment(
     isfinite(time_limit) && time_limit>0 ||
         throw(ArgumentError("Proposal time limit must be finite and positive"))
     isnan(deadline) && throw(ArgumentError("Invalid proposal deadline"))
+    reference=_proposal_reference(c,reference)
     s=c.system
     G=length(s.generators)
     T=length(c.prices)
@@ -59,16 +60,16 @@ function propose_commitment(
     selectable=any(x->!(x isa Number),gates.opening)
     for (j, g) in enumerate(s.generators), t in 1:T
         h=g.hbest
-        if reference!==nothing && haskey(reference, "H")
+        if reference.head!==nothing
             p=plantof(s, g)
-            qtotal=haskey(reference, "generator_q") ?
+            qtotal=reference.generator_q!==nothing ?
                    sum(
-                reference["generator_q"][k, t] for
+                reference.generator_q[k, t] for
                 (k, z) in enumerate(s.generators) if z.plant==g.plant
             ) : 0.0
-            h=reference["H"][ix[p.source], t]-outlet_head(
+            h=reference.head[ix[p.source], t]-outlet_head(
                 p,
-                reference["H"][ix[p.target], t],
+                reference.head[ix[p.target], t],
             )-tailwater(p, qtotal)
             h=clamp(h, g.hmin, g.hmax)
         end
@@ -126,8 +127,8 @@ function propose_commitment(
         K=nothing
         if !exact
             B=data["B"][d]
-            qref=reference!==nothing && haskey(reference,"river_release") ?
-                clamp.(reference["river_release"][d,:],0.0,r.capacity) : fill(r.capacity/2,T)
+            qref=reference.river_release!==nothing ?
+                clamp.(reference.river_release[d,:],0.0,r.capacity) : fill(r.capacity/2,T)
             K=[r.deterministic_delay!==nothing ? B[t,k,1] :
                 sum(w*B[t,k,l] for (l,w) in RiverRouting.blend(r.curves,qref[k]))
                 for t in 1:T,k in 1:T]

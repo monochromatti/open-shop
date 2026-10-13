@@ -245,7 +245,7 @@ end
         r.water_value*(x["V"][i, end]-r.v0) for (i, r) in enumerate(c.system.reservoirs)
     )
     @test x["objective"]≈income+water-37.0 atol=1e-10
-    bad=copy(x)
+    bad=OpenSHOP.schedule_dict(x)
     bad["objective"]+=37.0
     @test !validate(c, bad)["valid"]
     zero=OpenSHOP._river_replace(

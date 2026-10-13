@@ -100,12 +100,12 @@ function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap)
     result["solution"] = candidate
     result["incumbent_source"] = source
     result["validation"] = candidate["validation"]
-    result["objective"] = candidate["objective"]
-    result["feasible_lower_bound"] = candidate["objective"]
+    result["objective"] = candidate.objective
+    result["feasible_lower_bound"] = candidate.objective
     result["relative_gap"] = nothing
     result["absolute_gap"] = nothing
     result["global_certificate"] = false
-    upper, lower = result["global_bound"], candidate["objective"]
+    upper, lower = result["global_bound"], candidate.objective
     if upper !== nothing && upper < lower - 1e-6
         result["rejected_global_bound"] = upper
         result["bound_rejection"] = "solver upper bound below independently reconstructed objective"
@@ -217,7 +217,7 @@ function solve(
         result["preparation_accepted"]=prepared["accepted"]
         if prepared["accepted"]
             initial=prepared["solution"]
-            result["prepared_objective"]=initial["objective"]
+            result["prepared_objective"]=initial.objective
         end
     end
     construction_started=time()
@@ -229,7 +229,7 @@ function solve(
         best, correction = _reconstruct_candidate(c, initial)
         best["validation"]["valid"] ||
             throw(ArgumentError("initial controls fail reconstruction audit"))
-        result["initial_objective"] = best["objective"]
+        result["initial_objective"] = best.objective
     end
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u,tunnel_opening=fixed_tunnel_opening)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
@@ -346,11 +346,10 @@ function solve(
             try
                 raw = _dispatch_values(b)
                 fractional = value.(b.u)
-                raw["fractional_commitment"] = fractional
-                raw["u"] = round.(Int, fractional)
-                error = maximum(abs, fractional .- raw["u"]; init = 0.0)
+                raw.diagnostics["fractional_commitment"] = fractional
+                error = maximum(abs, fractional .- raw.commitment; init = 0.0)
                 gate_integrality=maximum((abs(value(v)-round(value(v))) for v in variables if is_binary(v));init=0.0)
-                raw["validation"] = validate(c, raw; transport = b.transport)
+                raw.diagnostics["validation"] = validate(c, raw; transport = b.transport)
                 result["raw_solver_solution"] = raw
                 result["raw_integrality_error"] = error
                 result["raw_binary_integrality_error"] = gate_integrality
@@ -358,13 +357,13 @@ function solve(
                     for ref in all_constraints(b.m;include_variable_in_set_constraints=false)
                     if constraint_object(ref).set isa MOI.SOS2);init=0.0)
                 result["raw_sos2_residual"]=sos2_error
-                if error <= 1e-6 && gate_integrality<=1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw["u"] == fixed_u)
+                if error <= 1e-6 && gate_integrality<=1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw.commitment == fixed_u)
                     x, correction = _reconstruct_candidate(c, raw; transport = b.transport)
                     result["control_boundary_correction"] =
                         Dict("flow" => correction.flow, "gate" => correction.gate,
                             "tunnel_opening"=>correction.tunnel_opening)
                     if x["validation"]["valid"] &&
-                       (best === nothing || x["objective"] > best["objective"])
+                       (best === nothing || x.objective > best.objective)
                         best = x
                         result["incumbent_source"] = "solver"
                     end
@@ -406,7 +405,7 @@ function solve(
     end
     result["total_seconds"] = time() - began
     result["budget_overrun_seconds"] = max(0.0, result["total_seconds"] - time_limit)
-    result
+    SolveResult(result)
 end
 
 export solve

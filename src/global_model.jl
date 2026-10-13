@@ -20,14 +20,50 @@ function _global_scaled_head_bounds(variable)
     prevfloat(250lo),nextfloat(250hi)
 end
 
+# References follow the equation graphs, independently of diagnostic names.
+struct _TunnelLossGraph
+    positive::Union{Nothing,VariableRef}
+    negative::Union{Nothing,VariableRef}
+    direction::Union{Nothing,VariableRef}
+    signed_square::Union{Nothing,VariableRef}
+    open_head::Union{Nothing,VariableRef}
+end
+
+struct _PlantHeadGraph
+    head::VariableRef
+    outlet::Union{Nothing,_TensorTableGraph}
+    tailwater::Union{Nothing,_TensorTableGraph}
+end
+
+struct _GeneratorPowerGraph
+    head::_PlantHeadGraph
+    efficiency::VariableRef
+    turbine::Union{Nothing,_TensorTurbineGraph}
+    flow_min::Union{Nothing,_TensorTableGraph}
+    flow_max::Union{Nothing,_TensorTableGraph}
+    electrical::Union{Nothing,_TensorTableGraph}
+end
+
+struct _RiverLawGraph
+    delta::Union{Nothing,VariableRef}
+    channel::Union{Nothing,_LevelFlowGraph}
+    discharge::Union{Nothing,_TensorTableGraph}
+    wet::Union{Nothing,VariableRef}
+    root::Union{Nothing,VariableRef}
+    branch::Union{Nothing,VariableRef}
+end
+
+_RiverLawGraph() = _RiverLawGraph(nothing,nothing,nothing,nothing,nothing,nothing)
+
 # A selectable gate transmits the head difference only when open. The binary
 # product hull keeps closed endpoint heads independent and gives the continuous
 # relaxation the same finite head domain. Only varying resistance needs a
 # separate signed-square lift; a binary closed/open gate retains a quadratic law.
 function _global_tunnel_gate_loss!(m,e,i,t,Q,dh,gates,cap,dhlo,dhhi;relaxed=false)
+    qp=qm=direction=signed_square=open_head=nothing
     opening=gates.opening[i,t]
     if opening isa Number
-        opening==0 && return
+        opening==0 && return _TunnelLossGraph(qp,qm,direction,signed_square,open_head)
         factor,resistance=tunnel_coefficients(e,opening)
         onhead=factor*dh
     else
@@ -41,7 +77,8 @@ function _global_tunnel_gate_loss!(m,e,i,t,Q,dh,gates,cap,dhlo,dhhi;relaxed=fals
         opened=gates.open[i,t]
         @constraint(m,Q<=cap*opened)
         e.discharge_river===nothing && @constraint(m,Q>=-cap*opened)
-        onhead=_bounded_binary_product!(m,dh,opened,dhlo,dhhi;name="gate_open_head_$(i)_$(t)")
+        open_head=_bounded_binary_product!(m,dh,opened,dhlo,dhhi;name="gate_open_head_$(i)_$(t)")
+        onhead=open_head
     end
     # The sign follows the head difference for every positive resistance.
     # Use that implication for selectable gates, avoiding an unnecessary sign
@@ -76,7 +113,7 @@ function _global_tunnel_gate_loss!(m,e,i,t,Q,dh,gates,cap,dhlo,dhhi;relaxed=fals
         @constraint(m,signed_square==loss/2500)
         @constraint(m,(onhead-2500resistance*signed_square)/100==0)
     end
-    nothing
+    _TunnelLossGraph(qp,qm,direction,signed_square,open_head)
 end
 
 function _build_global_dispatch(
@@ -150,6 +187,12 @@ function _build_global_dispatch(
     @variable(m, rq[1:D, 1:T]>=0)
     @variable(m, 0<=a[1:D, 1:T]<=1)
     @variable(m, shortfall_release[1:D, 1:T]>=0)
+    reservoir_levels=Matrix{Union{Nothing,_TensorTableGraph}}(nothing,R,T)
+    reservoir_vertices=Matrix{Union{Nothing,_TensorTableGraph}}(nothing,R,T+1)
+    tunnel_losses=Matrix{Union{Nothing,_TunnelLossGraph}}(nothing,E,T)
+    plant_heads=Dict{Tuple{Symbol,Int},_PlantHeadGraph}()
+    generator_graphs=Matrix{_GeneratorPowerGraph}(undef,G,T)
+    river_graphs=fill(_RiverLawGraph(),D,T)
     node_bounds=Dict{Tuple{Symbol,Int},Tuple{Float64,Float64}}()
     for (i, r) in enumerate(s.reservoirs), t in 1:T
         node_bounds[(r.name, t)]=(domains.hlo[i, t], domains.hhi[i, t])
@@ -181,8 +224,8 @@ function _build_global_dispatch(
             mid=(V[i, t]+V[i, t + 1])/2
             midlo=(domains.lower[i, t]+domains.lower[i, t + 1])/2
             midhi=(domains.upper[i, t]+domains.upper[i, t + 1])/2
-            level=r.level_curve===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 :
-                  _global_tensor_table!(
+            graph=r.level_curve===nothing ? nothing :
+                  _global_tensor_table_graph!(
                 m,
                 r.level_curve,
                 mid,
@@ -190,15 +233,21 @@ function _build_global_dispatch(
                 midhi;
                 name = Symbol("level_", i, "_", t),
             )
+            reservoir_levels[i,t]=graph
+            level=graph===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 : graph.y
             @constraint(m, (H[i, t]-level)/250==0)
         end
     end
     level_at_vertex=(i,t)->begin
         r=s.reservoirs[i]
         volume=V[i,t]
-        r.level_curve===nothing ? r.z0+r.slope*volume+r.curvature*volume^2 :
-            _global_tensor_table!(m,r.level_curve,volume,domains.lower[i,t],domains.upper[i,t];
-                name=Symbol("level_vertex_",i,"_",t))
+        if r.level_curve===nothing
+            return r.z0+r.slope*volume+r.curvature*volume^2
+        end
+        graph=_global_tensor_table_graph!(m,r.level_curve,volume,domains.lower[i,t],domains.upper[i,t];
+            name=Symbol("level_vertex_",i,"_",t))
+        reservoir_vertices[i,t]=graph
+        graph.y
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
@@ -222,7 +271,7 @@ function _build_global_dispatch(
             # boundary heads, rather than the unscaled input bounds.
             srcvar,dstvar=h[ix[e.source],t],h[ix[e.target],t]
             src,dst=_global_scaled_head_bounds(srcvar),_global_scaled_head_bounds(dstvar)
-            _global_tunnel_gate_loss!(m,e,i,t,Q[i,t],H[ix[e.source],t]-H[ix[e.target],t],
+            tunnel_losses[i,t]=_global_tunnel_gate_loss!(m,e,i,t,Q[i,t],H[ix[e.source],t]-H[ix[e.target],t],
                 gates,cap,prevfloat(src[1]-dst[2]),nextfloat(src[2]-dst[1]);relaxed)
         end
     end
@@ -240,8 +289,8 @@ function _build_global_dispatch(
                 s.generators[j].qmax for j in plant_generators[plant.name];
                 init = 0.0,
             )
-            tail=plant.tailwater_curve===nothing ? 0.0 :
-                 _global_tensor_table!(
+            tailgraph=plant.tailwater_curve===nothing ? nothing :
+                 _global_tensor_table_graph!(
                 m,
                 plant.tailwater_curve,
                 totalq,
@@ -249,23 +298,28 @@ function _build_global_dispatch(
                 aggregate_max;
                 name = Symbol("tailwater_", i, "_", t),
             )
+            tail=tailgraph===nothing ? 0.0 : tailgraph.y
             tail_lo=plant.tailwater_curve===nothing ? 0.0 : minimum(plant.tailwater_curve.y)
             tail_hi=plant.tailwater_curve===nothing ? 0.0 : maximum(plant.tailwater_curve.y)
             src=node_bounds[(plant.source, t)]
             dst=node_bounds[(plant.target, t)]
             receiver=H[ix[plant.target], t]
             floor=plant.outlet_head_floor
+            outletgraph=nothing
             if floor!==nothing
-                receiver=dst[2]<=floor ? floor :
-                         dst[1]>=floor ? receiver :
-                         _global_tensor_table!(
-                    m,
-                    TableCurve([dst[1], floor, dst[2]], [floor, floor, dst[2]]),
-                    receiver,
-                    dst[1],
-                    dst[2];
-                    name = Symbol("outlet_head_", i, "_", t),
-                )
+                if dst[2]<=floor
+                    receiver=floor
+                elseif dst[1]<floor
+                    outletgraph=_global_tensor_table_graph!(
+                        m,
+                        TableCurve([dst[1],floor,dst[2]],[floor,floor,dst[2]]),
+                        receiver,
+                        dst[1],
+                        dst[2];
+                        name=Symbol("outlet_head_",i,"_",t),
+                    )
+                    receiver=outletgraph.y
+                end
                 dst=(max(dst[1], floor), max(dst[2], floor))
             end
             hlo=src[1]-dst[2]-tail_hi
@@ -278,6 +332,7 @@ function _build_global_dispatch(
             )
             @constraint(m, hd==H[ix[plant.source], t]-receiver-tail)
             shared_heads[key]=hd
+            plant_heads[key]=_PlantHeadGraph(hd,outletgraph,tailgraph)
         end
         flowmax=g.qmax
         powmax=g.pmax
@@ -286,6 +341,7 @@ function _build_global_dispatch(
         known_state=joint ? (is_fixed(u[i,t]) ? fix_value(u[i,t]) : nothing) : u[i,t]
         flowmin=known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
         known_state==0 && (flowmax=0.0)
+        turbinegraph=nothing
         eta=if g.turbine_table===nothing
             emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
@@ -297,11 +353,12 @@ function _build_global_dispatch(
             )
             z
         else
-            _global_tensor_turbine!(m,g.turbine_table,GQ[i,t],hd,flowmin,flowmax,hlo,hhi;
+            turbinegraph=_global_tensor_turbine_graph!(m,g.turbine_table,GQ[i,t],hd,flowmin,flowmax,hlo,hhi;
                 name=Symbol("turbine_",i,"_",t))
+            turbinegraph.eta
         end
-        electrical=g.generator_efficiency_curve===nothing ? 1.0 :
-                   _global_tensor_table!(
+        electricalgraph=g.generator_efficiency_curve===nothing ? nothing :
+                   _global_tensor_table_graph!(
             m,
             g.generator_efficiency_curve,
             P[i, t],
@@ -309,6 +366,7 @@ function _build_global_dispatch(
             powmax;
             name = Symbol("electrical_", i, "_", t),
         )
+        electrical=electricalgraph===nothing ? 1.0 : electricalgraph.y
         qmin=opinterval(c, g.name, :qmin, t, g.qmin)
         qmax=opinterval(c, g.name, :qmax, t, g.qmax)
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
@@ -357,12 +415,14 @@ function _build_global_dispatch(
 
             end
         end
+        qlograph=qhigraph=nothing
         if g.turbine_table!==nothing
             table=g.turbine_table
-            qlo=_global_tensor_table!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
+            qlograph=_global_tensor_table_graph!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
                 name=Symbol("qlo_",i,"_",t))
-            qhi=_global_tensor_table!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
+            qhigraph=_global_tensor_table_graph!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
                 name=Symbol("qhi_",i,"_",t))
+            qlo,qhi=qlograph.y,qhigraph.y
             flow_margin=operational_margin/(
                 0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))
             )
@@ -384,6 +444,7 @@ function _build_global_dispatch(
                 @constraint(m, GQ[i, t]<=qhi-flow_margin)
             end
         end
+        generator_graphs[i,t]=_GeneratorPowerGraph(plant_heads[key],eta,turbinegraph,qlograph,qhigraph,electricalgraph)
     end
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
     injections=river_injections(c,RQ,GQ,Q)
@@ -412,9 +473,10 @@ function _build_global_dispatch(
                 @constraint(m,delta==upstream-downstream)
                 ref=channel_reference(r,upstream,downstream)
                 rlo,rhi=r.delta_level_ref_up_flow_curve===nothing ? dst : src
-                flow=_global_level_flow!(m,channel_curve(r),delta,ref,dlo,dhi,rlo,rhi;
+                flowgraph=_global_level_flow_graph!(m,channel_curve(r),delta,ref,dlo,dhi,rlo,rhi;
                     name=Symbol("channel_flow_",i,"_",t))
-                @constraint(m,(RQ[i,t]-flow)/100==0)
+                river_graphs[i,t]=_RiverLawGraph(delta,flowgraph,nothing,nothing,nothing,nothing)
+                @constraint(m,(RQ[i,t]-flowgraph.flow)/100==0)
                 arrivals[i,t]=0.0036*dt[t]*RQ[i,t]
                 continue
             end
@@ -465,7 +527,7 @@ function _build_global_dispatch(
                 @constraint(m, first(r.discharge_curve.x)<=level<=last(r.discharge_curve.x))
                 lawlo,lawhi=first(r.discharge_curve.x),last(r.discharge_curve.x)
                 lawlo<=lawhi || throw(ArgumentError("river law outside reachable domain for $(r.name)"))
-                discharge=_global_tensor_table!(
+                dischargegraph=_global_tensor_table_graph!(
                     m,
                     r.discharge_curve,
                     level,
@@ -473,7 +535,8 @@ function _build_global_dispatch(
                     lawhi;
                     name = Symbol("river_law_", i, "_", t),
                 )
-                @constraint(m, (outlet_release-a[i, t]*discharge)/100==0)
+                river_graphs[i,t]=_RiverLawGraph(nothing,nothing,dischargegraph,nothing,nothing,nothing)
+                @constraint(m, (outlet_release-a[i, t]*dischargegraph.y)/100==0)
             elseif r.law==:controlled
                 @constraint(m, outlet_release==(cap-natural)*a[i, t])
             elseif r.law in (:orifice, :weir)
@@ -491,6 +554,7 @@ function _build_global_dispatch(
                     upper_bound=max(0.0, hi),
                     base_name="wet_$(i)_$(t)"
                 )
+                z=nothing
                 if !r.allow_dry || lo>=0
                     @constraint(m, wet==hd)
                 elseif hi<=0
@@ -508,6 +572,7 @@ function _build_global_dispatch(
                     base_name="wet_root_$(i)_$(t)"
                 )
                 @constraint(m, root^2==wet)
+                river_graphs[i,t]=_RiverLawGraph(nothing,nothing,nothing,wet,root,z)
                 if r.law==:orifice
                     @constraint(m, (outlet_release-r.coefficient*a[i, t]*root)/100==0)
                 else
@@ -611,21 +676,9 @@ function _build_global_dispatch(
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
-    operating_cost=transition_costs(c,u; transitions)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
-    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-operating_cost+sum(
-        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
-        init = 0.0,
-    )+sum(
-        r.water_value*(terminal[i]-history_initial[i]) for (i, r) in enumerate(s.rivers);
-        init = 0.0,
-    )
-    penalty_cost=sum(
-        opinterval(c, r.name, :release_penalty, t, 0.0)*shortfall_release[i, t] for
-        (i, r) in enumerate(s.rivers), t in 1:T;
-        init = 0.0,
-    )
-    obj-=penalty_cost+gates.cost
+    obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
+        initial_transit=history_initial, gate_cost=gates.cost, transitions)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -640,34 +693,42 @@ function _build_global_dispatch(
         set_start_value(rq[i, t], mean(r.history_release)/100)
         r.law==:orifice && set_start_value(a[i, t], 0.5)
     end
-    if warm!==nothing && haskey(warm, "V")
+    if warm!==nothing
+        physical=_schedule_input(warm;case=c)
         for i in 1:R, t in 1:(T + 1)
-            set_start_value(v[i, t], warm["V"][i, t]/s.reservoirs[i].vmax)
+            set_start_value(v[i, t], physical.storage[i, t]/s.reservoirs[i].vmax)
         end
         for i in 1:N, t in 1:T
-            set_start_value(h[i, t], warm["H"][i, t]/250)
+            set_start_value(h[i, t], physical.head[i, t]/250)
         end
         for i in 1:E, t in 1:T
-            set_start_value(q[i, t], warm["tunnel_q"][i, t]/50)
+            set_start_value(q[i, t], physical.tunnel_q[i, t]/50)
         end
         for (i, g) in enumerate(s.generators), t in 1:T
             set_start_value(
                 gq[i, t],
-                clamp(warm["generator_q"][i, t], g.qmin*ustart[i, t], g.qmax*ustart[i, t])/50,
+                clamp(physical.generator_q[i, t], g.qmin*ustart[i, t], g.qmax*ustart[i, t])/50,
             )
             set_start_value(
                 p[i, t],
-                clamp(warm["power"][i, t], g.pmin*ustart[i, t], g.pmax*ustart[i, t])/40,
+                clamp(physical.power[i, t], g.pmin*ustart[i, t], g.pmax*ustart[i, t])/40,
             )
         end
         for i in 1:D, t in 1:T
-            set_start_value(rq[i, t], warm["river_release"][i, t]/100)
-            set_start_value(a[i, t], warm["gate"][i, t])
+            set_start_value(rq[i, t], physical.river_release[i, t]/100)
+            set_start_value(a[i, t], physical.gate[i, t])
         end
     end
     b=(;
         m,
+        case = c,
         obj,
+        v,
+        h,
+        q,
+        gq,
+        p,
+        rq,
         V,
         H,
         Q,
@@ -688,6 +749,7 @@ function _build_global_dispatch(
         shared_heads,
         node_bounds,
         gates,
+        graphs = (;reservoir_levels,reservoir_vertices,tunnel_losses,plant_heads,generator_graphs,river_graphs),
     )
     _add_power_bounds!(b,c)
     joint && _add_power_hull!(b,c)

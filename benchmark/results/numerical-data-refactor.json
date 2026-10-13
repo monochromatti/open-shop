@@ -1,0 +1,83 @@
+{
+    "julia": "1.13.1",
+    "cases": [
+        {
+            "after_bytes": 870432,
+            "physical_differences": {
+                "H": 0,
+                "river_release": 0,
+                "V": 0,
+                "tunnel_q": 0,
+                "power": 0,
+                "terminal_transit": 0,
+                "generator_q": 0,
+                "arrival_volume": 0
+            },
+            "before_bytes": 2226688,
+            "after_seconds": 0.000809167,
+            "before_seconds": 0.001785292,
+            "global_counts": [
+                930,
+                1724
+            ],
+            "objective_difference": 0,
+            "local_counts": [
+                360,
+                563
+            ],
+            "lift": {
+                "variables": 930,
+                "constraints": 3506,
+                "max_residual": 2.5420278674994495e-12,
+                "assigned": 930,
+                "worst_constraint": "-0.0005 tunnel_positive_4_2² + 0.0005 tunnel_negative_4_2² + 2.5 h[1,2] - 2.5 h[2,2] = 0",
+                "valid": true,
+                "objective": 6940.048790874279,
+                "tolerance": 1.0e-7
+            },
+            "case": "mixed_sources_exact"
+        },
+        {
+            "after_bytes": 552592,
+            "physical_differences": {
+                "H": 0,
+                "river_release": 0,
+                "V": 0,
+                "tunnel_q": 0,
+                "power": 0,
+                "terminal_transit": 0,
+                "generator_q": 0,
+                "arrival_volume": 0
+            },
+            "before_bytes": 1867280,
+            "after_seconds": 0.000788166,
+            "before_seconds": 0.001611583,
+            "global_counts": [
+                1128,
+                1716
+            ],
+            "objective_difference": 0,
+            "local_counts": [
+                360,
+                357
+            ],
+            "lift": {
+                "variables": 1128,
+                "constraints": 3894,
+                "max_residual": 2.5430535905172566e-12,
+                "assigned": 1128,
+                "worst_constraint": "-0.0005 tunnel_positive_4_2² + 0.0005 tunnel_negative_4_2² + 2.5 h[1,2] - 2.5 h[2,2] = 0",
+                "valid": true,
+                "objective": 6940.528032681156,
+                "tolerance": 1.0e-7
+            },
+            "case": "mixed_sources_distributed"
+        }
+    ],
+    "baseline": "d93fa7a42aa8c498f956f33a42cbf366e64e96ed",
+    "scope": "Chronological replay; compilation excluded. Physical arrays and model counts compared.",
+    "cpu": "apple-m1",
+    "julia_threads": 1,
+    "blas_threads": 1,
+    "warm_repetitions": 9
+}

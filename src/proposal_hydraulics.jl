@@ -3,6 +3,26 @@
 # never a physical audit or a bound on the nonlinear problem. They are used only
 # when the case contains selectable gates; the existing prescribed-gate proposal
 # keeps its original construction.
+function _proposal_reference(c, point)
+    if point isa Schedule || point isa SolveResult
+        point=_schedule_input(point;case=c)
+        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release)
+    end
+    # A linearization point may prescribe only some physical quantities.
+    # Missing components retain the surrogate's existing nominal defaults.
+    matrix(key,rows,columns) = point===nothing || !haskey(point,key) ? nothing : begin
+        values=_schedule_matrix(point[key],columns)
+        size(values)==(rows,columns) || throw(DimensionMismatch("proposal reference $key"))
+        values
+    end
+    s,T=c.system,length(c.prices)
+    (;storage=matrix("V",length(s.reservoirs),T+1),
+        head=matrix("H",length(nodes(s)),T),
+        tunnel_q=matrix("tunnel_q",length(s.tunnels),T),
+        generator_q=matrix("generator_q",length(s.generators),T),
+        river_release=matrix("river_release",length(s.rivers),T))
+end
+
 function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,reference)
     s=c.system
     T=length(c.prices)
@@ -11,8 +31,8 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
     bounds=Matrix{Tuple{Float64,Float64}}(undef,length(names),T)
     reference_head=fill(NaN,length(names),T)
     for (i,r) in enumerate(s.reservoirs),t in 1:T
-        vref=reference===nothing || !haskey(reference,"V") ? r.v0 :
-            (reference["V"][i,t]+reference["V"][i,t+1])/2
+        vref=reference.storage===nothing ? r.v0 :
+            (reference.storage[i,t]+reference.storage[i,t+1])/2
         slope=r.level_curve===nothing ? r.slope+2r.curvature*vref :
             table_slope(r.level_curve,vref;extrapolation=:linear)
         intercept=head(r,vref)-slope*vref
@@ -26,8 +46,8 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         H[i,t]=@variable(m,lower_bound=node.hmin,upper_bound=node.hmax,
             base_name="proposal_head_$(i)_$(t)")
         bounds[i,t]=(node.hmin,node.hmax)
-        reference!==nothing && haskey(reference,"H") &&
-            (reference_head[i,t]=reference["H"][i,t])
+        reference.head!==nothing &&
+            (reference_head[i,t]=reference.head[i,t])
     end
     for node in s.boundaries,t in 1:T
         H[ix[node.name],t]=node.head
@@ -46,9 +66,9 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         direct_nominal=sum(clamp(g.qbest,g.qmin,g.qmax) for g in s.generators
             if plantof(s,g).source in (e.source,e.target);init=0.0)
         nominal=direct_nominal>0 ? direct_nominal : total_nominal/max(1,length(s.tunnels))
-        anchor=reference===nothing || !haskey(reference,"tunnel_q") ? nominal :
-            abs(reference["tunnel_q"][i,t])
-        if (reference===nothing || !haskey(reference,"tunnel_q") || anchor==0) &&
+        anchor=reference.tunnel_q===nothing ? nominal :
+            abs(reference.tunnel_q[i,t])
+        if (reference.tunnel_q===nothing || anchor==0) &&
             isfinite(reference_head[src,t]) && isfinite(reference_head[dst,t])
             # A passive reservoir/boundary link has a physical reference flow.
             # A unit's nominal flow can otherwise make its secant law infeasible
@@ -83,17 +103,17 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         rlo,rhi=bounds[dst,t]
         if plant.outlet_head_floor!==nothing
             # A first-order approximation selects the active outlet-head branch.
-            ref=reference===nothing || !haskey(reference,"H") ? (rlo+rhi)/2 : reference["H"][dst,t]
+            ref=reference.head===nothing ? (rlo+rhi)/2 : reference.head[dst,t]
             if ref<plant.outlet_head_floor
                 receiver=plant.outlet_head_floor
                 rlo=rhi=plant.outlet_head_floor
             end
         end
         qref=clamp(g.qbest,g.qmin,g.qmax)
-        tailref=reference===nothing || !haskey(reference,"generator_q") ?
+        tailref=reference.generator_q===nothing ?
             sum(clamp(z.qbest,z.qmin,z.qmax) for z in s.generators
             if z.plant==plant.name;init=0.0) :
-            sum(reference["generator_q"][j,t] for (j,z) in enumerate(s.generators) if z.plant==plant.name;init=0.0)
+            sum(reference.generator_q[j,t] for (j,z) in enumerate(s.generators) if z.plant==plant.name;init=0.0)
         tail=tailwater(plant,tailref)
         nethead=H[src,t]-receiver-tail
         hlo,hhi=bounds[src,t][1]-rhi-tail,bounds[src,t][2]-rlo-tail

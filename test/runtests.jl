@@ -89,3 +89,8 @@ include("tunnel_gate_controls_tests.jl")
 include("tunnel_gate_regression_tests.jl")
 
 include("numerical_api_tests.jl")
+
+include("replay_refactor_tests.jl")
+include("model_reference_tests.jl")
+
+include("result_api_tests.jl")

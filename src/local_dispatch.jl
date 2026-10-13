@@ -354,21 +354,9 @@ function _build_dispatch(
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
-    operating_cost=transition_costs(c,u)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
-    obj=sum(c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T;init=0.0)-operating_cost+sum(
-        r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
-        init = 0.0,
-    )+sum(
-        r.water_value*(terminal[i]-history_initial[i]) for (i, r) in enumerate(s.rivers);
-        init = 0.0,
-    )
-    penalty_cost=sum(
-        opinterval(c, r.name, :release_penalty, t, 0.0)*shortfall_release[i, t] for
-        (i, r) in enumerate(s.rivers), t in 1:T;
-        init = 0.0,
-    )
-    obj-=penalty_cost+gates.cost
+    obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
+        initial_transit=history_initial, gate_cost=gates.cost)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -386,30 +374,31 @@ function _build_dispatch(
     warm, warm_start=_dispatch_start(c, u, warm)
     if warm!==nothing && haskey(warm, "V")
         for i in 1:R, t in 1:(T + 1)
-            set_start_value(v[i, t], warm["V"][i, t]/s.reservoirs[i].vmax)
+            set_start_value(v[i, t], warm.storage[i, t]/s.reservoirs[i].vmax)
         end
         for i in 1:N, t in 1:T
-            set_start_value(h[i, t], warm["H"][i, t]/250)
+            set_start_value(h[i, t], warm.head[i, t]/250)
         end
         for i in 1:E, t in 1:T
-            set_start_value(q[i, t], warm["tunnel_q"][i, t]/50)
+            set_start_value(q[i, t], warm.tunnel_q[i, t]/50)
         end
         for (i, g) in enumerate(s.generators), t in 1:T
             set_start_value(
                 gq[i, t],
-                clamp(warm["generator_q"][i, t], g.qmin*ustart[i, t], g.qmax*ustart[i, t])/50,
+                clamp(warm.generator_q[i, t], g.qmin*ustart[i, t], g.qmax*ustart[i, t])/50,
             )
             set_start_value(
                 p[i, t],
-                clamp(warm["power"][i, t], g.pmin*ustart[i, t], g.pmax*ustart[i, t])/40,
+                clamp(warm.power[i, t], g.pmin*ustart[i, t], g.pmax*ustart[i, t])/40,
             )
         end
         for i in 1:D, t in 1:T
-            set_start_value(rq[i, t], warm["river_release"][i, t]/100)
-            set_start_value(a[i, t], warm["gate"][i, t])
+            set_start_value(rq[i, t], warm.river_release[i, t]/100)
+            set_start_value(a[i, t], warm.gate[i, t])
         end
     end
     (;
+        case=c,
         m,
         obj,
         V,
@@ -432,48 +421,34 @@ function _build_dispatch(
 end
 
 function _dispatch_values(b)
-    Dict{String,Any}(
-        "objective"=>value(b.obj),
-        "V"=>value.(b.V),
-        "H"=>value.(b.H),
-        "tunnel_q"=>value.(b.Q),
-        "tunnel_opening"=>_tunnel_gate_solution(b.gates),
-        "fractional_tunnel_opening"=>value.(b.gates.opening),
-        "gate_adjustment_cost"=>value(b.gates.cost),
-        "generator_q"=>value.(b.GQ),
-        "power"=>value.(b.P),
-        "river_release"=>value.(b.RQ),
-        "gate"=>value.(b.a),
-        "arrival_volume"=>value.(b.arrivals),
-        "terminal_transit"=>value.(b.terminal),
-        "shortfall_release"=>value.(b.shortfall_release),
-        "release_penalty_cost"=>value(b.penalty_cost),
-    )
+    c=b.case
+    release=value.(b.RQ)
+    opening=_tunnel_gate_solution(b.gates)
+    Schedule(copy(c.grid), round.(Int,value.(b.u)), value.(b.V), value.(b.H),
+        value.(b.Q), Matrix{Float64}(opening), value.(b.GQ), value.(b.P), value.(b.a),
+        release, Matrix{Float64}(value.(b.arrivals)), Vector{Float64}(value.(b.terminal)), value.(b.shortfall_release),
+        value(b.obj), value(b.gates.cost), value(b.penalty_cost),
+        Dict{String,Any}("case"=>c.name,
+            "fractional_tunnel_opening"=>value.(b.gates.opening)))
 end
 
-function _repair_dispatch!(c, result; transport = nothing)
+function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
     began=time()
     try
-        repaired, correction=_reconstruct_candidate(c, result; transport)
-        result["forward_reconstruction_audit"]=repaired["validation"]
-        result["forward_reconstruction_correction"]=correction
-        if repaired["validation"]["valid"]
-            result["raw_solver_validation"]=result["validation"]
-            result["raw_solver_objective"]=result["objective"]
-            result["forward_reconstructed"]=true
-            for key in (
-                "generator_q", "gate", "V", "H", "tunnel_q", "tunnel_opening", "gate_adjustment_cost", "power",
-                "river_release", "arrival_volume", "terminal_transit", "objective",
-                "shortfall_release", "release_penalty_cost", "validation",
-            )
-                result[key]=repaired[key]
-            end
+        repaired, correction=_reconstruct_candidate(c,solution;transport)
+        report["forward_reconstruction_audit"]=repaired.diagnostics["validation"]
+        report["forward_reconstruction_correction"]=correction
+        if repaired.diagnostics["validation"]["valid"]
+            report["raw_solver_validation"]=solution.diagnostics["validation"]
+            report["raw_solver_objective"]=solution.objective
+            report["forward_reconstructed"]=true
+            solution=repaired
         end
     catch error
-        result["forward_reconstruction_error"]=sprint(showerror, error)
+        report["forward_reconstruction_error"]=sprint(showerror,error)
     end
-    result["forward_reconstruction_seconds"]=time()-began
-    result
+    report["forward_reconstruction_seconds"]=time()-began
+    solution
 end
 
 function _local_optimizer!(m, solver, time_limit)
@@ -499,9 +474,10 @@ schedule; this routine never searches discrete states. Use [`solve`](@ref) for
 the global mixed-integer problem, or [`schedule_case`](@ref) to prepare a feasible
 schedule by combining MILP proposals with nonlinear dispatch.
 
-Returns a dictionary with status and timing. When a solution exists, it also
-contains physical arrays, `"objective"` and `"validation"`; check validation
-before using those arrays. A local optimum is not a global certificate.
+Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
+`nothing` if no candidate exists. `accepted` means the candidate passed the
+original-grid physical and operating checks; use [`solve_verified`](@ref) for
+finer replay. A local optimum is not a global certificate.
 """
 function solve_case(
     c;
@@ -550,26 +526,30 @@ function solve_case(
     )
     if remaining<=0
         result["total_seconds"]=time()-b.starttime
-        return result
+        return SolveResult(result)
     end
     _local_optimizer!(b.m, solver, remaining)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
     if time_limit-construction_seconds<=0
         result["total_seconds"]=time()-b.starttime
-        return result
+        return SolveResult(result)
     end
     elapsed=@elapsed optimize!(b.m)
     result["status"]=string(termination_status(b.m))
     result["seconds"]=elapsed
     result["iterations"]=MOI.get(b.m, MOI.BarrierIterations())
+    solution=nothing
     if has_values(b.m)
-        merge!(result, _dispatch_values(b))
+        solution=_dispatch_values(b)
         audit_start=time()
-        result["validation"]=validate(c, result; transport = b.transport)
+        solution.diagnostics["validation"]=validate(c,solution; transport=b.transport)
         result["validation_seconds"]=time()-audit_start
-        result["validation"]["valid"] || _repair_dispatch!(c, result; transport = b.transport)
+        if !solution.diagnostics["validation"]["valid"]
+            solution=_repair_dispatch!(c,solution,result; transport=b.transport)
+        end
+        result["accepted"]=solution.diagnostics["validation"]["valid"]
     end
     result["total_seconds"]=time()-b.starttime
-    result
+    SolveResult(result;solution)
 end

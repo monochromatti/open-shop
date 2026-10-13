@@ -1,38 +1,31 @@
-# Warm chronological replay measurements, independent of optimization timing.
-# Run this same file against two revisions to compare the residual implementation.
-using OpenSHOP, JuMP, Statistics
-include(joinpath(@__DIR__, "..", "examples", "mixed_source_network.jl"))
-using .MixedSourceNetworkExample: mixed_source_fixture
+# Run with julia --project=. benchmark/hydraulics.jl [output.json].
+using OpenSHOP, JuMP, Statistics, LinearAlgebra
+include(joinpath(pkgdir(OpenSHOP),"examples","mixed_source_network.jl"))
 
-function measure_hydraulics(fixture; repetitions = 9)
-    c = fixture.case
-    simulate(c, fixture.q, fixture.gates)
-    measurements = [@timed simulate(c, fixture.q, fixture.gates) for _ in 1:repetitions]
-    trajectory = last(measurements).value
-    trajectory["converged"] || error("hydraulic replay did not converge")
-    local_model = OpenSHOP._build_dispatch(c; u = fixture.u)
-    global_model = OpenSHOP._build_global_dispatch(c; u = fixture.u)
-    Dict(
-        "simulation" => trajectory,
-        "seconds" => median(m.time for m in measurements),
-        "bytes" => median(m.bytes for m in measurements),
-        "local_variables" => num_variables(local_model.m),
-        "local_constraints" =>
-            num_constraints(local_model.m; count_variable_in_set_constraints = true),
-        "global_variables" => num_variables(global_model.m),
-        "global_constraints" =>
-            num_constraints(global_model.m; count_variable_in_set_constraints = true),
-    )
+function hydraulic_benchmark(output)
+    rows=Any[]
+    for distributed in (false,true)
+        fixture=MixedSourceNetworkExample.mixed_source_fixture(;distributed)
+        c=fixture.case
+        x=dispatch_from_controls(c;commitment=fixture.u,
+            generator_q=fixture.q,gate=fixture.gates)
+        x["validation"]["valid"] || error("invalid benchmark controls")
+        simulate(c;generator_q=fixture.q,gate=fixture.gates)
+        samples=[@timed simulate(c;generator_q=fixture.q,gate=fixture.gates) for _ in 1:9]
+        local_model=OpenSHOP._build_dispatch(c;u=fixture.u)
+        global_model=OpenSHOP._build_global_dispatch(c;joint=true)
+        counts(model)=Dict("variables"=>num_variables(model),
+            "constraints"=>num_constraints(model;count_variable_in_set_constraints=false))
+        push!(rows,Dict("case"=>c.name,"seconds"=>median(s.time for s in samples),
+            "allocated_bytes"=>median(s.bytes for s in samples),
+            "objective"=>x["objective"],"local_model"=>counts(local_model.m),
+            "global_model"=>counts(global_model.m)))
+    end
+    writejson(output,Dict("julia"=>string(VERSION),"cpu"=>Sys.CPU_NAME,
+        "julia_threads"=>Threads.nthreads(),"blas_threads"=>BLAS.get_num_threads(),
+        "warm_repetitions"=>9,"cases"=>rows))
 end
 
-function hydraulics_benchmark()
-    Dict(
-        "deterministic" => measure_hydraulics(mixed_source_fixture()),
-        "distributed" => measure_hydraulics(mixed_source_fixture(; distributed = true)),
-    )
-end
-
-if abspath(PROGRAM_FILE) == @__FILE__
-    length(ARGS) == 1 || error("usage: julia --project=. benchmark/hydraulics.jl output.json")
-    writejson(only(ARGS), hydraulics_benchmark())
+if abspath(PROGRAM_FILE)==@__FILE__
+    hydraulic_benchmark(isempty(ARGS) ? "hydraulics.json" : only(ARGS))
 end

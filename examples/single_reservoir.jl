@@ -45,14 +45,14 @@ case = ScheduleCase(
 
 # The shared allowance includes Julia compilation on the first call.
 result = solve(case; time_limit = 180.0, relative_gap = 1e-4)
-println("Status: ", result["status"])
-println("Accepted: ", result["accepted"])
-println("Certified: ", result["global_certificate"])
+println("Status: ", result.status)
+println("Accepted: ", result.accepted)
+println("Certified: ", result.global_certificate)
 println(
     "Objective interval: [",
-    result["feasible_lower_bound"],
+    result.feasible_lower_bound,
     ", ",
-    result["global_bound"],
+    result.global_bound,
     "]",
 )
-result["accepted"] && result["global_certificate"] || error("example did not pass")
+result.accepted && result.global_certificate || error("example did not pass")

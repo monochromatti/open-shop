@@ -37,10 +37,11 @@ function restart_case(c::ScheduleCase, x, time::Real)
             "restart source schedule fails independent validation: $(join(audit["errors"], "; "))",
         ),
     )
+    x=_schedule_input(x; case=c)
     s=c.system
     previous=edge-1
     reservoirs=[
-        _restart_replace(r; v0 = Float64(x["V"][i, edge])) for
+        _restart_replace(r; v0 = Float64(x.storage[i, edge])) for
         (i, r) in enumerate(s.reservoirs)
     ]
     generators=Generator[]
@@ -48,32 +49,32 @@ function restart_case(c::ScheduleCase, x, time::Real)
         state=g.initial_on
         since=first(c.grid)-g.initial_age
         for t in 1:previous
-            if x["u"][i, t]!=state
-                state=Int(x["u"][i, t])
+            if x.commitment[i, t]!=state
+                state=Int(x.commitment[i, t])
                 since=c.grid[t]
             end
         end
         push!(
             generators,
             _restart_replace(g; initial_on = state, initial_age = Float64(time-since),
-                initial_power=Float64(x["power"][i,previous]),
-                initial_discharge=Float64(x["generator_q"][i,previous]),
+                initial_power=Float64(x.power[i,previous]),
+                initial_discharge=Float64(x.generator_q[i,previous]),
                 initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1])),
         )
     end
     opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
     tunnels=[_restart_replace(e;initial_opening=Float64(opening[i,previous]))
         for (i,e) in enumerate(s.tunnels)]
-    plant_history=_plant_commitment_history(c,x["u"],time)
+    plant_history=_plant_commitment_history(c,x.commitment,time)
     plants=[
         _restart_replace(
             p;
             initial_power = sum(
-                x["power"][i, previous] for
+                x.power[i, previous] for
                 (i, g) in enumerate(s.generators) if g.plant==p.name;
                 init = 0.0,
             ),
-            initial_discharge=sum(x["generator_q"][i,previous] for
+            initial_discharge=sum(x.generator_q[i,previous] for
                 (i,g) in enumerate(s.generators) if g.plant==p.name;init=0.0),
             initial_on=plant_history[j].state,
             initial_age=plant_history[j].age,
@@ -81,7 +82,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         ) for (j,p) in enumerate(s.plants)
     ]
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    routed=exact ? route_network_exact(c, x["river_release"];generator_q=x["generator_q"],tunnel_q=x["tunnel_q"]) : nothing
+    routed=exact ? route_network_exact(c, x.river_release;generator_q=x.generator_q,tunnel_q=x.tunnel_q) : nothing
     rivers=River[]
     for (i, r) in enumerate(s.rivers)
         windows=isempty(r.arrival_window_grid) ? Float64[] :
@@ -100,7 +101,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
             history_grid=vcat(r.history_grid, c.grid[2:edge])
             history_release=vcat(
                 r.history_release,
-                Float64.(x["river_release"][i, 1:previous]),
+                Float64.(x.river_release[i, 1:previous]),
             )
         end
         push!(
@@ -110,7 +111,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 history_grid,
                 history_release,
                 arrival_window_grid = windows,
-                initial_release=Float64(x["river_release"][i,previous]),
+                initial_release=Float64(x.river_release[i,previous]),
                 initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1]),
             ),
         )

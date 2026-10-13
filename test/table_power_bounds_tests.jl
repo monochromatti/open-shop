@@ -202,13 +202,14 @@ end
     record=OpenSHOP._power_hull_unit!(m,q,h,eta,p,1.0,(1.0,2.0),(1.0,3.0),(.3,.9),
         (1.0,3.0),(.3,.9),1.0,1.0;name=:joint)
     m.ext[:global_power_hulls]=Dict("power_hull_1_1"=>record)
-    m.ext[:global_tensor_turbines]=Dict("turbine_1_1"=>(qcoordinate=qc,hcoordinate=hc))
     generator=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=2.0,pmin=.001,pmax=.1,
         hmin=1.0,hmax=3.0,turbine_table=table)
     system=HydroSystem(reservoirs=Reservoir[],junctions=Junction[],boundaries=Boundary[],tunnels=Tunnel[],rivers=River[],
         plants=[Plant(name=:Plant,source=:Source,target=:Target,pmax=.1)],generators=[generator])
     c=ScheduleCase(name="lp_witness",system=system,grid=[0.0,1.0],prices=[1.0])
-    b=(m=m,u=reshape([1.0],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1))
+    graph=(turbine=(qcoordinate=qc,hcoordinate=hc),)
+    b=(m=m,u=reshape([1.0],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),
+        graphs=(generator_graphs=reshape([graph],1,1),))
     @objective(m,Max,p)
     optimize!(m)
     @test termination_status(m)==JuMP.MOI.OPTIMAL

@@ -101,17 +101,23 @@ end
 # cell, even when the supplied curves have different grids. Shared independent
 # SOS2 coordinates then describe the exact bilinear graph with one auxiliary
 # per reference column, avoiding a variable for every pair of weights.
-function _global_level_flow!(m,c::LevelFlowCurve,delta,reference,dlo,dhi,rlo,rhi;
+struct _LevelFlowGraph{D,R}
+    dcoordinate::D
+    rcoordinate::R
+    nodal::Matrix{Float64}
+    columns::Vector{VariableRef}
+    flow::VariableRef
+end
+
+function _global_level_flow_graph!(m,c::LevelFlowCurve,delta,reference,dlo,dhi,rlo,rhi;
     name=gensym(:level_flow))
     all(isfinite,(rlo,rhi)) && rlo<=rhi ||
         throw(ArgumentError("level-flow reference bounds must be finite and ordered"))
     if length(c.curves)==1
-        flow=_global_tensor_table!(m,only(c.curves),delta,dlo,dhi;name)
-        table=m.ext[:global_tensor_tables][string(name)]
-        get!(m.ext,:global_level_flow_tables,Dict{String,Any}())[string(name)]=
-            (dcoordinate=table.coordinate,rcoordinate=nothing,
-             nodal=reshape(table.values,:,1),columns=[flow],flow=flow)
-        return flow
+        table=_global_tensor_table_graph!(m,only(c.curves),delta,dlo,dhi;name)
+        graph=_LevelFlowGraph(table.coordinate,nothing,reshape(table.values,:,1),[table.y],table.y)
+        get!(m.ext,:global_level_flow_tables,Dict{String,Any}())[string(name)]=graph
+        return graph
     end
     knots=sort!(unique(vcat((t.x for t in c.curves)...)))
     dc=_global_tensor_coordinate!(m,delta,_global_tensor_nodes(knots,dlo,dhi);name="$(name)_delta")
@@ -127,10 +133,12 @@ function _global_level_flow!(m,c::LevelFlowCurve,delta,reference,dlo,dhi,rlo,rhi
     end
     flow=@variable(m,lower_bound=minimum(nodal),upper_bound=maximum(nodal),base_name=string(name))
     @constraint(m,flow==sum(columns[j]*rc.weights[j] for j in 1:nr))
-    get!(m.ext,:global_level_flow_tables,Dict{String,Any}())[string(name)]=
-        (dcoordinate=dc,rcoordinate=rc,nodal=nodal,columns=columns,flow=flow)
-    flow
+    graph=_LevelFlowGraph(dc,rc,nodal,columns,flow)
+    get!(m.ext,:global_level_flow_tables,Dict{String,Any}())[string(name)]=graph
+    graph
 end
+
+_global_level_flow!(args...;kwargs...) = _global_level_flow_graph!(args...;kwargs...).flow
 
 """Values of the lifted graph variables for a physical delta/reference point."""
 function _global_level_flow_values(data,delta,reference)

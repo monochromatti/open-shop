@@ -111,7 +111,6 @@ function case_from_dict(d)
             (k, T) in pairs(objects)
         )...,
     )
-    s=normalize_river_connections(s)
     c=ScheduleCase(
         name = String(d["name"]),
         system = s,

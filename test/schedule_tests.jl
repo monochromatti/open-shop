@@ -36,7 +36,7 @@ end
     x=dispatch_from_controls(c,u,zeros(2,2),ones(1,2))
     audited=solve_verified(c;u,initial=x,deadline=time()-1,max_refinements=0)
     @test audited["accepted"]
-    damaged=deepcopy(x)
+    damaged=OpenSHOP.schedule_dict(x)
     damaged["power"][1]=1.0
     rejected=solve_verified(c;u,initial=damaged,deadline=time()-1,max_refinements=0)
     @test !rejected["accepted"]
@@ -79,7 +79,7 @@ end
     c=warm_dispatch_fixture()
     u=zeros(Int, 2, 2)
     physical=dispatch_from_controls(c, u, zeros(2, 2), ones(1, 2))
-    raw=deepcopy(physical)
+    raw=OpenSHOP.schedule_dict(physical)
     raw["status"]="TIME_LIMIT"
     raw["generator_q"].=1e-7
     raw["gate"].+=1e-14
@@ -93,11 +93,12 @@ end
     @test correction.flow==1e-7
     @test correction.gate>0
     @test rebuilt["validation"]["valid"]
-    OpenSHOP._repair_dispatch!(c, raw)
-    @test raw["forward_reconstructed"]
-    @test raw["status"]=="TIME_LIMIT"
-    @test raw["raw_solver_validation"]==original["validation"]
-    @test raw["raw_solver_objective"]==123456.0
+    report=Dict{String,Any}("status"=>raw["status"])
+    raw=OpenSHOP._repair_dispatch!(c, OpenSHOP._schedule_input(raw;case=c), report)
+    @test report["forward_reconstructed"]
+    @test report["status"]=="TIME_LIMIT"
+    @test report["raw_solver_validation"]==original["validation"]
+    @test report["raw_solver_objective"]==123456.0
     @test raw["generator_q"]==zeros(2, 2)
     @test raw["gate"]==ones(1, 2)
     @test raw["power"]==zeros(2, 2)
@@ -109,9 +110,10 @@ end
         invalid=deepcopy(original)
         invalid[key][1]=value
         @test_throws ArgumentError OpenSHOP._reconstruct_candidate(c, invalid)
-        OpenSHOP._repair_dispatch!(c, invalid)
-        @test !get(invalid, "forward_reconstructed", false)
-        @test haskey(invalid, "forward_reconstruction_error")
+        report=Dict{String,Any}()
+        invalid=OpenSHOP._repair_dispatch!(c, OpenSHOP._schedule_input(invalid;case=c), report)
+        @test !get(report, "forward_reconstructed", false)
+        @test haskey(report, "forward_reconstruction_error")
         @test invalid["objective"]==original["objective"]
     end
 end
@@ -126,15 +128,15 @@ end
         @test compatible===initial
         @test reason["used"]
         for grid in ([0.0, 0.5, 2.0], [0.0, 0.5, 1.0, 1.5, 2.0])
-            wrong=deepcopy(initial)
+            wrong=OpenSHOP.schedule_dict(initial)
             wrong["grid"]=grid
             discarded, reason=OpenSHOP._dispatch_start(c, u, wrong)
             @test discarded===nothing
             @test occursin("grid", reason["ignored_reason"])
         end
-        legacy=deepcopy(initial)
+        legacy=OpenSHOP.schedule_dict(initial)
         delete!(legacy, "grid")
-        @test first(OpenSHOP._dispatch_start(c, u, legacy))===legacy
+        @test first(OpenSHOP._dispatch_start(c,u,legacy)) isa Schedule
         for key in ("generator_q", "power", "V", "gate")
             for damage in (:shape, :missing)
                 wrong=deepcopy(legacy)
@@ -146,7 +148,7 @@ end
                 @test !reason["used"]
             end
         end
-        wrong=deepcopy(initial)
+        wrong=OpenSHOP.schedule_dict(initial)
         wrong["H"][1]=NaN
         @test first(OpenSHOP._dispatch_start(c, u, wrong))===nothing
         @test first(OpenSHOP._dispatch_start(c, u, nothing))===nothing
@@ -159,9 +161,11 @@ end
     c=OpenSHOP._river_replace(c; system = OpenSHOP._river_replace(c.system; rivers = [weir]))
     x=dispatch_from_controls(c, zeros(Int, 2, 2), zeros(2, 2), zeros(1, 2))
     @test !x["validation"]["valid"]
-    OpenSHOP._repair_dispatch!(c, x)
-    @test !get(x, "forward_reconstructed", false)
-    @test !x["forward_reconstruction_audit"]["valid"]
+    report=Dict{String,Any}()
+    repaired=OpenSHOP._repair_dispatch!(c, x, report)
+    @test repaired===x
+    @test !get(report, "forward_reconstructed", false)
+    @test !report["forward_reconstruction_audit"]["valid"]
     @test x["gate"]==zeros(1, 2)
 end
 
@@ -171,7 +175,7 @@ end
     physical=dispatch_from_controls(c, u, zeros(2, 2), ones(1, 2))
     @test physical["validation"]["valid"]
     for key in ("power", "V")
-        bad=deepcopy(physical)
+        bad=OpenSHOP.schedule_dict(physical)
         bad[key][end]+=1.0
         @test bad["validation"]["valid"]
         result=solve_verified(c; u, initial=bad, max_refinements=0)
@@ -181,13 +185,13 @@ end
         @test !haskey(result["audit"], "replay_grid")
     end
     for key in ("power", "gate")
-        bad=deepcopy(physical)
+        bad=OpenSHOP.schedule_dict(physical)
         bad[key]=zeros(1, 3)
         result=solve_verified(c; u, initial=bad, max_refinements=0)
         @test !result["accepted"]
         @test "missing or malformed $key" in result["attempts"][1]["model_errors"]
     end
-    valid=deepcopy(physical)
+    valid=OpenSHOP.schedule_dict(physical)
     valid["validation"]=Dict("valid"=>false, "errors"=>["stale diagnostic"])
     valid["raw_solver_validation"]=Dict("valid"=>false)
     result=solve_verified(c; u, initial=valid, max_refinements=0)
@@ -195,7 +199,7 @@ end
     @test result["audit"]["original_audit"]["valid"]
     @test isempty(result["attempts"][1]["model_errors"])
     @test haskey(result["audit"], "replay_grid")
-    wrong_grid=deepcopy(physical)
+    wrong_grid=OpenSHOP.schedule_dict(physical)
     wrong_grid["grid"]=[0.0, 0.5, 2.0]
     @test_throws ArgumentError solve_verified(c; u, initial=wrong_grid, max_refinements=0)
 end

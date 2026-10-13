@@ -206,7 +206,7 @@ end
 """Numerical residuals for operating rows, evaluated from physical schedule values."""
 function operating_residuals(c,x)
     residuals=Dict{String,Float64}()
-    u,P,GQ,RQ,V=x["u"],x["power"],x["generator_q"],x["river_release"],x["V"]
+    u,P,GQ,RQ,V=x.commitment,x.power,x.generator_q,x.river_release,x.storage
     su,sd=unit_transitions(c,u)
     for (i,g) in enumerate(c.system.generators)
         p,q=view(P,i,:),view(GQ,i,:)
@@ -286,7 +286,6 @@ function operating_window_values(c,z,grid,indices,u)
     average(values)=[sum(values[i,k]*dt[k] for k in eachindex(dt) if indices[k]==t)/original_dt[t]
         for i in axes(values,1), t in eachindex(c.prices)]
     vertices=[something(findfirst(==(time),grid)) for time in c.grid]
-    Dict("u"=>u,"power"=>average(z["power"]),
-        "generator_q"=>average(z["generator_q"]),
-        "river_release"=>average(z["river_release"]),"V"=>z["V"][:,vertices])
+    (;commitment=u, power=average(z.power), generator_q=average(z.generator_q),
+        river_release=average(z.river_release), storage=z.storage[:,vertices])
 end

@@ -153,13 +153,13 @@ end
     @test x["objective"]≈first["objective"]+rest["objective"] atol=1e-9
     @test x["gate_adjustment_cost"]≈first["gate_adjustment_cost"]+rest["gate_adjustment_cost"] atol=1e-10
     @test replay_audit(continued,rest)["valid"]
-    bad=deepcopy(x);bad["tunnel_opening"][1,2]=0.5
+    bad=OpenSHOP.schedule_dict(x);bad["tunnel_opening"][1,2]=0.5
     @test !validate(c,bad)["valid"]
-    bad=deepcopy(x);bad["tunnel_opening"][:,2].=1.0
+    bad=OpenSHOP.schedule_dict(x);bad["tunnel_opening"][:,2].=1.0
     @test !validate(c,bad)["valid"]
-    bad=deepcopy(x);bad["objective"]+=1.0
+    bad=OpenSHOP.schedule_dict(x);bad["objective"]+=1.0
     @test !validate(c,bad)["valid"]
-    bad=deepcopy(x);bad["gate_adjustment_cost"]+=1.0
+    bad=OpenSHOP.schedule_dict(x);bad["gate_adjustment_cost"]+=1.0
     @test !validate(c,bad)["valid"]
     irregular=tg_copy(c;grid=[0.0,0.5,2.0,3.0])
     changed=dispatch_from_controls(irregular,ones(Int,1,3),fill(5.0,1,3),zeros(0,3);

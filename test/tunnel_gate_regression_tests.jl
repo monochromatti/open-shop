@@ -87,11 +87,11 @@ end
     @test x["tunnel_q"]==zeros(2,1)
     @test replay_audit(c,x)["valid"]
     for reference in (200.0,250.0)
-        shifted=deepcopy(x);shifted["H"][2,1]=reference
+        shifted=OpenSHOP.schedule_dict(x);shifted["H"][2,1]=reference
         @test validate(c,shifted)["valid"]
         @test replay_audit(c,shifted)["valid"]
     end
-    bad=deepcopy(x);bad["H"][2,1]=199.0
+    bad=OpenSHOP.schedule_dict(x);bad["H"][2,1]=199.0
     @test !validate(c,bad)["valid"]
     result=OpenSHOP.solve(c;fixed_tunnel_opening=opening,time_limit=20.0)
     @test result["accepted"]
@@ -150,7 +150,7 @@ end
     @test x["validation"]["valid"]
     @test vec(x["H"][2,:])≈[75.0,101.0,75.0] atol=1e-9
     @test replay_audit(c,x)["valid"]
-    shifted=deepcopy(x);shifted["H"][2,1]=140.0;shifted["H"][2,3]=10.0
+    shifted=OpenSHOP.schedule_dict(x);shifted["H"][2,1]=140.0;shifted["H"][2,3]=10.0
     @test validate(c,shifted)["valid"]
     shifted["H"][2,2]=110.0
     @test !validate(c,shifted)["valid"]

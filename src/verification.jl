@@ -48,6 +48,7 @@ function replay_audit(
             "seconds"=>time()-began,
         )
     end
+    x=_schedule_input(x; case=c)
     try
         cc=with_grid(c, grid)
         fine=without_interval_controls(cc)
@@ -58,15 +59,15 @@ function replay_audit(
         opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
         z=dispatch_from_controls(
             fine,
-            x["u"][:, indices],
-            x["generator_q"][:, indices],
-            x["gate"][:, indices];
+            x.commitment[:, indices],
+            x.generator_q[:, indices],
+            x.gate[:, indices];
             tunnel_opening=opening[:,indices],
         )
         audit=z["validation"]
         merge!(violations, audit["residuals"])
         append!(errors, audit["errors"])
-        windows=operating_window_values(c,z,grid,indices,x["u"])
+        windows=operating_window_values(c,z,grid,indices,x.commitment)
         for (name,residual) in operating_residuals(c,windows)
             violations[name]=max(get(violations,name,0.0),residual)
             residual>tolerance && push!(errors,"$name fails finer replay: $residual")
@@ -100,12 +101,12 @@ function replay_audit(
             push!(errors, "transport convergence or schedule discrepancy exceeds tolerance")
         physical=isempty(errors)
         edges=[searchsortedfirst(grid, t) for t in c.grid]
-        storage_error=maximum(abs, z["V"][:, edges]-x["V"]; init = 0.0)
-        transit_error=maximum(abs, z["terminal_transit"]-x["terminal_transit"]; init = 0.0)
-        objective_error=z["objective"]-x["objective"]
+        storage_error=maximum(abs, z.storage[:, edges]-x.storage; init = 0.0)
+        transit_error=maximum(abs, z.terminal_transit-x.terminal_transit; init = 0.0)
+        objective_error=z.objective-x.objective
         numerical=storage_error<=storage_convergence &&
                   transit_error<=storage_convergence &&
-                  abs(objective_error)<=objective_convergence*max(1.0, abs(x["objective"]))
+                  abs(objective_error)<=objective_convergence*max(1.0, abs(x.objective))
         numerical || push!(
             errors,
             "finer replay exceeded storage/transit or objective convergence tolerance",
@@ -123,7 +124,7 @@ function replay_audit(
             "max_water_residual_Mm3"=>get(violations, "global_water", Inf),
             "max_storage_difference_Mm3"=>storage_error,
             "terminal_transit_difference_Mm3"=>transit_error,
-            "replayed_objective"=>z["objective"],
+            "replayed_objective"=>z.objective,
             "objective_difference"=>objective_error,
             "storage_convergence_tolerance_Mm3"=>storage_convergence,
             "relative_objective_convergence_tolerance"=>objective_convergence,
@@ -215,7 +216,9 @@ function solve_verified(
             feasibility_only = feasibility_only,
             tunnel_opening = openings,
         )
-        audit=haskey(x, "objective") ?
+        dispatch=x
+        x=dispatch isa SolveResult ? dispatch.solution : dispatch
+        audit=x!==nothing && haskey(x,"objective") ?
               replay_audit(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
               Dict("valid"=>false, "errors"=>["NLP candidate has no objective"])
         original=get(audit, "original_audit", Dict{String,Any}())
@@ -227,21 +230,22 @@ function solve_verified(
                 "intervals"=>length(cc.prices),
                 "margin_m3s"=>margin,
                 "operational_margin_MW"=>power_margin,
-                "status"=>x["status"],
-                "objective"=>get(x, "objective", nothing),
+                "status"=>dispatch["status"],
+                "objective"=>(x===nothing ? nothing : x["objective"]),
                 "model_valid"=>physical,
                 "model_errors"=>get(original, "errors", String[]),
                 "replay"=>audit,
-                "solve_seconds"=>get(x, "total_seconds", 0.0),
-                "construction_seconds"=>get(x, "construction_seconds", 0.0),
-                "optimization_seconds"=>get(x, "seconds", 0.0),
-                "validation_seconds"=>get(x, "validation_seconds", 0.0),
-                "forward_reconstruction_seconds"=>get(x, "forward_reconstruction_seconds", 0.0),
-                "forward_reconstructed"=>get(x, "forward_reconstructed", false),
-                "iterations"=>get(x, "iterations", nothing),
-                "warm_start"=>get(x, "warm_start", nothing),
+                "solve_seconds"=>get(dispatch, "total_seconds", 0.0),
+                "construction_seconds"=>get(dispatch, "construction_seconds", 0.0),
+                "optimization_seconds"=>get(dispatch, "seconds", 0.0),
+                "validation_seconds"=>get(dispatch, "validation_seconds", 0.0),
+                "forward_reconstruction_seconds"=>get(dispatch, "forward_reconstruction_seconds", 0.0),
+                "forward_reconstructed"=>get(dispatch, "forward_reconstructed", false),
+                "iterations"=>get(dispatch, "iterations", nothing),
+                "warm_start"=>get(dispatch, "warm_start", nothing),
             ),
         )
+        x!==nothing && physical && (x=_schedule_input(x;case=cc))
         get(audit, "valid", false) && break
         iteration==max_refinements && break
         physical || break # A failed local solve is not an infeasibility proof.
@@ -281,7 +285,7 @@ function solve_verified(
         openings=_physical_tunnel_openings(cc,get(x,"tunnel_opening",nothing))[:,idx]
         cc=with_grid(cc, nextgrid)
         warm=try
-            dispatch_from_controls(cc, uu, x["generator_q"][:, idx], x["gate"][:, idx];
+            dispatch_from_controls(cc, uu, x.generator_q[:, idx], x.gate[:, idx];
                 tunnel_opening=openings)
         catch
             nothing

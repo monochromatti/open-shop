@@ -27,9 +27,9 @@ case=ScheduleCase(name="station operating rules",system=system,
     ])
 
 result=solve(case;time_limit=60.0,relative_gap=1e-3)
-result["accepted"] || error("no validated schedule: $(result["status"])")
-schedule=result["solution"]
-println("Unit states: ",schedule["u"])
-println("Plant discharge: ",vec(sum(schedule["generator_q"];dims=1)))
-println("Objective: ",schedule["objective"])
-println("Global certificate: ",result["global_certificate"])
+result.accepted || error("no validated schedule: $(result.status)")
+schedule=result.solution
+println("Unit states: ",schedule.commitment)
+println("Plant discharge: ",vec(sum(schedule.generator_q;dims=1)))
+println("Objective: ",schedule.objective)
+println("Global certificate: ",result.global_certificate)
