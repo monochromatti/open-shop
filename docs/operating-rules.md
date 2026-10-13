@@ -102,28 +102,12 @@ Power, discharge and release are averaged back onto those windows, while
 reservoir values are sampled at their original vertices. Restart retains
 previous unit/plant output, durations, state ages and river cohorts.
 
-## SHOP correspondence and limits
+## Optimization scope
 
-The implemented rules cover the physical purposes of SHOP commitment inputs,
-maintenance, production/discharge schedules and ordinary directional ramps.
-See SHOP's [generator attributes](https://docs.shop.sintef.energy/objects/generator/generator.html),
-[plant attributes](https://docs.shop.sintef.energy/objects/plant/plant.html) and
-[ramping tutorial](https://docs.shop.sintef.energy/examples/ramping/ramping.html).
+Unit commitment remains binary throughout the horizon. The MILP proposal enforces
+commitment, discharge schedules and linear ramps to find candidate states.
+Nonlinear dispatch enforces physical power schedules and reservoir level ramps.
+Proposal objectives are surrogate values, not bounds on the physical problem.
 
-This is an explicit OpenSHOP input profile, not an arbitrary SHOP-attribute
-importer. SHOP has enable flags and defaults for several inputs; OpenSHOP enables
-an optional rule by supplying its value or series. Schedules and ramps here are
-hard, within physical domains; SHOP also offers soft rules and penalties.
-The documented SHOP hourly scaling does not establish identical behavior on
-uneven grids, so midpoint timing is an explicit OpenSHOP convention.
-
-Global optimization retains binary unit commitment throughout the horizon.
-Selective fractional commitment through SHOP `mip_flag`/`mip_length` is not
-implemented. The MILP proposal uses the same commitment, discharge schedules
-and linear ramp constraints, but omits exact power schedules and nonlinear
-reservoir level ramps: its approximate power conversion cannot establish their
-physical feasibility. Nonlinear dispatch and validation enforce all supplied
-rules. Proposal objectives and bounds remain surrogate results.
-
-Rolling, amplitude and nonsequential ramps, soft operating penalties and complete
-SHOP attribute import remain outside this feature set.
+Rolling, amplitude and nonsequential ramps and conditional environmental waivers
+are outside this input profile.

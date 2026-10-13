@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an explicitly scoped OpenSHOP benchmark from SINTEF's public data.
+"""Build a documented OpenSHOP case from SINTEF's public data.
 
 This independent importer reads facts and literal notebook configuration; it
 never imports or executes upstream Python/pySHOP. Upstream files stay external.
@@ -1156,7 +1156,7 @@ def main():
     args = parser.parse_args()
     at = timestamp(args.start)
     if at.minute or at.second or at.microsecond:
-        raise ValueError("historical benchmark start must be an exact UTC hour")
+        raise ValueError("historical case start must be an exact UTC hour")
     if (
         not args.hours
         or any(h <= 0 for h in args.hours)
@@ -1198,7 +1198,7 @@ def main():
     metadata = {
         "source_url": SOURCE_URL,
         "source_commit": commit,
-        "profile": "restricted hydraulic-generation benchmark; not full SHOP equivalence",
+        "profile": "restricted hydraulic-generation case; source attributes are mapped explicitly",
         "source_license": "no explicit LICENSE/COPYING/NOTICE found; external data not bundled with published library",
         "start_utc": at.isoformat(),
         "input_generator_python": platform.python_version(),
@@ -1210,7 +1210,7 @@ def main():
             "method": "next 168-hour mean historical price × NVE DETD enekv_global",
             "forward_mean_price_EUR_MWh": terminal_price,
             "unit_conversion": "kWh/m3 × 1000 = MWh/Mm3",
-            "equivalence": "explicit benchmark policy; not SHOP's internal energy_value_input conversion or the upstream filling-percentile policy",
+            "equivalence": "explicit reconstruction policy; not SHOP's internal energy_value_input conversion or the upstream filling-percentile policy",
         },
         "declarations": [
             "All 17 documented reservoirs, 14 physical generating units and 5 documented tunnels are retained.",
@@ -1218,11 +1218,11 @@ def main():
             "Supplied turbine knots are preserved on a union discharge grid using piecewise-linear discharge/head interpolation; SHOP spline semantics are not claimed.",
             "All source main losses and shared penstocks are compiled into exact quadratic tunnel/junction blocks; per-penstock plant groups preserve the sum of original unit power limits.",
             "Source outlet_line is represented by the exact outlet_head_floor field of OpenSHOP.",
-            "Startup and shutdown costs are preserved; initial commitment is an explicit all-off benchmark policy with no dwell restrictions because source history is absent.",
+            "Startup and shutdown costs are preserved; initial commitment is an explicit all-off reconstruction policy with no dwell restrictions because source history is absent.",
             "No physical travel-time attribute is supplied; zero delay is used, not an invented calibrated delay.",
             "The source's r_Vest_Vassdraget reach is retained: Lio discharge, four bypass/spill arrivals and dated local inflow merge before reaching Bandak. Zero delay preserves the earlier eliminated-reach physics.",
             "Environmental constraints, reserves, river flow costs and source soft-bound penalty semantics are excluded from this generation/hydraulic profile.",
-            "Nominal reservoir volume bounds and source river maximum flows are enforced as hard benchmark restrictions; spillway tables remain but flooding beyond HRL is not allowed.",
+            "Nominal reservoir volume bounds and source river maximum flows are enforced as hard case restrictions; spillway tables remain but flooding beyond HRL is not allowed.",
             "Storage lower bounds are tightened where needed to keep documented inter-reservoir tunnel mouths submerged; unsupported emergence is excluded, not approximated.",
             "No artificial minimum efficiency is imposed; all supplied physical low-efficiency points are retained.",
             "Historical water levels use documented <=31-day interpolation plus Hyljelihyl/Vatjern constants and the Totak-derived Vaamarvatn extension.",
@@ -1295,8 +1295,8 @@ def main():
         "combined_DETD_Sildre.csv": "documented station assignment and annual inflow scaling",
         "reservoir_level/*.csv": "dated level samples and explicit initial-state reconstruction",
         "environmental_constraints": "excluded: time-varying river minimum flow and minimum/maximum storage",
-        "initial_unit_state": "absent from public source; explicit all-off benchmark policy",
-        "terminal_water_value": "explicit next-week historical mean × public global energy-equivalent benchmark policy",
+        "initial_unit_state": "absent from public source; explicit all-off reconstruction policy",
+        "terminal_water_value": "explicit next-week historical mean × public global energy-equivalent reconstruction policy",
         "reserves": "excluded from this profile",
     }
     if args.profile == "operating":
@@ -1313,7 +1313,7 @@ def main():
         metadata["declarations"].extend(
             [
                 "Annual environmental steps use UTC month/day recurrence from the current qfomin, qmin and mamin files; the source December 31 baseline is mapped to January 1. The notebook's Old version schedules are not imported.",
-                "Current source annual rule tables are applied to historical benchmark dates; historical rule revisions are not reconstructed.",
+                "Current source annual rule tables are applied to historical case dates; historical rule revisions are not reconstructed.",
                 "Raw mamin values are storage in Mm3. They are retained directly, combined with physical storage minima; rounded prose elevations are not substituted for raw thresholds.",
                 "Vest minimum flow constrains total release of its retained physical reach, including Lio, four tributaries and dated natural inflow. No separate aggregate observation is added.",
                 "Conditional extraordinary-inflow waivers are unsupported and never applied automatically. Historical initial states are preserved; a violated initial minimum causes an error.",
