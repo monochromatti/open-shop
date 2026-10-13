@@ -24,56 +24,54 @@
 #v(0.8em)
 #block(inset: (x: 8mm))[
   #align(center)[*Abstract*]
-  A hydropower schedule chooses when to run generating units and how much water
-  to release. Each release changes both the available water and the head for
-  subsequent generation; in a connected watercourse it also changes downstream
-  supply after a travel delay. We formulate these decisions as a mixed-integer
-  nonlinear optimization problem with reservoirs, shared tunnels, finite gate
-  choices and river networks. Reservoir balances use midpoint storage to
-  evaluate head. Pressure losses and efficiency-dependent power remain
-  nonlinear. River transport accounts for both arrivals and water still in
-  transit, with an explicit distinction between fixed travel times and
-  distributed delays. Supplied curves are represented by their specified
-  interpolants. Feasible schedules are found using discrete proposals and
-  nonlinear dispatch; global search provides an upper bound on their possible
-  improvement. Independent integration checks the returned controls on the
-  optimization grid and a finer grid. The model and solution method are
-  implemented in Julia with open-source solvers.
+  Short-term hydropower scheduling must decide when to generate and how much
+  water to release. The water available to downstream plants depends on
+  earlier releases and river travel times. Reservoir levels and shared tunnel
+  losses also affect the power obtained from each unit. We formulate the
+  schedule as a mixed-integer nonlinear program with unit commitment, finite
+  gate choices and delayed river transport. Reservoir balances use an implicit
+  midpoint step. Pressure losses and power conversion are nonlinear, and
+  tabulated equipment curves keep their specified interpolants. For fixed
+  river travel times, releases are shifted through the network without
+  averaging at confluences. Distributed delays use interval cohorts and track
+  water still in transit. SCIP searches the full model using feasible starts
+  prepared by mixed-integer proposals and nonlinear dispatch. A separate
+  integration checks the controls on the optimization grid and a finer grid.
+  We state the limits of the resulting objective-gap certificate. The
+  implementation uses Julia and open-source solvers.
 ]
 
 = The scheduling problem
 
-A reservoir's water can produce electricity now or be retained for later
-use. Releasing it changes the reservoir level, and therefore changes the
-energy available from the next release. In a cascade the same water may
-pass through several plants, with pressure losses along tunnels and travel
-delays along rivers. These effects connect decisions across the network and
-over time. Unit operation adds a discrete choice: an idle unit produces
-zero, whereas a running unit must remain within its operating range.
-Models combining these choices with head-dependent generation have a long
-history~@catalao.
+A reservoir can generate now or save water for later. A release lowers its
+level and changes the energy available from the next release. In a cascade,
+the water may pass through several plants before leaving the system. The
+upstream schedule then determines when water becomes available downstream.
+Shared tunnels impose another dependency, since a plant's discharge affects
+pressure losses for other plants on the waterway. A unit may be stopped,
+but when running it must stay within its operating range. These discrete
+choices and the dependence of generation on head have long been studied
+together~@catalao.
 
-The given data are the network, initial volumes and operating histories,
-prices, inflows, equipment curves and operating limits. The decisions are
-unit states, unit discharges, outlet openings and tunnel positions chosen
-from finite sets. Reservoir volumes, tunnel flows, hydraulic heads, river
-arrivals and electrical output must then satisfy the equations below. The
-objective is revenue from generation, less operating penalties, plus the
-value assigned to water remaining at the end of the horizon.
+We take the network, initial volumes, operating histories, prices, inflows,
+equipment curves and operating limits as given. The optimizer chooses unit
+states, continuous unit discharges and outlet openings. It selects each
+adjustable tunnel position from a finite set. The associated volumes, flows,
+heads, river arrivals and electrical outputs must satisfy the equations
+below. We maximize generation revenue
+less operating penalties, with a terminal value for the water left in the
+system.
 
-We assume deterministic inputs and quasi-steady hydraulics: tunnel pressures
-and flows are in equilibrium within each scheduling interval, while reservoir
-storage changes over time. This excludes tunnel inertia and water hammer.
-River geometry enters through supplied discharge and travel-time response
-curves; the optimization does not solve river momentum equations. Pumping,
-reserve products and stochastic decisions are outside the present model.
+We assume deterministic inputs and quasi-steady tunnel hydraulics: pressures
+and flows are in equilibrium within each scheduling interval while reservoir
+storage evolves over time. Tunnel inertia and water hammer are excluded.
+Discharge and travel-time response curves describe the rivers, without
+solving river momentum equations during scheduling. We do
+not include pumping, reserves or stochastic decisions.
 
-The final formulation retains pressure losses, changing head and efficiency
-in its nonlinear equations. Linear approximations help propose initial
-discrete decisions. We first state the water balances, hydraulic laws and
-operating constraints, then explain how they are represented and solved.
-An exact representation of a supplied curve means the same interpolated
-function; the curve itself remains an approximation of the watercourse.
+The optimization uses nonlinear pressure-loss and power equations. Linear
+approximations provide initial discrete choices for the solution procedure
+in @sec:solution.
 
 = Water balance and hydraulic head
 <sec:water>
@@ -82,21 +80,20 @@ Let $0=tau_0<dots.h.c<tau_T$ be time edges in hours,
 $Delta_t=tau_(t+1)-tau_t$ the interval duration, and
 $m_t=(tau_t+tau_(t+1)) \/ 2$ its midpoint, for $t=0,dots,T-1$.
 Interval inputs are piecewise constant, with changes at these edges.
-Volumes are recorded at the edges; the hydraulic equations describe each
-interval using its midpoint reservoir volumes.
+We record volumes at the edges and evaluate the interval hydraulics at
+midpoint reservoir volumes.
 
 Hydraulic head is mechanical energy per unit weight, expressed in metres.
 At a reservoir it is the water-surface elevation. At a flooded junction it
-also includes pressure divided by $rho g$, where $rho$ is water density and
-$g$ is gravitational acceleration. A head difference drives flow: some of
-that energy is dissipated by friction and some may be converted to electricity.
-Velocity corrections and local losses are included in the supplied equipment
-relationships rather than modeled as separate states.
+includes elevation and pressure divided by $rho g$, where $rho$ is water
+density and $g$ is gravitational acceleration. Water flows down a head
+gradient. Friction dissipates energy along the waterway, and a turbine can
+extract power from the flow. The equipment relationships account for
+velocity corrections and local losses.
 
 #block(breakable: false)[
-We measure volume in
-$"Mm"^3$, here denoting one million cubic metres ($10^6 "m"^3$), discharge
-in $"m"^3/"s"$ and time in hours. The conversion factors are
+Volume is measured in $"Mm"^3$ (one million cubic metres, $10^6 "m"^3$),
+discharge in $"m"^3/"s"$ and time in hours. The conversion factors are
 
 $ kappa = frac(3600, 10^6) = 0.0036, quad
   gamma = frac(rho g, 10^6) = 0.00981 \
@@ -106,10 +103,9 @@ $ kappa = frac(3600, 10^6) = 0.0036, quad
 Thus $kappa Delta q$ converts a discharge over an interval into a volume,
 and $gamma q h$ is hydraulic power at discharge $q$ and net head $h$.
 For example, a release of $10 "m"^3/"s"$ for one hour removes
-$0.036 "Mm"^3$ of water. A reservoir's volume change is this conversion
-applied to its net inflow.
+$0.036 "Mm"^3$ of water. We use the same conversion for net inflow in the reservoir balance.
 
-To write the same accounting for a network, let $cal(R)$, $cal(J)$ and
+Let $cal(R)$, $cal(J)$ and
 $cal(B)$ index reservoirs, pressure junctions and prescribed-head boundaries.
 A node $n$ is any of these three. Tunnels, instantaneous channels, generating
 units and delayed river reaches have index sets $cal(E)$, $cal(C)$, $cal(G)$
@@ -137,8 +133,8 @@ lower and upper bounds.
     table.hline(stroke: 0.7pt),
   ),
   kind: table,
-  caption: [Physical variables. Storage and river inventory use time vertices;
-    other indexed quantities use control intervals.],
+  caption: [Variables and units. Storage and river inventory are recorded at time
+    vertices. The other indexed quantities refer to control intervals.],
 ) <tab:variables>
 
 Let $F_(n t)$ be net flow into node $n$ from the modeled connections,
@@ -153,14 +149,13 @@ $ F_(n t) = sum_e B_(n e)^E Q_(e t)
   + sum_r D_(n r) frac(A_(r t), kappa Delta_t)
   - sum_r S_(n r) d_(r t). $ <eq:incidence>
 
-$D_(n r)=1$ when reach $r$ delivers into node $n$, and $S_(n r)=1$ when an
-outlet at $n$ withdraws water into that reach; other entries are zero. Arrival
-volume $A_(r t)$ is divided by $kappa Delta_t$ to give a flow rate.
-A tunnel or plant discharging into a river has its withdrawal in $F$, while
-its injection enters the river balance below. Its hydraulic outlet reference
-need not be its immediate water destination: a downstream reservoir can
-determine the plant's outlet head before the released water arrives there,
-as @fig:network illustrates.
+$D_(n r)=1$ if reach $r$ delivers into node $n$, and $S_(n r)=1$ if an outlet
+at $n$ withdraws water into that reach. The other entries are zero.
+Dividing $A_(r t)$ by $kappa Delta_t$ converts arrival volume to flow rate.
+For a tunnel or plant outfall, $F$ includes the withdrawal from the source
+node. The outfall enters the river balance below. Its outlet head can depend
+on a downstream reservoir even though the water reaches that reservoir
+later (@fig:network).
 
 Water stored at the next time edge equals the present volume plus net inflow
 over the interval. A pressure junction stores no water, so its net inflow
@@ -183,10 +178,10 @@ $ H_(i t) = Z_i (frac(V_(i t) + V_(i,t+1), 2)), quad
 
 $Z_i$ converts volume to surface elevation. It is an increasing supplied
 table, or $Z_i (V)=z_i+s_i V+c_i V^2$ with given coefficients.
-Equations @eq:storage and @eq:heads form an implicit midpoint step: the ending
-volume helps determine the head that determines the interval flows.
-For nonlinear $Z_i$, applying the function to the average volume differs
-from averaging the two endpoint elevations.
+The ending volume is unknown in @eq:storage. It also enters @eq:heads and
+therefore affects the flow during the interval. We solve these equations
+as an implicit midpoint step. If $Z_i$ is nonlinear, its value at the average
+volume is generally different from the average of its endpoint values.
 
 #figure(
   block(width: 160mm, height: 37mm)[
@@ -219,10 +214,9 @@ from averaging the two endpoint elevations.
     #place(top + left, line(start: (80.8mm, 20.5mm), end: (80mm, 22mm), stroke: 0.5pt))
     #place(top + left, dx: 86mm, dy: 2mm, text(size: 8pt)[outlet head reference])
   ],
-  caption: [Water destination and hydraulic reference have different roles.
-    Solid arrows move water; the dashed connection supplies the plant's outlet
-    head. Water reaches B after transport, although its level already affects
-    generation.],
+  caption: [Solid arrows show where the water goes. The dashed connection specifies
+    the plant's outlet head. Water reaches reservoir B after traveling through
+    the river, but B's present level already affects generation.],
 ) <fig:network>
 
 = Tunnel hydraulics and generation
@@ -238,24 +232,22 @@ $ H_(v t) - H_(w t) = K_e (b_(e t)) Q_(e t) abs(Q_(e t)), \
     R_e + G_e (b) & "with a supplied gate-loss curve".
   ) $ <eq:tunnel>
 
-$R_e>0$ is tunnel resistance and $G_e>=0$ is any additional gate resistance;
-both have units $"s"^2/"m"^5$. For positive $Q$, upstream head exceeds
-downstream head; for negative $Q$, the difference reverses. The loss magnitude
-grows as $Q^2$, and energy is dissipated in the direction of flow. These head
-equations and the junction balances jointly determine flow sharing through
-branches and loops.
+The tunnel resistance $R_e>0$ and additional gate resistance $G_e>=0$ have
+units $"s"^2/"m"^5$. Positive $Q$ requires $H_v>H_w$, and negative $Q$
+requires $H_v<H_w$. In either direction, friction dissipates energy with a
+loss proportional to $Q^2$. Flows through branches and loops follow from
+these head equations and the junction balances.
 
 A closed gate permits a head difference while stopping flow:
 
 $ b_(e t) = 0 ==> Q_(e t) = 0, quad
   abs(Q_(e t)) <= C_(e t). $ <eq:closed>
 
-Equation @eq:tunnel therefore applies only to positive openings. Capacity
-$C_(e t)$ bounds flow in either direction; an outfall permitted to discharge
-only into a river also has $Q_(e t)>=0$. Tunnel positions are prescribed
-or chosen from a finite supplied set $cal(S)_e subset [0,1]$. A prescribed
-position may be fractional; arbitrary continuous tunnel positions are not
-optimization decisions in this model.
+Equation @eq:tunnel applies when the gate is open. Capacity $C_(e t)$ bounds
+flow in either direction. River outfalls that allow only discharge have
+$Q_(e t)>=0$. A tunnel position may be prescribed or chosen from a finite
+set $cal(S)_e subset [0,1]$. Prescribed positions may take any value in
+$[0,1]$, but the optimizer searches only the listed positions.
 
 #block(breakable: false)[
 An instantaneous channel between reservoirs follows a supplied discharge law:
@@ -268,9 +260,9 @@ $Phi_c$ is a family of curves indexed by a specified upstream or downstream
 reservoir level. Each curve gives discharge as a function of level difference,
 is nondecreasing and passes through $(0,0)$. Positive and negative responses
 need not be symmetric. We interpolate linearly along each curve and between
-reference levels. Outside the tabulated differences we extend the end segments;
-outside the reference levels we use the nearest curve. The channel transfers
-water in the same interval and has no separate volume in transit.
+reference levels. We extend the end segments beyond the tabulated level differences. Outside
+the reference-level range, we use the nearest curve. Water passes through
+the channel within the interval, without a separate transit inventory.
 
 == Energy conversion
 
@@ -282,11 +274,11 @@ $ h_(p t) = H_("source"(p),t)
   - max{H_("target"(p),t), h_p^"floor"}
   - T_p (q_(p t)). $ <eq:nethead>
 
-The target head is the outlet reference in @fig:network. A supplied floor
-prevents the effective outlet level from falling below $h_p^"floor"$; the
-maximum is omitted when no floor is given. $T_p (q_(p t))>=0$ is the additional
-tailwater rise caused by total plant discharge. Shared penstocks are separate
-tunnels, so their friction depends on the combined flow of the units they supply.
+The target head is the outlet reference in @fig:network. If an outlet-level
+floor is specified, the maximum in @eq:nethead enforces it. Otherwise we use
+the target head alone. Total plant discharge raises the tailwater by
+$T_p (q_(p t))>=0$. We model shared penstocks as tunnels, whose friction
+loss depends on the combined discharge of the units they supply.
 
 The binary state $u_(g t)$ selects an idle unit or its running range:
 
@@ -327,9 +319,10 @@ linearly or with shape-preserving cubics in discharge.
 Turbine efficiency converts hydraulic power to shaft power. Electrical
 efficiency $e_g$ accounts for the remaining conversion to electrical output.
 It is a separate piecewise-linear function of _electrical output_ $P$, so
-@eq:power must be solved for $P$ even when $q,h$ are known. Accepted curves
-make $P \/ e_g (P)$ strictly increasing, giving at most one admissible output
-for a given shaft power. With no electrical-efficiency curve, we use $e_g=1$.
+@eq:power must be solved for $P$ even when $q,h$ are known. We require
+$P \/ e_g (P)$ to be strictly increasing over the admissible output range.
+The scalar power equation then has at most one admissible solution.
+If no electrical-efficiency curve is given, $e_g=1$.
 
 Plant state $U_(p t)$ is one whenever at least one unit runs:
 
@@ -363,8 +356,8 @@ $[H_"source"-z_r^"crest"]_+$, with $[x]_+=max(x,0)$.
 The coefficient $c_r$ or curve $D_r$ is supplied. An uncontrolled weir has
 $a=1$, also when its law is given as a table. Other openings satisfy their
 bounds in $[0,1]$. Ordinary reaches obey $n_(r t)<=R_(r t)<=C_(r t)$.
-Only $d=R-n$ is subtracted from reservoir storage: the natural reach inflow
-enters the river directly and has never been in the reservoir.
+The reservoir loses $d=R-n$. Natural reach inflow enters the river directly
+and must not be subtracted from reservoir storage.
 
 #block(breakable: false)[
 At a confluence, water arriving from upstream reaches joins natural inflow
@@ -375,24 +368,24 @@ $ L_(r t) = n_(r t) + sum_(g -> r) q_(g t) + sum_(e -> r) Q_(e t), quad
 ]
 
 The notation $g->r$, $e->r$ and $s->r$ identifies connections into reach $r$.
-Any number of upstream reaches may merge into one outgoing reach. No allocation
-decision is needed at such a junction. The delayed reach network is directed
-and acyclic, so upstream responses can be propagated downstream in order.
-The separate tunnel and instantaneous-channel network may contain loops.
+A confluence may have several incoming reaches and one outgoing reach.
+All incoming water enters that outgoing reach. Delayed reaches form a
+directed acyclic network, which lets us propagate arrivals in upstream order.
+Tunnels and instantaneous channels may form loops.
 
 == Release cohorts and travel-time responses
 
 A _cohort_ is the water entering a reach during one release interval.
 With a fixed travel time, that release simply appears downstream later.
 With a distributed delay, different fractions of the cohort arrive at
-different times. The distribution describes how water is spread in time;
-it does not introduce uncertainty into the scheduling problem. Supplied
-response functions take the place of a resolved river-flow model~@dooge.
+different times. The response functions are deterministic approximations
+of river transport~@dooge.
 
 For reference entry flow $rho_(r j)$, let fraction $w_(r j ell)$ have a
 travel time uniformly distributed over
-$[delta_(r j ell),delta_(r j,ell+1)]$. The delay edges are nonnegative and
-strictly increasing; $w_(r j ell)>=0$ and $sum_ell w_(r j ell)=1$.
+$[delta_(r j ell),delta_(r j,ell+1)]$. Delay edges must be nonnegative and
+strictly increasing. The fractions obey
+$w_(r j ell)>=0$ and $sum_ell w_(r j ell)=1$.
 The cumulative fraction that has arrived after elapsed time $s$ is
 
 $ F_(r j) (s) = sum_ell w_(r j ell)
@@ -409,10 +402,11 @@ $ theta_(r k j) >= 0, quad sum_j theta_(r k j) = 1, quad
 
 The weights reproduce the cohort's total entry flow, including natural inflow
 and upstream arrivals. For example, halfway between two reference flows,
-the two distributions receive equal weights. With only one distribution,
-$theta_(r k 1)=1$ and the flow-reproduction equation is omitted; the release
-can still vary. The selected mixture remains attached to the cohort after
-release. Changing an operating capacity does not change these reference flows.
+the two distributions receive equal weights. A single distribution needs
+only $theta_(r k 1)=1$. We then omit the flow-reproduction equation, so the
+reference flow does not fix the release.
+Once released, each cohort keeps its chosen mixture. Reference flows are
+calibration data and are unaffected by changes in operating capacity.
 
 Consider water entering at time $s$ in interval $k$. The fraction of it arriving
 during interval $t$ is the cumulative fraction at age $tau_(t+1)-s$ minus
@@ -435,15 +429,16 @@ cohort's release rate gives its contribution to instantaneous arrival rate:
 $ f_r (s) = f_r^"hist" (s) + sum_k R_(r k) sum_j theta_(r k j)
   [F_(r j) (s - tau_k) - F_(r j) (s - tau_(k+1))]. $ <eq:pointarrival>
 
-The historical terms account for releases before $tau_0$. The integrals are
-exact for the supplied uniform bins. The interpolated quantity is the
-_fraction_ that arrives. Multiplication by the flow-dependent released volume
-then makes the transfer piecewise quadratic in $R$. Interpolating released
-volumes directly would change this travel response.
+The historical terms account for releases before $tau_0$. We evaluate the
+integrals exactly for the uniform bins. Since $theta$ depends linearly on
+$R$ within a reference-flow interval, multiplying the arrival fraction by
+released volume gives a quadratic dependence on $R$. Interpolating arrival
+volumes directly would give a different travel response.
 
-When every reach has a fixed travel time $delta_r>=0$, we retain the full
-piecewise-constant entry stream $tilde(R)_r (s)$ instead of averaging it at
-each confluence. Shifting a stream by its delay and adding upstream arrivals gives
+When all reaches have fixed travel times $delta_r>=0$, we propagate the
+piecewise-constant entry stream $tilde(R)_r (s)$ through the network. Each
+reach shifts its stream by its delay. At a confluence, the shifted upstream
+streams are added:
 
 $ f_r (s) = tilde(R)_r (s - delta_r), quad
   tilde(R)_r (s) = L_r (s) + sum_(s' -> r) f_(s') (s), \
@@ -456,21 +451,22 @@ Interval entry variables are the averages of these streams:
 
 $ R_(r t) = frac(1, Delta_t) integral_(tau_t)^(tau_(t+1)) tilde(R)_r (s) dif s. $ <eq:eventmean>
 
-Keeping the stream preserves the time of every release change. For example,
+For example,
 a one-hour release passing through two reaches with half-hour delays must
 arrive as a one-hour release shifted by one hour. On an hourly mixing grid,
 averaging after the first reach would spread some arrival before and after
 that final interval.
-Zero delays and delays shorter than a control interval allow newly released
-water to affect downstream flow in that same interval. Entry capacities are
-therefore also checked on the stream, including both sides of each jump.
+A release can reach downstream within its control interval when the delay
+is zero or shorter than that interval. We check entry capacities on the
+stream, including both sides of each jump.
 
 If any reach has a distributed delay, @eq:confluence instead uses the mean
 upstream arrivals as the next reach's interval release. Equations @eq:transfer
 and @eq:arrival are exact for those rectangular cohorts, but this downstream
-averaging approximates the continuous timing. A finer transport grid tests
-its effect by comparing cumulative arrivals and water in transit. Conservation
-alone does not reveal a pulse that has arrived at the wrong time.
+averaging approximates the continuous timing. We assess this error on a
+finer transport grid by comparing cumulative
+arrivals and water in transit. A volume balance cannot detect water that
+arrives at the wrong time.
 
 == Water in transit, history and environmental flows
 
@@ -490,13 +486,12 @@ $-s$ at the horizon start, so the fraction still in transit is $1-F_k (-s)$:
 $ W_r^"hist" = kappa sum_(k in cal(H)_r) R_(r k)
   integral_(s_k)^(e_k) [1 - F_k (-s)] dif s. $ <eq:historyinventory>
 
-The set $cal(H)_r$ contains the supplied historical cohorts of reach $r$;
-unspecified earlier entry is zero. Each reach's history already includes its
-past upstream contributions. Propagating those contributions again would
-count them twice. Restarting from an executed schedule therefore retains the
-original entry cohorts and their flows, along with reservoir states and
-operating histories. A past average arrival alone does not identify the
-release times needed to predict remaining arrivals.
+The historical cohorts of reach $r$ form $cal(H)_r$. We assume zero entry
+before the supplied history. A reach's records already include past upstream
+contributions, so propagating them again would count the water twice. To
+restart after executing part of a schedule, we save its entry cohorts and
+flows as well as reservoir states and operating histories. Average arrivals
+alone cannot determine when the water still in transit will arrive.
 
 Summing reservoir and reach balances cancels every internal transfer:
 
@@ -504,11 +499,11 @@ $ sum_i (V_(i,t+1) - V_(i t)) + sum_r (W_(r,t+1) - W_(r t)) \
   = kappa Delta_t (sum_i I_(i t) + sum_r n_(r t) + E_t). $ <eq:globalwater>
 
 Here $E_t$ is net boundary exchange, positive into the modeled system.
-For a plant outfall, the source reservoir loses $q$, the reach receives $q$,
-and the receiving reservoir gains the later arrival $A$. These internal
-movements cancel; only natural inflows and external exchanges change total
-stored and in-transit water. The same identity includes reversed flow on
-instantaneous connections.
+For a plant outfall, the source reservoir loses $q$ and the reach receives
+it. Arrival $A$ later leaves the reach and enters the receiving reservoir.
+Both transfers cancel in the sum. Total stored and in-transit water changes
+only through natural inflows and external exchanges, including when an
+instantaneous connection carries reversed flow.
 
 Environmental requirements can constrain reach entry
 $R_(r t)>=R_(r t)^min$, average arrival over a specified time window $J$,
@@ -518,12 +513,11 @@ $ integral_J f_r (s) dif s >= integral_J f_r^min (s) dif s, quad
   f_r (s) >= f_r^min (s). $ <eq:environment>
 
 The supplied policy chooses the window or pointwise arrival constraint.
-For rectangular cohorts, distributed arrival rates are piecewise linear;
-fixed-delay streams are piecewise constant. Between combined response and
+Distributed arrival rates from rectangular cohorts are piecewise linear.
+Fixed-delay streams are piecewise constant. Between combined response and
 requirement breakpoints, the difference $f_r-f_r^min$ is affine, so its
-minimum occurs at an endpoint. Endpoint checks thus enforce the pointwise
-constraint; jumps require both one-sided limits. At the horizon endpoints,
-use the limit from inside the horizon.
+minimum occurs at an endpoint. It is enough to check these endpoints, taking both one-sided limits at a
+jump. At the horizon endpoints, use the limit from inside the horizon.
 
 An aggregate flow requirement can also combine named unit discharges, river
 entries, channel flows and a given inflow contribution $I_(o t)$:
@@ -532,9 +526,9 @@ $ sum_(g in cal(G)_o) q_(g t)
   + sum_(r in cal(D)_o union cal(C)_o) R_(r t) + I_(o t) >= M_(o t). $ <eq:observation>
 
 The sets $cal(G)_o$, $cal(D)_o$ and $cal(C)_o$ select the contributions, and
-$M_(o t)$ is the required minimum. For a channel, $R_(c t)=X_(c t)$ retains
-its sign. This constraint observes flows already accounted for in the network;
-it adds no water to any balance.
+$M_(o t)$ is the required minimum. Channel flow $R_(c t)=X_(c t)$ is signed.
+The inequality constrains existing
+flows and adds no water to the balances.
 
 = Operating constraints over time
 
@@ -554,10 +548,10 @@ an irregular grid. Initial state age determines any remaining mandatory
 running or stopped time.
 ]
 
-The same constraints apply to $U$ when minimum plant operating times are
-specified. Replacing one running unit with another does not restart an
-already operating plant. An unfinished minimum duration at the horizon end
-is carried into a restart rather than imposed through an artificial terminal state.
+Apply these minimum-duration constraints to $U$ if they are also specified
+for the plant. A handover between running units does not restart the plant.
+Any minimum duration unfinished at the horizon end becomes a requirement
+on the next schedule.
 
 #block(breakable: false)[
 Availability, forced states and prescribed output restrict the same decisions:
@@ -566,12 +560,12 @@ $ underline(u)_(g t) <= u_(g t) <= overline(u)_(g t), quad
   P_(g t) = P_(g t)^"given", quad q_(g t) = q_(g t)^"given". $ <eq:schedules>
 ]
 
-Only supplied schedules are imposed. Plant state also satisfies
-$underline(U)_(p t)<=U_(p t)<=overline(U)_(p t)$, and plant schedules constrain
-the corresponding sums. Maintenance forces units off; zero and positive
-output schedules require the appropriate off and on states. All restrictions,
-including initial minimum durations, apply together. Inconsistent restrictions
-make the model infeasible.
+We impose an output schedule only where one is supplied. Plant schedules
+constrain the sums of unit outputs, and plant state obeys
+$underline(U)_(p t)<=U_(p t)<=overline(U)_(p t)$. Maintenance requires units
+to be off. Zero scheduled output requires the off state, and positive output
+requires the on state. These constraints also apply during mandatory initial
+running or stopped periods. A conflict makes the model infeasible.
 
 #block(breakable: false)[
 For interval-average discharge or release $x_t$, supplied upward and downward
@@ -583,19 +577,18 @@ $ -integral_(m_(t-1))^(m_t) r_x^- (s) dif s
 
 A running unit cannot enter its positive operating range from zero when
 the allowed inter-interval increase is smaller than its minimum output.
-Power ramps therefore
-allow the minimum-output jump at startup and shutdown: add
+We therefore allow a minimum-output jump at startup and shutdown in the
+power-ramp bounds. Add
 $sum_(g in cal(G)_x) underline(P)_(g t) s_(g t)^+$ to the upward allowance
 and $sum_(g in cal(G)_x) underline(P)_(g,t-1) s_(g t)^-$ to the downward
 allowance. Here $cal(G)_x$ contains that unit or all units at the constrained
-plant. Discharge and river-release
-ramps have no jump allowance. The first interval uses a supplied previous
-window's average and midpoint; if absent, only that comparison is omitted.
+plant. Discharge and river-release ramps have no jump allowance.
+For the first interval, use the average and midpoint of the supplied previous
+window. Omit that comparison if no previous window is supplied.
 
 Reservoir volume and level ramps instead constrain vertex changes
 $V_(i,t+1)-V_(i t)$ and $Z_i (V_(i,t+1))-Z_i (V_(i t))$, with rate integrals
-over $[tau_t,tau_(t+1)]$. These bounds limit changes between recorded states,
-not derivatives at every instant.
+over $[tau_t,tau_(t+1)]$. The ramp limits apply between recorded states.
 
 A tunnel interlock limits how many gates in a group $cal(E)_ell$ may be
 open at once. With $o_(e t)=bold(1)[b_(e t)>0]$,
@@ -620,9 +613,8 @@ $ cal(V) = & sum_t pi_t Delta_t sum_g P_(g t)
 Starts, stops and gate movements are charged once per event, without a duration
 multiplier. The first gate comparison uses its supplied initial position.
 The last two terms value changes in reservoir storage and reach inventory.
-Valuing water in transit allows a late release to retain downstream economic
-value even when it has not yet arrived. These terminal values are input
-assumptions about use beyond the horizon.
+A late release can still have value downstream after the horizon ends.
+The terminal values $v_i,v_r$ are inputs that account for this later use.
 
 A positive release penalty permits a deficit below the entry minimum.
 The deficit variable is measured as a volume:
@@ -631,34 +623,33 @@ $ xi_(r t) >= 0, quad xi_(r t) >= kappa Delta_t (R_(r t)^min - R_(r t)). $ <eq:s
 
 A positive cost makes $xi$ equal the actual shortfall at optimum. Without
 that penalty, the entry minimum is hard and $xi=0$. Arrival minima and
-aggregate flow requirements remain hard. Subtracting initial water inventories
-in @eq:objective removes a constant endowment from the reported value while
-leaving the maximizing decisions unchanged.
+aggregate flow requirements remain hard. Subtracting the values of the
+initial inventories removes a constant from the reported objective and
+leaves the optimal decisions unchanged.
 
 = Representing curves and strengthening bounds
 <sec:graphs>
 
-Together, the preceding equations and inequalities define a mixed-integer
-nonlinear program (MINLP). The head, efficiency and travel-response couplings
-are nonconvex even when unit states and gate choices are fixed. We distinguish
-two tasks: representing the supplied functions without changing them, and
-constructing relaxations that bound the objective during global search.
+The scheduling problem is a mixed-integer nonlinear program (MINLP).
+Fixing unit states and gate positions still leaves a nonconvex problem in
+flow, head, efficiency and travel response. SCIP needs algebraic equations
+for these functions and relaxations from which to compute upper objective
+bounds.
 
 == Representing supplied curves exactly
 
-Direct evaluation of a curve is convenient for nonlinear dispatch. Global
-search also needs its inputs and outputs exposed as algebraic variables.
-The _graph_ of a function is simply the set of input-output pairs that obey
-it. For a piecewise-linear curve with knots $(x_i,y_i)$, its graph is
+For a curve $y=f(x)$, the _graph_ is the set of pairs $(x,y)$ satisfying
+that equation. We reproduce the specified interpolant in the optimization
+model. Exactness here refers to the interpolant, not to the watercourse it
+approximates. A piecewise-linear curve with knots $(x_i,y_i)$ has the graph
 
 $ lambda_i >= 0, quad sum_i lambda_i = 1, quad
   x = sum_i x_i lambda_i, quad y = sum_i y_i lambda_i, quad lambda in op("SOS2"). $ <eq:sos>
 
-The SOS2 condition selects one segment~@huch. Its two neighboring weights
-sum to one, and their weighted input coordinate fixes the interpolation
-fraction. The weighted output therefore gives exactly the supplied linear
-interpolant. Allowing nonadjacent weights would also allow points between
-distant knots and would change the curve.
+SOS2 restricts the weights to one segment~@huch. The two neighboring weights
+sum to one, and the equation for $x$ fixes the interpolation fraction.
+The equation for $y$ then gives the interpolated output. Without adjacency,
+weights on distant knots could produce points away from the curve.
 
 For a turbine table, discharge weights $lambda_i$ and head weights $mu_j$
 each satisfy the corresponding SOS2 and coordinate constraints. Let $E_(i j)$
@@ -679,22 +670,23 @@ $ A_(i j) = delta q_i (m_(i j) - d_(i j)), quad
   B_(i j) = delta q_i (d_(i j) - m_(i+1,j)). $ <eq:hermitecoefficients>
 
 On the active segment, the two correction terms are multiples of
-$lambda_i^2 lambda_(i+1)$ and $lambda_i lambda_(i+1)^2$. Both vanish at the
-endpoints; their coefficients make the endpoint derivatives equal the supplied
-ones. The auxiliary products $w_i,r_i$ implement these terms using quadratic
-equalities. Setting $A=B=0$ gives bilinear interpolation. Restricting a domain
-does not refit the original cubic slopes. Outside the discharge table we use
-the declared end secants; head extrapolation, when allowed, uses its outer
-secant. An idle unit's network head may lie outside the head range of its
-running table. A finite extension keeps the algebraic relation defined there;
-$q=P=0$, and the running head and efficiency limits remain inactive.
+$lambda_i^2 lambda_(i+1)$ and $lambda_i lambda_(i+1)^2$. They vanish at the
+endpoints and adjust the derivatives to match the
+supplied slopes. The variables $w_i,r_i$ express the corrections through
+quadratic equalities. Setting $A=B=0$ gives bilinear interpolation.
+Restricting the curve's domain leaves its cubic slopes unchanged. We use the
+declared end secants for discharge outside the table and for head extrapolation
+where allowed.
 
-Units sharing the same net-head variable and compatible table grids can reuse
-head weights. A release cohort likewise uses one set of flow weights for its arrivals, environmental
-checks and terminal inventory, ensuring one travel response throughout.
-Channel responses use the analogous piecewise-bilinear graph. The product
-equalities in @eq:cubic, @eq:power and @eq:arrival remain nonlinear: these
-representations preserve the curves rather than turning the model into a MILP.
+An idle unit can have a network head outside its running table. A finite
+extension lets us evaluate the graph there. Its running head and efficiency
+limits are inactive, and $q=P=0$.
+
+Units with the same net-head variable and compatible table grids can share
+head weights. Each release cohort uses the same flow weights for arrivals,
+environmental checks and terminal inventory. Channel responses use a
+piecewise-bilinear graph. The product equalities in @eq:cubic, @eq:power and
+@eq:arrival remain nonlinear.
 
 == Quadratic equations for tunnels and gates
 
@@ -703,9 +695,9 @@ A binary direction variable separates positive and negative tunnel flow:
 $ Q = Q^+ - Q^-, quad 0 <= Q^+ <= C z, quad 0 <= Q^- <= C(1-z), \
   S = (Q^+)^2 - (Q^-)^2, quad z in {0, 1}. $ <eq:signedloss>
 
-If $z=1$, only $Q^+$ can be positive; if $z=0$, only $Q^-$ can be positive.
-Thus $S=Q abs(Q)$ in both cases. A directed outfall needs only $S=Q^2$;
-known head ordering can also fix a direction.
+At $z=1$, flow is nonnegative and $Q^-=0$. At $z=0$, flow is nonpositive
+and $Q^+=0$. This gives $S=Q abs(Q)$ in either case. Directed outfalls use
+$S=Q^2$. Known head ordering can also fix the direction.
 
 For each finite gate position, a binary selector identifies whether that
 position is chosen. Exactly one selector is active, so $b$, the open state
@@ -716,31 +708,31 @@ $d_o=o(H_v-H_w)$. If $L<=H_v-H_w<=U$, this binary product is represented by
 $ L o <= d_o <= U o, quad
   H_v - H_w - U(1-o) <= d_o <= H_v - H_w - L(1-o). $ <eq:binaryhull>
 
-At $o=0$ these inequalities force $d_o=0$; at $o=1$ they force
-$d_o=H_v-H_w$. Together with $abs(Q)<=C o$ and $d_o=K(b)S$, they recover
-@eq:tunnel and @eq:closed. Any finite resistance may be assigned to the
-closed selector because $S=0$ there. This construction needs only quadratic
-product equalities. Similarly, a wet/dry binary branch represents
-$ell=max(H-z^"crest",0)$, and a nonnegative auxiliary root $r$ with $r^2=ell$
-represents the square root in the outlet law @eq:outlets.
+When $o=0$, @eq:binaryhull forces $d_o=0$. When $o=1$, it forces
+$d_o=H_v-H_w$. Adding $abs(Q)<=C o$ and $d_o=K(b)S$ gives the open and
+closed gate laws in @eq:tunnel and @eq:closed. The resistance assigned to
+the closed selector may be any finite value, since $S=0$ there. All the
+product equalities are quadratic.
+
+The outlet law also has a binary wet/dry branch for
+$ell=max(H-z^"crest",0)$. Its square root in @eq:outlets can be written
+using $r>=0$ and $r^2=ell$.
 
 == Upper bounds for global optimization
 
 #block(breakable: false)[
-A _relaxation_ allows additional combinations of variables while retaining
-every feasible schedule. Its maximum objective is therefore an upper bound
-on what the physical model can earn. Relaxed flow, head and efficiency may
-combine to predict physically impossible power. A _valid inequality_ excludes
-some of these combinations without excluding a feasible schedule; it tightens
-the bound while leaving the physical equations unchanged.
+A _relaxation_ enlarges the feasible set. Its maximum is an upper bound on
+the scheduling objective because every feasible schedule is still in that set.
+The enlarged set may allow flow, head and efficiency values whose power
+exceeds the physical conversion law. A _valid inequality_ holds for every
+feasible schedule and can exclude some of these excessive values.
 ]
 
-Finite storage and equipment limits provide variable domains. Conservation
-and inventory propagation can narrow them using the initial and terminal
-restrictions. These bounds cover all admissible schedules, rather than a
-neighborhood of one previously found solution.
+We bound variables using storage and equipment limits. Water balances
+propagate initial and terminal restrictions through the horizon to narrow
+these ranges. The bounds must hold for every admissible schedule.
 
-For clarity, omit unit and time indices in the following bounds.
+We omit unit and time indices in the following bounds.
 For a running unit with nonnegative $q,h,eta$, let $overline(e)$ bound its
 electrical efficiency. Then $p^"ub" (q,h)=gamma overline(e) q h eta(q,h)$
 is an upper bound on physical electrical power. It is polynomial within
@@ -756,12 +748,12 @@ $P=q=0$ and the right side is nonnegative. To establish $c$, we bound the
 residual $p^"ub"-a q-b h$ over every original interpolation cell.
 In a Bernstein representation of a polynomial on a box, the basis weights
 are nonnegative and sum to one, so its value cannot exceed its largest
-coefficient. This supplies a bound over the entire cell, including interior
-extrema that a plane fitted at a few samples might miss.
+coefficient. The coefficient bound covers the whole cell. Fitting a plane at a few
+samples alone could miss a larger residual between them.
 
-Another relaxation retains joint information about flow, head and efficiency.
-Consider a box containing their admissible running values, with up to eight
-corners $(q_c,h_c,eta_c)$. Exact binary-product inequalities, as in
+A box containing the admissible running values of $q,h,eta$ has up to eight
+corners $(q_c,h_c,eta_c)$. We couple these variables with weights on the
+corners. Exact binary-product inequalities, as in
 @eq:binaryhull, define $h_"on"=u h$ and $eta_"on"=u eta$.
 Nonnegative weights $z_c$ on the corners satisfy
 
@@ -776,10 +768,9 @@ coordinates and the product $q h eta$. Hence the inequalities include every
 physical running point. When $u=0$, all corner weights vanish. The original
 efficiency and power equalities still determine the physical output.
 
-For a tabulated turbine with head knots $h_j$, head weights $mu_j$ already
-available in its graph can
-also strengthen power bounds. We introduce $zeta_j$ to equal the head
-weights while running and vanish while idle:
+For a tabulated turbine, we can use its head knots $h_j$ and weights $mu_j$
+to bound power. Define $zeta_j=mu_j$ for a running unit and $zeta_j=0$ for
+an idle unit through the following constraints:
 
 $ 0 <= zeta_j <= mu_j, quad sum_j zeta_j = u, quad
   sum_j (h_j - h_1) zeta_j = h_"on" - h_1 u, \
@@ -789,29 +780,24 @@ The coefficients $c_j$ are chosen so that the weighted expression bounds the
 polynomial upper bound $p^"ub"$, including its variation between head knots.
 The constraints give $zeta=mu$ when $u=1$, and $zeta=0$ when $u=0$ without
 fixing the idle hydraulic head. Discharge weights support analogous bounds
-along the other table axis. Additional planes may be generated during the
-search, provided each is checked over its complete domain. All these
-inequalities strengthen the relaxation while retaining the original equations.
+along the other table axis. We may add further planes during the search after verifying each over its
+complete domain.
 
 = Solving the model and checking a schedule
+<sec:solution>
 
 == Finding feasible controls
 
-JuMP provides the algebraic interface in Julia~@jump. SCIP is used for both
-linear mixed-integer proposals and global nonlinear search~@scip; Ipopt
-solves continuous nonlinear dispatch with discrete choices fixed~@ipopt.
-The preparatory step uses a MILP approximation to propose unit states and
-finite gate positions. Nonlinear dispatch then adjusts continuous decisions
-under the original physical laws for those choices. Several proposals can
-be tried within a shared time allowance. Candidates passing the independent
-checks below are submitted as starts for the full SCIP model, where the
-discrete decisions are free again.
+We build the models in JuMP~@jump. SCIP first solves a MILP approximation
+to propose unit states and gate positions. We fix those choices and use
+Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
+hydraulic laws. The procedure may try several proposals within a time
+budget. Candidates that pass the checks below become starting solutions
+for the full SCIP search~@scip, which can change the discrete choices.
 
-This preparation seeks feasible schedules, not bounds on the best possible
-objective. Its linear objective is a surrogate for @eq:objective.
-Dispatch with these choices fixed remains a piecewise-smooth, nonconvex nonlinear
-program, so convergence to a stationary point does not establish global
-optimality.
+The MILP objective approximates @eq:objective and gives no enclosing bound.
+Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
+problem. A stationary solution need not be globally optimal.
 
 == Reconstructing the water trajectory
 
@@ -819,31 +805,29 @@ An independent integration holds the selected unit discharges and openings
 fixed and recovers the resulting water trajectory. At each interval, Newton's
 method solves jointly for ending storage, junction heads, tunnel flows and
 active outlet releases. With a delay shorter than the interval, some current
-release arrives before the interval ends; that arrival must participate in
-the same solve rather than being computed only from past releases. Electrical
-output is then recovered from @eq:power.
+release arrives before the interval ends and belongs in the same hydraulic
+solve. Equation @eq:power then gives electrical output.
 
-Some isolated pressure components determine only head differences. Adding
-the same constant to all their heads leaves the flow equations unchanged.
-One numerical reference removes this indeterminacy during solution, while
-every water balance is retained. The recovered heads can be shifted together
-to respect the junction bounds when such a shift is admissible.
+In some isolated pressure components, the equations determine only head
+differences. A common shift in all heads leaves the flows unchanged.
+We choose one reference head for the numerical solve and keep every water
+balance. We can then shift the recovered heads to satisfy the junction
+bounds if the bounds admit such a shift.
 
-Acceptance first requires the reconstructed schedule to satisfy the original
-interval equations and operating restrictions. Integration is then repeated
-on a finer grid with the same controls. Schedules and ramps are still checked
-over their original operating windows; storage at the original vertices,
-total water, cumulative arrivals and terminal inventory are compared separately.
-For supplied volume and relative objective tolerances
-$epsilon_V,epsilon_(cal(V))$, require also
+We accept a reconstructed schedule only if it satisfies the interval equations
+and operating restrictions. We repeat the integration on a finer grid using
+the same controls. Schedules and ramps are checked over their original
+operating windows. We compare storage at the original vertices, total water,
+cumulative arrivals and terminal inventory. For the specified volume
+tolerance $epsilon_V$ and relative objective tolerance $epsilon_(cal(V))$,
+the reconstruction must satisfy
 
 $ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
   max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
   abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
 
-This refinement tests numerical consistency with the original controls.
-It estimates the effect of the time grid rather than rigorously bounding
-continuous-time hydraulic error.
+The comparison estimates the effect of time discretization for the chosen
+controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
 == Bounding the remaining objective improvement
 
@@ -852,7 +836,6 @@ provides an upper bound $U$ that no feasible schedule in the declared model
 can exceed. SCIP obtains such bounds from relaxations, tightens them and
 branches on discrete choices or continuous variable ranges. A region can
 be discarded when its bound cannot improve the current feasible value.
-A good schedule therefore helps the search even before it is proved optimal.
 
 Here $L$ is the independently reconstructed value of a schedule feasible for
 the interval model, and $U$ must be a finite enclosing bound. The absolute
@@ -860,46 +843,35 @@ and relative limits on possible improvement are
 
 $ g_"abs" = max(0, U-L), quad g_"rel" = frac(max(0, U-L), max(1, abs(L))). $ <eq:gap>
 
-For example, $L=100$ and $U=103$ in the same monetary units limit improvement
-to at most $3$, or $3\%$ under this relative-gap definition. They do not imply
-that a better schedule exists. Subtracting the initial water endowment in
-@eq:objective leaves maximizing decisions unchanged but affects a relative
-gap's denominator; both $L$ and $U$ use that same objective convention.
+If $L=100$ and $U=103$, improvement is limited to $3$ monetary units, or
+$3\%$ under this definition. There may be no better schedule at all.
+The constant subtraction of initial water values in @eq:objective affects
+the relative gap's denominator, so $L$ and $U$ must use that same objective.
 
-A certificate records that the requested absolute or relative gap has been
-met for the chosen interval model, interpolation rules and finite gate sets.
-If discrete choices are fixed, it is conditional on those choices.
-The finer-grid check answers a separate question about the physical trajectory:
-a schedule can have a certified interval-model gap and still fail finer
-integration. Neither result certifies a continuous-time optimum.
-These are floating-point numerical certificates, interpreted at solver
-tolerances. They do not include a rigorous enclosure of every rounding error
-in the solver and polynomial bound calculations.
+A certificate states that the requested absolute or relative gap has been
+met for the interval model, interpolation rules and finite gate sets.
+Fixing discrete choices makes the certificate conditional on those choices.
+A schedule may meet the interval-model gap and fail the finer-grid checks.
+Neither test certifies a continuous-time optimum. The numerical certificate
+uses solver tolerances and floating-point bounds. It does not rigorously
+enclose every rounding error in the solver and polynomial calculations.
 
 #block(breakable: false)[
 = Discussion
 
-The formulation connects storage, pressure loss, generation and travel time
-within one scheduling problem. Head and efficiency change as decisions
-change, rather than being fixed beforehand in a production approximation.
-River inventory gives released water an explicit place in the balance until
-it arrives. Supplied curves remain the functions chosen by the modeler,
-including their stated interpolation and extension rules.
+The hydraulic equations let changes in reservoir levels and shared tunnel
+flows affect dispatch during optimization. River inventory accounts for
+released water until it reaches the next node. Using these nonlinear laws
+can be computationally expensive. Even with commitment fixed, the continuous
+problem is nonconvex, and a large network may take substantial time to close
+the objective gap.
 
-The solution method uses this same physical model in distinct ways. Nonlinear
-dispatch finds feasible controls; independent integration checks what those
-controls do; global bounds limit the economic improvement left unresolved.
-Stronger relaxations help the global search without replacing hydraulic laws.
-These choices preserve the model's couplings, but they also preserve its
-nonconvexity. A large network may still require substantial time to close
-the optimality gap.
-
-The numerical model has a stated time resolution, river response approximation
-and finite set of tunnel positions. Calibration, transient hydraulic regimes
-and uncertain future inputs remain separate modeling questions. Extensions
-can add explicit physical laws and operating constraints while using the
-same water accounting and distinguishing feasible operation from objective
-bounds and time-grid consistency.
+Model accuracy also depends on the input curves. Finer integration can expose
+an inadequate time grid, but it cannot correct a miscalibrated efficiency or
+travel-time response. Tunnel positions absent from the declared finite set
+are excluded from the search. The objective certificate applies to this
+finite model, with its specified curves and control grid. Changing those
+assumptions requires solving a new problem.
 ]
 
 #block(breakable: false)[
