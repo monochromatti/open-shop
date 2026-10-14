@@ -41,3 +41,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/directional_interlocks.jl
       - name: Run the pumped-storage example
         run: julia --pkgimages=no --project=. examples/pumped_storage.jl
+      - name: Run the soft-limit example
+        run: julia --pkgimages=no --project=. examples/soft_limits.jl
