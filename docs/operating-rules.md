@@ -198,6 +198,9 @@ running cost per hour.
 
 For power or discharge, `x` is the duration-weighted average over the supplied
 window `[time,end_time]`. A plant observation sums its units' outputs. The
+power quantity is a nonnegative magnitude: output for generators and
+consumption for pumps, as in hard operating schedules. It is distinct from
+signed net exchange with the grid. The
 factor `a` is the window duration in hours for power, or `0.0036` times that
 duration for discharge. These average targets permit one part of a window to
 offset another; use separate records to restrict separate windows.

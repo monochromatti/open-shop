@@ -2,6 +2,40 @@ include(joinpath(@__DIR__,"..","examples","soft_limits.jl"))
 using .SoftLimitsExample: soft_limit_case
 soft_copy(x;kwargs...)=typeof(x)(;merge((;(k=>getfield(x,k) for k in fieldnames(typeof(x)))...), (;kwargs...))...)
 
+@testset "Pumping keeps physical consumption and penalty units distinct" begin
+    lower=Reservoir(name=:Lower,z0=-1.0,v0=1.0,vmin=0.95,vmax=2.0,water_value=0.0)
+    upper=Reservoir(name=:Upper,z0=99.0,v0=1.0,vmin=0.95,vmax=2.0,water_value=0.0)
+    pump=Pump(name=:Pump,plant=:Lift,qmin=1.0,qmax=5.0,pmin=0.1,pmax=10.0,
+        hmin=90.0,hmax=110.0,efficiency=0.9,motor_efficiency=0.9,
+        qcurvature=0.0,hcurvature=0.0,minup=0.0,mindown=0.0,startup=0.0,shutdown=0.0)
+    system=HydroSystem(reservoirs=[lower,upper],generators=[pump],
+        plants=[Plant(name=:Lift,source=:Lower,target=:Upper,pmax=10.0,ramp=nothing)])
+    storage=SoftConstraint(name=:StorageTarget,object=:Upper,quantity=:volume,time=1.0,
+        upper=1.01,max_upper_slack=0.01,upper_cost=1000.0)
+    consumption=SoftConstraint(name=:ConsumptionTarget,object=:Pump,quantity=:power,
+        time=0.0,end_time=1.0,upper=2.0,max_upper_slack=8.0,upper_cost=1.0)
+    c=ScheduleCase(name="pump consumption with penalty targets",system=system,
+        grid=[0.0,1.0],prices=[-40.0],soft_constraints=[storage,consumption])
+    x=dispatch_from_controls(c,ones(Int,1,1),fill(5.0,1,1),zeros(0,1))
+    power=0.00981*5.0*100.018/(0.9*0.9)
+    penalty=8.0+(power-2.0)
+    @test x.storage[:,end]≈[0.982,1.018] atol=1e-12
+    @test x.power[1,1]≈power atol=1e-10
+    @test only(net_power(c,x))≈-power atol=1e-10
+    @test x.soft_penalty_cost≈penalty atol=1e-9
+    @test x.objective≈40.0*power-penalty atol=1e-8
+    @test validate(c,x)["valid"]
+    @test replay_audit(c,x)["valid"]
+    for result in (solve_case(c;u=ones(Int,1,1),warm=x,time_limit=30.0),
+        solve(c;initial=x,time_limit=60.0,relative_gap=1e-4))
+        @test result.accepted
+        if result.solution!==nothing
+            @test result.solution.generator_q[1,1]≈5.0 atol=1e-4
+            @test result.solution.objective≈40.0*power-penalty atol=1e-3
+        end
+    end
+end
+
 @testset "A terminal target has an explicit dispatch tradeoff" begin
     c=soft_limit_case();u=ones(Int,1,1);q=fill(5.0,1,1);gate=zeros(0,1)
     x=dispatch_from_controls(c,u,q,gate)
