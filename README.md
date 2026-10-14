@@ -59,6 +59,8 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [prescribed river splits](examples/river_splits.jl),
 [signed channels](examples/level_channels.jl) and
 [discrete tunnel gates](examples/tunnel_gates.jl).
+[Directional handovers](examples/directional_interlocks.jl) keep a station off
+for supplied waiting periods after intake closures.
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
 case from an external public dataset; upstream data are not bundled.
 

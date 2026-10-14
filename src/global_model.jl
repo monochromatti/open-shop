@@ -179,6 +179,7 @@ function _build_global_dispatch(
         transitions=states
         ustart=states.start
     end
+    constrain_tunnel_switching!(m,c,gates.open,u)
     @variable(m, v[1:R, 1:(T + 1)])
     @variable(m, h[1:N, 1:T])
     @variable(m, q[1:E, 1:T])

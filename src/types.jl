@@ -70,12 +70,22 @@ end
 
 Bounds on the number of listed tunnels with positive gate position in each
 interval. A positive position counts as open even if its water flow is zero.
+Closing a tunnel in `forward_tunnels` or `backward_tunnels` requires the listed
+`plants` to stay stopped for the corresponding switch time, in hours. Initial
+waits are the remaining parts of pre-horizon closure obligations, also in hours.
 """
 Base.@kwdef struct TunnelInterlock
     name::Symbol
     tunnels::Vector{Symbol}
     min_open::Int = 0
     max_open::Int = length(tunnels)
+    forward_tunnels::Vector{Symbol} = Symbol[]
+    backward_tunnels::Vector{Symbol} = Symbol[]
+    plants::Vector{Symbol} = Symbol[]
+    forward_switch_time::Float64 = 0.0
+    backward_switch_time::Float64 = 0.0
+    initial_forward_wait::Float64 = 0.0
+    initial_backward_wait::Float64 = 0.0
 end
 """
     Plant(; name, source, target, pmax, ...)

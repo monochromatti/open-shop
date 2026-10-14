@@ -14,7 +14,7 @@ The fields below are the accepted object attributes. Fields marked “required�
 | Hydraulic junction | `name` | `hmin`, `hmax` |
 | Boundary | `name`, `head` | None |
 | Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `gate_positions`, `initial_opening`, `gate_adjustment_cost`, `gate_loss_factor_curve`, `discharge_river` |
-| Tunnel interlock | `name`, `tunnels` | `min_open`, `max_open` |
+| Tunnel interlock | `name`, `tunnels` | `min_open`, `max_open`, `forward_tunnels`, `backward_tunnels`, `plants`, `forward_switch_time`, `backward_switch_time`, `initial_forward_wait`, `initial_backward_wait` |
 | Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
 | Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | River junction | `name` | None |
@@ -38,6 +38,14 @@ positions in each interval, between `min_open` and `max_open`. Movement cost is
 interval relative to `initial_opening` or the static opening. It has no duration
 multiplier. See [discrete tunnel gates](api.md) for controls and solver
 scope.
+
+Optional interlock `forward_tunnels` and `backward_tunnels` identify disjoint
+closure groups within `tunnels`. Closing a member keeps every unit of the listed
+`plants` off for `forward_switch_time` or `backward_switch_time`, in hours.
+Initial residual waits preserve pre-horizon closures; their histories must agree
+with the protected units' off states and ages. See
+[gate handovers](operating-rules.md#gate-handovers-and-plant-shutdowns) for the
+equations, exact event semantics and continuation rules.
 
 `min_efficiency` is a lower bound on a running unit's turbine efficiency and defaults to zero. It is independent of the electrical-efficiency curve.
 
@@ -110,7 +118,7 @@ Refinement retains these rules and their physical input times. Independent equat
 
 | Quantity | Unit |
 | --- | --- |
-| Grid, history, delay, dwell, initial age, operating times | hours |
+| Grid, history, delay, dwell, initial age, operating times, switch times and residual waits | hours |
 | Storage and transit | Mm³ |
 | Discharge and inflow | m³/s |
 | Head, crest and elevation | metres |

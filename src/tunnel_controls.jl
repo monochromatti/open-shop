@@ -85,7 +85,145 @@ function _tunnel_interlock_bounds(c,rule,t)
     Int(lo),Int(hi)
 end
 
+# Direction names specify closure groups, not the sign of hydraulic flow.
+tunnel_switch_groups(rule::TunnelInterlock) = (
+    (tunnels=rule.forward_tunnels,wait=rule.forward_switch_time,
+        initial_wait=rule.initial_forward_wait),
+    (tunnels=rule.backward_tunnels,wait=rule.backward_switch_time,
+        initial_wait=rule.initial_backward_wait),
+)
+switch_wait_active(deadline,time) = time < deadline-1e-8
+
+function _validate_tunnel_switch_inputs(c)
+    plants=Set(p.name for p in c.system.plants)
+    for rule in c.system.tunnel_interlocks
+        length(unique(rule.plants))==length(rule.plants) && all(in(plants),rule.plants) ||
+            throw(ArgumentError("$(rule.name): protected plants must be unique existing plants"))
+        isempty(intersect(rule.forward_tunnels,rule.backward_tunnels)) ||
+            throw(ArgumentError("$(rule.name): forward and backward closure groups must be disjoint"))
+        for group in tunnel_switch_groups(rule)
+            length(unique(group.tunnels))==length(group.tunnels) &&
+                all(in(rule.tunnels),group.tunnels) || throw(ArgumentError(
+                    "$(rule.name): closure groups must contain unique member tunnels"))
+            isfinite(group.wait) && isfinite(group.initial_wait) &&
+                0<=group.initial_wait<=group.wait || throw(ArgumentError(
+                    "$(rule.name): switch times must be finite and nonnegative; initial wait must not exceed switch time"))
+            group.wait==0 || !isempty(group.tunnels) && !isempty(rule.plants) ||
+                throw(ArgumentError("$(rule.name): a switch time needs a closure group and protected plants"))
+            if group.initial_wait>0
+                elapsed=group.wait-group.initial_wait
+                all(g.initial_on==0 && g.initial_age+1e-8>=elapsed
+                    for g in c.system.generators if g.plant in rule.plants) ||
+                    throw(ArgumentError("$(rule.name): initial plant histories must be stopped since the pending closure"))
+            end
+        end
+    end
+    nothing
+end
+
+"""Closure deadlines, evaluated in chronological order on the control grid.
+
+An open-to-closed change triggers a wait even at zero flow. Reopening does not
+cancel an unfinished wait. Positive-to-positive position changes are not closures.
+"""
+function tunnel_switch_deadlines(c,A,group;end_edge=length(c.grid))
+    index=Dict(e.name=>i for (i,e) in enumerate(c.system.tunnels))
+    members=[index[name] for name in group.tunnels]
+    previous=[tunnel_initial_opening(c.system.tunnels[i])>0 for i in members]
+    deadline=first(c.grid)+group.initial_wait
+    deadlines=Vector{Float64}(undef,end_edge-1)
+    for t in eachindex(deadlines)
+        for (j,i) in enumerate(members)
+            current=A[i,t]>0
+            previous[j] && !current && (deadline=max(deadline,c.grid[t]+group.wait))
+            previous[j]=current
+        end
+        deadlines[t]=deadline
+    end
+    deadlines
+end
+
+"""Check gate controls and protected unit states against closure waiting periods.
+
+The three-argument form adds commitment checks to the gate-position, schedule
+and open-count checks of `validate_tunnel_openings(c, A)`.
+"""
+function validate_tunnel_openings(c,A,u;tolerance=1e-8)
+    validate_tunnel_openings(c,A;tolerance)
+    _validate_tunnel_switch_inputs(c)
+    size(u)==(length(c.system.generators),length(c.prices)) &&
+        all(x->x==0 || x==1,u) || throw(ArgumentError("binary unit states required for tunnel switching"))
+    for rule in c.system.tunnel_interlocks
+        members=findall(g->g.plant in rule.plants,c.system.generators)
+        for group in tunnel_switch_groups(rule)
+            group.wait==0 && group.initial_wait==0 && continue
+            deadlines=tunnel_switch_deadlines(c,A,group)
+            for t in eachindex(c.prices)
+                if switch_wait_active(deadlines[t],c.grid[t]) && any(i->u[i,t]==1,members)
+                    throw(ArgumentError("$(rule.name): protected plants must remain stopped until $(deadlines[t]) hours"))
+                end
+            end
+        end
+    end
+    true
+end
+
+"""Remaining directional waits after executing intervals before a grid edge."""
+function tunnel_switch_history(c,A,time=last(c.grid))
+    edge=findfirst(==(time),c.grid)
+    edge===nothing && throw(ArgumentError("tunnel history time must be a grid edge"))
+    [begin
+        remaining=map(tunnel_switch_groups(rule)) do group
+            deadlines=tunnel_switch_deadlines(c,A,group;end_edge=edge)
+            deadline=isempty(deadlines) ? first(c.grid)+group.initial_wait : last(deadlines)
+            switch_wait_active(deadline,time) ? deadline-time : 0.0
+        end
+        (interlock=rule.name,forward_wait=remaining[1],backward_wait=remaining[2])
+    end for rule in c.system.tunnel_interlocks]
+end
+
+# For binary open status, o[t-1]-o[t] is 1 exactly at closure. A protected
+# unit obeys u[k] + o[t-1]-o[t] <= 1 throughout the resulting wait window.
+function constrain_tunnel_switching!(m,c,open,u)
+    index=Dict(e.name=>i for (i,e) in enumerate(c.system.tunnels))
+    for rule in c.system.tunnel_interlocks
+        units=findall(g->g.plant in rule.plants,c.system.generators)
+        for group in tunnel_switch_groups(rule)
+            group.wait==0 && continue
+            for k in eachindex(c.prices),g in units
+                switch_wait_active(first(c.grid)+group.initial_wait,c.grid[k]) || continue
+                if u[g,k] isa Real
+                    u[g,k]==0 || throw(ArgumentError("$(rule.name): fixed commitment violates initial waiting history"))
+                else
+                    @constraint(m,u[g,k]<=0)
+                end
+            end
+            for name in group.tunnels
+                i=index[name]
+                for t in eachindex(c.prices)
+                    previous=t==1 ? Float64(tunnel_initial_opening(c.system.tunnels[i])>0) : open[i,t-1]
+                    closure=previous-open[i,t]
+                    closure isa Real && closure<=0 && continue
+                    for k in t:length(c.prices)
+                        switch_wait_active(c.grid[t]+group.wait,c.grid[k]) || break
+                        for g in units
+                            lhs=u[g,k]+closure
+                            if lhs isa Real
+                                lhs<=1 || throw(ArgumentError("$(rule.name): fixed commitment violates a tunnel closure wait"))
+                            else
+                                @constraint(m,lhs<=1)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    nothing
+end
+
 function _validate_tunnel_operating_controls(c)
+    _validate_tunnel_switch_inputs(c)
     indices=_tunnel_interlock_indices(c)
     for (j,rule) in enumerate(c.system.tunnel_interlocks),t in eachindex(c.prices)
         lo,hi=_tunnel_interlock_bounds(c,rule,t)

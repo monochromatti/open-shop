@@ -602,6 +602,36 @@ $ underline(N)_(ell t) <= sum_(e in cal(E)_ell) o_(e t) <= overline(N)_(ell t). 
 
 A positive position counts as open even when its flow is zero.
 
+Some handovers also require a plant shutdown after a gate closes. For each
+interlock, specify protected plants $cal(P)_ell$ and disjoint closure groups
+$cal(E)_ell^d subset.eq cal(E)_ell$, with $d$ denoting forward or backward.
+Each group has a supplied waiting time $L_ell^d>=0$ in hours. Closing its gate
+at $tau_t$ requires every protected unit to be off during the wait:
+
+$ u_(g k) + o_(e,t-1) - o_(e t) <= 1, quad
+  tau_t <= tau_k < tau_t + L_ell^d, \
+  e in cal(E)_ell^d, quad g in union_(p in cal(P)_ell) cal(G)_p. $ <eq:switchwait>
+
+At closure, the gate-status difference is one, so the inequality forces
+$u_(g k)=0$. For every other transition it adds no restriction. It uses the
+existing variables, with initial gate status supplied before the first interval.
+Another intake may open immediately while the plant remains idle. Movement
+between positive positions is not a closure, and reopening does not cancel a
+wait. Controls change only at grid edges; a wait expiring inside an interval
+permits generation at the next edge.
+
+A pre-horizon closure can leave a residual wait $w_(ell d)^0$:
+
+$ 0 <= w_(ell d)^0 <= L_ell^d, quad
+  u_(g k)=0 quad "when" quad tau_k-tau_0 < w_(ell d)^0. $ <eq:initialswitchwait>
+
+For a positive residual, the protected units must initially be off with off-age
+at least $L_ell^d-w_(ell d)^0$. This makes their histories consistent with the
+implied closure time. Zero declares no pending wait. On restart we retain
+the latest unexpired closure deadline in each group, together with the gate
+positions and unit histories. Closing a gate at the restart edge starts a new
+wait in the continuation.
+
 #block(breakable: false)[
 = Economic objective
 

@@ -9,9 +9,15 @@ function _tunnel_opening_input(c, opening)
     end
     opening isa AbstractMatrix && size(opening)==(length(c.system.tunnels), length(c.prices)) ||
         throw(DimensionMismatch("tunnel opening schedule dimensions"))
-    all(x->x isa Real && isfinite(x), opening) ||
-        throw(ArgumentError("nonfinite or nonreal tunnel openings"))
-    Matrix{Float64}(opening)
+    all(x->x isa Real && isfinite(x) && 0<=x<=1, opening) ||
+        throw(ArgumentError("tunnel openings must be finite real values in [0,1]"))
+    converted=Matrix{Float64}(opening)
+    all(isfinite,converted) || throw(ArgumentError("tunnel openings must remain finite in Float64"))
+    for k in eachindex(converted,opening)
+        iszero(converted[k])==iszero(opening[k]) ||
+            throw(ArgumentError("nonzero tunnel openings must remain nonzero in Float64"))
+    end
+    converted
 end
 function _physical_tunnel_openings(c, opening)
     A=_tunnel_opening_input(c, opening)
@@ -52,6 +58,8 @@ function dispatch_from_controls(
     tunnel_opening = nothing,
 )
     admissible(c, u) || throw(ArgumentError("inadmissible commitment"))
+    opening=_physical_tunnel_openings(c,tunnel_opening)
+    validate_tunnel_openings(c,opening,u)
     nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ? _transport_data(c, transport) :
        nothing
     nd===nothing &&
@@ -61,7 +69,7 @@ function dispatch_from_controls(
                 "compiled deterministic transport cannot serve distributed reconstruction",
             ),
         )
-    z=simulate(c, q, gate; transport = nd, tunnel_opening)
+    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     s=c.system
     dt=diff(c.grid)

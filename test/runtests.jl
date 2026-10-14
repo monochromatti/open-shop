@@ -83,6 +83,7 @@ include("tunnel_gate_losses.jl")
 include("delta_channel_tests.jl")
 include("tunnel_gate_controls_tests.jl")
 include("tunnel_gate_regression_tests.jl")
+include("directional_interlock_tests.jl")
 
 include("numerical_api_tests.jl")
 
