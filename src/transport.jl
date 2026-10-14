@@ -38,6 +38,7 @@ struct _TransportSignature
     names::Vector{Symbol}
     sources::Vector{Symbol}
     targets::Vector{Symbol}
+    allocations::Vector{Float64}
     delays::Vector{Float64}
     history_grid::Vector{Vector{Float64}}
     history_release::Vector{Vector{Float64}}
@@ -96,6 +97,7 @@ function _transport_signature(c)
         [r.name for r in s.rivers],
         [r.source for r in s.rivers],
         [r.target for r in s.rivers],
+        [r.allocation for r in s.rivers],
         Float64[r.deterministic_delay for r in s.rivers],
         [copy(r.history_grid) for r in s.rivers],
         [copy(r.history_release) for r in s.rivers],
@@ -122,6 +124,7 @@ function _transport_data(c, data::CompiledTransport; arrival_grid = c.grid)
         sig.names[i]==r.name &&
         sig.sources[i]==r.source &&
         sig.targets[i]==r.target &&
+        sig.allocations[i]==r.allocation &&
         sig.delays[i]==r.deterministic_delay &&
         sig.history_grid[i]==r.history_grid &&
         sig.history_release[i]==r.history_release ||
@@ -187,6 +190,8 @@ function _pulse_clip(p::_TransportPulse, a, b)
 end
 _pulse_shift(p::_TransportPulse, d) =
     _TransportPulse(p.start+d, p.stop+d, p.coefficient, p.source, p.period)
+_pulse_scale(p::_TransportPulse, a) =
+    _TransportPulse(p.start,p.stop,a*p.coefficient,p.source,p.period)
 
 function _pulse_expression(pulses, a, b)
     history=0.0
@@ -251,7 +256,7 @@ function deterministic_network_data(c::ScheduleCase; arrival_grid = c.grid)
         if !(r.source in reservoirs)
             for u in findall(e->e.target==r.source, s.rivers), p in arrivals[u]
                 clipped=_pulse_clip(p, lo, hi)
-                clipped===nothing || push!(releases[d], clipped)
+                clipped===nothing || push!(releases[d], _pulse_scale(clipped,r.allocation))
             end
         end
         append!(arrivals[d], [_pulse_shift(p, delay) for p in releases[d]])
@@ -293,7 +298,7 @@ function deterministic_network_data(c::ScheduleCase; arrival_grid = c.grid)
         end
         TT[d]=[
             (k[1], k[2], v) for
-            (k, v) in sort!(collect(coefficients); by = first) if abs(v)>1e-15
+            (k, v) in sort!(collect(coefficients); by = first) if !iszero(v)
         ]
         TH[d]=initial[d]+r.history-a.history
     end

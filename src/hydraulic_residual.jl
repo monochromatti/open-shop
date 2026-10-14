@@ -183,7 +183,7 @@ function river_rates!(work, x, data::HydraulicStepData)
         river = s.rivers[d]
         if river.law == :junction
             release[d] =
-                injection[d] + sum(arrival[j] for j in topology.river_upstream[d]; init = 0.0)
+                injection[d] + river.allocation*sum(arrival[j] for j in topology.river_upstream[d]; init = 0.0)
         end
         if data.network === nothing
             arrival[d] +=

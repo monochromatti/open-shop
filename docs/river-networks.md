@@ -34,21 +34,54 @@ confluences are internal zero-storage nodes and disappear from `case_dict`.
 Users do not need to declare a RiverJunction. Explicit junctions remain
 supported for existing inputs.
 
-One source stream has one water destination. Multiple controlled reservoir
-outlets provide independent branches that can merge farther downstream.
-Allocation of a single stream among several river branches requires an explicit
-physical diversion model and is not inferred by this profile.
+To split a stream, give its incoming reach a target label shared by the outgoing
+reaches' sources. Each outgoing reach declares its prescribed `allocation`:
+
+```julia
+River(name=:Incoming, source=:Lake, target=:Fork, law=:controlled,
+    capacity=10.0, curves=[], deterministic_delay=0.25, water_value=0.0)
+River(name=:Left, source=:Fork, target=:Receiver, allocation=0.4,
+    capacity=6.0, curves=[], deterministic_delay=0.5, water_value=0.0)
+River(name=:Right, source=:Fork, target=:Receiver, allocation=0.6,
+    capacity=8.0, curves=[], deterministic_delay=1.0, water_value=0.0)
+```
+
+`Fork` is a connection label, not an object to construct. It must differ from
+every object name. The same form describes a merge or a node with several
+incoming and outgoing reaches. `case_dict` retains these labels and fractions.
+Existing explicit `RiverJunction` inputs also support prescribed allocations.
+
+Fractions are finite, lie in `[0,1]`, and sum to one at each node. They default
+to one, so a single outgoing reach needs no extra data. Splits must supply all
+shares; OpenSHOP does not infer missing shares or normalize them. Fractions are
+constant over the horizon, with a `1e-12` absolute and relative sum tolerance.
+They describe a supplied diversion rule, not a decision about gate operation.
+Controllable and time-dependent allocation are outside this profile. Reservoir
+outlets remain independent decisions and use `allocation=1`.
+
+Local natural inflow and plant/tunnel outfalls enter their named branch after
+allocation. To distribute a common supply, feed a reach targeting the fork.
+A river targeting a reach directly still requires that receiving reach to use
+`source=:auto`; it cannot also have an explicit fork source. Use the node label
+to add a tributary before the fork, or a downstream direct merge to add one
+after it. Names beginning with `__river_merge__` or `__river_node__` are reserved.
 
 ## Conservation
 
 Let `L[d,t]` be the local injection into reach `d`, in m³/s, and `A[e,t]`
-be an upstream reach's arrival volume, in Mm³. At a confluence,
+be an upstream reach's arrival volume, in Mm³. At a zero-storage river node,
 
 ```math
-Q^{release}_{d,t}=L_{d,t}+\frac{\sum_{e\to d} A_{e,t}}{0.0036\Delta t_t},
+Q^{release}_{d,t}=L_{d,t}+\alpha_d\frac{\sum_{e\to d} A_{e,t}}{0.0036\Delta t_t},
 \qquad
 L_{d,t}=I_{d,t}+\sum_{g\to d}q_{g,t}+\sum_{e\to d}Q^{tunnel}_{e,t}.
 ```
+
+Here `α[d]` is the outgoing reach's `allocation`, and `e→d` denotes reaches
+arriving at its source node. At every such node, the outgoing shares sum to one.
+Thus a 40% branch with 5 m³/s arriving upstream and 1 m³/s local inflow releases
+3 m³/s. A zero-share branch still carries its local water. Each branch's capacity
+limits its total flow; spare capacity on another branch does not change the rule.
 
 A reservoir-source reach instead receives its reservoir outlet flow plus
 natural inflow. The outlet law applies to `Qrelease - inflow`; only that
@@ -72,10 +105,14 @@ simulation retain the same destinations and source equations.
 ## Travel time
 
 `deterministic_delay` shifts each original release pulse without dispersion.
-An all-deterministic network preserves those pulses through every confluence,
+An all-deterministic network preserves those pulses through every merge and split,
 including zero delays and arrivals within the current interval. Hydraulic
 storage and current arrivals are solved together. Capacity and pointwise
 arrival constraints use pulse breakpoints, not just interval averages.
+Capacity checks in hydraulic replay and fixed-delay routing allow `1e-6` m³/s
+of numerical roundoff. They retain the computed flow and report its excess;
+they do not clip the water. Distributed reference-flow coverage remains a
+separate constitutive-domain check.
 
 Alternatively, `curves` supplies normalized delay-bin probabilities. One curve
 is independent of flow. Multiple curves have strictly increasing reference
@@ -109,6 +146,9 @@ the horizon. Include historical plant, tunnel and natural contributions in that
 reach's upstream history. Each history ends at the horizon start. Upstream
 historical arrivals propagate into downstream reaches only after that start;
 pre-horizon transfers are already represented by downstream history.
+Incoming historical water arriving at a fork after the horizon start receives
+the prescribed shares. A branch's own historical cohorts are already allocated
+and are never multiplied by its share again.
 
 `restart_case` retains original executed cohorts, delayed inventory and the
 previous control-window average used by release ramps. Simulation refines
@@ -117,6 +157,8 @@ conservation, outfall direction, operating laws and the scheduling-grid routing;
 `replay_audit` checks the finer trajectory separately.
 
 The [mixed-source example](../examples/mixed_source_network.jl) shows direct
-connections and a globally solved two-plant case. Tests also combine a
+connections and a globally solved two-plant case. The [river-split example](../examples/river_splits.jl)
+optimizes a unit feeding unequal branches with a binding branch capacity.
+Tests also combine a
 pressurized loop, reservoir-release branches, successive confluences, routed
 tunnel discharge, operating changes and unequal delays on an irregular grid.

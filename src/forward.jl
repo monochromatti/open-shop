@@ -27,6 +27,7 @@ function forward_step(
     max_iterations = 100,
 )
     validate_delay_curves(s)
+    validate_river_allocations(s)
     validate_curve_data(s)
     nr, nj, ne, nd=length(s.reservoirs), length(s.junctions), length(s.tunnels), length(s.rivers)
     ng=length(s.generators)
@@ -219,6 +220,7 @@ end
 # Topological reach evaluation also accepts boundary targets used by standalone
 # integration tests. River graph/input validation belongs to the public model.
 function _forward_river_order(s)
+    validate_river_allocations(s)
     remaining=Set(eachindex(s.rivers))
     order=Int[]
     while !isempty(remaining)
@@ -232,10 +234,6 @@ function _forward_river_order(s)
         ])
         isempty(ready) && throw(ArgumentError("river graph must be acyclic"))
         for d in ready
-            r=s.rivers[d]
-            r.law==:junction &&
-                count(e->e.source==r.source, s.rivers)!=1 &&
-                throw(ArgumentError("river junction needs exactly one outgoing reach"))
             push!(order, d)
             delete!(remaining, d)
         end
@@ -250,7 +248,7 @@ function _forward_weights(r, q)
     RiverRouting.blend(r.curves, clamp(q, first(refs), last(refs)))
 end
 function _forward_domain(r, q; capacity=r.capacity)
-    isfinite(q) && river_flow_lower(r, capacity)-1e-9<=q<=capacity+1e-9 || return false
+    river_flow_valid(r,q;capacity) || return false
     _forward_atom(r) ||
         length(r.curves)==1 ||
         first(r.curves).reference_flow-1e-10<=q<=last(r.curves).reference_flow+1e-9
@@ -313,6 +311,7 @@ function simulate(
 )
     s=c.system
     validate_delay_curves(s)
+    validate_river_allocations(s)
     validate_curve_data(s)
     ng, nd=length(s.generators), length(s.rivers)
     T=length(grid)-1

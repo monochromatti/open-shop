@@ -1,4 +1,12 @@
 const _INFERRED_RIVER_PREFIX = "__river_merge__"
+const _INFERRED_RIVER_NODE_PREFIX = "__river_node__"
+
+function river_node_name(name)
+    for prefix in (_INFERRED_RIVER_PREFIX,_INFERRED_RIVER_NODE_PREFIX)
+        startswith(string(name),prefix) && return Symbol(chopprefix(string(name),prefix))
+    end
+    name
+end
 
 # Keep this independent of restart/serialization so graph compilation remains
 # available during input construction.
@@ -8,13 +16,14 @@ function _river_replace(x; kwargs...)
     typeof(x)(; values...)
 end
 
-"""Compile direct reach-to-reach targets to private zero-storage graph nodes.
+"""Compile reach connections to private zero-storage river nodes.
 
 An upstream river may name another river as its target; plant/tunnel outfalls
 name their discharge_river. The receiving reach uses source=:auto; incoming
 arrivals, directed outfalls and natural inflow are merged by conservation. Explicit
-RiverJunction nodes remain supported. Inferred names are reserved and
-collisions are rejected. This function does not infer a diversion allocation.
+RiverJunction nodes remain supported. A shared nonphysical source/target label
+defines a named node, including forks with prescribed branch allocations.
+Inferred names are reserved and collisions are rejected. No shares are inferred.
 """
 function normalize_river_connections(s::HydroSystem)
     names=Set(r.name for r in s.rivers)
@@ -26,22 +35,32 @@ function normalize_river_connections(s::HydroSystem)
     for x in Iterators.flatten((s.plants,s.tunnels))
         x.discharge_river===nothing && continue
         x.discharge_river in names || throw(ArgumentError("unknown discharge river for $(x.name)"))
-        push!(destinations,x.discharge_river)
     end
     # An inflow-only reach also has an internal zero-storage source.
     union!(destinations, (r.name for r in s.rivers if r.source==:auto))
-    isempty(destinations) && return s
+    objectnames=Set(x.name for field in fieldnames(HydroSystem) for x in getfield(s,field))
+    named_nodes=setdiff(intersect(
+        Set(r.source for r in s.rivers if !is_channel(r) && r.source!=:auto),
+        Set(r.target for r in s.rivers if !is_channel(r))),objectnames)
+    any(n->startswith(string(n),_INFERRED_RIVER_PREFIX) ||
+        startswith(string(n),_INFERRED_RIVER_NODE_PREFIX),named_nodes) &&
+        throw(ArgumentError("river node labels must not use reserved inferred prefixes"))
+    isempty(destinations) && isempty(named_nodes) && return s
     inferred=Dict(n=>Symbol(_INFERRED_RIVER_PREFIX, string(n)) for n in destinations)
+    named=Dict(n=>Symbol(_INFERRED_RIVER_NODE_PREFIX,string(n)) for n in named_nodes)
+    targets=merge(inferred,named)
     existing=Set(j.name for j in s.river_junctions if startswith(string(j.name),_INFERRED_RIVER_PREFIX))
     reused=Set(inferred[r.name] for r in s.rivers if r.name in destinations && r.source==inferred[r.name] && r.source in existing)
-    isempty(intersect(setdiff(Set(values(inferred)),reused), union(names, physical))) || throw(
+    isempty(intersect(setdiff(Set(values(targets)),reused),objectnames)) || throw(
         ArgumentError(
             "reserved inferred river-junction name collides with an input object",
         ),
     )
     result=River[]
     for r in s.rivers
-        source=r.source
+        source=get(named,r.source,r.source)
+        haskey(named,r.source) && r.law!=:junction &&
+            throw(ArgumentError("a named river-node source requires the junction law"))
         if r.name in destinations
             (source==:auto || source==inferred[r.name] && source in reused) || throw(
                 ArgumentError(
@@ -55,13 +74,13 @@ function normalize_river_connections(s::HydroSystem)
             )
             source=inferred[r.name]
         end
-        push!(result, _river_replace(r; source, target = get(inferred, r.target, r.target)))
+        push!(result, _river_replace(r; source, target = get(targets, r.target, r.target)))
     end
     js=vcat(
         s.river_junctions,
         [
-            RiverJunction(name = inferred[n]) for
-            n in sort!(collect(destinations); by = string) if !(inferred[n] in reused)
+            RiverJunction(name = targets[n]) for
+            n in sort!(collect(keys(targets)); by = string) if !(targets[n] in reused)
         ],
     )
     _river_replace(s; rivers = result, river_junctions = js)
@@ -70,34 +89,41 @@ end
 """Return the public direct-connection form, retaining explicit junction nodes."""
 function public_river_connections(s::HydroSystem)
     inferred=Dict{Symbol,Symbol}()
+    named=Dict{Symbol,Symbol}()
     for j in s.river_junctions
+        if startswith(string(j.name),_INFERRED_RIVER_NODE_PREFIX)
+            named[j.name]=river_node_name(j.name)
+            continue
+        end
         startswith(string(j.name), _INFERRED_RIVER_PREFIX) || continue
         out=findall(r->r.source==j.name, s.rivers)
         length(out)==1 || throw(ArgumentError("invalid inferred river junction $(j.name)"))
         inferred[j.name]=s.rivers[only(out)].name
     end
+    targets=merge(inferred,named)
     rivers=[
         _river_replace(
             r;
-            source = haskey(inferred, r.source) ? :auto : r.source,
-            target = get(inferred, r.target, r.target),
+            source = haskey(inferred, r.source) ? :auto : get(named,r.source,r.source),
+            target = get(targets, r.target, r.target),
         ) for r in s.rivers
     ]
     (
         rivers = rivers,
-        river_junctions = [j for j in s.river_junctions if !haskey(inferred, j.name)],
+        river_junctions = [j for j in s.river_junctions if !haskey(inferred,j.name) && !haskey(named,j.name)],
     )
 end
 
 """Validate a directed acyclic river graph and return a reach evaluation order.
 
-Zero-storage junctions merge all incoming reaches into exactly one outgoing
-reach. Reservoir releases remain independent decisions.
+Zero-storage nodes allocate incoming arrivals among outgoing reaches.
+Reservoir releases remain independent decisions.
 """
 function river_order(c::ScheduleCase)
     s=c.system
     storages=Set(r.name for r in s.reservoirs)
     junctions=Set(j.name for j in s.river_junctions)
+    validate_river_allocations(s)
     length(storages)==length(s.reservoirs) ||
         throw(ArgumentError("duplicate reservoir names"))
     length(junctions)==length(s.river_junctions) ||
@@ -135,15 +161,15 @@ function river_order(c::ScheduleCase)
             throw(ArgumentError("historical release exceeds curve domain"))
     end
     for j in junctions
-        length(outgoing[j])==1 || throw(ArgumentError("junction $j needs exactly one outgoing reach"))
-        d=only(outgoing[j])
-        river=s.rivers[d]
-        supplied=!isempty(incoming[j]) ||
+        isempty(outgoing[j]) && throw(ArgumentError("river node $(river_node_name(j)) needs an outgoing reach"))
+        supplied=!isempty(incoming[j]) || any(outgoing[j]) do d
+            river=s.rivers[d]
             any(x.discharge_river==river.name for x in Iterators.flatten((s.plants,s.tunnels))) ||
-            river.inflow>0 || any(z.object==river.name && z.attribute==:inflow && any(>(0),z.values) for z in c.operations)
+                river.inflow>0 || any(z.object==river.name && z.attribute==:inflow && any(>(0),z.values) for z in c.operations)
+        end
         supplied || throw(
             ArgumentError(
-                "junction $j needs an upstream water supply",
+                "river node $(river_node_name(j)) needs an upstream water supply",
             ),
         )
     end
@@ -216,8 +242,8 @@ end
 
 `source_release` is D×T on the original case grid. Reservoir-source rows are
 prescribed total reach releases, including natural inflow. Other local injections
-come from `generator_q`, `tunnel_q` and natural inflow. Junction release adds the
-upstream arrival volumes divided by interval duration. Optional `grid` preserves
+come from `generator_q`, `tunnel_q` and natural inflow. Each outgoing reach adds
+its allocated share of upstream arrivals divided by interval duration. Optional `grid` preserves
 original reservoir cohorts, but
 junction mixing rebins arrivals: its timing is a convergent grid approximation,
 not an exact continuous-time convolution. Transit includes historical cohorts.
@@ -250,7 +276,7 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
         else
             upstream=findall(e->e.target==r.source, s.rivers)
             q=source_averages(grid,c.grid,view(source_release,d,:)) +
-              vec(sum(arrival[upstream, :]; dims = 1)) ./ (0.0036 .* diff(grid))
+              r.allocation .* vec(sum(arrival[upstream, :]; dims = 1)) ./ (0.0036 .* diff(grid))
             # Floating-point conservation can put a capacity-bound flow a few
             # ulps outside its reference range. Do not hide physical excess.
             q=[x<=r.capacity+1e-10 ? min(x, r.capacity) : x for x in q]

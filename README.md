@@ -56,6 +56,7 @@ and [river networks](docs/river-networks.md) describe case data.
 Examples cover a [single reservoir](examples/single_reservoir.jl),
 [station operating rules](examples/operating_rules.jl),
 [many-to-one river connections](examples/mixed_source_network.jl),
+[prescribed river splits](examples/river_splits.jl),
 [signed channels](examples/level_channels.jl) and
 [discrete tunnel gates](examples/tunnel_gates.jl).
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented

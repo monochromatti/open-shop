@@ -18,7 +18,7 @@ The fields below are the accepted object attributes. Fields marked “required�
 | Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
 | Generator | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | River junction | `name` | None |
-| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
+| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `allocation`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 
@@ -45,9 +45,9 @@ River `law` is `controlled`, `orifice`, `weir`, `junction` or `delta`. The delta
 
 ## Shared streams and direct river links
 
-Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks and instantaneous delta-level channels may contain loops. Delayed river networks must be acyclic. Multiple incoming rivers can merge into one outgoing river through a named river junction; conservation determines the downstream release. One river junction must have a water supply and exactly one outgoing reach. Hydraulic junctions and river junctions have different roles.
+Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks and instantaneous delta-level channels may contain loops. Delayed river networks must be acyclic. A zero-storage river node can have several incoming and outgoing reaches; prescribed allocation fractions determine how it distributes the arrivals. Each node needs a water supply and at least one outgoing reach. Hydraulic junctions and river nodes have different roles.
 
-A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred confluence. OpenSHOP creates its internal junction during input construction and restores the direct river links on serialization. Names beginning with `__river_merge__` are reserved for inferred junctions. An explicit source on a receiving direct-link river is rejected.
+A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred confluence. A shared source/target label distinct from every object name also declares an internal river node; no `RiverJunction` object is required. OpenSHOP restores direct river links and node labels on serialization. Names beginning with `__river_merge__` or `__river_node__` are reserved. An explicit source on a receiving direct-link river is rejected.
 
 Plants and tunnels can set `discharge_river` to a receiving reach while retaining
 `target` as their hydraulic head reference. Routed tunnel outfalls are forward
@@ -58,7 +58,7 @@ capacity conventions, history and mixed-delay behavior.
 
 A shared penstock can be represented by a tunnel from a reservoir to a hydraulic junction, with multiple plants taking their source at that junction. Junction continuity sums their unit discharges, and the common tunnel head-loss law therefore depends on the combined flow. Units within one plant likewise share that plant's hydraulic endpoints and tailwater relationship.
 
-River splitting and allocation among multiple downstream branches are unsupported. Declare separate controlled releases from a reservoir when that physical arrangement applies; do not assume that a zero-storage confluence allocates flow.
+At each river node, outgoing reaches use `law="junction"` and finite `allocation` fractions in `[0,1]` summing to one. The default is one. The sum is checked with `1e-12` absolute and relative tolerance; shares are never inferred or normalized. Fractions apply only to inherited upstream arrivals; natural inflow and plant/tunnel outfalls enter the named branch afterward. A branch's historical release already includes its allocation. Fractions are constant over the horizon, not optimization decisions or operating-series attributes. Reservoir outlets and instantaneous channels use `allocation=1`. Separate controlled reservoir outlets remain independent decisions.
 
 ## Tables and transport
 
@@ -123,6 +123,6 @@ Refinement retains these rules and their physical input times. Independent equat
 | Startup and shutdown | objective currency |
 | Tunnel gate adjustment coefficient | objective currency per unit normalized position |
 | Water value and release penalty | objective currency/Mm³ |
-| Efficiency, gate, opening and delay probability | dimensionless |
+| Efficiency, gate, opening, allocation and delay probability | dimensionless |
 
 Unknown fields at the case, object, table, delay-curve or operation level raise an error. Missing required fields, invalid bounds, unsupported laws/interpolation, unknown endpoints, duplicate names/series and invalid topology also fail input validation. Inputs use this documented profile; physical calibration must be supplied explicitly. Keep the case and returned schedule together: changing the grid changes schedule dimensions and the discrete optimization problem.
