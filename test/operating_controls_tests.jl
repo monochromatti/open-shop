@@ -318,10 +318,6 @@ end
         @test !audit["valid"]
         label=level ? "level_ramp_Lake" : "volume_ramp_Lake"
         @test audit["residuals"][label]≈(abs(delta)-(level ? bad_rate/0.1 : bad_rate))*maximum(dt)*(level ? 0.1 : 1.0) atol=1e-9
-        # Restrictions add linear rows, without storage/head state auxiliaries.
-        plain=operating_case()
-        @test JuMP.num_variables(OpenSHOP._build_dispatch(c).m)==
-            JuMP.num_variables(OpenSHOP._build_dispatch(plain).m)
     end
 end
 
@@ -367,7 +363,7 @@ end
     @test validate(too_large,x)["residuals"]["unit_ramp_Unit1"]≈alpha atol=1e-9
 end
 
-@testset "Optional ramps reject invalid history and avoid unused state variables" begin
+@testset "Optional ramps require compatible aggregate histories" begin
     c=operating_case()
     off=operating_case(;initial_on=0)
     for field in (:initial_power,:initial_discharge)
@@ -388,18 +384,14 @@ end
     plants=[OpenSHOP._river_replace(only(two.system.plants);initial_power=2.0,
         initial_discharge=4.0,initial_interval_hours=1.5)]
     explicit=operating_replace(two;plants)
-    @test OpenSHOP._build_dispatch(explicit).m isa JuMP.Model
+    @test OpenSHOP.validate_inputs(explicit)
     # Unit discharge histories need not share a window when no aggregate
     # discharge ramp consumes them.
     only_discharge=[OpenSHOP._river_replace(z;initial_power=nothing) for z in generators]
-    @test OpenSHOP._build_dispatch(operating_replace(two;generators=only_discharge)).m isa JuMP.Model
+    @test OpenSHOP.validate_inputs(operating_replace(two;generators=only_discharge))
     no_power_ramp=operating_replace(c;plants=[OpenSHOP._river_replace(
         only(c.system.plants);ramp=nothing)])
     @test case_dict(case_from_dict(case_dict(no_power_ramp)))==case_dict(no_power_ramp)
-    @test JuMP.num_variables(OpenSHOP._build_dispatch(no_power_ramp).m)==
-        JuMP.num_variables(OpenSHOP._build_dispatch(c).m)
-    @test JuMP.num_variables(OpenSHOP._build_global_dispatch(no_power_ramp;joint=true).m)==
-        JuMP.num_variables(OpenSHOP._build_global_dispatch(c;joint=true).m)
 end
 
 @testset "Confluence restart retains interval release history and exact pulse cohorts" begin

@@ -154,9 +154,7 @@ function validate_inputs(c)
             last(r.arrival_window_grid)==last(c.grid) ||
                 error("Arrival windows must span scheduling horizon")
         end
-        if r.deterministic_delay===nothing
-            RiverRouting.check_curves(r.curves; capacity=r.capacity)
-        else
+        if r.deterministic_delay!==nothing
             isfinite(r.deterministic_delay) && r.deterministic_delay>=0 ||
                 error("Invalid deterministic delay")
         end
@@ -167,6 +165,7 @@ function validate_inputs(c)
                 error("Only always-wet outlet laws currently supported")
         end
     end
+    validate_delay_curves(c.system)
     validate_curve_data(c.system)
     validate_operations(c)
     # Exact transport does not need dense transfer tensors for input checks.

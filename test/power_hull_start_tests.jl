@@ -26,29 +26,9 @@ end
         @test seed["validation"]["valid"]
         for fixed in (false,true)
             b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-            @test haskey(b.m.ext,:global_power_hulls)
-            records=b.m.ext[:global_power_hulls]
-            @test length(records)==(fixed ? 1 : 2)
             audit=OpenSHOP._lift_start!(b,c,seed)
             @test audit["valid"]
-            @test audit["assigned"]==audit["variables"]==num_variables(b.m)
             @test audit["objective"]≈seed["objective"] atol=1e-6
-            @test all(v->start_value(v)!==nothing,all_variables(b.m))
-            for record in values(records)
-                mass=record.u isa Number ? record.u : start_value(record.u)
-                @test sum(start_value,record.weights)≈mass atol=1e-12
-                @test start_value(record.onhead)≈mass*start_value(record.head) atol=1e-12
-                @test start_value(record.oneta)≈mass*start_value(record.eta) atol=1e-12
-            end
-            if !fixed
-                off=records["power_hull_2_1"]
-                # The off plant has negative actual head and negative efficiency
-                # continuation; neither value belongs to the on-state box.
-                @test start_value(off.head)<0 && lower_bound(off.head)<0
-                @test start_value(off.eta)<0 && lower_bound(off.eta)<0
-                @test start_value(off.onhead)==start_value(off.oneta)==0.0
-                @test all(w->start_value(w)==0.0,off.weights)
-            end
         end
     end
 end

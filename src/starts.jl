@@ -21,14 +21,18 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         assigned[variable]=y
         set_start_value(variable, y)
     end
-    function table(graph, curve, x)
+    function table(graph, curve::TableCurve, x)
+        table(graph,z->table_value(curve,z;extrapolation=:linear),x)
+    end
+    table(graph, ::Nothing, x) = nothing
+    function table(graph, evaluate, x)
         graph===nothing && return
         weights=_global_tensor_coordinate_weights(graph.coordinate.nodes,x)
         for (variable,value) in zip(graph.coordinate.weights,weights)
             variable isa VariableRef && put(variable,value)
         end
         # Evaluate the physical curve independently of the interpolation rows.
-        put(graph.y,table_value(curve,x;extrapolation=:linear))
+        put(graph.y,evaluate(x))
     end
     try
         validate(c, warm)["valid"] || error("seed fails original physical audit")
@@ -96,8 +100,8 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                     put(variable,value)
                 end
                 put(graph.efficiency,turbine_efficiency(g.turbine_table,q,h;extrapolation=:linear))
-                table(graph.flow_min,TableCurve(g.turbine_table.heads,g.turbine_table.qmin),h)
-                table(graph.flow_max,TableCurve(g.turbine_table.heads,g.turbine_table.qmax),h)
+                table(graph.flow_min,z->turbine_qmin(g.turbine_table,z;extrapolation=:linear),h)
+                table(graph.flow_max,z->turbine_qmax(g.turbine_table,z;extrapolation=:linear),h)
             end
             table(graph.electrical,g.generator_efficiency_curve,p)
         end

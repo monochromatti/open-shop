@@ -34,6 +34,14 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     bound(name, x) = record(name, max.(x, 0.0))
     s=c.system
+    try
+        validate_delay_curves(s)
+        validate_curve_data(s)
+    catch error
+        residuals["curve_input"]=Inf
+        push!(errors,"invalid curve data: "*sprint(showerror,error))
+        return finish()
+    end
     T=length(c.prices)
     dt=diff(c.grid)
     R=length(s.reservoirs)

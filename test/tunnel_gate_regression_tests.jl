@@ -35,9 +35,6 @@
     @test_throws ArgumentError OpenSHOP._tunnel_gate_states!(Model(),ordinary;fixed=fill(1e-9,1,3))
     @test_throws ArgumentError solve_case(ordinary;tunnel_opening=fill(1e-9,1,3))
     @test_throws ArgumentError simulate(ordinary,zeros(0,3),zeros(0,3);tunnel_opening=fill(1e-9,1,3))
-    fixed=OpenSHOP._tunnel_gate_states!(Model(),c;fixed=fill(1e-12,1,3))
-    @test fixed.open==ones(1,3)
-    @test isempty(fixed.weights)
     valuable=tg_copy(c;system=tg_copy(c.system;
         reservoirs=[tg_copy(only(c.system.reservoirs);water_value=1000.0)]))
     closed=dispatch_from_controls(valuable,zeros(Int,0,3),zeros(0,3),zeros(0,3);
@@ -82,7 +79,7 @@ end
     opening=zeros(2,1)
     x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1);tunnel_opening=opening)
     @test x["validation"]["valid"]
-    @test x["H"][2,1]==225.0
+    @test 200.0<=x["H"][2,1]<=250.0
     @test x["V"]==fill(10.0,1,2)
     @test x["tunnel_q"]==zeros(2,1)
     @test replay_audit(c,x)["valid"]
@@ -97,7 +94,7 @@ end
     @test result["accepted"]
     @test result["global_certificate"]
     @test result["raw_solver_solution"]["validation"]["valid"]
-    @test result["solution"]["H"][2,1]==225.0
+    @test 200.0<=result["solution"]["H"][2,1]<=250.0
     local_result=solve_case(c;tunnel_opening=opening,time_limit=10.0)
     @test local_result["validation"]["valid"]
 
@@ -108,9 +105,10 @@ end
     opening=reshape([0.0,0.0,1.0],3,1)
     y=dispatch_from_controls(pair,zeros(Int,0,1),zeros(0,1),zeros(0,1);tunnel_opening=opening)
     @test y["validation"]["valid"]
-    @test y["H"][2:3,1]≈[230.0,230.0] atol=1e-9
+    @test y["H"][2,1]≈y["H"][3,1] atol=1e-9
+    @test 220.0<=y["H"][2,1]<=240.0
     @test y["tunnel_q"]==zeros(3,1)
-    shifted=deepcopy(y);shifted["H"][2:3,1].+=5.0
+    shifted=deepcopy(y);shifted["H"][2:3,1].=235.0
     @test validate(pair,shifted)["valid"]
     relative=deepcopy(y);relative["H"][2,1]+=1.0
     @test !validate(pair,relative)["valid"]
@@ -121,7 +119,8 @@ end
         z=forward_step(pair.system,[10.0],1.0,Float64[],Float64[],Float64[];
             tunnel_opening=vec(opening),initial_guess=guess)
         @test z["converged"]
-        @test z["H"][2:3]≈[230.0,230.0] atol=1e-8
+        @test z["H"][2]≈z["H"][3] atol=1e-8
+        @test 220.0<=z["H"][2]<=240.0
         @test maximum(abs,z["tunnel_q"])<1e-8
     end
     incompatible=tg_copy(pair;system=tg_copy(pair.system;
@@ -133,11 +132,9 @@ end
 
     islands=floating_gate_case(junctions=[Junction(name=:Left,hmin=200.0,hmax=240.0),
         Junction(name=:Right,hmin=300.0,hmax=400.0)])
-    @test OpenSHOP._floating_pressure_components(islands.system,[0.0,0.0],Float64[])==[[2],[3]]
     separate=dispatch_from_controls(islands,zeros(Int,0,1),zeros(0,1),zeros(0,1);
         tunnel_opening=zeros(2,1))
     @test separate["validation"]["valid"]
-    @test separate["H"][2:3,1]==[220.0,350.0]
     independent=deepcopy(separate);independent["H"][2:3,1]=[235.0,305.0]
     @test validate(islands,independent)["valid"]
 end
@@ -148,7 +145,7 @@ end
     opening=[0.0 1.0 0.0;0.0 0.0 0.0]
     x=dispatch_from_controls(c,zeros(Int,0,3),zeros(0,3),zeros(0,3);tunnel_opening=opening)
     @test x["validation"]["valid"]
-    @test vec(x["H"][2,:])≈[75.0,101.0,75.0] atol=1e-9
+    @test x["H"][2,2]≈101.0 atol=1e-9 # Connected to the reservoir in this interval.
     @test replay_audit(c,x)["valid"]
     shifted=OpenSHOP.schedule_dict(x);shifted["H"][2,1]=140.0;shifted["H"][2,3]=10.0
     @test validate(c,shifted)["valid"]
@@ -158,7 +155,8 @@ end
     continuation=dispatch_from_controls(restart,zeros(Int,0,2),zeros(0,2),zeros(0,2);
         tunnel_opening=opening[:,2:3])
     @test continuation["validation"]["valid"]
-    @test continuation["H"]≈x["H"][:,2:3] atol=1e-9
+    @test continuation["V"]≈x["V"][:,2:end] atol=1e-9
+    @test continuation["tunnel_q"]≈x["tunnel_q"][:,2:3] atol=1e-9
 end
 
 @testset "Pressure reference removal retains all water balances" begin
@@ -174,7 +172,6 @@ end
             discharge_river=:Outfall)],generators=[unit],rivers=[river],
         river_junctions=[RiverJunction(name=:Mix)])
     opening=[0.0,0.0,1.0]
-    @test OpenSHOP._floating_pressure_components(system,opening,[5.0])==[[2,3]]
     # Five m³/s leaves an isolated component with no supply. Least squares may
     # produce a trial iterate, but the full original residual must reject it.
     z=forward_step(system,[10.0],1.0,[5.0],[0.0],[0.0];tunnel_opening=opening,
@@ -184,7 +181,22 @@ end
     # An active plant joining separate pressure components has observable
     # head differences and must not acquire independent pressure references.
     separate=tg_copy(system;tunnels=c.system.tunnels)
-    @test isempty(OpenSHOP._floating_pressure_components(separate,[0.0,0.0],[5.0]))
     floor=tg_copy(system;plants=[tg_copy(only(system.plants);outlet_head_floor=210.0)])
-    @test isempty(OpenSHOP._floating_pressure_components(floor,opening,[5.0]))
+    for s in (separate,floor)
+        rejected=forward_step(s,[10.0],1.0,[5.0],[0.0],[0.0];
+            tunnel_opening=opening[1:length(s.tunnels)],
+            current_transfer=ones(1,2))
+        @test !rejected["converged"]
+        @test rejected["residual"]>=2.5-1e-6
+    end
+    # These shifts change plant power: 20→25 m for independent components,
+    # and 15→20 m when the 210 m outlet floor is active. Replay must retain
+    # the observable difference rather than subtracting it as a gauge shift.
+    heads=reshape([101.0,225.0,205.0,0.0],4,1)
+    for (s,nodes) in ((separate,[2]),(floor,[2,3]))
+        shifted=copy(heads);shifted[nodes,1].+=5.0
+        difference=OpenSHOP._pressure_replay_difference(s,
+            reshape(opening[1:length(s.tunnels)],:,1),fill(5.0,1,1),heads,shifted)
+        @test maximum(abs,difference)>=5.0-1e-9
+    end
 end

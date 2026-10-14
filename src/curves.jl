@@ -69,12 +69,21 @@ function _hermite_value(x, y, m, z, i)
     (2t^3-3t^2+1)*y[i]+(t^3-2t^2+t)*h*m[i]+(-2t^3+3t^2)*y[i + 1]+(t^3-t^2)*h*m[i + 1]
 end
 
-"""Rectangular turbine efficiency data, with rows for discharge and columns
-for head. Efficiency is bilinear; qmin/qmax are linear in head. The discharge
-grid must cover the envelope, but may include non-operating points used to
-define the numerical extension. Units: m, m³/s, dimensionless efficiency.
-Operating head extrapolation requires `head_extrapolation=:linear`; the default
-`:error` requires supplied head knots to cover the unit's operating head range.
+"""Rectangular turbine efficiency data, with discharge rows and head columns.
+
+Units are m, m³/s and efficiency fractions. `qmin` and `qmax` give the operating
+envelope independently of the efficiency knots. `discharge_extrapolation=:linear`
+permits an envelope outside those knots, using the end secants for efficiency.
+The default `:error` requires efficiency data to cover the operating discharges.
+
+For two or more heads, `head_extrapolation=:error` requires coverage of the
+unit's operating head range; `:linear` permits end-secant continuation. A single
+reference head requires `:constant`, declaring efficiency and the discharge
+envelope independent of head. Power still uses the actual hydraulic head.
+
+Raw lookup APIs reject out-of-table coordinates unless `extrapolation=:linear`
+is requested. A declared single-head constant response has no lookup head limit.
+No calibration knots or operating limits are fitted, added or clipped.
 """
 struct TurbineTable
     heads::Vector{Float64}
@@ -84,6 +93,7 @@ struct TurbineTable
     qmax::Vector{Float64}
     interpolation::Symbol
     head_extrapolation::Symbol
+    discharge_extrapolation::Symbol
     discharge_slopes::Matrix{Float64}
     function TurbineTable(
         heads,
@@ -93,29 +103,43 @@ struct TurbineTable
         qmax;
         interpolation = :bilinear,
         head_extrapolation = :error,
+        discharge_extrapolation = :error,
     )
         hh=Float64.(heads)
         qq=Float64.(discharge)
-        ee=Matrix{Float64}(efficiency)
+        ee=efficiency isa AbstractVector ? reshape(Float64.(efficiency), :, 1) :
+            Matrix{Float64}(efficiency)
         lo=Float64.(qmin)
         hi=Float64.(qmax)
-        TableCurve(hh, lo)
-        TableCurve(hh, hi)
+        !isempty(hh) && length(lo)==length(hi)==length(hh) &&
+            all(isfinite,hh) && all(i->hh[i]<hh[i+1], 1:(length(hh)-1)) &&
+            all(isfinite,lo) && all(isfinite,hi) ||
+            throw(ArgumentError("turbine heads and envelope need paired finite increasing data"))
         TableCurve(qq, zeros(length(qq)))
         size(ee)==(length(qq), length(hh)) ||
             throw(ArgumentError("turbine efficiency rows must be discharge, columns head"))
-        all(isfinite, ee) && all(0 .< ee .<= 1) ||
+        all(x->0<x<=1, ee) ||
             throw(ArgumentError("turbine efficiency must be finite in (0,1]"))
         first(hh)>0 && first(qq)>=0 ||
             throw(ArgumentError("turbine heads must be positive and discharge nonnegative"))
-        all(first(qq) .<= lo .<= hi .<= last(qq)) ||
-            throw(ArgumentError("turbine discharge envelope exceeds table domain"))
+        all(i->0<=lo[i]<=hi[i], eachindex(lo,hi)) ||
+            throw(ArgumentError("turbine discharge envelope must be nonnegative and ordered"))
         interpolation in (:bilinear, :pchip_discharge) ||
             throw(ArgumentError("unsupported turbine interpolation"))
-        head_extrapolation in (:error, :linear) ||
-            throw(ArgumentError("turbine head extrapolation must be :error or :linear"))
+        if length(hh)==1
+            head_extrapolation==:constant ||
+                throw(ArgumentError("a single turbine head requires head_extrapolation=:constant"))
+        else
+            head_extrapolation in (:error, :linear) ||
+                throw(ArgumentError("multiple turbine heads require :error or :linear extrapolation"))
+        end
+        discharge_extrapolation in (:error, :linear) ||
+            throw(ArgumentError("turbine discharge extrapolation must be :error or :linear"))
+        discharge_extrapolation==:linear ||
+            all(i->first(qq)<=lo[i]<=hi[i]<=last(qq), eachindex(lo,hi)) ||
+            throw(ArgumentError("turbine discharge envelope exceeds efficiency data; declare :linear extrapolation"))
         slopes=hcat([_pchip_slopes(qq, ee[:, j]) for j in eachindex(hh)]...)
-        new(hh, qq, ee, lo, hi, interpolation, head_extrapolation, slopes)
+        new(hh, qq, ee, lo, hi, interpolation, head_extrapolation, discharge_extrapolation, slopes)
     end
 end
 TurbineTable(;
@@ -126,6 +150,7 @@ TurbineTable(;
     qmax,
     interpolation = :bilinear,
     head_extrapolation = :error,
+    discharge_extrapolation = :error,
 ) = TurbineTable(
     heads,
     discharge,
@@ -134,13 +159,22 @@ TurbineTable(;
     qmax;
     interpolation,
     head_extrapolation,
+    discharge_extrapolation,
 )
+
+function _turbine_head_weights(c::TurbineTable, h, extrapolation)
+    isfinite(h) || throw(DomainError(h, "turbine head must be finite"))
+    extrapolation in (:error, :linear) ||
+        throw(ArgumentError("extrapolation must be :error or :linear"))
+    length(c.heads)==1 && return (1, 1, zero(h))
+    j=_curve_segment(c.heads,h,extrapolation)
+    (j, j+1, (h-c.heads[j])/(c.heads[j+1]-c.heads[j]))
+end
 
 function turbine_efficiency(c::TurbineTable, q, h; extrapolation = :error)
     i=_curve_segment(c.discharge, q, extrapolation)
-    j=_curve_segment(c.heads, h, extrapolation)
+    j,k,b=_turbine_head_weights(c,h,extrapolation)
     a=(q-c.discharge[i])/(c.discharge[i + 1]-c.discharge[i])
-    b=(h-c.heads[j])/(c.heads[j + 1]-c.heads[j])
     if c.interpolation==:pchip_discharge && first(c.discharge)<=q<=last(c.discharge)
         left=_hermite_value(
             c.discharge,
@@ -151,8 +185,8 @@ function turbine_efficiency(c::TurbineTable, q, h; extrapolation = :error)
         )
         right=_hermite_value(
             c.discharge,
-            view(c.efficiency, :, j+1),
-            view(c.discharge_slopes, :, j+1),
+            view(c.efficiency, :, k),
+            view(c.discharge_slopes, :, k),
             q,
             i,
         )
@@ -160,12 +194,12 @@ function turbine_efficiency(c::TurbineTable, q, h; extrapolation = :error)
     end
     (1-a)*(1-b)*c.efficiency[i, j]+a*(1-b)*c.efficiency[i + 1, j]+(1-a)*b*c.efficiency[
         i,
-        j + 1,
-    ]+a*b*c.efficiency[i + 1, j + 1]
+        k,
+    ]+a*b*c.efficiency[i + 1, k]
 end
 function _head_envelope(c::TurbineTable, values, h, extrapolation)
-    j=_curve_segment(c.heads, h, extrapolation)
-    values[j]+(h-c.heads[j])*(values[j + 1]-values[j])/(c.heads[j + 1]-c.heads[j])
+    j,k,b=_turbine_head_weights(c,h,extrapolation)
+    values[j]+b*(values[k]-values[j])
 end
 turbine_qmin(c::TurbineTable, h; extrapolation = :error) =
     _head_envelope(c, c.qmin, h, extrapolation)
@@ -195,6 +229,9 @@ turbine_operator(m, c::TurbineTable; name = gensym(:turbine)) = JuMP.add_nonline
     (q, h)->turbine_efficiency(c, q, h; extrapolation = :linear);
     name,
 )
+
+turbine_flow_operator(m, c::TurbineTable, values; name=gensym(:turbine_flow)) =
+    JuMP.add_nonlinear_operator(m,1,h->_head_envelope(c,values,h,:linear);name)
 
 """Convert shaft MW to electrical MW using a table indexed by electrical MW.
 

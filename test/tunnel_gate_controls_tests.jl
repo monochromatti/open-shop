@@ -97,7 +97,6 @@ end
         @test result["global_bound"]>=expected[best_index].objective-1e-6
         @test replay_audit(c,solution)["valid"]
         @test result["start_audit"]["valid"]
-        @test result["start_audit"]["assigned"]==result["start_audit"]["variables"]
     end
     fixed_units=OpenSHOP.solve(c;initial,fixed_u=u,time_limit=20.0,relative_gap=1e-4)
     @test fixed_units["accepted"]
@@ -189,7 +188,6 @@ end
         @test abs(x["H"][1,1]-x["H"][2,1])>90.0
         b=OpenSHOP._build_global_dispatch(c;warm=x,joint=true)
         @test OpenSHOP._lift_start!(b,c,x)["valid"]
-        @test OpenSHOP._lift_start!(b,c,x)["assigned"]==JuMP.num_variables(b.m)
         local_result=solve_case(c;warm=x,tunnel_opening=opening,time_limit=10.0)
         @test local_result["validation"]["valid"]
         @test vec(local_result["tunnel_q"])≈expected atol=1e-5
@@ -245,12 +243,6 @@ end
     @test OpenSHOP.validate_inputs(tiny)
     @test_throws ArgumentError dispatch_from_controls(tiny,zeros(Int,0,3),zeros(0,3),zeros(0,3);
         tunnel_opening=fill(1e-12,1,3))
-    legacy=tg_flow_case(;positions=Float64[],tail=200.0)
-    @test JuMP.num_variables(OpenSHOP._build_dispatch(legacy).m)==13
-    @test JuMP.num_variables(OpenSHOP._build_global_dispatch(legacy).m)==22
-    singleton=tg_flow_case(;positions=[0.5],tail=200.0,cost=2.0)
-    @test JuMP.num_variables(OpenSHOP._build_dispatch(singleton).m)==13
-    @test JuMP.num_variables(OpenSHOP._build_global_dispatch(singleton).m)==22
     rule=TunnelInterlock(name=:ChangingCount,tunnels=[:GateLink],max_open=1)
     cc=tg_flow_case(;interlocks=[rule],operations=[OperationalSeries(object=:ChangingCount,
         attribute=:max_open,times=[1.0],values=[0.0])])

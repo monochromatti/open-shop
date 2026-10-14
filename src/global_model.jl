@@ -418,9 +418,11 @@ function _build_global_dispatch(
         qlograph=qhigraph=nothing
         if g.turbine_table!==nothing
             table=g.turbine_table
-            qlograph=_global_tensor_table_graph!(m,TableCurve(table.heads,table.qmin),hd,hlo,hhi;
+            qlograph=_global_tensor_table_graph!(m,table.heads,
+                h->_head_envelope(table,table.qmin,h,:linear),hd,hlo,hhi;
                 name=Symbol("qlo_",i,"_",t))
-            qhigraph=_global_tensor_table_graph!(m,TableCurve(table.heads,table.qmax),hd,hlo,hhi;
+            qhigraph=_global_tensor_table_graph!(m,table.heads,
+                h->_head_envelope(table,table.qmax,h,:linear),hd,hlo,hhi;
                 name=Symbol("qhi_",i,"_",t))
             qlo,qhi=qlograph.y,qhigraph.y
             flow_margin=operational_margin/(

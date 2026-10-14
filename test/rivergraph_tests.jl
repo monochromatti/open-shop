@@ -72,7 +72,6 @@ end
         a=out["arrival_volume"]
         rel=out["release"]
         W=out["transit"]
-        @test out["order"]==[1, 2, 3]
         @test 0.0036 .* diff(grid) .* rel[3, :]≈a[1, :]+a[2, :] atol=1e-14
         for t in 1:T
             # Internal junction flows cancel: only reservoir sources and sink

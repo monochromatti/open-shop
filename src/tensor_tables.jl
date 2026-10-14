@@ -70,9 +70,9 @@ function _global_tensor_coordinate_weights(nodes,x)
     weights
 end
 
-function _global_tensor_table_graph!(m,c::TableCurve,x,lo,hi;name=gensym(:tensor_table))
-    coord=_global_tensor_coordinate!(m,x,_global_tensor_nodes(c.x,lo,hi);name)
-    values=[table_value(c,z;extrapolation=:linear) for z in coord.nodes]
+function _global_tensor_table_graph!(m,grid,evaluate,x,lo,hi;name=gensym(:tensor_table))
+    coord=_global_tensor_coordinate!(m,x,_global_tensor_nodes(grid,lo,hi);name)
+    values=[evaluate(z) for z in coord.nodes]
     all(isfinite,values) || throw(ArgumentError("tensor table extension bounds overflow"))
     y=@variable(m,lower_bound=minimum(values),upper_bound=maximum(values),base_name=string(name))
     @constraint(m,y==sum(values[i]*coord.weights[i] for i in eachindex(values)))
@@ -81,6 +81,9 @@ function _global_tensor_table_graph!(m,c::TableCurve,x,lo,hi;name=gensym(:tensor
     graph
 end
 
+_global_tensor_table_graph!(m,c::TableCurve,x,lo,hi;kwargs...) =
+    _global_tensor_table_graph!(m,c.x,z->table_value(c,z;extrapolation=:linear),x,lo,hi;kwargs...)
+
 _global_tensor_table!(args...;kwargs...) = _global_tensor_table_graph!(args...;kwargs...).y
 
 # Coefficients in the local [0,1] discharge coordinate at a supplied head.
@@ -88,11 +91,10 @@ _global_tensor_table!(args...;kwargs...) = _global_tensor_table_graph!(args...;k
 function _global_tensor_polynomial(c,ql,qr,h)
     qm=ql+(qr-ql)/2
     i=_curve_segment(c.discharge,qm,:linear)
-    j=_curve_segment(c.heads,h,:linear)
+    j,k,u=_turbine_head_weights(c,h,:linear)
     cubic=c.interpolation==:pchip_discharge && first(c.discharge)<=qm<=last(c.discharge)
     a=_global_discharge_coefficients(c,i,j,cubic)
-    b=_global_discharge_coefficients(c,i,j+1,cubic)
-    u=(h-c.heads[j])/(c.heads[j+1]-c.heads[j])
+    b=_global_discharge_coefficients(c,i,k,cubic)
     coefficients=ntuple(k->a[k]+u*(b[k]-a[k]),4)
     dq=c.discharge[i+1]-c.discharge[i]
     _global_shift_polynomial(coefficients,(ql-c.discharge[i])/dq,(qr-ql)/dq)

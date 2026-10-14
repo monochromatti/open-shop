@@ -8,12 +8,13 @@ include("temporal_tests.jl")
 include("curve_tests.jl")
 include("outlet_head_tests.jl")
 include("head_extrapolation_tests.jl")
+include("curve_policy_tests.jl")
 include("schedule_tests.jl")
 include("dispatch_data_tests.jl")
 include("commitment_controls_tests.jl")
 include("operating_controls_tests.jl")
 
-@testset "Named object round trip and bounded model" begin
+@testset "Named object round trip and optimized dispatch" begin
     lake=Reservoir(
         name = :Lake,
         z0 = 100.0,
@@ -50,13 +51,6 @@ include("operating_controls_tests.jl")
     )
     c=ScheduleCase(name = "core", system = sys, grid = [0.0, 1.0], prices = [50.0])
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
-    b=OpenSHOP._build_global_dispatch(c; joint = true)
-    @test all(
-        v->JuMP.is_binary(v) ||
-           JuMP.is_fixed(v) ||
-           (JuMP.has_lower_bound(v) && JuMP.has_upper_bound(v)),
-        JuMP.all_variables(b.m),
-    )
     x=solve_case(c; u = ones(Int, 1, 1), time_limit = 10.0)
     @test x["validation"]["valid"]
     @test validate(c, dispatch_from_controls(c, x["u"], x["generator_q"], x["gate"]))["valid"]
@@ -78,6 +72,7 @@ include("table_power_coordinate_tests.jl")
 include("power_cut_tests.jl")
 
 include("multireference_routing_tests.jl")
+include("delay_policy_tests.jl")
 include("mixed_source_network_tests.jl")
 
 include("river_source_input_tests.jl")

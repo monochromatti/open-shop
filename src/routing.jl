@@ -55,6 +55,13 @@ function check_grid(grid)
     nothing
 end
 
+"""Check the strict coverage policy for delay responses.
+
+With `capacity`, a multi-curve reach must span zero through that capacity. There
+is no inferred zero-flow distribution. A single curve declares a response
+independent of flow. Without `capacity`, raw routing may use the supplied
+positive reference range, but still rejects releases outside it.
+"""
 function check_curves(curves; capacity=nothing)
     !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
     all(diff([c.reference_flow for c in curves]) .> 0) || throw(ArgumentError("reference flows must be strictly increasing"))

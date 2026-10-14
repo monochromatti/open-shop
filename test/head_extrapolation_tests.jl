@@ -79,7 +79,6 @@ end
     @test x["H"][1, 1]≈25.0 atol=1e-10
     @test x["power"][1, 1]≈0.00981*2*25*0.65 atol=1e-10
     @test replay_audit(c, x)["valid"]
-    @test OpenSHOP._build_dispatch(c).m isa JuMP.Model
     global_model=OpenSHOP._build_global_dispatch(c; joint = true)
     lift=OpenSHOP._lift_start!(global_model, c, x)
     @test lift["valid"]

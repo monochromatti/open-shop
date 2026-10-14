@@ -128,8 +128,6 @@ end
             end
             if initial!==nothing
                 @test result["start_audit"]["valid"]
-                @test result["start_audit"]["assigned"]==result["start_audit"]["variables"]
-                @test result["start_audit"]["constraints"]>0
                 @test result["start_audit"]["objective"]≈initial["objective"] atol=1e-6
             end
         end

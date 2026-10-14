@@ -2,6 +2,19 @@
 # Directed outfalls transport water; their hydraulic targets supply head only.
 water_incidence(x, node) = Int(x.discharge_river===nothing && x.target==node)-Int(x.source==node)
 
+"""Require distributed reach calibration to cover zero through capacity.
+
+A single curve declares a flow-independent response. Raw routing functions may
+instead work on a smaller supplied reference domain, but a model reach may not.
+"""
+function validate_delay_curves(s::HydroSystem)
+    for r in s.rivers
+        r.deterministic_delay===nothing && !is_channel(r) &&
+            RiverRouting.check_curves(r.curves; capacity=r.capacity)
+    end
+    nothing
+end
+
 function river_source_indices(s)
     plants=Dict(p.name=>p.discharge_river for p in s.plants)
     (
