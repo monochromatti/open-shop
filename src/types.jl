@@ -158,6 +158,9 @@ A routed reach with flow in m³/s, travel time in hours and inventory in Mm³.
 `source` names a reservoir or explicit river confluence. A direct river
 connection uses the upstream `target` to name the downstream reach, whose
 `source` is `:auto`; `ScheduleCase` resolves these connections during construction. Plants and tunnels can feed a reach through `discharge_river`.
+A shared source/target label also defines an internal zero-storage river node.
+At a split, each outgoing reach supplies its `allocation` fraction of upstream
+arrivals; fractions sum to one. Local inflow and outfalls enter after allocation.
 Supply `deterministic_delay` and `curves=[]` for a fixed travel time, or
 `curves` for distributed responses. Reservoir outlets use the selected
 `law`; a `:delta` channel instead exchanges water instantaneously according to
@@ -167,6 +170,7 @@ Base.@kwdef struct River
     name::Symbol
     source::Symbol = :auto
     target::Symbol
+    allocation::Float64 = 1.0 # prescribed share of arrivals at a zero-storage river node
     curves::Vector{RiverRouting.DelayCurve}
     capacity::Float64
     inflow::Float64 = 0.0 # natural water entering the top of this reach

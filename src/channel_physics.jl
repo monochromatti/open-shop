@@ -34,8 +34,10 @@ end
 # Sign-aware domains are shared by routing and independent physics. Ordinary
 # downstream reaches retain nonnegative release and transport-cohort semantics.
 river_flow_lower(r, capacity, inflow=0.0) = is_channel(r) ? -capacity : inflow
-river_flow_valid(r, q; tolerance=1e-10) = isfinite(q) &&
-    river_flow_lower(r,r.capacity)-tolerance<=q<=r.capacity+tolerance
+# Physical capacity checks allow solver-scale roundoff in m³/s. Keep the actual
+# flow; residual reporting measures the excess rather than clipping the water.
+river_flow_valid(r, q; capacity=r.capacity, tolerance=1e-6) = isfinite(q) &&
+    river_flow_lower(r,capacity)-tolerance<=q<=capacity+tolerance
 
 function _check_river_releases(r, grid, q)
     RiverRouting.check_grid(grid)

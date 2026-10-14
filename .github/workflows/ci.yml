@@ -35,3 +35,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/tunnel_gates.jl
       - name: Run the single-head turbine example
         run: julia --pkgimages=no --project=. examples/turbine_tables.jl
+      - name: Run the prescribed river-split example
+        run: julia --pkgimages=no --project=. examples/river_splits.jl

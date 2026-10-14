@@ -326,7 +326,7 @@ $q_(p t)>=underline(q)_(p t) U_(p t)$.
 
 = Outlets and river transport
 
-== Entry laws and confluences
+== Entry laws, confluences and splits
 
 A river _reach_ is a link with a defined entry and downstream destination.
 For a reach fed by a reservoir outlet, total entry is
@@ -350,17 +350,23 @@ The reservoir loses $d=R-n$. Natural reach inflow enters the river directly
 and must not be subtracted from reservoir storage.
 
 #block(breakable: false)[
-At a confluence, water arriving from upstream reaches joins natural inflow
-and any plant or tunnel outfalls. Let $L_(r t)$ collect these local injections:
+At a zero-storage river node, incoming water is distributed among outgoing
+reaches with prescribed shares $alpha_r$. Local natural inflow and plant or
+tunnel outfalls enter each branch after this allocation. Let $L_(r t)$ collect
+these local injections:
 
 $ L_(r t) = n_(r t) + sum_(g -> r) q_(g t) + sum_(e -> r) Q_(e t), quad
-  R_(r t) = L_(r t) + sum_(s -> r) frac(A_(s t), kappa Delta_t). $ <eq:confluence>
+  R_(r t) = L_(r t) + alpha_r sum_(s -> r) frac(A_(s t), kappa Delta_t). $ <eq:confluence>
 ]
 
-The notation $g->r$, $e->r$ and $s->r$ identifies connections into reach $r$.
-A confluence may have several incoming reaches and one outgoing reach.
-All incoming water enters that outgoing reach. Delayed reaches form a
-directed acyclic network, which lets us propagate arrivals in upstream order.
+Here $g->r$ and $e->r$ identify local outfalls, while $s->r$ identifies
+reaches arriving at the source node of $r$. At every zero-storage node,
+$0<=alpha_r<=1$ and the outgoing shares sum to one. These supplied constants
+hold throughout the horizon. A confluence with one outgoing reach has
+$alpha_r=1$. A 40% branch receiving 5 m³/s upstream and 1 m³/s locally
+carries 3 m³/s. Its capacity must accommodate both sources; spare capacity
+on another branch cannot change the prescribed split. Delayed reaches form
+a directed acyclic network, so we propagate arrivals in upstream order.
 Tunnels and instantaneous channels may form loops.
 
 == Release cohorts and travel-time responses
@@ -429,17 +435,19 @@ volumes directly would give a different travel response.
 #block(breakable: false)[
 When all reaches have fixed travel times $delta_r>=0$, we propagate the
 piecewise-constant entry stream $tilde(R)_r (s)$ through the network. Each
-reach shifts its stream by its delay. At a confluence, the shifted upstream
-streams are added:
+reach shifts its stream by its delay. At a river node, each outgoing stream
+receives its share of the shifted upstream streams:
 
 $ f_r (s) = tilde(R)_r (s - delta_r), quad
-  tilde(R)_r (s) = L_r (s) + sum_(s' -> r) f_(s') (s), \
+  tilde(R)_r (s) = L_r (s) + alpha_r sum_(s' -> r) f_(s') (s), \
   A_(r t) = kappa integral_(tau_t)^(tau_(t+1)) f_r (s) dif s. $ <eq:deterministic>
 ]
 
-The confluence relation applies for $s>=0$. At a reservoir source,
+The allocation relation applies for $s>=0$. At a reservoir source,
 $tilde(R)_r (s)=n_(r t)+d_(r t)$ on $[tau_t,tau_(t+1))$.
-For $s<0$, it is the independently supplied entry history of that reach.
+For $s<0$, it is the independently supplied entry history of that reach,
+already allocated to its branch. Upstream historical water arriving at a node
+after zero is allocated once, on entry to the outgoing reaches.
 Interval entry variables are the averages of these streams:
 
 $ R_(r t) = frac(1, Delta_t) integral_(tau_t)^(tau_(t+1)) tilde(R)_r (s) dif s. $ <eq:eventmean>

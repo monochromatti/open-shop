@@ -15,6 +15,33 @@ function validate_delay_curves(s::HydroSystem)
     nothing
 end
 
+"""Check prescribed shares of upstream water at every zero-storage river node.
+
+Local branch injections and historical branch cohorts are already on that branch.
+Fractions are retained exactly as supplied, with a 1e-12 tolerance on their sum.
+"""
+function validate_river_allocations(s::HydroSystem)
+    physical=Set(nodes(s))
+    junctions=Set(j.name for j in s.river_junctions)
+    for r in s.rivers
+        isfinite(r.allocation) && 0<=r.allocation<=1 ||
+            throw(ArgumentError("$(r.name): allocation must be finite and in [0,1]"))
+        r.allocation==1 || r.law==:junction && !(r.source in physical) ||
+            throw(ArgumentError("$(r.name): allocation applies only to zero-storage river sources"))
+        r.source in junctions && r.law!=:junction &&
+            throw(ArgumentError("$(r.name): a river-node source requires the junction law"))
+    end
+    groups=Dict{Symbol,Vector{Float64}}()
+    for r in s.rivers
+        r.law==:junction && push!(get!(Vector{Float64},groups,r.source),r.allocation)
+    end
+    for (node,fractions) in groups
+        isapprox(sum(fractions),1.0;atol=1e-12,rtol=1e-12) ||
+            throw(ArgumentError("river node $(river_node_name(node)): outgoing allocations must sum to one"))
+    end
+    nothing
+end
+
 function river_source_indices(s)
     plants=Dict(p.name=>p.discharge_river for p in s.plants)
     (
@@ -67,11 +94,11 @@ end
 # matrix also drives the exact routing operator and chronological reconstruction.
 function constrain_river_sources!(m,c,release,arrivals,injections)
     for j in c.system.river_junctions
-        outgoing=only(findall(r->r.source==j.name,c.system.rivers))
+        outgoing=findall(r->r.source==j.name,c.system.rivers)
         incoming=findall(r->r.target==j.name,c.system.rivers)
-        for t in eachindex(c.prices)
-            @constraint(m,(0.0036*(c.grid[t+1]-c.grid[t])*(release[outgoing,t]-injections[outgoing,t])-
-                sum(arrivals[d,t] for d in incoming;init=0.0))/0.3==0)
+        for r in outgoing, t in eachindex(c.prices)
+            @constraint(m,(0.0036*(c.grid[t+1]-c.grid[t])*(release[r,t]-injections[r,t])-
+                c.system.rivers[r].allocation*sum(arrivals[d,t] for d in incoming;init=0.0))/0.3==0)
         end
     end
     nothing

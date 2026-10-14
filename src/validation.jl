@@ -43,6 +43,13 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         return finish()
     end
     T=length(c.prices)
+    try
+        validate_river_allocations(s)
+    catch error
+        residuals["river_allocation"]=Inf
+        push!(errors,"invalid river allocation: "*sprint(showerror,error))
+        return finish()
+    end
     dt=diff(c.grid)
     R=length(s.reservoirs)
     G=length(s.generators)
@@ -350,12 +357,15 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         end
     end
     for j in s.river_junctions
-        outgoing=only(findall(r->r.source==j.name, s.rivers))
+        outgoing=findall(r->r.source==j.name, s.rivers)
         incoming=findall(r->r.target==j.name, s.rivers)
-        record(
-            "river_junction_$(j.name)",
-            0.0036 .* dt .* (RQ[outgoing, :]-injections[outgoing,:])-vec(sum(A[incoming, :]; dims = 1)),
-        )
+        for r in outgoing
+            record(
+                "river_allocation_$(s.rivers[r].name)",
+                0.0036 .* dt .* (RQ[r, :]-injections[r,:])-
+                    s.rivers[r].allocation .* vec(sum(A[incoming, :]; dims = 1)),
+            )
+        end
     end
     for name in nodes(s)[1:(R + length(s.junctions))]
         net=zeros(T)
