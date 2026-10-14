@@ -11,10 +11,51 @@ generator_efficiency(g::Generator, p; extrapolation = :linear) =
     g.generator_efficiency_curve===nothing ? one(p) :
     table_value(g.generator_efficiency_curve, p; extrapolation)
 function power(g::Generator, q, h; extrapolation = :linear)
+    unit_power_sign(g)
+    g.mode==:pump && g.generator_efficiency_curve!==nothing && throw(ArgumentError(
+        "$(g.name): pumping requires constant motor efficiency"))
     q==0 && return zero(q*h)
+    g.mode==:pump && return 0.00981*q*h/(
+        efficiency(g,q,h;extrapolation)*g.motor_efficiency)
     shaft=0.00981*q*h*efficiency(g, q, h; extrapolation)
     g.generator_efficiency_curve===nothing ? shaft :
     electrical_power(g.generator_efficiency_curve, shaft; extrapolation)
+end
+
+unit_power_sign(g::Generator) = g.mode==:generate ? 1.0 : g.mode==:pump ? -1.0 :
+    throw(ArgumentError("$(g.name): unit mode must be :generate or :pump"))
+
+# Plant endpoints follow actual water motion. Pump work adds the path's loss
+# to the destination-minus-intake head; generation subtracts that loss.
+unit_head(g::Generator,p::Plant,source,target,total_q) =
+    unit_power_sign(g)*(source-outlet_head(p,target)-tailwater(p,total_q))
+
+# Nominal MW per m³/s converts the existing operating/replay flow margins.
+function unit_reference_power_slope(g::Generator)
+    eta=max(g.min_efficiency,g.efficiency,eps(Float64))
+    g.mode==:pump ? 0.00981*g.hbest/(eta*g.motor_efficiency) : 0.00981*g.hbest*eta
+end
+
+function validate_unit_modes(s::HydroSystem)
+    for g in s.generators
+        unit_power_sign(g)
+        isfinite(g.motor_efficiency) && 0<g.motor_efficiency<=1 ||
+            throw(ArgumentError("$(g.name): motor efficiency must be in (0,1]"))
+        if g.mode==:pump
+            g.hmin>0 || throw(ArgumentError("$(g.name): pumping requires positive operating head"))
+            g.generator_efficiency_curve===nothing || throw(ArgumentError(
+                "$(g.name): pumping currently supports constant motor efficiency, not electrical efficiency curves"))
+        else
+            g.motor_efficiency==1 || throw(ArgumentError(
+                "$(g.name): motor_efficiency applies only to pumps"))
+        end
+    end
+    for p in s.plants
+        modes=unique(g.mode for g in s.generators if g.plant==p.name)
+        length(modes)<=1 || throw(ArgumentError(
+            "$(p.name): each plant must contain one unit mode; use oppositely connected plants for reversible modes"))
+    end
+    nothing
 end
 tailwater(p::Plant, q; extrapolation = :linear) =
     p.tailwater_curve===nothing ? zero(q) : table_value(p.tailwater_curve, q; extrapolation)

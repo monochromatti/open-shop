@@ -1,7 +1,7 @@
 # OpenSHOP
 
 A Julia library for nonlinear hydropower scheduling on connected watercourses.
-It models reservoirs, generating units, shared pressure networks, gates,
+It models reservoirs, generating and pumping units, shared pressure networks, gates,
 instantaneous channels and delayed rivers. SCIP searches the mixed-integer
 nonlinear model; an independent chronological simulator checks the controls.
 
@@ -57,6 +57,7 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [station operating rules](examples/operating_rules.jl),
 [many-to-one river connections](examples/mixed_source_network.jl),
 [prescribed river splits](examples/river_splits.jl),
+[pumped-storage arbitrage](examples/pumped_storage.jl),
 [signed channels](examples/level_channels.jl) and
 [discrete tunnel gates](examples/tunnel_gates.jl).
 [Directional handovers](examples/directional_interlocks.jl) keep a station off
@@ -66,11 +67,14 @@ case from an external public dataset; upstream data are not bundled.
 
 ## Scope
 
-Generation is deterministic. Head–storage relationships, signed quadratic
+Scheduling is deterministic. Head–storage relationships, signed quadratic
 pressure losses, turbine and electrical efficiencies, finite gate choices,
 commitment, schedules, directional ramps, environmental requirements and river
 transit are explicit parts of the model. Constitutive functions must be supplied
-and calibrated. Pumping, reserve markets, stochastic scenarios, river geometry
+and calibrated. Pumps use hydraulic efficiency data and constant motor efficiency;
+reversible mode groups explicitly exclude simultaneous operation. See
+[pumping](docs/pumping.md) for the model and supported scope.
+Reserve markets, stochastic scenarios, river geometry
 and transient pressure dynamics are outside the current model.
 
 [Curve policies](docs/curves.md) explains single-head turbine data, explicit

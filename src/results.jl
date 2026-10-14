@@ -4,7 +4,9 @@
 A physical schedule in the case's object order. Storage has one column per
 grid vertex; rates, heads, power and commitment have one column per interval.
 Storage and river inventory are Mm³, discharge is m³/s, head is metres and
-power is MW. `diagnostics` contains validation and reporting data, not equations.
+power is a nonnegative production/consumption magnitude in MW. All unit arrays
+follow the common `HydroSystem.generators` order; [`net_power`](@ref) supplies
+signed electrical exchange. `diagnostics` contains reporting data, not equations.
 """
 struct Schedule{U<:AbstractMatrix}
     grid::Vector{Float64}

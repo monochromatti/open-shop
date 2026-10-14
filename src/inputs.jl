@@ -1,5 +1,7 @@
 function validate_inputs(c)
     s=c.system
+    validate_unit_modes(s)
+    commitment_exclusion_indices(c)
     for objects in (
         s.reservoirs,
         s.junctions,
@@ -8,6 +10,7 @@ function validate_inputs(c)
         s.tunnel_interlocks,
         s.plants,
         s.generators,
+        s.commitment_exclusions,
         s.river_junctions,
         s.rivers,
     )
@@ -29,6 +32,7 @@ function validate_inputs(c)
             s.tunnel_interlocks,
             s.plants,
             s.generators,
+            s.commitment_exclusions,
             s.river_junctions,
             s.rivers,
         ) for x in xs
@@ -117,7 +121,7 @@ function validate_inputs(c)
     end
     for g in s.generators
         plantof(s, g)
-        0<g.qmin<g.qmax && 0<g.pmin<g.pmax || error("Unit limits")
+        0<g.qmin<=g.qmax && 0<g.pmin<=g.pmax || error("Unit limits")
         g.qbest>0 && g.hbest>0 && g.hmin<=g.hmax && g.startup>=0 && g.shutdown>=0 ||
             error("Unit operating domain")
         0<=g.min_efficiency<=1 || error("Unit minimum efficiency must lie in [0,1]")

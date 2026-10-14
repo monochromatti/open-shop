@@ -115,12 +115,14 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
             if z.plant==plant.name;init=0.0) :
             sum(reference.generator_q[j,t] for (j,z) in enumerate(s.generators) if z.plant==plant.name;init=0.0)
         tail=tailwater(plant,tailref)
-        nethead=H[src,t]-receiver-tail
+        nethead=unit_power_sign(g)*(H[src,t]-receiver-tail)
         hlo,hhi=bounds[src,t][1]-rhi-tail,bounds[src,t][2]-rlo-tail
+        g.mode==:pump && ((hlo,hhi)=(-hhi,-hlo))
         onhead=_bounded_binary_product!(m,nethead,u[i,t],hlo,hhi;name="proposal_unit_head_$(i)_$(t)")
         href=reference_heads[i,t]
-        head_gain=0.00981*qref*efficiency(g,qref,href)*
-            generator_efficiency(g,power(g,qref,href))
+        head_gain=g.mode==:pump ? 0.00981*qref/(
+            efficiency(g,qref,href)*g.motor_efficiency) :
+            0.00981*qref*efficiency(g,qref,href)*generator_efficiency(g,power(g,qref,href))
         P[i,t]=alpha[i,t]*gq[i,t]+head_gain*(onhead-href*u[i,t])
     end
     P

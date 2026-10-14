@@ -75,7 +75,7 @@ function replay_audit(
         for g in c.system.generators
             violations["unit_power_$(g.name)"]=max(
                 get(violations, "unit_bounds_$(g.name)", 0.0),
-                0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))*get(
+                unit_reference_power_slope(g)*get(
                     violations,
                     "turbine_envelope_$(g.name)",
                     0.0,

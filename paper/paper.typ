@@ -7,7 +7,7 @@
   and delayed river networks
 ]
 #abstract-block[
-  Short-term hydropower scheduling must decide when to generate and how much
+  Short-term hydropower scheduling must decide when to generate or pump and how much
   water to release. The water available to downstream plants depends on
   earlier releases and river travel times. Reservoir levels and shared tunnel
   losses also affect the power obtained from each unit. We formulate the
@@ -41,7 +41,7 @@ equipment curves and operating limits as given. The optimizer chooses unit
 states, continuous unit discharges and outlet openings. It selects each
 adjustable tunnel position from a finite set. The associated volumes, flows,
 heads, river arrivals and electrical outputs must satisfy the equations
-below. We maximize generation revenue
+below. We maximize net electrical revenue
 less operating penalties, with a terminal value for the water left in the
 system.
 
@@ -50,7 +50,9 @@ and flows are in equilibrium within each scheduling interval while reservoir
 storage evolves over time. Tunnel inertia and water hammer are excluded.
 Discharge and travel-time response curves describe the rivers, without
 solving river momentum equations during scheduling. We do
-not include pumping, reserves or stochastic decisions.
+not include reserves or stochastic decisions. Pumps use supplied hydraulic
+efficiency functions and constant motor efficiency; generating and pumping
+modes retain separate positive flow and power magnitudes.
 
 The optimization uses nonlinear pressure-loss and power equations. Linear
 approximations provide initial discrete choices for the solution procedure
@@ -90,7 +92,7 @@ $0.036 "Mm"^3$ of water. We use the same conversion for net inflow in the reserv
 
 Let $cal(R)$, $cal(J)$ and
 $cal(B)$ index reservoirs, pressure junctions and prescribed-head boundaries.
-A node $n$ is any of these three. Tunnels, instantaneous channels, generating
+A node $n$ is any of these three. Tunnels, instantaneous channels, generating and pumping
 units and delayed river reaches have index sets $cal(E)$, $cal(C)$, $cal(G)$
 and $cal(D)$, respectively. The units at plant $p$ form $cal(G)_p$.
 @tab:variables lists the variables. Underlines and overlines denote supplied
@@ -106,11 +108,11 @@ lower and upper bounds.
     table.header([Variable], [Meaning], [Unit]),
     table.hline(stroke: 0.4pt),
     [$V_(i t), W_(r t)$], [Reservoir volume, river water in transit], [$"Mm"^3$],
-    [$H_(n t), h_(p t)$], [Node head, turbine net head], [m],
+    [$H_(n t), h_(p t)$], [Node head, effective generating head or pumping lift], [m],
     [$Q_(e t), X_(c t), q_(g t)$], [Tunnel, channel, unit discharge], [$"m"^3/"s"$],
     [$R_(r t), d_(r t)$], [Reach entry flow, reservoir withdrawal], [$"m"^3/"s"$],
     [$A_(r t)$], [Volume arriving from a delayed reach], [$"Mm"^3$],
-    [$P_(g t)$], [Electrical power], [MW],
+    [$P_(g t)$], [Positive production or consumption magnitude], [MW],
     [$u_(g t), U_(p t)$], [Unit and plant operating states], [${0, 1}$],
     [$b_(e t), a_(r t)$], [Tunnel position, reservoir outlet opening], [$[0, 1]$],
     table.hline(stroke: 0.7pt),
@@ -124,7 +126,9 @@ Let $F_(n t)$ be net flow into node $n$ from the modeled connections,
 excluding natural reservoir inflow $I_(i t)$. The matrices $B^E$, $B^C$ and
 $B^G$ record the tunnel, channel and unit connections. For a connection
 between nodes, its column is $-1$ at the source, $+1$ at the destination,
-and zero elsewhere. Negative discharge reverses these contributions.
+and zero elsewhere. Negative tunnel/channel discharge reverses these contributions.
+Unit endpoints always follow their actual water direction, so a pump withdrawing
+from the lower reservoir and delivering to the upper one uses nonnegative $q$.
 Arrival volumes from rivers and withdrawals into them give the remaining terms:
 
 $ F_(n t) = sum_e B_(n e)^E Q_(e t)
@@ -203,7 +207,7 @@ volume is generally different from the average of its endpoint values.
     the river, but B's present level already affects generation.],
 ) <fig:network>
 
-= Tunnel hydraulics and generation
+= Tunnel hydraulics and energy conversion
 
 == Tunnels and gates
 
@@ -252,17 +256,19 @@ the channel within the interval, without a separate transit inventory.
 
 Write $q_(p t)=sum_(g in cal(G)_p) q_(g t)$ and
 $P_(p t)=sum_(g in cal(G)_p) P_(g t)$ for plant totals. All units at a plant
-share the same net head:
+share the same effective head. Each plant has one operating mode, with
+$sigma_p=1$ for generation and $sigma_p=-1$ for pumping:
 
-$ h_(p t) = H_("source"(p),t)
+$ h_(p t) = sigma_p (H_("source"(p),t)
   - max{H_("target"(p),t), h_p^"floor"}
-  - T_p (q_(p t)). $ <eq:nethead>
+  - T_p (q_(p t))). $ <eq:nethead>
 
 The target head is the outlet reference in @fig:network. If an outlet-level
 floor is specified, the maximum in @eq:nethead enforces it. Otherwise we use
 the target head alone. Total plant discharge raises the tailwater by
 $T_p (q_(p t))>=0$. We model shared penstocks as tunnels, whose friction
-loss depends on the combined discharge of the units they supply.
+loss depends on the combined discharge of the units they supply. For pumping,
+@eq:nethead is destination head minus intake head plus the path loss.
 
 #block(breakable: false)[
 The binary state $u_(g t)$ selects an idle unit or its running range:
@@ -277,6 +283,19 @@ and electrical efficiencies:
 
 $ P_(g t) = gamma q_(g t) h_(p t)
   eta_g (q_(g t), h_(p t)) e_g (P_(g t)). $ <eq:power>
+
+For a pump, the hydraulic work is supplied by consumed electrical power.
+With constant motor efficiency $e_g^"motor" in (0,1]$, the equation is
+
+$ P_(g t) eta_g(q_(g t),h_(p t)) e_g^"motor"
+  = gamma q_(g t) h_(p t). $ <eq:pump>
+
+Lower efficiency therefore increases consumption. The same on/off and
+operating-domain constraints apply, with positive pumping lift required.
+Hydraulic efficiency tables retain their declared interpolation. Electrical
+motor-efficiency curves and fixed rotational-speed single-point pump
+characteristics are outside this formulation; equal supplied discharge bounds
+can instead describe a fixed-flow operating point.
 
 #block(breakable: false)[
 When $u_(g t)=1$, the unit must also satisfy head and efficiency limits and,
@@ -323,6 +342,18 @@ Plant limits apply to aggregate output and discharge:
 $P_(p t)<=overline(P)_(p t)$ and $q_(p t)<=overline(q)_(p t)$ when supplied,
 and $P_(p t)>=underline(P)_(p t) U_(p t)$,
 $q_(p t)>=underline(q)_(p t) U_(p t)$.
+
+A single reversible machine has generating and pumping mode records on
+oppositely connected plants. An exclusion consists of supplied groups of unit
+names. For any two different groups $K_a,K_b$, we require
+
+$ u_(i t)+u_(j t)<=1 quad (i in K_a, j in K_b, a!=b). $ <eq:modeexclusion>
+
+Parallel units within one group may run together. Initially running states
+must satisfy the same exclusion. Existing unit dwell histories, power and
+discharge histories carry into a restarted horizon without a separate pump
+state. Independently connected pumps and turbines may run simultaneously when
+no exclusion is supplied; shared ternary-machine characteristics are not modeled.
 
 = Outlets and river transport
 
@@ -646,12 +677,14 @@ wait in the continuation.
 #block(breakable: false)[
 = Economic objective
 
-Generation at price $pi_t$ per MWh earns $pi_t Delta_t P_(g t)$.
+Generation at price $pi_t$ per MWh earns $pi_t Delta_t P_(g t)$; pumping
+consumption incurs that amount. Let $sigma_g$ be the sign of the unit's plant
+mode. Net electrical exchange is $sum_g sigma_g P_(g t)$.
 Let $c^+,c^-$ be unit transition costs, $c^b$ nonnegative gate-movement costs,
 $c^r$ nonnegative release-shortfall costs, and $v_i,v_r$ the values assigned
 to water in reservoirs and reaches, per $"Mm"^3$. We maximize
 
-$ cal(V) = & sum_t pi_t Delta_t sum_g P_(g t)
+$ cal(V) = & sum_t pi_t Delta_t sum_g sigma_g P_(g t)
   - sum_(g,t) (c_(g t)^+ s_(g t)^+ + c_(g t)^- s_(g t)^-) \
   & - sum_(e,t) c_(e t)^b abs(b_(e t) - b_(e,t-1))
   - sum_(r,t) c_(r t)^r xi_(r t) \
@@ -885,7 +918,10 @@ these ranges. The bounds must hold for every admissible schedule.
 
 #block(breakable: false)[
 We omit unit and time indices in the following bounds.
-For a running unit with nonnegative $q,h,eta$, let $overline(e)$ bound its
+These strengthening rows apply only to generating modes. Pump rows retain
+the original bounded work equality @eq:pump, without applying generation
+supports to consumption.
+For a running generating unit with nonnegative $q,h,eta$, let $overline(e)$ bound its
 electrical efficiency. Then $p^"ub" (q,h)=gamma overline(e) q h eta(q,h)$
 is an upper bound on physical electrical power. It is polynomial within
 each interpolation cell even when @eq:power is implicit in $P$.

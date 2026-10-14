@@ -98,5 +98,6 @@ function _joint_states!(m,c;relaxed=false,fixed_u=nothing,free_mask=nothing,incu
             g.initial_on,g.minup,g.mindown)
     end
     plant_states=_plant_commitment_states!(m,c,u,start,bounds;relaxed)
+    constrain_commitment_exclusions!(m,c,u)
     (;u,su,sd,start,plant_states...,bounds)
 end

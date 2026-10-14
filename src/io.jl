@@ -80,6 +80,8 @@ function _read_object(T, x)
             v=Float64.(v)
         elseif fieldtype(T, f)==Vector{Symbol}
             v=Symbol.(v)
+        elseif fieldtype(T, f)==Vector{Vector{Symbol}}
+            v=[Symbol.(group) for group in v]
         end
         vals[f]=v
     end
@@ -96,6 +98,7 @@ function case_from_dict(d)
         tunnel_interlocks = TunnelInterlock,
         plants = Plant,
         generators = Generator,
+        commitment_exclusions = CommitmentExclusion,
         river_junctions = RiverJunction,
         rivers = River,
     )

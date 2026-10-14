@@ -54,6 +54,10 @@ finer = replay_audit(case, schedule)
 Rows follow case object order; interval columns follow `case.grid`.
 `Schedule.storage` has one column per grid vertex in Mm³. `head` is metres,
 `power` is MW, and `generator_q`, `tunnel_q` and `river_release` are m³/s.
+Both `Generator` and `Pump` use the common `case.system.generators` row order.
+Unit discharge and power are nonnegative magnitudes; `net_power(case, schedule)`
+returns interval production minus consumption. See [pumping](pumping.md) for
+connections, efficiency data and reversible mode exclusions.
 `arrival_volume` and `terminal_transit` are Mm³. `commitment` is binary;
 `gate` contains river outlet openings. Returned arrays belong to the calculation;
 input arrays are read-only. `simulate` returns `HydraulicTrajectory`, and

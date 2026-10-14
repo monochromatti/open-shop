@@ -140,6 +140,7 @@ function _add_table_power_bounds!(b,c)
     skipped=Dict("analytic"=>0,"fixed_off"=>0,"electrical"=>0,"graph_or_hull"=>0,"nonfinite"=>0)
     units=0;head_rows=0;discharge_rows=0
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
+        g.mode==:pump && continue # Native generation cuts consume only these support records.
         g.turbine_table===nothing && (skipped["analytic"]+=1;continue)
         u=b.u[i,t]
         _table_power_fixed_off(u) && (skipped["fixed_off"]+=1;continue)
