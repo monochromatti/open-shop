@@ -19,7 +19,8 @@ function validate_soft_constraints(c)
     RiverRouting.check_grid(c.grid)
     s=c.system
     objects=Dict(x.name=>x for field in fieldnames(HydroSystem) for x in getfield(s,field))
-    names=Set(vcat(collect(keys(objects)),[x.name for x in c.flow_requirements]))
+    names=Set(vcat(collect(keys(objects)),[x.name for x in c.flow_requirements],
+        [x.name for x in c.reserve_groups]))
     for rule in c.soft_constraints
         rule.name in names && throw(ArgumentError("duplicate soft constraint name $(rule.name)"))
         push!(names,rule.name)
@@ -145,5 +146,6 @@ function with_soft_assessment(c,x::Schedule;included_cost=0.0)
     Schedule(x.grid,x.commitment,x.storage,x.head,x.tunnel_q,x.tunnel_opening,x.generator_q,
         x.power,x.gate,x.river_release,x.arrival_volume,x.terminal_transit,x.shortfall_release,
         x.objective+included_cost-assessment.cost,x.gate_adjustment_cost,x.release_penalty_cost,
-        assessment.slacks,assessment.cost,x.diagnostics)
+        x.diagnostics;soft_slacks=assessment.slacks,soft_penalty_cost=assessment.cost,
+        reserves=x.reserves)
 end

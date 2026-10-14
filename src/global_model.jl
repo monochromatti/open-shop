@@ -453,6 +453,7 @@ function _build_global_dispatch(
         end
         generator_graphs[i,t]=_GeneratorPowerGraph(plant_heads[key],eta,turbinegraph,qlograph,qhigraph,electricalgraph)
     end
+    reserves=_global_reserve_points!(m,c,u,H,P,GQ,node_bounds,plant_heads)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
     injections=river_injections(c,RQ,GQ,Q)
     coordinates=exact ? nothing : [
@@ -686,6 +687,7 @@ function _build_global_dispatch(
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial, gate_cost=gates.cost, transitions, soft_cost=soft.cost)
+    reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -726,7 +728,9 @@ function _build_global_dispatch(
             set_start_value(a[i, t], physical.gate[i, t])
         end
     end
+    _start_reserves!(reserves,c,warm)
     b=(;
+        reserves,
         m,
         case = c,
         obj,

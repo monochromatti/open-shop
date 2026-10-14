@@ -116,6 +116,14 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         end
         record("gate_adjustment_cost_relative",[(cost-adjustment_cost)/max(1.0,abs(adjustment_cost))])
     end
+    reserve_audit=try
+        validate_reserves(c,result;tolerance)
+    catch error
+        Dict("errors"=>["reserve capacity check failed: "*sprint(showerror,error)],
+            "residuals"=>Dict{String,Float64}())
+    end
+    append!(errors,reserve_audit["errors"])
+    merge!(residuals,Dict("reserve_"*k=>v for (k,v) in reserve_audit["residuals"]))
     V=result.storage
     H=result.head
     Q=result.tunnel_q
@@ -472,6 +480,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                       init = 0.0,
                   )
         objective-=requirements.cost+soft.cost
+        objective+=reserve_economics(c,result.reserves).value
         record(
             "objective_relative",
             [(objective-result.objective)/max(1.0, abs(objective))],

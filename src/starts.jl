@@ -150,6 +150,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 put(graph.branch,h>=r.crest ? 1.0 : 0.0)
             end
         end
+        _lift_reserves!(b,c,physical,put,table)
         _lift_distributed_references!(b.m, assigned)
         _lift_power_hulls!(b.m, assigned)
         _lift_table_power_bounds!(b.m, assigned)

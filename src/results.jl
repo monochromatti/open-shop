@@ -7,6 +7,20 @@ Base.@kwdef struct SoftConstraintSlack
     penalty_cost::Float64
 end
 
+"""Spinning capacity [unit, group, interval] in MW and physical discharge
+witnesses [unit, interval] in m³/s. Shortfall [group, interval] is MW.
+Witnesses are operating points at scheduled hydraulic node heads, not activated
+water trajectories. Keyword construction and reconstruction copy their inputs.
+"""
+struct ReserveAllocation
+    up::Array{Float64,3}
+    down::Array{Float64,3}
+    up_q::Matrix{Float64}
+    down_q::Matrix{Float64}
+    up_shortfall::Matrix{Float64}
+    down_shortfall::Matrix{Float64}
+end
+
 """
     Schedule
 
@@ -36,12 +50,14 @@ struct Schedule{U<:AbstractMatrix}
     release_penalty_cost::Union{Nothing,Float64}
     soft_slacks::Union{Nothing,Vector{SoftConstraintSlack}}
     soft_penalty_cost::Union{Nothing,Float64}
+    reserves::Union{Nothing,ReserveAllocation}
     diagnostics::Dict{String,Any}
 end
 
-Schedule(grid,u,V,H,Q,A,GQ,P,gate,RQ,arrivals,terminal,shortfall,objective,gate_cost,release_cost,diagnostics) =
+Schedule(grid,u,V,H,Q,A,GQ,P,gate,RQ,arrivals,terminal,shortfall,objective,gate_cost,release_cost,
+    diagnostics;soft_slacks=nothing,soft_penalty_cost=nothing,reserves=nothing) =
     Schedule(grid,u,V,H,Q,A,GQ,P,gate,RQ,arrivals,terminal,shortfall,objective,gate_cost,release_cost,
-        nothing,nothing,diagnostics)
+        soft_slacks,soft_penalty_cost,reserves,diagnostics)
 
 # These aliases are an input/output compatibility boundary. Numerical routines
 # access the fields above directly.
@@ -54,6 +70,7 @@ const _SCHEDULE_KEYS = (
     "objective"=>:objective, "gate_adjustment_cost"=>:gate_adjustment_cost,
     "release_penalty_cost"=>:release_penalty_cost,
     "soft_slacks"=>:soft_slacks, "soft_penalty_cost"=>:soft_penalty_cost,
+    "reserves"=>:reserves,
 )
 function Base.getindex(x::Schedule, key::AbstractString)
     for (name, field) in _SCHEDULE_KEYS
@@ -75,7 +92,7 @@ function schedule_dict(x::Schedule)
     for (key, field) in _SCHEDULE_KEYS
         value = getfield(x, field)
         value===nothing && continue
-        result[key] = value isa AbstractArray ? copy(value) : value
+        result[key] = value isa ReserveAllocation ? deepcopy(value) : value isa AbstractArray ? copy(value) : value
     end
     result
 end
@@ -132,7 +149,8 @@ function _schedule_input(x::AbstractDict; case=nothing)
         haskey(x,"release_penalty_cost") ? Float64(x["release_penalty_cost"]) : nothing,
         haskey(x,"soft_slacks") ? [r isa SoftConstraintSlack ? r : _read_object(SoftConstraintSlack,r)
             for r in x["soft_slacks"]] : nothing,
-        haskey(x,"soft_penalty_cost") ? Float64(x["soft_penalty_cost"]) : nothing, diagnostics)
+        haskey(x,"soft_penalty_cost") ? Float64(x["soft_penalty_cost"]) : nothing,
+        haskey(x,"reserves") ? _reserve_input(x["reserves"],T) : nothing, diagnostics)
 end
 
 """

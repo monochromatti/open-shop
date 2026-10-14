@@ -3,7 +3,7 @@ const OPERATION_ATTRIBUTES=Dict(
         :level_ramp_up, :level_ramp_down)),
     Generator=>Set((:qmin, :qmax, :pmin, :pmax, :forced_on, :maintenance,
         :power, :discharge, :startup, :shutdown, :ramp_up, :ramp_down,
-        :discharge_ramp_up, :discharge_ramp_down)),
+        :discharge_ramp_up, :discharge_ramp_down, :reserve_available)),
     Plant=>Set((:pmin, :pmax, :qmin, :qmax, :forced_on, :maintenance,
         :power, :discharge, :ramp_up, :ramp_down,
         :discharge_ramp_up, :discharge_ramp_down)),
@@ -21,6 +21,7 @@ const OPERATION_ATTRIBUTES=Dict(
         :ramp_down,
     )),
     FlowRequirement=>Set((:inflow, :min_flow)),
+    ReserveGroup=>Set((:up_requirement,:down_requirement,:up_price,:down_price,:up_max,:down_max)),
 )
 
 """Optional interval input. Missing schedules or ramp limits remain disabled."""
@@ -95,6 +96,7 @@ function validate_operations(c)
             c.system.tunnel_interlocks,
             c.system.rivers,
             c.flow_requirements,
+            c.reserve_groups,
         ) for x in xs
     )
     seen=Set{Tuple{Symbol,Symbol}}()
@@ -134,9 +136,9 @@ function validate_operations(c)
         if z.attribute==:forced_on
             all(x->x in (-1.0, 0.0, 1.0), z.values) ||
                 throw(ArgumentError("forced_on must be -1 (free), 0 (off), or 1 (on)"))
-        elseif z.attribute==:maintenance
+        elseif z.attribute in (:maintenance,:reserve_available)
             all(x->x in (0.0, 1.0), z.values) ||
-                throw(ArgumentError("maintenance must be 0 (available) or 1 (unavailable)"))
+                throw(ArgumentError("$(z.attribute) must be 0 or 1"))
         elseif z.attribute in (:opening, :gate_min, :gate_max)
             all(x->0<=x<=1, z.values) ||
                 throw(ArgumentError("opening and gate bounds must lie in [0,1]"))
@@ -146,6 +148,8 @@ function validate_operations(c)
         elseif z.attribute in (:min_open, :max_open)
             all(x->isinteger(x) && 0<=x<=length(obj.tunnels),z.values) ||
                 throw(ArgumentError("interlock counts must be integers within their tunnel group"))
+        elseif z.attribute in (:up_price,:down_price)
+            nothing
         else
             all(>=(0), z.values) ||
                 throw(ArgumentError("operational bounds/rates/costs must be nonnegative"))

@@ -241,12 +241,19 @@ function propose_commitment(
         ) for (d, r) in enumerate(s.rivers);
         init = 0.0,
     )
+    reserves=_reserve_variables!(m,c,u,P,gq)
+    if reserves!==nothing
+        for i in 1:G,t in 1:T,d in 1:2
+            @constraint(m,reserves.Ppoint[i,t,d]==alpha[i,t]*reserves.Qpoint[i,t,d])
+        end
+    end
     @objective(
         m,
         Max,
         sum(
             c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*P[j, t] for j in 1:G, t in 1:T
-        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost+water_scale*valuechange-sum(
+        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost+water_scale*valuechange+
+        (reserves===nothing ? 0.0 : reserves.value)-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
                 t,

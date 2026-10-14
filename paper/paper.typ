@@ -20,6 +20,8 @@
   water still in transit. SCIP searches the full model using feasible starts
   prepared by mixed-integer proposals and nonlinear dispatch. A separate
   integration checks the controls on the optimization grid and a finer grid.
+  Optional spinning capacity uses feasible unit operating points at scheduled
+  hydraulic node heads, with shared tailwater and qualified response limits.
   We state the limits of the resulting objective-gap certificate. The
   implementation uses Julia and open-source solvers.
 ]
@@ -38,7 +40,8 @@ together~@catalao.
 
 We take the network, initial volumes, operating histories, prices, inflows,
 equipment curves and operating limits as given. The optimizer chooses unit
-states, continuous unit discharges and outlet openings. It selects each
+states, continuous unit discharges, outlet openings and optional spinning
+reserve allocations. It selects each
 adjustable tunnel position from a finite set. The associated volumes, flows,
 heads, river arrivals and electrical outputs must satisfy the equations
 below. We maximize net electrical revenue
@@ -50,9 +53,11 @@ and flows are in equilibrium within each scheduling interval while reservoir
 storage evolves over time. Tunnel inertia and water hammer are excluded.
 Discharge and travel-time response curves describe the rivers, without
 solving river momentum equations during scheduling. We do
-not include reserves or stochastic decisions. Pumps use supplied hydraulic
+not include stochastic decisions. Pumps use supplied hydraulic
 efficiency functions and constant motor efficiency; generating and pumping
 modes retain separate positive flow and power magnitudes.
+The reserve capacity model
+below does not simulate hydraulic activation across the watercourse.
 
 The optimization uses nonlinear pressure-loss and power equations. Linear
 approximations provide initial discrete choices for the solution procedure
@@ -113,6 +118,7 @@ lower and upper bounds.
     [$R_(r t), d_(r t)$], [Reach entry flow, reservoir withdrawal], [$"m"^3/"s"$],
     [$A_(r t)$], [Volume arriving from a delayed reach], [$"Mm"^3$],
     [$P_(g t)$], [Positive production or consumption magnitude], [MW],
+    [$r_(g k t)^(plus.minus), sigma_(k t)^(plus.minus)$], [Spinning allocation, group shortfall], [MW],
     [$u_(g t), U_(p t)$], [Unit and plant operating states], [${0, 1}$],
     [$b_(e t), a_(r t)$], [Tunnel position, reservoir outlet opening], [$[0, 1]$],
     table.hline(stroke: 0.7pt),
@@ -734,6 +740,83 @@ admitted solutions. Independent assessment reports the actual minimal
 slacks $max(0,L_ell-x_ell)$ and $max(0,x_ell-U_ell)$ and their costs. A
 permitted positive slack is compatible with an accepted schedule; exceeding
 an allowance or violating the physics is not.
+= Spinning reserve capacity
+
+A reserve group $k in cal(K)$ has eligible generating units $cal(G)_k$,
+upward and downward requirements $D_(k t)^(plus.minus)$, capacity ceilings
+$overline(R)_(k t)^(plus.minus)$ and response time $theta_k>0$ in hours.
+Allocation $r_(g k t)^(plus.minus)$ is MW. It is zero outside $cal(G)_k$ and
+obeys reserve availability $a_(g t)^"res" in {0,1}$:
+
+$ 0 <= r_(g k t)^(plus.minus) <= a_(g t)^"res" overline(P)_g u_(g t), quad
+  sum_g r_(g k t)^(plus.minus) <= overline(R)_(k t)^(plus.minus). $ <eq:reserveallocation>
+
+Here $overline(P)_g$ is nameplate power. Omitted group ceilings use the sum
+of eligible nameplate power limits. A group
+requirement is hard unless a positive shortfall cost is explicitly supplied:
+
+$ sum_g r_(g k t)^(plus.minus) + sigma_(k t)^(plus.minus) >= D_(k t)^(plus.minus), quad
+  0 <= sigma_(k t)^(plus.minus) <= D_(k t)^(plus.minus). $ <eq:reserveobligation>
+
+For a hard requirement $sigma=0$. Positive shortfall costs make it equal
+$[D_(k t)^(plus.minus)-sum_g r_(g k t)^(plus.minus)]_+$ at optimum. Independent
+assessment recomputes that deficit from allocations and checks the stored value.
+
+All groups share each unit's physical headroom:
+
+$ R_(g t)^(plus.minus) = sum_k r_(g k t)^(plus.minus), quad
+  P_(g t)^+ = P_(g t) + R_(g t)^+, quad
+  P_(g t)^- = P_(g t) - R_(g t)^-, \
+  q_(g t)^+ >= q_(g t), quad q_(g t)^- <= q_(g t). $ <eq:reservepoints>
+
+Both operating points retain the nominal commitment $u$. They satisfy
+@eq:onoff, @eq:power and @eq:unitdomain with their respective $q^+,P^+,h^+$
+or $q^-,P^-,h^-$. The plant totals obey the same operative power/discharge
+bounds and plant state $U$ as nominal generation. Downward capacity therefore
+cannot stop a unit or cross its minimum operating output. No monotonic
+relationship between power and discharge is assumed.
+
+The two points hold the scheduled hydraulic node heads fixed, while shared
+station tailwater is re-evaluated:
+
+$ h_(p t)^(plus.minus) = H_("source"(p),t)
+  - max{H_("target"(p),t), h_p^"floor"}
+  - T_p (sum_(g in cal(G)_p) q_(g t)^(plus.minus)). $ <eq:reservehead>
+
+Every operating unit in the station participates in these power equations.
+A unit with no allocation may change its witness flow to hold nominal power
+when another unit changes shared tailwater. Summing allocations in
+@eq:reservepoints prevents selling the same headroom in multiple groups.
+
+Let $theta_p$ be the minimum $theta_k$ among groups with at least one eligible
+unit in the station. For a unit or plant output
+$x in {P,q}$, response rates use the same supplied directional rates as
+@eq:ramps, with no startup/shutdown jump:
+
+$ x_t^+ - x_t <= integral_(m_t)^(m_t+theta_p) r_x^+ (s) dif s, quad
+  x_t - x_t^- <= integral_(m_t)^(m_t+theta_p) r_x^- (s) dif s. $ <eq:reserveresponse>
+
+The station-wide response is conservative for products with different
+response times and also limits units compensating another group's tailwater.
+Finer replay retains these physical response limits at its operating points.
+
+Optional sustained activation duration $delta_k^"act">=0$ is distinct from
+response time. A positive duration requires supplied unit qualifications
+$E_g^+,E_g^-$ in MWh:
+
+$ sum_k delta_k^"act" r_(g k t)^+ <= E_g^+, quad
+  sum_k delta_k^"act" r_(g k t)^- <= E_g^-. $ <eq:reservequalification>
+
+These qualifications apply independently to each interval. They are not a
+consumable reservoir inventory and remain unchanged at restart. Capacity
+operating points add no flow or energy activation to nominal water balances.
+They do not re-solve tunnel losses, storage evolution, river transport or
+environmental flows for an activated trajectory. Cascade activation requires
+a separate treatment, such as the two-stage stochastic and robust models
+studied by Naversen et al.~@naversen. A certificate here concerns only the
+declared capacity model at scheduled node heads. Pumping reserves, nonspinning
+starts/stops, frequency-response droop, forbidden-zone transitions and
+reserve market purchases are outside its scope.
 
 #block(breakable: false)[
 = Economic objective
@@ -749,14 +832,21 @@ $ cal(V) = & sum_t pi_t Delta_t sum_g sigma_g P_(g t)
   - sum_(g,t) (c_(g t)^+ s_(g t)^+ + c_(g t)^- s_(g t)^-) \
   & - sum_(e,t) c_(e t)^b abs(b_(e t) - b_(e,t-1))
   - sum_(r,t) c_(r t)^r xi_(r t) - sum_ell C_ell \
-  & + sum_i v_i (V_(i T) - V_(i 0)) + sum_r v_r (W_(r T) - W_(r 0)). $ <eq:objective>
+  & + sum_i v_i (V_(i T) - V_(i 0)) + sum_r v_r (W_(r T) - W_(r 0)) \
+  & + sum_(k,t) Delta_t (pi_(k t)^+ sum_g r_(g k t)^+
+      + pi_(k t)^- sum_g r_(g k t)^-
+      - c_k^"res" (sigma_(k t)^+ + sigma_(k t)^-)). $ <eq:objective>
 ]
 
 Starts, stops and gate movements are charged once per event, without a duration
 multiplier. The first gate comparison uses its supplied initial position.
-The last two terms value changes in reservoir storage and reach inventory.
+The reservoir-storage and reach-inventory terms value changes in stored water.
 A late release can still have value downstream after the horizon ends.
 The terminal values $v_i,v_r$ are inputs that account for this later use.
+Reserve prices $pi_(k t)^(plus.minus)$ and positive optional shortfall costs
+$c_k^"res"$ are currency per MW-hour. Allocated MW earns capacity price
+times interval hours, without implying actual activation energy. Hard reserve
+requirements have zero shortfall and no penalty term.
 
 A positive release penalty permits a deficit below the entry minimum.
 The deficit variable is measured as a volume:

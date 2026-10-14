@@ -162,6 +162,9 @@ Base.@kwdef struct Generator
     initial_power::Union{Nothing, Float64} = nothing
     initial_discharge::Union{Nothing, Float64} = nothing
     initial_interval_hours::Float64 = 1.0
+    reserve_available::Bool = true
+    reserve_up_energy::Union{Nothing,Float64} = nothing # qualified activation budget, MWh
+    reserve_down_energy::Union{Nothing,Float64} = nothing
 end
 
 """
@@ -296,8 +299,28 @@ Base.@kwdef struct SoftConstraint
     upper_cost::Float64 = 0.0
 end
 
+"""Spinning generation reserve capacity, MW, on a named group of units.
+
+Prices and optional shortfall costs are currency/(MW·hour), paid on reserved
+capacity. `response_hours` limits response through existing unit/plant ramps.
+Positive `activation_hours` additionally requires qualified unit energy budgets
+in MWh; it does not simulate activation or certify network delivery.
 """
-    ScheduleCase(; name, system, grid, prices, operations=[], flow_requirements=[], soft_constraints=[])
+Base.@kwdef struct ReserveGroup
+    name::Symbol
+    generators::Vector{Symbol}
+    up_requirement::Float64 = 0.0
+    down_requirement::Float64 = 0.0
+    up_price::Float64 = 0.0
+    down_price::Float64 = 0.0
+    up_max::Union{Nothing,Float64} = nothing
+    down_max::Union{Nothing,Float64} = nothing
+    shortfall_cost::Union{Nothing,Float64} = nothing # nothing is a hard obligation
+    response_hours::Float64 = 0.25
+    activation_hours::Float64 = 0.0
+end
+"""
+    ScheduleCase(; name, system, grid, prices, operations=[], flow_requirements=[], soft_constraints=[], reserve_groups=[])
 
 A watercourse and its scheduling horizon. `grid` contains increasing absolute
 hours; `prices[t]` is currency/MWh on `[grid[t], grid[t+1]]`. Prices and controls
@@ -312,18 +335,20 @@ Base.@kwdef struct ScheduleCase
     operations::Vector{OperationalSeries} = OperationalSeries[]
     flow_requirements::Vector{FlowRequirement} = FlowRequirement[]
     soft_constraints::Vector{SoftConstraint} = SoftConstraint[]
+    reserve_groups::Vector{ReserveGroup} = ReserveGroup[]
     function ScheduleCase(name::String, system::HydroSystem, grid::Vector{Float64},
         prices::Vector{Float64}, operations::Vector{OperationalSeries},
-        flow_requirements::Vector{FlowRequirement}, soft_constraints::Vector{SoftConstraint})
-        new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements, soft_constraints)
+        flow_requirements::Vector{FlowRequirement}, soft_constraints::Vector{SoftConstraint},
+        reserve_groups::Vector{ReserveGroup})
+        new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements,
+            soft_constraints, reserve_groups)
     end
 end
-ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements, soft_constraints) =
+ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements,
+    soft_constraints=SoftConstraint[], reserve_groups=ReserveGroup[]) =
     ScheduleCase(String(name), system, Vector{Float64}(grid), Vector{Float64}(prices),
         Vector{OperationalSeries}(operations), Vector{FlowRequirement}(flow_requirements),
-        Vector{SoftConstraint}(soft_constraints))
-ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements) =
-    ScheduleCase(name, system, grid, prices, operations, flow_requirements, SoftConstraint[])
+        Vector{SoftConstraint}(soft_constraints), Vector{ReserveGroup}(reserve_groups))
 
 nodes(s) = vcat(
     [r.name for r in s.reservoirs],

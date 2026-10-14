@@ -60,6 +60,8 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [pumped-storage arbitrage](examples/pumped_storage.jl),
 [signed channels](examples/level_channels.jl) and
 [discrete tunnel gates](examples/tunnel_gates.jl).
+[Spinning capacity](examples/spinning_reserves.jl) co-optimizes generation and
+upward/downward reservations under the [declared reserve contract](docs/reserves.md).
 [Directional handovers](examples/directional_interlocks.jl) keep a station off
 for supplied waiting periods after intake closures.
 [Explicit penalty limits](examples/soft_limits.jl) trade generation revenue
@@ -76,7 +78,9 @@ transit are explicit parts of the model. Constitutive functions must be supplied
 and calibrated. Pumps use hydraulic efficiency data and constant motor efficiency;
 reversible mode groups explicitly exclude simultaneous operation. See
 [pumping](docs/pumping.md) for the model and supported scope.
-Reserve markets, stochastic scenarios, river geometry
+A spinning-capacity contract adds unit/plant operating-point witnesses,
+response limits, explicit shortfalls and capacity revenue. Other reserve
+products, full activation trajectories, stochastic scenarios, river geometry
 and transient pressure dynamics are outside the current model.
 
 [Curve policies](docs/curves.md) explains single-head turbine data, explicit

@@ -95,3 +95,4 @@ include("model_reference_tests.jl")
 include("result_api_tests.jl")
 
 include("soft_constraint_tests.jl")
+include("reserve_tests.jl")
