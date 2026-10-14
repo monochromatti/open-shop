@@ -70,12 +70,14 @@ a case whose domain crosses it is rejected.
 Local dispatch represents the square root with a nonnegative variable `w`:
 
 ```math
-w^2\ge\ell,\qquad w(w^2-\ell)=0.
+w^2=\max(\ell,0).
 ```
 
-For positive `ℓ`, these rows force `w²=ℓ`. For nonpositive `ℓ`, they force `w=0`.
-Thus `d=C a w` or `d=C w³`. This exact polynomial form avoids evaluating
-singular square-root derivatives at a dry outlet. Global optimization uses its
+For positive `ℓ`, the equation forces `w²=ℓ`; for nonpositive `ℓ`, it forces `w=0`.
+Thus `d=C a w` or `d=C w³`. This exact piecewise polynomial form avoids
+singular square-root and fractional-power derivatives at a dry outlet, without
+adding a redundant inequality. The positive-part operator retains its corner
+at the crest. Global optimization uses its
 existing binary positive-part graph and a squared-root equality for the same law.
 
 A `discharge_curve` replaces the analytic law. Its abscissae are source

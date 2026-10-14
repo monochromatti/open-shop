@@ -272,15 +272,13 @@ function _build_dispatch(
                     base_name="outlet_root_$(i)_$(t)")
                 initial=warm===nothing ? head(source,source.v0) : warm.head[ix[r.source],t]
                 set_start_value(root,sqrt(max(0.0,initial-r.crest)))
-                # w = sqrt(max(hd,0)) without singular square-root derivatives.
-                # Nonnegativity, w² ≥ hd, and w(w²-hd)=0 give the exact graph.
+                # The squared-root equality avoids singular sqrt/power
+                # derivatives without redundant complementarity inequalities.
                 if upper==0
                     fix(root,0.0;force=true)
-                elseif r.allow_dry
-                    @constraint(m,root^2>=hd)
-                    @constraint(m,root*(root^2-hd)==0)
                 else
-                    @constraint(m,root^2==hd)
+                    wet=r.allow_dry ? @expression(m,max(hd,0.0)) : hd
+                    @constraint(m,root^2==wet)
                 end
                 if r.law==:orifice
                     @constraint(m, (outlet_release-r.coefficient*a[i, t]*root)/100==0)

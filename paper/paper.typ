@@ -351,8 +351,8 @@ and must not be subtracted from reservoir storage.
 
 #block(breakable: false)[
 The square-root derivative is singular at a dry outlet. Local dispatch instead
-uses $w>=0$ with $w^2>=ell$ and $w(w^2-ell)=0$. These polynomial constraints
-give exactly $w=sqrt([ell]_+)$, so withdrawal is $c a w$ or $c w^3$.
+uses $w>=0$ with $w^2=[ell]_+$. This piecewise polynomial equality gives
+exactly $w=sqrt([ell]_+)$, so withdrawal is $c a w$ or $c w^3$.
 The global model uses a binary positive-part graph followed by $w^2=[ell]_+$.
 Both formulations retain the crest boundary without smoothing the physical law.
 ]

@@ -51,15 +51,17 @@ end
     c=go_copy(base;operations=OperationalSeries[],system=go_copy(base.system;reservoirs=[lake]))
     initial=dispatch_from_controls(c,zeros(Int,0,2),zeros(0,2),ones(1,2))
     expected=0.0036*2.0*(last(c.grid)-first(c.grid))
-    for result in (solve_case(c;warm=initial,time_limit=30.0),
-        solve(c;initial,time_limit=30.0,relative_gap=1e-6))
-        @test result.accepted
-        if result.solution!==nothing
-            @test result.solution.objective≈10000.0*expected atol=1e-3
-            @test maximum(abs,result.solution.gate)<2e-5
-            @test result.solution.storage[1,end]≈2.0+expected atol=2e-7
-            @test result.solution.river_release≈fill(0.3,1,2) atol=2e-5
-            @test replay_audit(c,result.solution)["valid"]
+    for (method,result) in (("Local dispatch",solve_case(c;warm=initial,time_limit=30.0)),
+        ("Global solve",solve(c;initial,time_limit=30.0,relative_gap=1e-6)))
+        @testset "$method" begin
+            @test result.accepted
+            if result.solution!==nothing
+                @test result.solution.objective≈10000.0*expected atol=1e-3
+                @test maximum(abs,result.solution.gate)<2e-5
+                @test result.solution.storage[1,end]≈2.0+expected atol=2e-7
+                @test result.solution.river_release≈fill(0.3,1,2) atol=2e-5
+                @test replay_audit(c,result.solution)["valid"]
+            end
         end
     end
 end
