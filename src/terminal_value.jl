@@ -42,8 +42,8 @@ function objective_components(c::ScheduleCase,x)
     x=_schedule_input(x;case=c)
     x.grid==c.grid || throw(ArgumentError("objective accounting requires the case control grid"))
     s=c.system;dt=diff(c.grid)
-    initial=all(r->r.deterministic_delay!==nothing,s.rivers) ?
-        _transport_data(c,nothing).initial_transit : routing_data(c)["history_initial"]
+    initial=[remaining_volume(r,first(c.grid),r.history_grid,r.history_release)
+        for r in s.rivers]
     energy_revenue=sum(c.prices[t]*dt[t]*x.power[j,t]
         for j in eachindex(s.generators),t in eachindex(dt);init=0.0)
     reservoir_value=sum(r.water_value*(x.storage[i,end]-r.v0)
