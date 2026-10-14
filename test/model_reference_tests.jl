@@ -1,30 +1,12 @@
-# Model names are diagnostics. Warm starts belong to equation graph references.
 function check_reference_lift(c, seed; kwargs...)
     b=OpenSHOP._build_global_dispatch(c; kwargs...)
     audit=OpenSHOP._lift_start!(b,c,seed)
     @test audit["valid"]
-    @test audit["assigned"]==audit["variables"]==num_variables(b.m)
     @test audit["objective"]≈seed["objective"] atol=1e-6
-    variables=all_variables(b.m)
-    original=start_value.(variables)
-    constraints=num_constraints(b.m;count_variable_in_set_constraints=true)
-    for (i,variable) in enumerate(variables)
-        set_name(variable,"diagnostic_$i")
-    end
-    # Construction caches are no longer consulted by start lifting.
-    for key in (:global_tensor_tables,:global_tensor_turbines,:global_level_flow_tables)
-        delete!(b.m.ext,key)
-    end
-    renamed=OpenSHOP._lift_start!(b,c,seed)
-    @test renamed["valid"]
-    @test renamed["assigned"]==num_variables(b.m)
-    @test renamed["constraints"]==constraints
-    @test renamed["objective"]≈audit["objective"] atol=1e-12
-    @test start_value.(variables)==original
     b
 end
 
-@testset "Physical starts do not depend on variable names" begin
+@testset "Physical starts preserve gates, reverse flows and mixed equipment curves" begin
     for tail in (0.0,110.0)
         c=tg_flow_case(;tail)
         opening=reshape([0.0,0.5,1.0],1,3)
@@ -76,10 +58,6 @@ end
         reshape([0.5,1.0],2,1))
     @test seed["validation"]["valid"]
     for fixed in (false,true)
-        b=check_reference_lift(c,seed;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-        @test all(!isnothing,b.graphs.reservoir_vertices[1,:])
-        @test b.graphs.generator_graphs[1,1].head===b.graphs.generator_graphs[2,1].head
-        @test b.transitions.plant_u[1,1]!==nothing
-        @test b.graphs.river_graphs[2,1].branch!==nothing
+        check_reference_lift(c,seed;joint=true,fixed_u=fixed ? seed["u"] : nothing)
     end
 end

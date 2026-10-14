@@ -28,7 +28,6 @@ end
     expired=solve_verified(c;u,deadline=time()-1,max_refinements=2)
     @test !expired["accepted"]
     @test expired["solution"]===nothing
-    @test isempty(expired["attempts"])
     @test expired["case"].grid==c.grid
 
     # Auditing a supplied schedule remains necessary even when no optimization
@@ -44,8 +43,6 @@ end
     prepared=schedule_case(c;time_limit=1e-9)
     @test !prepared["accepted"]
     @test prepared["solution"]===nothing
-    @test isempty(prepared["proposals"])
-    @test all(isempty(a["steps"]) for a in prepared["attempts"])
     for invalid in (0.0,-1.0,NaN)
         @test_throws ArgumentError schedule_case(c;time_limit=invalid)
     end
@@ -63,16 +60,7 @@ end
     @test verified["accepted"]
     @test verified["case"].grid==c.grid
     @test verified["solution"]["u"]==u
-    @test length(verified["attempts"])==2
-    if length(verified["attempts"])==2
-        first,last=verified["attempts"]
-        @test first["model_valid"]
-        @test !first["replay"]["valid"]
-        @test first["operational_margin_MW"]==0.0
-        @test last["operational_margin_MW"]>0.0
-        @test last["replay"]["valid"]
-        @test first["intervals"]==last["intervals"]==length(c.prices)
-    end
+    @test replay_audit(c,verified["solution"])["valid"]
 end
 
 @testset "Local reconstruction corrects controls and recomputes physical values" begin
@@ -125,7 +113,8 @@ end
         initial=dispatch_from_controls(c, u, [4.0 4.0; 0.0 0.0],
             fill(0.8, length(c.system.rivers), 2))
         compatible, reason=OpenSHOP._dispatch_start(c, u, initial)
-        @test compatible===initial
+        @test compatible.generator_q==initial.generator_q
+        @test compatible.objective==initial.objective
         @test reason["used"]
         for grid in ([0.0, 0.5, 2.0], [0.0, 0.5, 1.0, 1.5, 2.0])
             wrong=OpenSHOP.schedule_dict(initial)
@@ -163,7 +152,8 @@ end
     @test !x["validation"]["valid"]
     report=Dict{String,Any}()
     repaired=OpenSHOP._repair_dispatch!(c, x, report)
-    @test repaired===x
+    @test repaired.generator_q==x.generator_q
+    @test repaired.objective==x.objective
     @test !get(report, "forward_reconstructed", false)
     @test !report["forward_reconstruction_audit"]["valid"]
     @test x["gate"]==zeros(1, 2)

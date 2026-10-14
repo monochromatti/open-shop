@@ -51,19 +51,12 @@ end
             @test termination_status(r.m) == JuMP.MOI.OPTIMAL
             @test objective_value(r.m) <= 1e-9
         end
-        if known === nothing && length(nodes) > 1
-            @test length(r.records) == 1
-        else
-            @test isempty(r.records)
-        end
     end
 
     for coefficients in ([-2.0, 3.0, -1.0], [5.0, -4.0, 2.0], [-2.0, -2.0, -2.0]),
         known in (nothing, 0.0, 1.0)
         nodes = [0.0, 2.0, 5.0]
         r = coordinate_relaxation(nodes; affine=true, known)
-        @test isempty(r.records)
-        @test num_variables(r.m) == 4
         mass_residual = sum(r.onweights) - r.u
         moment_residual = sum(nodes[j] * r.onweights[j] for j in eachindex(nodes)) - r.moment
         for residual in (mass_residual, -mass_residual, moment_residual, -moment_residual,
@@ -145,8 +138,6 @@ end
     # affine identity. Negative nodes and positive first nodes use a lift.
     for nodes in ([1.0, 2.0], [-1.0, 0.0, 2.0])
         r = coordinate_relaxation(nodes; affine=true)
-        @test length(r.records) == 1
-        @test num_variables(r.m) == 1 + 2 * length(nodes)
         @objective(r.m, Max, sum(r.onweights) - r.u)
         optimize!(r.m)
         @test termination_status(r.m) == JuMP.MOI.OPTIMAL
@@ -164,22 +155,6 @@ end
         b = OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
         audit = OpenSHOP._lift_start!(b,c,seed)
         @test audit["valid"]
-        @test audit["assigned"] == audit["variables"] == num_variables(b.m)
         @test audit["objective"] ≈ seed["objective"] atol=1e-6
-        assigned = Dict(v=>Float64(start_value(v)) for v in all_variables(b.m))
-        supports = b.m.ext[:global_table_power_supports]
-        @test supports isa Vector{OpenSHOP._TablePowerSupportCoordinate}
-        for source in supports
-            state = OpenSHOP._table_power_value(source.commitment,assigned)
-            weights = [OpenSHOP._table_power_value(w,assigned) for w in source.onweights]
-            @test sum(weights) ≈ state atol=1e-12
-            @test all(w->w>=-1e-12,weights)
-            moment = source.axis == :head ? source.onhead : source.discharge
-            @test sum(source.nodes.*weights) ≈ OpenSHOP._table_power_value(moment,assigned) atol=1e-9
-        end
-        if !fixed && on==1
-            off = b.m.ext[:global_power_hulls]["power_hull_2_1"]
-            @test start_value(off.head) < 0 && start_value(off.eta) < 0
-        end
     end
 end

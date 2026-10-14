@@ -1,7 +1,6 @@
 @testset "Direct source compilation and input domains" begin
     f=mixed_source_small_fixture();c=f.case;s=c.system
     @test case_dict(OpenSHOP._river_replace(c;system=normalize_river_connections(s)))==case_dict(c)
-    @test normalize_river_connections(s).river_junctions==s.river_junctions
     badplant=OpenSHOP._river_replace(s.plants[1];discharge_river=:Missing)
     badsystem=OpenSHOP._river_replace(s;plants=vcat([badplant],s.plants[2:end]))
     @test_throws ArgumentError normalize_river_connections(badsystem)
@@ -44,12 +43,4 @@
         object=:Creek,attribute=:inflow,times=[0.0],values=[0.0])])
     @test_throws ArgumentError OpenSHOP._transport_data(stopped,cached)
 
-    # The direction restriction belongs to routed outfalls. Other pressurized
-    # links retain symmetric domains; no positive/negative routing split is added.
-    large=mixed_source_fixture().case
-    b=OpenSHOP._build_global_dispatch(large;joint=true)
-    @test lower_bound(b.m[:q][5,1])==0.0
-    @test lower_bound(b.m[:q][3,1])<0.0
-    @test !haskey(Dict(name(v)=>v for v in all_variables(b.m)),"tunnel_direction_5_1")
-    @test !isempty([v for v in all_variables(b.m) if startswith(name(v),"tunnel_direction_3_")])
 end

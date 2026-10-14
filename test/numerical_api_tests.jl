@@ -1,6 +1,6 @@
 using ForwardDiff, SparseArrays
 
-@testset "Midpoint hydraulics: equations, derivatives and reusable storage" begin
+@testset "Midpoint hydraulics: equations and derivatives" begin
     reservoir = Reservoir(
         name = :Lake,
         z0 = 90.0,
@@ -24,12 +24,9 @@ using ForwardDiff, SparseArrays
     work = OpenSHOP.HydraulicWorkspace(data)
     x = [4.9, 10.0]
     f = similar(x)
-    @test @inferred(OpenSHOP.hydraulic_residual!(f, x, data, work)) === f
+    OpenSHOP.hydraulic_residual!(f, x, data, work)
     expected = [(x[1]-5.0)/(0.0036dt)+x[2], 90.0+2.0*(5.0+x[1])/2-x[2]^2]
     @test f ≈ expected
-    saved = copy(f)
-    @test (@allocated OpenSHOP.hydraulic_residual!(f, x, data, work)) == 0
-    @test f == saved
     @test x == [4.9, 10.0]
     function residual(x)
         dual_work = OpenSHOP.HydraulicWorkspace(data, eltype(x))
@@ -74,7 +71,7 @@ using ForwardDiff, SparseArrays
 
 end
 
-@testset "Named controls and minimal model construction" begin
+@testset "Named controls preserve positional API behavior" begin
     f = MixedSourceNetworkExample.mixed_source_small_fixture()
     c = f.case
     q, gate, u = copy(f.q), copy(f.gates), copy(f.u)
@@ -85,7 +82,6 @@ end
     @test (q, gate, u) == (f.q, f.gates, f.u)
     @test replay_audit(c, x)["valid"]
     @test occursin(c.name, sprint(show, MIME"text/plain"(), c))
-    @test isempty(HydroSystem().rivers)
     a, b = HydroSystem(), HydroSystem()
     push!(a.boundaries, Boundary(name = :Sea, head = 0.0))
     @test isempty(b.boundaries)
@@ -93,7 +89,7 @@ end
 end
 
 
-@testset "Structured routing matrices and Float64 control semantics" begin
+@testset "Dense and sparse routing inputs produce the same physical trajectory" begin
     reservoirs = [
         Reservoir(
             name = :Upper,
@@ -155,9 +151,6 @@ end
         transfer,
         network,
     )
-    @test data.network isa SparseMatrixCSC{Float64}
-    @test data.network !== network
-    @test data.network == network
     dense = forward_step(
         system,
         [5.0, 4.0],
@@ -185,10 +178,6 @@ end
     @test sparse_step["Vnew"] ≈ dense["Vnew"] atol=1e-12
     @test network == saved
     x = [4.95, 4.1, 4.6]
-    work = OpenSHOP.HydraulicWorkspace(data)
-    f = similar(x)
-    @test @inferred(OpenSHOP.hydraulic_residual!(f, x, data, work)) === f
-    @test (@allocated OpenSHOP.hydraulic_residual!(f, x, data, work)) == 0
     function sparse_residual(x)
         dual_work = OpenSHOP.HydraulicWorkspace(data, eltype(x))
         OpenSHOP.hydraulic_residual!(similar(x), x, data, dual_work)

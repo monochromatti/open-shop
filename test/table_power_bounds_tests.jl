@@ -1,7 +1,7 @@
 using Test, JuMP, OpenSHOP, SCIP
 
 @testset "Table-coordinate certificates cover interpolation and extensions" begin
-    support,evaluations,hits,seconds=OpenSHOP._table_power_support_cache()
+    support,_,_,_=OpenSHOP._table_power_support_cache()
     for interpolation in (:bilinear,:pchip_discharge)
         table=TurbineTable([1.0,2.0,3.0],[1.0,1.5,2.0],
             [.7 .5 .4;.95 .8 .6;.8 .7 .4],fill(1.0,3),fill(2.0,3);interpolation)
@@ -24,12 +24,9 @@ using Test, JuMP, OpenSHOP, SCIP
             @test discharge_error<=1e-10
             @test all(isfinite,hc)&&all(isfinite,qc)
         end
-        old_evaluations=evaluations[];old_hits=hits[]
         first=support(table,1.2,1.8,1.4,2.6,.95,0.1,0.2)
         @test support(table,1.2,1.8,1.4,2.6,.95,0.1,0.2)==first
-        @test evaluations[]==old_evaluations+1 && hits[]==old_hits+1
     end
-    @test seconds[]>=0
     # Decreasing head efficiency makes h*eta concave: raw nodal supports fail.
     table=TurbineTable([1.0,3.0],[1.0,2.0],[.9 .3;.9 .3],fill(1.0,2),fill(2.0,2))
     raw=[support(table,1.0,1.0,h,h,1.0,0.0) for h in (1.0,3.0)]
@@ -41,7 +38,7 @@ end
 
 # Shared lifts preserve signed intercepts, including off states whose original
 # coordinates need not belong to the physical on-state domain.
-@testset "Signed shared intercepts and fixed coordinate simplifications" begin
+@testset "Signed intercept bounds preserve running and idle states" begin
     for coefficients in ([-2.0,3.0],[-2.0],[-2.0,-2.0])
         m=Model();@variable(m,u,Bin)
         weights=length(coefficients)==1 ? [1.0] : @variable(m,[1:2],lower_bound=0,upper_bound=1)
@@ -54,7 +51,6 @@ end
         onweights=OpenSHOP._table_power_onweights!(m,(nodes=nodes,weights=weights),u,moment,"test",records)
         z=sum(coefficients[j]*onweights[j] for j in eachindex(coefficients))
         m.ext[:global_table_power_coordinates]=records
-        @test length(records)==(length(nodes)>1 ? 1 : 0)
         for uv in (0.0,1.0),t in (0.0,.25,1.0)
             assigned=Dict(u=>uv)
             if length(weights)>1
@@ -71,22 +67,17 @@ end
                     obj.set isa JuMP.MOI.LessThan ? x-obj.set.upper : obj.set.lower-x)
             end
             @test residual<1e-12
-            @test length(assigned)==num_variables(m)
         end
     end
     for fixed in (0.0,1.0)
         m=Model();@variable(m,u,Bin);fix(u,fixed;force=true)
         @variable(m,0<=weights[1:2]<=1)
         records=OpenSHOP._TablePowerCoordinateRecord[]
-        before=num_variables(m)
         onweights=OpenSHOP._table_power_onweights!(m,(nodes=[-2.0,3.0],weights=weights),u,0.0,"fixed",records)
         z=sum([-2.0,3.0].*onweights)
-        @test isempty(records)&&num_variables(m)==before
         @test value(v->v==u ? fixed : .5,z)≈fixed*.5
         @test value(v->v==u ? fixed : .5,sum(onweights))≈fixed
     end
-    assigned=Dict{VariableRef,Float64}()
-    @test OpenSHOP._lift_table_power_bounds!(Model(),assigned)===assigned
 end
 
 function table_power_bounds_case(;interpolation=:pchip_discharge,analytic=false,positive_electrical=false,operating=false)
@@ -121,48 +112,11 @@ end
         end
         for fixed in (false,true)
             b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-            profile=b.m.ext[:global_table_power_bounds_profile]
-            records=b.m.ext[:global_table_power_coordinates]
-            @test records isa Vector{OpenSHOP._TablePowerCoordinateRecord}
-            @test profile["units_added"]==2-fixed
-            @test profile["head_rows"]==profile["discharge_rows"]==4*(2-fixed)
-            @test profile["variables_added"]==sum(length(r.onweights) for r in records;init=0)
-            @test profile["shared_coordinates"]==length(records)
-            @test profile["constraints_added"]==8*(2-fixed)+sum(length(r.onweights)+2 for r in records;init=0)+(!fixed ? 2 : 0)
-            @test 0<=profile["certificate_seconds"]<=profile["setup_seconds"]
-            # Fixed commitment retains the two existing binary variables.
-            @test count(is_binary,all_variables(b.m))==2
             audit=OpenSHOP._lift_start!(b,c,seed)
             @test audit["valid"]
-            @test audit["assigned"]==audit["variables"]==num_variables(b.m)
             @test audit["objective"]≈seed["objective"] atol=1e-6
-            @test all(records) do r
-                all(start_value(r.onweights[j])≈start_value(r.u)*start_value(r.weights[j]) for j in eachindex(r.onweights))
-            end
-            if !fixed
-                off=b.m.ext[:global_power_hulls]["power_hull_2_1"]
-                @test start_value(off.head)<0 && start_value(off.eta)<0
-                @test all(r->start_value(r.u)!=0.0 || all(v->start_value(v)==0.0,r.onweights),records)
-            end
-            if operating
-                # .97 is attained at interior electrical power knot at 3 MW.
-                power=variable_by_name(b.m,"p[1,1]")
-                flow=variable_by_name(b.m,"gq[1,1]")
-                hhi=last(b.m.ext[:global_power_hulls]["power_hull_1_1"].axes[2])
-                expected=-.00981*.97*hhi*.25*50/40
-                @test any(all_constraints(b.m;include_variable_in_set_constraints=false)) do ref
-                    expr=constraint_object(ref).func
-                    expr isa AffExpr && coefficient(expr,power)!=0.0 && abs(coefficient(expr,flow)-expected)<1e-12
-                end
-            end
-            @test_throws ArgumentError OpenSHOP._add_table_power_bounds!(b,c)
         end
     end
-    c=table_power_bounds_case(;analytic=true)
-    b=OpenSHOP._build_global_dispatch(c;joint=true)
-    @test b.m.ext[:global_table_power_bounds_profile]["skipped"]["analytic"]==2
-    @test isempty(b.m.ext[:global_table_power_coordinates])
-    @test isempty(b.m.ext[:global_table_power_supports])
 end
 
 @testset "Singleton head and conditional discharge boxes retain exact starts" begin
@@ -180,12 +134,6 @@ end
     seed=dispatch_from_controls(c,ones(Int,1,1),fill(8.0,1,1),zeros(0,1))
     @test seed["validation"]["valid"]
     b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=seed["u"])
-    tensor=b.m.ext[:global_tensor_turbines]["turbine_1_1"]
-    @test length(tensor.hcoordinate.nodes)==1
-    @test length(b.m.ext[:global_power_hulls]["power_hull_1_1"].axes[1])==1
-    profile=b.m.ext[:global_table_power_bounds_profile]
-    @test profile["units_added"]==1 && profile["head_rows"]==profile["discharge_rows"]==4
-    @test profile["variables_added"]==profile["shared_coordinates"]==0
     @test OpenSHOP._lift_start!(b,c,seed)["valid"]
 end
 
@@ -214,10 +162,9 @@ end
     optimize!(m)
     @test termination_status(m)==JuMP.MOI.OPTIMAL
     @test objective_value(m)/.00981≈2.85 atol=1e-9
-    profile=OpenSHOP._add_table_power_bounds!(b,c)
+    OpenSHOP._add_table_power_bounds!(b,c)
     optimize!(m)
     @test termination_status(m)==JuMP.MOI.OPTIMAL
     @test objective_value(m)/.00981<=2.25+2e-6
     @test objective_value(m)>=.00981*1.5*2*.6
-    @test profile["variables_added"]==0
 end

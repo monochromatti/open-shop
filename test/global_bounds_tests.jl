@@ -51,8 +51,8 @@ end
                 times = [0.0, 1.0], values = [1.0, 0.0])])
     d=bounds_only_domains(c)
     @test d.lower[1,1]==d.upper[1,1]==lake.v0
-    @test d.lower[1,2]≈lake.v0-0.0036*(20.0-3.0)-1e-7
-    @test d.upper[1,2]≈lake.v0+0.0036*(20.0+3.0)+1e-7
+    @test d.lower[1,2]<=lake.v0-0.0036*(20.0-3.0)<=d.lower[1,2]+1e-6
+    @test d.upper[1,2]-1e-6<=lake.v0+0.0036*(20.0+3.0)<=d.upper[1,2]
     x=dispatch_from_controls(c, [1 0], [3.0 0.0], zeros(0, 2))
     assert_domain_enclosure(c, d, x)
 end

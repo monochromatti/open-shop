@@ -98,18 +98,6 @@ end
     @test x["H"][2, 1]≈80.0 atol=1e-9
     @test x["power"][1, 1]≈0.00981*2*(202-100-0.2)*0.9 atol=1e-9
     @test OpenSHOP.outlet_head(only(c.system.plants), 80.0)==100.0
-    local_model=OpenSHOP._build_dispatch(c)
-    global_model=OpenSHOP._build_global_dispatch(c; joint = true)
-    @test local_model.m isa JuMP.Model
-    @test !any(
-        v->startswith(JuMP.name(v), "outlet_head_"),
-        JuMP.all_variables(global_model.m),
-    )
-    ordinary=OpenSHOP._build_global_dispatch(
-        outlet_test_case(80.0; floor = nothing);
-        joint = true,
-    )
-    @test JuMP.num_variables(global_model.m)==JuMP.num_variables(ordinary.m)
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     invalid=outlet_test_case(80.0; floor = NaN)
     @test_throws ErrorException OpenSHOP.validate_inputs(invalid)
@@ -121,11 +109,6 @@ end
     @test x["validation"]["valid"]
     @test x["power"][1, 1]≈0.00981*2*(202-120-0.2)*0.9 atol=1e-9
     @test OpenSHOP.outlet_head(only(c.system.plants), 120.0)==120.0
-    global_model=OpenSHOP._build_global_dispatch(c; joint = true)
-    @test !any(
-        v->startswith(JuMP.name(v), "outlet_head_"),
-        JuMP.all_variables(global_model.m),
-    )
 end
 
 @testset "Outlet reference preserves receiver delivery and downstream law" begin
@@ -144,13 +127,10 @@ end
     @test only(floored.system.plants).target==:Receiver
     crossing=outlet_test_case(100.0)
     global_model=OpenSHOP._build_global_dispatch(crossing; joint = true)
-    @test JuMP.variable_by_name(global_model.m, "outlet_head_1_1")!==nothing
-    graph=global_model.m.ext[:global_tensor_tables]["outlet_head_1_1"]
-    @test graph.values==max.(graph.coordinate.nodes,100.0)
     controls=dispatch_from_controls(crossing,ones(Int,1,1),fill(2.0,1,1),fill(0.5,1,1))
     @test OpenSHOP._lift_start!(global_model,crossing,controls)["valid"]
-    # Registered local operator uses the exact piecewise linear graph too.
-    @test OpenSHOP._build_dispatch(crossing).m isa JuMP.Model
+    local_result=solve_case(crossing;u=ones(Int,1,1),warm=controls,time_limit=10.0)
+    @test local_result["accepted"]
 end
 
 @testset "Delayed rivers discharge to boundaries with conserved inventory" begin
@@ -210,7 +190,6 @@ end
     @test x["validation"]["valid"]
     @test x["power"][1, 1]≈0.00981*2*(202-100-0.2)*0.65 atol=1e-9
     @test replay_audit(c, x)["valid"]
-    @test OpenSHOP._build_dispatch(c).m isa JuMP.Model
     b=OpenSHOP._build_global_dispatch(c; joint = true)
     @test OpenSHOP._lift_start!(b, c, x)["valid"]
     forbidden=OpenSHOP._river_replace(

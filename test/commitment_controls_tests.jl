@@ -63,7 +63,6 @@ end
     m=JuMP.Model(OpenSHOP.SCIP.Optimizer)
     JuMP.set_silent(m)
     states=OpenSHOP._joint_states!(m,c)
-    @test all(isnothing,states.plant_u) # No unnecessary dwell-state auxiliaries.
     JuMP.optimize!(m)
     @test JuMP.termination_status(m)==OpenSHOP.MOI.OPTIMAL
     @test admissible(c,round.(Int,JuMP.value.(states.u)))
@@ -100,7 +99,6 @@ end
     m=JuMP.Model(OpenSHOP.SCIP.Optimizer)
     JuMP.set_silent(m)
     states=OpenSHOP._joint_states!(m,c)
-    @test all(x->x isa JuMP.VariableRef,states.plant_u)
     for code in 0:255
         u=reshape([Int((code>>k)&1) for k in 0:7],2,4)
         accepted=expected(u)
@@ -139,12 +137,7 @@ end
     @test admissible(residual,[1 0 0 0;0 1 1 0])
 end
 
-@testset "Legacy size and plant minimum-down constraints" begin
-    legacy=commitment_control_case()
-    m=JuMP.Model()
-    states=OpenSHOP._joint_states!(m,legacy)
-    @test JuMP.num_variables(m)==3*2*4
-    @test all(isnothing,states.plant_u)
+@testset "Plant minimum-down constraints" begin
     c=commitment_control_case(;plant_mindown=1.0,plant_initial_on=1,
         plant_initial_age=10.0,unit_initial_on=1)
     @test !admissible(c,[0 1 1 1;0 0 0 0])

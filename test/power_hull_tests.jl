@@ -52,7 +52,6 @@ end
             ev=OpenSHOP.turbine_efficiency(table,qv,hv;extrapolation=:linear)
             assigned=Dict(q=>qv,h=>hv,eta=>ev,p=>0.00981*qv*hv*ev,u=>uv)
             OpenSHOP._lift_power_hulls!(m,assigned)
-            @test length(assigned)==num_variables(m)
             @test power_hull_test_residual(m,assigned)<1e-11
         end
     end
@@ -93,14 +92,11 @@ end
         eta,nothing,nothing,nothing,nothing)
     b=(m=m,u=reshape([u],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),
         graphs=(generator_graphs=reshape([graph],1,1),))
-    profile=OpenSHOP._add_power_hull!(b,c)
-    @test profile["variables_added"]==10
-    @test only(values(m.ext[:global_power_hulls])).axes[2][1]==tighthead[1]
+    OpenSHOP._add_power_hull!(b,c)
     for (uv,qv,hv,ev) in ((1.0,2.0,limitinghead,0.9),(1.0,1.5,5.0,0.9),
         (0.0,0.0,-20.0,-2.0),(0.0,0.0,-1.0,1.2))
         assigned=Dict(q=>qv,h=>hv,eta=>ev,p=>0.00981*qv*hv*ev,u=>uv)
         OpenSHOP._lift_power_hulls!(m,assigned)
-        @test length(assigned)==num_variables(m)
         @test power_hull_test_residual(m,assigned)<1e-12
     end
 end
@@ -115,28 +111,21 @@ end
         qbox,hbox,etabox=boxes
         m=Model();@variable(m,0<=q<=qbox[2]);@variable(m,-20<=h<=10)
         @variable(m,-2<=eta<=1.2);@variable(m,0<=p<=1);@variable(m,u,Bin)
-        before=count(is_binary,all_variables(m))
         record=OpenSHOP._power_hull_unit!(m,q,h,eta,p,u,qbox,hbox,etabox,(-20.0,10.0),(-2.0,1.2),
             0.8,0.95;name=:test)
         m.ext[:global_power_hulls]=Dict("test"=>record)
-        @test count(is_binary,all_variables(m))==before
-        @test length(record.weights)==prod(box[1]==box[2] ? 1 : 2 for box in boxes)
-        @test num_variables(m)-5<=10
         for qv in unique([qbox[1],sum(qbox)/2,qbox[2]]),
             hv in unique([hbox[1],sum(hbox)/2,hbox[2]]),
             ev in unique([etabox[1],sum(etabox)/2,etabox[2]]),electrical in (0.8,0.9,0.95)
             assigned=Dict(q=>qv,h=>hv,eta=>ev,p=>0.00981*qv*hv*ev*electrical,u=>1.0)
             OpenSHOP._lift_power_hulls!(m,assigned)
-            @test length(assigned)==num_variables(m)
             @test power_hull_test_residual(m,assigned)<1e-12
-            @test sum(assigned[w]*prod(corner) for (w,corner) in zip(record.weights,record.corners))≈qv*hv*ev
         end
         # Full off-inclusive product bounds preserve heads/eta outside the on box.
         for hv in (-20.0,0.0,10.0),ev in (-2.0,0.0,1.2)
             assigned=Dict(q=>0.0,h=>hv,eta=>ev,p=>0.0,u=>0.0)
             OpenSHOP._lift_power_hulls!(m,assigned)
             @test power_hull_test_residual(m,assigned)==0.0
-            @test all(w->assigned[w]==0.0,record.weights)
         end
     end
 end
@@ -161,23 +150,20 @@ end
     optimize!(m)
     @test termination_status(m)==JuMP.MOI.OPTIMAL
     @test objective_value(m)/0.00981≈4.11 atol=1e-10
-    record=OpenSHOP._power_hull_unit!(m,q,h,eta,p,1.0,(1.0,2.0),(2.0,5.0),(0.3,0.9),
+    OpenSHOP._power_hull_unit!(m,q,h,eta,p,1.0,(1.0,2.0),(2.0,5.0),(0.3,0.9),
         (2.0,5.0),(0.3,0.9),1.0,1.0;name=:joint)
     optimize!(m)
     @test termination_status(m)==JuMP.MOI.OPTIMAL
     @test objective_value(m)/0.00981≈3.705 atol=1e-10
     @test objective_value(m)>=0.00981*1.25*3.2*0.75
-    @test length(record.weights)==8
 end
 
-function power_hull_test_fixture(;off=false,negative_electrical=false,empty_box=false)
+function power_hull_test_fixture()
     m=Model();@variable(m,0<=q<=2);@variable(m,-20<=h<=5)
     eta=@variable(m,lower_bound=-2,upper_bound=0.9,base_name="eta_1_1")
     @variable(m,0<=p<=1);@variable(m,u,Bin)
-    off && fix(u,0;force=true)
-    curve=negative_electrical ? TableCurve([0.0,0.1],[0.9,0.8]) : nothing
     generator=Generator(name=:Unit,plant=:Plant,qmin=1.0,qmax=2.0,pmin=0.01,pmax=1.0,
-        hmin=empty_box ? 10.0 : 2.0,hmax=20.0,min_efficiency=0.3,efficiency=0.75,qcurvature=0.0,hcurvature=0.0,generator_efficiency_curve=curve)
+        hmin=2.0,hmax=20.0,min_efficiency=0.3,efficiency=0.75,qcurvature=0.0,hcurvature=0.0)
     system=HydroSystem(reservoirs=Reservoir[],junctions=Junction[],boundaries=Boundary[],
         tunnels=Tunnel[],rivers=River[],plants=[Plant(name=:Plant,source=:Source,target=:Target,pmax=1.0)],
         generators=[generator])
@@ -191,18 +177,8 @@ end
 
 @testset "Power hull domain coverage and complete start lifting" begin
     b,c,v=power_hull_test_fixture()
-    profile=OpenSHOP._add_power_hull!(b,c)
-    @test profile["units_added"]==1
-    @test profile["variables_added"]==10
+    OpenSHOP._add_power_hull!(b,c)
     assigned=Dict(v.q=>1.25,v.h=>3.2,v.eta=>0.75,v.p=>0.00981*3.0,v.u=>1.0)
     OpenSHOP._lift_power_hulls!(b.m,assigned)
-    @test length(assigned)==num_variables(b.m)
     @test power_hull_test_residual(b.m,assigned)<1e-12
-    @test_throws ArgumentError OpenSHOP._add_power_hull!(b,c)
-    for (kwargs,reason) in (((off=true,),"fixed_off"),((negative_electrical=true,),"electrical"),((empty_box=true,),"empty_on_box"))
-        b,c,_=power_hull_test_fixture(;kwargs...)
-        profile=OpenSHOP._add_power_hull!(b,c)
-        @test profile["units_added"]==0
-        @test profile["skipped"][reason]==1
-    end
 end

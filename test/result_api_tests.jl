@@ -3,9 +3,9 @@
     c=fixture.case
     x=dispatch_from_controls(c; commitment=fixture.u, generator_q=fixture.q, gate=fixture.gates)
     @test x isa Schedule
-    @test x.storage===x["V"]
-    @test x.commitment===x["u"]
-    @test !hasmethod(setindex!,Tuple{typeof(x),Float64,String})
+    @test x.storage==x["V"]
+    @test x.commitment==x["u"]
+    @test_throws MethodError setindex!(x,0.0,"objective")
     profile=schedule_dict(x)
     profile["power"][1]+=1.0
     @test profile["power"]!=x.power
