@@ -65,6 +65,10 @@ function restart_case(c::ScheduleCase, x, time::Real)
     opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
     tunnels=[_restart_replace(e;initial_opening=Float64(opening[i,previous]))
         for (i,e) in enumerate(s.tunnels)]
+    switch_history=tunnel_switch_history(c,opening,time)
+    tunnel_interlocks=[_restart_replace(rule;
+        initial_forward_wait=history.forward_wait,initial_backward_wait=history.backward_wait)
+        for (rule,history) in zip(s.tunnel_interlocks,switch_history)]
     plant_history=_plant_commitment_history(c,x.commitment,time)
     plants=[
         _restart_replace(
@@ -116,7 +120,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
             ),
         )
     end
-    system=_restart_replace(s; reservoirs, generators, plants, rivers, tunnels)
+    system=_restart_replace(s; reservoirs, generators, plants, rivers, tunnels,tunnel_interlocks)
     result=ScheduleCase(
         name = c.name*"_restart_"*string(time),
         system = system,

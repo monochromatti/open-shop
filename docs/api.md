@@ -68,6 +68,12 @@ endpoint pressures. `TunnelInterlock` counts strictly positive positions.
 change, without a duration multiplier. Independent reconstruction of selectable
 gates requires an explicit opening matrix.
 
+Interlocks can protect named plants with asymmetric shutdown waits after gate
+closures. `validate_tunnel_openings(case, positions, commitment)` checks both
+gate controls and these commitment restrictions; the two-argument form checks
+gate controls alone. See [gate handovers](operating-rules.md#gate-handovers-and-plant-shutdowns)
+for the timing and initial-history convention.
+
 `gate_loss_factor_curve` supplies additional resistance versus opening. A
 `River(law=:delta)` supplies exactly one upstream- or downstream-reference
 `LevelFlowCurve`; its signed flow is instantaneous. Delta segments extend

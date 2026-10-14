@@ -49,6 +49,7 @@ function propose_commitment(
     states=_joint_states!(m,c)
     gates=_tunnel_gate_states!(m,c)
     u=states.u
+    constrain_tunnel_switching!(m,c,gates.open,u)
     @variable(m, V[1:R, 1:(T + 1)])
     @variable(m, Q[1:E, 1:T])
     @variable(m, gq[1:G, 1:T]>=0)

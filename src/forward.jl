@@ -327,7 +327,9 @@ function simulate(
     indices=[min(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), length(c.grid)-1) for t in 1:T]
     gq=generator_q[:, indices]
     ga=gate[:, indices]
-    ta=_physical_tunnel_openings(c, tunnel_opening)[:, indices]
+    opening=_physical_tunnel_openings(c,tunnel_opening)
+    validate_tunnel_openings(c,opening,generator_q.>0)
+    ta=opening[:,indices]
     nr=length(s.reservoirs)
     topology=HydraulicTopology(s)
     sources=river_source_indices(s)

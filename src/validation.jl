@@ -10,7 +10,7 @@ function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing)
         return Dict("valid"=>false,"max_residual"=>Inf,
             "residuals"=>Dict{String,Float64}(),
             "errors"=>["missing or malformed schedule: "*sprint(showerror,error)],
-            "terminal_commitment_obligations"=>Any[])
+            "terminal_commitment_obligations"=>Any[],"terminal_tunnel_switch_obligations"=>Any[])
     end
     _validate_schedule(c, schedule; tolerance, transport)
 end
@@ -19,12 +19,14 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     errors=String[]
     residuals=Dict{String,Float64}()
     obligations=Any[]
+    switch_obligations=Any[]
     finish() = Dict(
         "valid"=>isempty(errors),
         "max_residual"=>maximum(values(residuals); init = 0.0),
         "residuals"=>residuals,
         "errors"=>errors,
         "terminal_commitment_obligations"=>obligations,
+        "terminal_tunnel_switch_obligations"=>switch_obligations,
     )
     record(name, x) = begin
         v=maximum(abs, x; init = 0.0)
@@ -83,7 +85,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     TA,adjustment_cost=try
         opening=_tunnel_opening_input(c,get(result,"tunnel_opening",nothing))
-        validate_tunnel_openings(c,opening;tolerance=min(tolerance,1e-6))
+        validate_tunnel_openings(c,opening,result.commitment;tolerance=min(tolerance,1e-6))
+        append!(switch_obligations,[state for state in tunnel_switch_history(c,opening)
+            if state.forward_wait>0 || state.backward_wait>0])
         (opening,tunnel_adjustment_cost(c,opening))
     catch e
         push!(errors,"invalid tunnel_opening: "*sprint(showerror,e))

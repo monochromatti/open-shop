@@ -38,6 +38,7 @@ function _build_dispatch(
     set_silent(m)
     openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
     gates=_tunnel_gate_states!(m,c;fixed=openings)
+    constrain_tunnel_switching!(m,c,gates.open,u)
     ustart=copy(u)
     @variable(m, v[1:R, 1:(T + 1)])
     @variable(m, h[1:N, 1:T])

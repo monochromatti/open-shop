@@ -102,6 +102,73 @@ Power, discharge and release are averaged back onto those windows, while
 reservoir values are sampled at their original vertices. Restart retains
 previous unit/plant output, durations, state ages and river cohorts.
 
+## Gate handovers and plant shutdowns
+
+`TunnelInterlock` retains its instantaneous `min_open`/`max_open` limits.
+It can also require a plant shutdown after a gate closes:
+
+```julia
+TunnelInterlock(name=:SupplyHandover, tunnels=[:HighIntake, :LowIntake],
+    min_open=1, max_open=1,
+    forward_tunnels=[:HighIntake], backward_tunnels=[:LowIntake],
+    plants=[:Station], forward_switch_time=1.5, backward_switch_time=0.5)
+```
+
+The forward and backward lists identify two disjoint closure groups. They are
+subsets of `tunnels`; their names describe connection roles, not the sign of
+water flow. `plants` explicitly names the stations protected by the wait.
+This avoids inferring a station from a shared or looping pressure network.
+The times are finite, nonnegative hours and constant over the horizon. Zero
+disables a group's wait. A positive time requires that group and protected plants.
+
+A closure occurs at a control edge when a gate changes from a strictly positive
+position to zero. It starts the corresponding wait even if the tunnel carried
+no water. Positive-to-positive movement does not start a wait. Every unit of
+every protected plant must stay off until expiry. Another intake may open
+immediately while the plant is idle: the example keeps one gate open throughout.
+Reopening a gate does not cancel its unfinished wait, and later closures start
+new waits. The latest applicable deadline controls operation.
+
+For open status `o[e,t]` and unit commitment `u[g,k]`, a closure at `τ[t]` is
+enforced by the linear inequalities
+
+```math
+u_{g,k}+o_{e,t-1}-o_{e,t}\le1,
+\qquad \tau_t\le\tau_k<\tau_t+L.
+```
+
+Here `L` is the group's waiting time, and `o[e,-1]` is the initial gate status.
+When a gate closes, the difference is one and each protected `u[g,k]` must be
+zero. In the other transitions the inequality adds no restriction. The existing
+gate and unit variables suffice; no additional closure binary is needed.
+
+These comparisons use elapsed hours, including on irregular grids, with a
+`1e-8` hour boundary tolerance matching minimum dwell checks. Controls are constant
+within each interval. If a wait expires inside an interval, production can resume
+only at the next control edge. Include the expiry as an edge to permit an exact
+restart time. Hard output schedules, minimum dwell and shutdown waits all apply;
+conflicting requirements make the optimization infeasible.
+
+`initial_forward_wait` and `initial_backward_wait` describe unexpired waits at
+the horizon start; their default zero declares none. Each is bounded by its
+group's switch time. For positive remaining wait `w`, the implied closure was
+`L-w` hours before the horizon. All protected units must initially be off with
+an off-age at least that long. Initial gate status alone cannot describe this
+history, since a gate may have reopened while the plant stayed off.
+
+`validate_tunnel_openings(case, positions, commitment)` checks the joint rule.
+The two-argument form checks positions, hard schedules and open counts.
+`simulate` also rejects positive protected-unit discharge during a wait;
+schedule validation additionally rejects a claimed on-state with zero discharge.
+Finer replay preserves gate event times. Validation reports outstanding waits
+in `terminal_tunnel_switch_obligations`, and `restart_case` carries both residual
+clocks along with initial openings and unit histories. Residual waits are zero
+once they have expired within the same time tolerance used for admission.
+Conversion to Float64 must preserve a gate's zero/nonzero state and cannot admit
+controls outside their original `[0,1]` domain.
+The [directional-interlock example](../examples/directional_interlocks.jl) optimizes
+a two-intake station with asymmetric waits on an irregular grid.
+
 ## Optimization scope
 
 Unit commitment remains binary throughout the horizon. The MILP proposal enforces

@@ -55,7 +55,7 @@ function schedule_case(
     fallback=clamp.(fallback,bounds.unit_lower,bounds.unit_upper)
     fallback_opening=tunnel_opening_schedule(c)
     fallback_gates_valid=try
-        validate_tunnel_openings(c,fallback_opening)
+        validate_tunnel_openings(c,fallback_opening,fallback)
     catch error
         error isa ArgumentError || rethrow()
         false
