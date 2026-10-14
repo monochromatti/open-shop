@@ -274,8 +274,30 @@ Base.@kwdef struct FlowRequirement
     inflow::Float64 = 0.0
     min_flow::Float64 = 0.0
 end
+"""A bounded, explicitly penalized operating restriction.
+
+Volume/level are assessed at `time`; power/discharge are averaged over
+`[time,end_time]`. Times are absolute and survive refinement and restart.
+Slacks use Mm³, metres, MW or m³/s respectively. Costs use currency/Mm³,
+currency/metre, currency/MWh or currency/Mm³. Existing operating inputs and
+physical domains are never softened by this record.
 """
-    ScheduleCase(; name, system, grid, prices, operations=[], flow_requirements=[])
+Base.@kwdef struct SoftConstraint
+    name::Symbol
+    object::Symbol
+    quantity::Symbol
+    time::Float64
+    end_time::Union{Nothing,Float64} = nothing
+    lower::Union{Nothing,Float64} = nothing
+    upper::Union{Nothing,Float64} = nothing
+    max_lower_slack::Float64 = 0.0
+    max_upper_slack::Float64 = 0.0
+    lower_cost::Float64 = 0.0
+    upper_cost::Float64 = 0.0
+end
+
+"""
+    ScheduleCase(; name, system, grid, prices, operations=[], flow_requirements=[], soft_constraints=[])
 
 A watercourse and its scheduling horizon. `grid` contains increasing absolute
 hours; `prices[t]` is currency/MWh on `[grid[t], grid[t+1]]`. Prices and controls
@@ -289,15 +311,19 @@ Base.@kwdef struct ScheduleCase
     prices::Vector{Float64}
     operations::Vector{OperationalSeries} = OperationalSeries[]
     flow_requirements::Vector{FlowRequirement} = FlowRequirement[]
+    soft_constraints::Vector{SoftConstraint} = SoftConstraint[]
     function ScheduleCase(name::String, system::HydroSystem, grid::Vector{Float64},
         prices::Vector{Float64}, operations::Vector{OperationalSeries},
-        flow_requirements::Vector{FlowRequirement})
-        new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements)
+        flow_requirements::Vector{FlowRequirement}, soft_constraints::Vector{SoftConstraint})
+        new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements, soft_constraints)
     end
 end
-ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements) =
+ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements, soft_constraints) =
     ScheduleCase(String(name), system, Vector{Float64}(grid), Vector{Float64}(prices),
-        Vector{OperationalSeries}(operations), Vector{FlowRequirement}(flow_requirements))
+        Vector{OperationalSeries}(operations), Vector{FlowRequirement}(flow_requirements),
+        Vector{SoftConstraint}(soft_constraints))
+ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements) =
+    ScheduleCase(name, system, grid, prices, operations, flow_requirements, SoftConstraint[])
 
 nodes(s) = vcat(
     [r.name for r in s.reservoirs],

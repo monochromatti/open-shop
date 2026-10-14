@@ -31,6 +31,10 @@ function restart_case(c::ScheduleCase, x, time::Real)
             ),
         )
     end
+    for rule in c.soft_constraints
+        rule.end_time===nothing || !(rule.time<time<rule.end_time) ||
+            throw(ArgumentError("restart crosses soft assessment window $(rule.name)"))
+    end
     audit=validate(c, x)
     audit["valid"] || throw(
         ArgumentError(
@@ -128,6 +132,8 @@ function restart_case(c::ScheduleCase, x, time::Real)
         prices = Float64.(c.prices[edge:end]),
         operations = c.operations,
         flow_requirements = c.flow_requirements,
+        soft_constraints = [rule for rule in c.soft_constraints
+            if (rule.end_time===nothing ? rule.time : rule.end_time)>time],
     )
     validate_inputs(result)
     result

@@ -122,6 +122,11 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             table(b.graphs.reservoir_levels[i,t],r.level_curve,
                 (physical.storage[i,t]+physical.storage[i,t+1])/2)
         end
+        assessment=soft_constraint_assessment(c,physical)
+        for (variables,result) in zip(b.soft.slacks,assessment.slacks)
+            variables[1] isa VariableRef && put(variables[1],result.lower)
+            variables[2] isa VariableRef && put(variables[2],result.upper)
+        end
         shortfall=release_requirements(c,physical.river_release).shortfall
         for (i,r) in enumerate(s.rivers), t in 1:T
             put(b.rq[i,t],physical.river_release[i,t]/100)

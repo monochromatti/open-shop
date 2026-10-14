@@ -64,6 +64,18 @@ input arrays are read-only. `simulate` returns `HydraulicTrajectory`, and
 `forward_step` returns `HydraulicStep`. Physical convergence can coexist with
 an operating-limit violation.
 
+`SoftConstraint` declares a separate bounded, priced operating or terminal
+restriction; see [penalty equations](operating-rules.md#explicit-penalty-limits).
+`Schedule.soft_slacks` contains `SoftConstraintSlack` records with `name`,
+`lower` shortfall, `upper` excess, `unit` and positive `penalty_cost`.
+`soft_penalty_cost` is their total cost, already subtracted from `objective`.
+These fields are absent from the JSON profile when the case has no soft rules.
+`soft_constraint_assessment(case, schedule)` recomputes canonical minimal slacks
+and returns `slacks`, `cost` and per-rule `excess` beyond allowed slack.
+`validate` checks this accounting independently and reports allowed deviations
+in `permitted_penalties`; they do not make a schedule invalid. Bare hydraulic
+simulation returns the physical trajectory without economic accounting.
+
 An empty `Tunnel.gate_positions` leaves openings prescribed by `opening` and
 operating series. A nonempty sorted list enables discrete choices. Selectable
 positions must be exact listed values; a closed gate has zero flow and independent
@@ -101,3 +113,7 @@ inputs. `restart_case(case, schedule, time)` requires a source schedule that pas
 and an existing grid edge. It carries storage, executed river cohorts, unit and
 plant state ages, previous outputs and gate positions. `transport_audit` checks
 convergence of distributed mixing separately from hydraulic integration.
+Soft state observations and output assessment windows retain their original
+times. Restart removes completed assessments and rejects a restart inside an
+unfinished output window, whose partial history is not represented by this
+profile. A terminal target is assessed only at its original time.

@@ -1,3 +1,12 @@
+"""Canonical shortfall/excess and its positive economic cost for a named rule."""
+Base.@kwdef struct SoftConstraintSlack
+    name::Symbol
+    lower::Float64
+    upper::Float64
+    unit::Symbol
+    penalty_cost::Float64
+end
+
 """
     Schedule
 
@@ -25,8 +34,14 @@ struct Schedule{U<:AbstractMatrix}
     objective::Float64
     gate_adjustment_cost::Union{Nothing,Float64}
     release_penalty_cost::Union{Nothing,Float64}
+    soft_slacks::Union{Nothing,Vector{SoftConstraintSlack}}
+    soft_penalty_cost::Union{Nothing,Float64}
     diagnostics::Dict{String,Any}
 end
+
+Schedule(grid,u,V,H,Q,A,GQ,P,gate,RQ,arrivals,terminal,shortfall,objective,gate_cost,release_cost,diagnostics) =
+    Schedule(grid,u,V,H,Q,A,GQ,P,gate,RQ,arrivals,terminal,shortfall,objective,gate_cost,release_cost,
+        nothing,nothing,diagnostics)
 
 # These aliases are an input/output compatibility boundary. Numerical routines
 # access the fields above directly.
@@ -38,6 +53,7 @@ const _SCHEDULE_KEYS = (
     "terminal_transit"=>:terminal_transit, "shortfall_release"=>:shortfall_release,
     "objective"=>:objective, "gate_adjustment_cost"=>:gate_adjustment_cost,
     "release_penalty_cost"=>:release_penalty_cost,
+    "soft_slacks"=>:soft_slacks, "soft_penalty_cost"=>:soft_penalty_cost,
 )
 function Base.getindex(x::Schedule, key::AbstractString)
     for (name, field) in _SCHEDULE_KEYS
@@ -113,7 +129,10 @@ function _schedule_input(x::AbstractDict; case=nothing)
         haskey(x,"shortfall_release") ? matrix("shortfall_release") : nothing,
         Float64(x["objective"]),
         haskey(x,"gate_adjustment_cost") ? Float64(x["gate_adjustment_cost"]) : nothing,
-        haskey(x,"release_penalty_cost") ? Float64(x["release_penalty_cost"]) : nothing, diagnostics)
+        haskey(x,"release_penalty_cost") ? Float64(x["release_penalty_cost"]) : nothing,
+        haskey(x,"soft_slacks") ? [r isa SoftConstraintSlack ? r : _read_object(SoftConstraintSlack,r)
+            for r in x["soft_slacks"]] : nothing,
+        haskey(x,"soft_penalty_cost") ? Float64(x["soft_penalty_cost"]) : nothing, diagnostics)
 end
 
 """
@@ -205,3 +224,5 @@ Base.:(==)(a::Schedule,b::Schedule) =
     all(field -> getfield(a,field)==getfield(b,field),fieldnames(typeof(a)))
 
 schedule_dict(x::SolveResult) = schedule_dict(_schedule_input(x))
+
+jsonready(x::SoftConstraintSlack) = jsonready(component_dict(x))

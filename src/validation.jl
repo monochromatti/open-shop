@@ -20,6 +20,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     residuals=Dict{String,Float64}()
     obligations=Any[]
     switch_obligations=Any[]
+    permitted_penalties=SoftConstraintSlack[]
     finish() = Dict(
         "valid"=>isempty(errors),
         "max_residual"=>maximum(values(residuals); init = 0.0),
@@ -27,6 +28,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "errors"=>errors,
         "terminal_commitment_obligations"=>obligations,
         "terminal_tunnel_switch_obligations"=>switch_obligations,
+        "permitted_penalties"=>permitted_penalties,
     )
     record(name, x) = begin
         v=maximum(abs, x; init = 0.0)
@@ -36,6 +38,13 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     bound(name, x) = record(name, max.(x, 0.0))
     s=c.system
+    try
+        validate_soft_constraints(c)
+    catch error
+        residuals["soft_input"]=Inf
+        push!(errors,"invalid soft constraint data: "*sprint(showerror,error))
+        return finish()
+    end
     try
         validate_unit_modes(s)
         commitment_exclusion_indices(c)
@@ -47,6 +56,10 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         return finish()
     end
     T=length(c.prices)
+    if result.grid!=c.grid
+        push!(errors,"schedule grid differs from case")
+        return finish()
+    end
     try
         validate_river_allocations(s)
     catch error
@@ -207,6 +220,26 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             obligations,
             Dict("generator"=>string(g.name), "state"=>state, "remaining_hours"=>left),
         )
+    end
+    soft=soft_constraint_assessment(c,result)
+    append!(permitted_penalties,[r for (r,excess) in zip(soft.slacks,soft.excess)
+        if excess<=tolerance && (r.lower>0 || r.upper>0)])
+    for (rule,excess) in zip(c.soft_constraints,soft.excess)
+        bound("soft_allowance_$(rule.name)",[excess])
+    end
+    if !isempty(c.soft_constraints) || result.soft_slacks!==nothing || result.soft_penalty_cost!==nothing
+        if result.soft_slacks===nothing || length(result.soft_slacks)!=length(soft.slacks) ||
+            result.soft_penalty_cost===nothing
+            push!(errors,"missing or malformed soft constraint accounting")
+        else
+            for (actual,expected) in zip(result.soft_slacks,soft.slacks)
+                actual.name==expected.name && actual.unit==expected.unit ||
+                    push!(errors,"soft constraint result name or unit differs from case")
+                record("soft_slack_$(expected.name)",[actual.lower-expected.lower,actual.upper-expected.upper])
+                record("soft_cost_$(expected.name)",[(actual.penalty_cost-expected.penalty_cost)/max(1.0,expected.penalty_cost)])
+            end
+            record("soft_penalty_cost",[(result.soft_penalty_cost-soft.cost)/max(1.0,soft.cost)])
+        end
     end
     for (name,residual) in operating_residuals(c,result)
         bound(name,[residual])
@@ -438,7 +471,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                       r.water_value*(W[d, end]-W[d, 1]) for (d, r) in enumerate(s.rivers);
                       init = 0.0,
                   )
-        objective-=requirements.cost
+        objective-=requirements.cost+soft.cost
         record(
             "objective_relative",
             [(objective-result.objective)/max(1.0, abs(objective))],

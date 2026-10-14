@@ -2,7 +2,7 @@
 
 OpenSHOP reads a JSON case with `readcase(path)` or a dictionary with `case_from_dict(data)`. `case_dict(case)` produces the public profile and `writejson(path, data)` writes it. Object names connect the watercourse; JSON arrays do not determine hydraulic connectivity.
 
-The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks` and `commitment_exclusions`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
+The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks`, `commitment_exclusions` and `soft_constraints`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
 
 ## Objects
 
@@ -22,6 +22,7 @@ The fields below are the accepted object attributes. Fields marked “required�
 | River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `allocation`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
+| Soft constraint | `name`, `object`, `quantity`, `time` | `end_time`, `lower`, `upper`, `max_lower_slack`, `max_upper_slack`, `lower_cost`, `upper_cost` |
 
 Reservoir head is `z0 + slope * V + curvature * V²`, unless `level_curve` supplies the volume-to-head relationship. The relationship must increase over the storage domain. Hydraulic junctions have no storage; signed tunnel and generation flows satisfy continuity. Boundaries have fixed heads and represent external water exchange.
 
@@ -114,6 +115,39 @@ A `flow_requirements` entry records a hard minimum at an operating measurement p
 All terms are in m³/s. `inflow` and `min_flow` default to zero and accept time-dependent operations. The measurement adds no hydraulic node or water balance term. The physical network must already account for the observed water. Contributions must be unique existing names, and observation names must be globally unique. River contributions denote releases, not delayed arrivals; constrain a River’s `min_arrival` when travel time matters.
 
 Refinement retains these rules and their physical input times. Independent equation validation and finer replay check the aggregate minimum. Flow requirements are hard constraints; conditional waivers and soft shortfall penalties are not supplied by this observation profile.
+
+## Explicit penalty limits
+
+`soft_constraints` contains separate, named `SoftConstraint` records. They do not
+change an existing `OperationalSeries`. An empty array enables no additional
+softening. A reservoir accepts `quantity="volume"` or `"level"` at an absolute
+state assessment `time`; omit `end_time`. A generator or plant accepts
+`quantity="power"` or `"discharge"` averaged over the original absolute window
+`[time,end_time]`. Plant outputs sum every member unit before averaging.
+Use `lower=upper` for a target schedule, or one or both sides for a band.
+
+The nonnegative `max_lower_slack` and `max_upper_slack` bound the admitted
+shortfall and excess; both default to zero. `lower_cost` and `upper_cost` default
+to zero. A positive slack allowance requires a strictly positive cost. An absent
+limit must have zero allowance and cost. Limits, allowances, costs and their
+bounded monetary products must be finite. Volume, power and discharge limits
+are nonnegative; level limits may use any finite datum. Names are globally
+unique across physical objects, flow observations and soft constraints.
+
+| Quantity | Slack unit | Penalty coefficient | Cost |
+| --- | --- | --- | --- |
+| Reservoir volume | Mm³ | currency/Mm³ | coefficient × point slack |
+| Reservoir level | metres | currency/metre | coefficient × point slack |
+| Unit or plant power | MW | currency/MWh | coefficient × window hours × average slack |
+| Unit or plant discharge | m³/s | currency/Mm³ | coefficient × 0.0036 × window hours × average slack |
+
+All active assessment times must be grid edges. Records wholly outside the
+current horizon are inactive, allowing a forecast prefix to retain its original
+future terminal target. A rate window crossing a horizon boundary is rejected.
+State bands are restrictions at their declared observations; they do not impose
+continuous-time bands between observations. Supply a record at each desired
+state observation or output window. See [penalty equations and continuation](operating-rules.md#explicit-penalty-limits)
+and the [example](../examples/soft_limits.jl).
 
 ## Units and errors
 
