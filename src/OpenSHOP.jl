@@ -32,6 +32,7 @@ include("forward.jl")
 include("joint_states.jl")
 include("dispatch_data.jl")
 include("economics.jl")
+include("terminal_value.jl")
 include("local_dispatch.jl")
 include("validation.jl")
 include("proposal_hydraulics.jl")
@@ -51,6 +52,7 @@ include("reserves.jl")
 include("solve.jl")
 export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     ReserveGroup, ReserveAllocation,
+    energy_conversion_factor, volume_water_value, objective_components,
     Reservoir,
     Junction,
     Boundary,

@@ -851,6 +851,20 @@ $c_k^"res"$ are currency per MW-hour. Allocated MW earns capacity price
 times interval hours, without implying actual activation energy. Hard reserve
 requirements have zero shortfall and no penalty term.
 
+An energy value $e_i$ in currency per MWh can be converted at a supplied
+reference net head and combined efficiency:
+
+$ f_i=2.725 h_i^"ref" eta_i^"ref", quad
+  v_i=e_i f_i+v_i^"downstream". $ <eq:energyvalue>
+
+$f_i$ is MWh per $"Mm"^3$. The downstream term includes only opportunities
+not already represented by $f_i$. Water that has passed one station retains
+only its remaining opportunities. Heads, efficiencies, paths and exchange
+rates are not inferred. All monetary inputs use one currency.
+These constants describe future use; they are not marginal values calculated
+by optimization. Historical transit is included in $W_(r 0)$, and subtracting
+initial inventory values preserves additive accounting across restart.
+
 A positive release penalty permits a deficit below the entry minimum.
 The deficit variable is measured as a volume:
 
