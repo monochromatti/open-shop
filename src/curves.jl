@@ -112,17 +112,17 @@ struct TurbineTable
         lo=Float64.(qmin)
         hi=Float64.(qmax)
         !isempty(hh) && length(lo)==length(hi)==length(hh) &&
-            all(isfinite,hh) && all(diff(hh).>0) &&
+            all(isfinite,hh) && all(i->hh[i]<hh[i+1], 1:(length(hh)-1)) &&
             all(isfinite,lo) && all(isfinite,hi) ||
             throw(ArgumentError("turbine heads and envelope need paired finite increasing data"))
         TableCurve(qq, zeros(length(qq)))
         size(ee)==(length(qq), length(hh)) ||
             throw(ArgumentError("turbine efficiency rows must be discharge, columns head"))
-        all(isfinite, ee) && all(0 .< ee .<= 1) ||
+        all(x->0<x<=1, ee) ||
             throw(ArgumentError("turbine efficiency must be finite in (0,1]"))
         first(hh)>0 && first(qq)>=0 ||
             throw(ArgumentError("turbine heads must be positive and discharge nonnegative"))
-        all(0 .<= lo .<= hi) ||
+        all(i->0<=lo[i]<=hi[i], eachindex(lo,hi)) ||
             throw(ArgumentError("turbine discharge envelope must be nonnegative and ordered"))
         interpolation in (:bilinear, :pchip_discharge) ||
             throw(ArgumentError("unsupported turbine interpolation"))
@@ -136,7 +136,7 @@ struct TurbineTable
         discharge_extrapolation in (:error, :linear) ||
             throw(ArgumentError("turbine discharge extrapolation must be :error or :linear"))
         discharge_extrapolation==:linear ||
-            all(first(qq) .<= lo .<= hi .<= last(qq)) ||
+            all(i->first(qq)<=lo[i]<=hi[i]<=last(qq), eachindex(lo,hi)) ||
             throw(ArgumentError("turbine discharge envelope exceeds efficiency data; declare :linear extrapolation"))
         slopes=hcat([_pchip_slopes(qq, ee[:, j]) for j in eachindex(hh)]...)
         new(hh, qq, ee, lo, hi, interpolation, head_extrapolation, discharge_extrapolation, slopes)

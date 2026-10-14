@@ -29,6 +29,11 @@ end
         [1.0],[3.0];head_extrapolation=:constant,discharge_extrapolation=:clamp)
 end
 
+@testset "Invalid efficiency data: $eta" for eta in (NaN,Inf,-Inf,0.0)
+    @test_throws ArgumentError TurbineTable([100.0],[1.0,3.0],[eta,0.9],
+        [1.0],[3.0];head_extrapolation=:constant)
+end
+
 @testset "Single-head lookup and continuation: $interpolation" for interpolation in (:bilinear,:pchip_discharge)
     c=single_head_case(;interpolation)
     g=only(c.system.generators);table=g.turbine_table
