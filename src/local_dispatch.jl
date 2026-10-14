@@ -34,6 +34,7 @@ function _build_dispatch(
     dt=diff(c.grid)
     generator_plants = s.plants[topology.generator_plant]
     plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
+    warm, warm_start=_dispatch_start(c, u, warm)
     m=Model()
     set_silent(m)
     openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
@@ -265,11 +266,26 @@ function _build_dispatch(
             elseif r.law in (:orifice, :weir)
                 r.law==:weir && fix(a[i, t], 1.0; force = true)
                 hd=H[ix[r.source], t]-r.crest
-                wet=r.allow_dry ? @expression(m, max(hd, 0.0)) : hd
-                if r.law==:orifice
-                    @constraint(m, (outlet_release-r.coefficient*a[i, t]*sqrt(wet))/100==0)
+                source=only(x for x in s.reservoirs if x.name==r.source)
+                upper=sqrt(max(0.0,head(source,source.vmax)-r.crest))
+                root=@variable(m,lower_bound=0.0,upper_bound=upper,
+                    base_name="outlet_root_$(i)_$(t)")
+                initial=warm===nothing ? head(source,source.v0) : warm.head[ix[r.source],t]
+                set_start_value(root,sqrt(max(0.0,initial-r.crest)))
+                # w = sqrt(max(hd,0)) without singular square-root derivatives.
+                # Nonnegativity, w² ≥ hd, and w(w²-hd)=0 give the exact graph.
+                if upper==0
+                    fix(root,0.0;force=true)
+                elseif r.allow_dry
+                    @constraint(m,root^2>=hd)
+                    @constraint(m,root*(root^2-hd)==0)
                 else
-                    @constraint(m, (outlet_release-r.coefficient*wet^1.5)/100==0)
+                    @constraint(m,root^2==hd)
+                end
+                if r.law==:orifice
+                    @constraint(m, (outlet_release-r.coefficient*a[i, t]*root)/100==0)
+                else
+                    @constraint(m, (outlet_release-r.coefficient*root^3)/100==0)
                 end
             else
                 error("Unknown river law")
@@ -372,7 +388,6 @@ function _build_dispatch(
         set_start_value(rq[i, t], mean(r.history_release)/100)
         r.law==:orifice && set_start_value(a[i, t], 0.5)
     end
-    warm, warm_start=_dispatch_start(c, u, warm)
     if warm!==nothing && haskey(warm, "V")
         for i in 1:R, t in 1:(T + 1)
             set_start_value(v[i, t], warm.storage[i, t]/s.reservoirs[i].vmax)

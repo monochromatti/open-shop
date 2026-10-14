@@ -74,7 +74,9 @@ gate controls and these commitment restrictions; the two-argument form checks
 gate controls alone. See [gate handovers](operating-rules.md#gate-handovers-and-plant-shutdowns)
 for the timing and initial-history convention.
 
-`gate_loss_factor_curve` supplies additional resistance versus opening. A
+`gate_loss_factor_curve` supplies additional resistance versus opening. The
+description of positions, coefficient units, dry outlets and elevation
+thresholds is in [gate and outlet equations](hydraulics.md).
 `River(law=:delta)` supplies exactly one upstream- or downstream-reference
 `LevelFlowCurve`; its signed flow is instantaneous. Delta segments extend
 linearly outside their knots, and the nearest reference curve is held outside
