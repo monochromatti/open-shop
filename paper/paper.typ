@@ -284,12 +284,15 @@ once. These hydraulic supply groups remain separate plants for operating
 rules; a common outlet does not combine their power caps or commitment rules.
 
 #block(breakable: false)[
-The binary state $u_(g t)$ selects an idle unit or its running range:
+The binary state $u_(g t)$ distinguishes a stopped unit from a committed unit:
 
 $ u_(g t) in {0, 1}, quad
   underline(q)_(g t) u_(g t) <= q_(g t) <= overline(q)_(g t) u_(g t), quad
   underline(P)_(g t) u_(g t) <= P_(g t) <= overline(P)_(g t) u_(g t). $ <eq:onoff>
 ]
+
+Lower flow and power limits may be zero. Commitment still records startup
+and dwell obligations when a committed unit produces no power.
 
 The electrical output is the available hydraulic power multiplied by turbine
 and electrical efficiencies:
@@ -344,8 +347,21 @@ $ eta_g (q,h) = eta_g^0
 
 Here $q_g^*$ and $h_g^*$ are reference operating conditions, $eta_g^0$ is
 their turbine efficiency, and nonnegative $alpha_g,beta_g$ describe its
-decrease away from them. Tables interpolate linearly in head and either
-linearly or with shape-preserving cubics in discharge.
+decrease away from them. At reference head $h_j$, a supplied efficiency curve
+$f_j(q)$ has its own discharge knots. These grids may differ between heads.
+Interpolate each original curve linearly or with its original shape-preserving
+cubic slopes, then interpolate its value at the same discharge between heads:
+
+$ eta_g(q,h) = (1-b) f_j(q) + b f_(j+1)(q), quad
+  b = (h-h_j)/(h_(j+1)-h_j). $ <eq:headwiseefficiency>
+
+A strict lookup between heads requires both contributing curves to cover $q$.
+At an exact reference head, only that curve contributes. For complete-case
+strict coverage, every column participating over the declared operating head
+range must cover the unit's static discharge range. When discharge continuation
+is explicitly allowed, each curve uses its own outer secant before head
+interpolation. Efficiency coverage does not define or modify the operating
+discharge envelope.
 A single reference head requires an explicit assumption that efficiency and
 the discharge envelope are independent of head. The actual hydraulic head
 still enters @eq:power. Operating limits are supplied separately from
@@ -1044,9 +1060,12 @@ sum to one, and the equation for $x$ fixes the interpolation fraction.
 The equation for $y$ then gives the interpolated output. Without adjacency,
 weights on distant knots could produce points away from the curve.
 
-For a turbine table, discharge weights $lambda_i$ and head weights $mu_j$
-each satisfy the corresponding SOS2 and coordinate constraints. Let $E_(i j)$
-be efficiencies at the knots. Linear interpolation in head combines the
+For a turbine table, let $q_i$ be the sorted union of the original discharge
+knots. These coordinates partition the interpolants; they are not newly
+measured calibration points. Discharge weights $lambda_i$ and head weights
+$mu_j$ each satisfy the corresponding SOS2 and coordinate constraints.
+Let $E_(i j)=f_j(q_i)$ be the original curve's value at a partition point.
+Linear interpolation in head combines the
 values $eta_j$ on the neighboring head curves. For head-independent data,
 each head vertex uses the same efficiency column. A shape-preserving cubic in
 discharge~@fritsch is represented by adding corrections to the linear curve:
@@ -1057,22 +1076,27 @@ $ w_i = lambda_i lambda_(i+1), quad r_i = lambda_i w_i, \
   eta = sum_j mu_j eta_j. $ <eq:cubic>
 
 For segment width $delta q_i=q_(i+1)-q_i$, secant slope
-$d_(i j)=(E_(i+1,j)-E_(i j)) \/ delta q_i$ and original endpoint derivatives
-$m_(i j)$, use
+$d_(i j)=(E_(i+1,j)-E_(i j)) \/ delta q_i$ and original polynomial derivatives
+$m_(i j)^"left",m_(i j)^"right"$ at the cell's two endpoints, use
 
-$ A_(i j) = delta q_i (m_(i j) - d_(i j)), quad
-  B_(i j) = delta q_i (d_(i j) - m_(i+1,j)). $ <eq:hermitecoefficients>
+$ A_(i j) = delta q_i (m_(i j)^"left" - d_(i j)), quad
+  B_(i j) = delta q_i (d_(i j) - m_(i j)^"right"). $ <eq:hermitecoefficients>
 
 On the active segment, the two correction terms are multiples of
 $lambda_i^2 lambda_(i+1)$ and $lambda_i lambda_(i+1)^2$. They vanish at the
 endpoints and adjust the derivatives to match the
-supplied slopes. The variables $w_i,r_i$ express the corrections through
+original slopes. The variables $w_i,r_i$ express the corrections through
 quadratic equalities. Setting $A=B=0$ gives bilinear interpolation.
+Each original cubic is re-expressed on its union-grid subcells, retaining the
+derivatives from that polynomial. Recalculating PCHIP slopes from the
+partition-point values would generally change the interpolant and is not
+performed. Endpoint derivatives are taken from within each selected cell,
+including the linear continuation outside its original discharge data.
 Restricting the curve's domain leaves its cubic slopes unchanged. We use the
 declared end secants for discharge outside the table and for head extrapolation
 where allowed.
 
-An idle unit can have a network head outside its running table. A finite
+An off unit can have a network head outside its running table. A finite
 extension lets us evaluate the graph there. Its running head and efficiency
 limits are inactive, and $q=P=0$.
 
@@ -1129,12 +1153,12 @@ is an upper bound on physical electrical power. It is polynomial within
 each interpolation cell even when @eq:power is implicit in $P$.
 Suppose a plane $a q+b h+c$ bounds this polynomial throughout the running
 domain, with #box[$b>=0$]. For a head lower bound $h_*$ valid in both operating
-states, the following inequality includes the idle state:
+states, the following inequality includes the off state:
 
 $ P <= a q + b(h - h_*) + (c + b h_*) u. $ <eq:support>
 ]
 
-When the unit runs, it reduces to $P<=a q+b h+c$. When it is idle,
+When the unit runs, it reduces to $P<=a q+b h+c$. When it is off,
 $P=q=0$ and the right side is nonnegative. To establish $c$, we bound the
 residual $p^"ub"-a q-b h$ over every original interpolation cell.
 In a Bernstein representation of a polynomial on a box, the basis weights
@@ -1161,7 +1185,7 @@ efficiency and power equalities still determine the physical output.
 
 For a tabulated turbine, we can use its head knots $h_j$ and weights $mu_j$
 to bound power. Define $zeta_j=mu_j$ for a running unit and $zeta_j=0$ for
-an idle unit through the following constraints:
+an off unit through the following constraints:
 
 $ 0 <= zeta_j <= mu_j, quad sum_j zeta_j = u, quad
   sum_j (h_j - h_1) zeta_j = h_"on" - h_1 u, \
@@ -1170,7 +1194,7 @@ $ 0 <= zeta_j <= mu_j, quad sum_j zeta_j = u, quad
 The coefficients $c_j$ are chosen so that the weighted expression bounds the
 polynomial upper bound $p^"ub"$, including its variation between head knots.
 The constraints give $zeta=mu$ when $u=1$, and $zeta=0$ when $u=0$ without
-fixing the idle hydraulic head. Discharge weights support analogous bounds
+fixing the head of an off unit. Discharge weights support analogous bounds
 along the other table axis. We may add further planes during the search after verifying each over its
 complete domain.
 

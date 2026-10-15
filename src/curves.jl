@@ -110,7 +110,12 @@ function _hermite_value(x, y, m, z, i)
     (2t^3-3t^2+1)*y[i]+(t^3-2t^2+t)*h*m[i]+(-2t^3+3t^2)*y[i + 1]+(t^3-t^2)*h*m[i + 1]
 end
 
-"""Rectangular turbine efficiency data, with discharge rows and head columns.
+"""Turbine efficiency curves at ordered reference heads.
+
+Use `curves=[TableCurve(discharge, efficiency), ...]` for one original curve per
+head, including unequal discharge grids. The rectangular constructor also accepts
+discharge rows and head columns. Each curve keeps its own linear or PCHIP
+interpolant; the resulting efficiencies are interpolated linearly in head.
 
 Units are m, m³/s and efficiency fractions. `qmin` and `qmax` give the operating
 envelope independently of the efficiency knots. `discharge_extrapolation=:linear`
@@ -128,18 +133,17 @@ No calibration knots or operating limits are fitted, added or clipped.
 """
 struct TurbineTable
     heads::Vector{Float64}
-    discharge::Vector{Float64}
-    efficiency::Matrix{Float64}
+    curves::Vector{TableCurve}
     qmin::Vector{Float64}
     qmax::Vector{Float64}
     interpolation::Symbol
     head_extrapolation::Symbol
     discharge_extrapolation::Symbol
-    discharge_slopes::Matrix{Float64}
+    _discharge_knots::Vector{Float64}
+    _discharge_slopes::Vector{Vector{Float64}}
     function TurbineTable(
         heads,
-        discharge,
-        efficiency,
+        curves,
         qmin,
         qmax;
         interpolation = :bilinear,
@@ -147,21 +151,18 @@ struct TurbineTable
         discharge_extrapolation = :error,
     )
         hh=Float64.(heads)
-        qq=Float64.(discharge)
-        ee=efficiency isa AbstractVector ? reshape(Float64.(efficiency), :, 1) :
-            Matrix{Float64}(efficiency)
+        all(c->c isa TableCurve,curves) ||
+            throw(ArgumentError("turbine curves must be TableCurve records in head order"))
+        cc=[TableCurve(c.x,c.y) for c in curves]
         lo=Float64.(qmin)
         hi=Float64.(qmax)
-        !isempty(hh) && length(lo)==length(hi)==length(hh) &&
+        !isempty(hh) && length(cc)==length(lo)==length(hi)==length(hh) &&
             all(isfinite,hh) && all(i->hh[i]<hh[i+1], 1:(length(hh)-1)) &&
             all(isfinite,lo) && all(isfinite,hi) ||
             throw(ArgumentError("turbine heads and envelope need paired finite increasing data"))
-        TableCurve(qq, zeros(length(qq)))
-        size(ee)==(length(qq), length(hh)) ||
-            throw(ArgumentError("turbine efficiency rows must be discharge, columns head"))
-        all(x->0<x<=1, ee) ||
+        all(c->all(x->0<x<=1,c.y),cc) ||
             throw(ArgumentError("turbine efficiency must be finite in (0,1]"))
-        first(hh)>0 && first(qq)>=0 ||
+        first(hh)>0 && all(c->first(c.x)>=0,cc) ||
             throw(ArgumentError("turbine heads must be positive and discharge nonnegative"))
         all(i->0<=lo[i]<=hi[i], eachindex(lo,hi)) ||
             throw(ArgumentError("turbine discharge envelope must be nonnegative and ordered"))
@@ -177,31 +178,41 @@ struct TurbineTable
         discharge_extrapolation in (:error, :linear) ||
             throw(ArgumentError("turbine discharge extrapolation must be :error or :linear"))
         discharge_extrapolation==:linear ||
-            all(i->first(qq)<=lo[i]<=hi[i]<=last(qq), eachindex(lo,hi)) ||
+            all(i->first(cc[i].x)<=lo[i]<=hi[i]<=last(cc[i].x), eachindex(lo,hi)) ||
             throw(ArgumentError("turbine discharge envelope exceeds efficiency data; declare :linear extrapolation"))
-        slopes=hcat([_pchip_slopes(qq, ee[:, j]) for j in eachindex(hh)]...)
-        new(hh, qq, ee, lo, hi, interpolation, head_extrapolation, discharge_extrapolation, slopes)
+        knots=sort!(unique(vcat([c.x for c in cc]...)))
+        slopes=[_pchip_slopes(c.x,c.y) for c in cc]
+        all(m->all(isfinite,m),slopes) || throw(ArgumentError("turbine slopes must be finite"))
+        new(hh,cc,lo,hi,interpolation,head_extrapolation,discharge_extrapolation,knots,slopes)
     end
 end
+
+function TurbineTable(heads,discharge,efficiency,qmin,qmax;kwargs...)
+    values=efficiency isa AbstractVector ? reshape(Float64.(efficiency),:,1) : Matrix{Float64}(efficiency)
+    size(values)==(length(discharge),length(heads)) ||
+        throw(ArgumentError("turbine efficiency rows must be discharge, columns head"))
+    TurbineTable(heads,[TableCurve(discharge,view(values,:,j)) for j in eachindex(heads)],qmin,qmax;kwargs...)
+end
+
 TurbineTable(;
     heads,
-    discharge,
-    efficiency,
+    discharge=nothing,
+    efficiency=nothing,
+    curves=nothing,
     qmin,
     qmax,
     interpolation = :bilinear,
     head_extrapolation = :error,
     discharge_extrapolation = :error,
-) = TurbineTable(
-    heads,
-    discharge,
-    efficiency,
-    qmin,
-    qmax;
-    interpolation,
-    head_extrapolation,
-    discharge_extrapolation,
-)
+) = if curves===nothing
+    discharge!==nothing && efficiency!==nothing ||
+        throw(ArgumentError("turbine data need curves or rectangular discharge and efficiency"))
+    TurbineTable(heads,discharge,efficiency,qmin,qmax;interpolation,head_extrapolation,discharge_extrapolation)
+else
+    discharge===nothing && efficiency===nothing ||
+        throw(ArgumentError("supply turbine curves or rectangular data, not both"))
+    TurbineTable(heads,curves,qmin,qmax;interpolation,head_extrapolation,discharge_extrapolation)
+end
 
 function _turbine_head_weights(c::TurbineTable, h, extrapolation)
     isfinite(h) || throw(DomainError(h, "turbine head must be finite"))
@@ -213,30 +224,35 @@ function _turbine_head_weights(c::TurbineTable, h, extrapolation)
 end
 
 function turbine_efficiency(c::TurbineTable, q, h; extrapolation = :error)
-    i=_curve_segment(c.discharge, q, extrapolation)
     j,k,b=_turbine_head_weights(c,h,extrapolation)
-    a=(q-c.discharge[i])/(c.discharge[i + 1]-c.discharge[i])
-    if c.interpolation==:pchip_discharge && first(c.discharge)<=q<=last(c.discharge)
-        left=_hermite_value(
-            c.discharge,
-            view(c.efficiency, :, j),
-            view(c.discharge_slopes, :, j),
-            q,
-            i,
-        )
-        right=_hermite_value(
-            c.discharge,
-            view(c.efficiency, :, k),
-            view(c.discharge_slopes, :, k),
-            q,
-            i,
-        )
-        return (1-b)*left+b*right
+    j==k && return _turbine_column(c,j,q,extrapolation)
+    # A strict exact-head lookup needs only that supplied curve. Numerical
+    # extensions still evaluate both columns, preserving head derivatives.
+    if extrapolation==:error
+        b==0 && return _turbine_column(c,j,q,extrapolation)
+        b==1 && return _turbine_column(c,k,q,extrapolation)
     end
-    (1-a)*(1-b)*c.efficiency[i, j]+a*(1-b)*c.efficiency[i + 1, j]+(1-a)*b*c.efficiency[
-        i,
-        k,
-    ]+a*b*c.efficiency[i + 1, k]
+    left=_turbine_column(c,j,q,extrapolation)
+    right=_turbine_column(c,k,q,extrapolation)
+    left+b*(right-left)
+end
+
+function _turbine_column(c,j,q,extrapolation)
+    curve=c.curves[j]
+    i=_curve_segment(curve.x,q,extrapolation)
+    c.interpolation==:pchip_discharge && first(curve.x)<=q<=last(curve.x) ?
+        _hermite_value(curve.x,curve.y,c._discharge_slopes[j],q,i) :
+        curve.y[i]+(q-curve.x[i])*(curve.y[i+1]-curve.y[i])/(curve.x[i+1]-curve.x[i])
+end
+
+function _turbine_head_columns(c,hlo,hhi)
+    columns=Int[]
+    for h in unique(vcat(hlo,filter(z->hlo<z<hhi,c.heads),hhi))
+        j,k,b=_turbine_head_weights(c,h,:linear)
+        b==1 || push!(columns,j)
+        b==0 || push!(columns,k)
+    end
+    unique(columns)
 end
 function _head_envelope(c::TurbineTable, values, h, extrapolation)
     j,k,b=_turbine_head_weights(c,h,extrapolation)
@@ -247,16 +263,19 @@ turbine_qmin(c::TurbineTable, h; extrapolation = :error) =
 turbine_qmax(c::TurbineTable, h; extrapolation = :error) =
     _head_envelope(c, c.qmax, h, extrapolation)
 
-"""Exact extrema of the bilinear, linearly extended table on a rectangle.
-Used for finite off-state bounds in a mixed-integer model. Every cell is
-bilinear, hence its extrema occur at corners; include all crossed knot lines.
+"""Exact extrema of the linearly extended interpolant on a rectangle.
+Within each discharge cell it is cubic or linear, and it is linear in head.
+Include the original polynomial's stationary points and all crossed knot lines.
 """
 function turbine_efficiency_bounds(c::TurbineTable, qlo, qhi, hlo, hhi)
     all(isfinite, (qlo, qhi, hlo, hhi)) && qlo<=qhi && hlo<=hhi ||
         throw(ArgumentError("invalid turbine extension rectangle"))
-    qq=unique(vcat(qlo, filter(x->qlo<x<qhi, c.discharge), qhi))
+    qq=unique(vcat(qlo, filter(x->qlo<x<qhi, c._discharge_knots), qhi))
     hh=unique(vcat(hlo, filter(x->hlo<x<hhi, c.heads), hhi))
-    extrema(turbine_efficiency(c, q, h; extrapolation = :linear) for q in qq, h in hh)
+    length(qq)==1 && return extrema(turbine_efficiency(c,only(qq),h;extrapolation=:linear) for h in hh)
+    ranges=[_global_polynomial_range(_global_tensor_polynomial(c,a,b,h),0.0,1.0)
+        for (a,b) in zip(qq[1:end-1],qq[2:end]),h in hh]
+    (minimum(first,ranges),maximum(last,ranges))
 end
 
 """Register a JuMP operator using an explicit linear extension for trial points.

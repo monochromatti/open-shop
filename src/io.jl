@@ -28,22 +28,25 @@ function _read_turbine(x)
             "interpolation",
             "head_extrapolation",
             "discharge_extrapolation",
+            "curves",
         ),
         "turbine table",
     )
-    vals=x["efficiency"]
-    matrix=vals isa AbstractMatrix ? Float64.(vals) :
-           permutedims(hcat([Float64.(row) for row in vals]...))
-    TurbineTable(
-        Float64.(x["heads"]),
-        Float64.(x["discharge"]),
-        matrix,
-        Float64.(x["qmin"]),
-        Float64.(x["qmax"]);
+    policies=(;
         interpolation = Symbol(get(x, "interpolation", "bilinear")),
         head_extrapolation = Symbol(get(x, "head_extrapolation", "error")),
         discharge_extrapolation = Symbol(get(x, "discharge_extrapolation", "error")),
     )
+    if haskey(x,"curves")
+        !haskey(x,"discharge") && !haskey(x,"efficiency") ||
+            throw(ArgumentError("supply turbine curves or rectangular data, not both"))
+        return TurbineTable(;heads=x["heads"],curves=_read_table.(x["curves"]),
+            qmin=x["qmin"],qmax=x["qmax"],policies...)
+    end
+    vals=x["efficiency"]
+    matrix=vals isa AbstractMatrix ? Float64.(vals) :
+           permutedims(hcat([Float64.(row) for row in vals]...))
+    TurbineTable(x["heads"],x["discharge"],matrix,x["qmin"],x["qmax"];policies...)
 end
 function _read_pump_characteristic(x)
     x===nothing && return nothing
@@ -140,12 +143,18 @@ end
 readcase(path) = case_from_dict(JSON3.read(read(path, String)))
 _table_dict(t::TableCurve) = Dict("x"=>t.x, "y"=>t.y)
 _table_dict(t::LevelFlowCurve) = Dict("reference_levels"=>t.reference_levels,"curves"=>_table_dict.(t.curves))
-_table_dict(t::TurbineTable) = Dict(
-    string(f)=>getfield(t, f) for f in
-    (:heads, :discharge, :efficiency, :qmin, :qmax, :interpolation,
-        :head_extrapolation, :discharge_extrapolation)
-)
 _table_dict(c::PumpCharacteristic) = Dict(string(f)=>getfield(c,f) for f in fieldnames(PumpCharacteristic))
+function _table_dict(t::TurbineTable)
+    data=Dict{String,Any}(string(f)=>getfield(t,f) for f in
+        (:heads,:qmin,:qmax,:interpolation,:head_extrapolation,:discharge_extrapolation))
+    if all(c->c.x==first(t.curves).x,t.curves)
+        data["discharge"]=copy(first(t.curves).x)
+        data["efficiency"]=hcat([c.y for c in t.curves]...)
+    else
+        data["curves"]=_table_dict.(t.curves)
+    end
+    data
+end
 function component_dict(x)
     Dict(
         string(f)=>(

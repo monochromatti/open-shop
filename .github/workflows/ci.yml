@@ -37,6 +37,8 @@ jobs:
         run: julia --pkgimages=no --project=. examples/shared_tailrace.jl
       - name: Run the single-head turbine example
         run: julia --pkgimages=no --project=. examples/turbine_tables.jl
+      - name: Run the unequal turbine-grid example
+        run: julia --pkgimages=no --project=. examples/unequal_turbine_grids.jl
       - name: Run the prescribed river-split example
         run: julia --pkgimages=no --project=. examples/river_splits.jl
       - name: Run the directional interlock example

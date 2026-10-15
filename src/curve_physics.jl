@@ -97,7 +97,8 @@ function validate_curve_data(s::HydroSystem)
                 first(c.heads)<=g.hmin<=g.hmax<=last(c.heads) ||
                 throw(ArgumentError("$(g.name): turbine table must cover operating head"))
             c.discharge_extrapolation==:linear ||
-                first(c.discharge)<=g.qmin<=g.qmax<=last(c.discharge) ||
+                all(j->first(c.curves[j].x)<=g.qmin<=g.qmax<=last(c.curves[j].x),
+                    _turbine_head_columns(c,g.hmin,g.hmax)) ||
                 throw(ArgumentError("$(g.name): turbine table must cover discharge bounds"))
             all(c.qmin .<= g.qmax) && all(c.qmax .>= g.qmin) || throw(
                 ArgumentError(

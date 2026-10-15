@@ -34,7 +34,7 @@
             @variable(m,hlo<=h<=hhi)
             eta=OpenSHOP._global_tensor_turbine!(m,table,q,h,qlo,qhi,hlo,hhi;name=:eta)
             data=m.ext[:global_tensor_turbines]["eta"]
-            qs=unique(vcat(qlo,qhi,(qlo+qhi)/2,filter(x->qlo<=x<=qhi,table.discharge)))
+            qs=unique(vcat(qlo,qhi,(qlo+qhi)/2,filter(x->qlo<=x<=qhi,table._discharge_knots)))
             hs=unique(vcat(hlo,hhi,(hlo+hhi)/2,filter(x->hlo<=x<=hhi,table.heads)))
             append!(qs,[(1-t)*data.qcoordinate.nodes[i]+t*data.qcoordinate.nodes[i+1]
                 for i in 1:(length(data.qcoordinate.nodes)-1),t in (1/3,2/3)])

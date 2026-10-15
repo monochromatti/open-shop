@@ -86,23 +86,9 @@ _global_tensor_table_graph!(m,c::TableCurve,x,lo,hi;kwargs...) =
 
 _global_tensor_table!(args...;kwargs...) = _global_tensor_table_graph!(args...;kwargs...).y
 
-# Coefficients in the local [0,1] discharge coordinate at a supplied head.
-# Each extension segment keeps its original secant, even for PCHIP tables.
-function _global_tensor_polynomial(c,ql,qr,h)
-    qm=ql+(qr-ql)/2
-    i=_curve_segment(c.discharge,qm,:linear)
-    j,k,u=_turbine_head_weights(c,h,:linear)
-    cubic=c.interpolation==:pchip_discharge && first(c.discharge)<=qm<=last(c.discharge)
-    a=_global_discharge_coefficients(c,i,j,cubic)
-    b=_global_discharge_coefficients(c,i,k,cubic)
-    coefficients=ntuple(k->a[k]+u*(b[k]-a[k]),4)
-    dq=c.discharge[i+1]-c.discharge[i]
-    _global_shift_polynomial(coefficients,(ql-c.discharge[i])/dq,(qr-ql)/dq)
-end
-
 function _global_tensor_turbine_graph!(m,c::TurbineTable,q,h,qlo,qhi,hlo,hhi;
     name=gensym(:tensor_turbine))
-    qc=_global_tensor_coordinate!(m,q,_global_tensor_nodes(c.discharge,qlo,qhi);name="$(name)_q")
+    qc=_global_tensor_coordinate!(m,q,_global_tensor_nodes(c._discharge_knots,qlo,qhi);name="$(name)_q")
     hc=_global_tensor_coordinate!(m,h,_global_tensor_nodes(c.heads,hlo,hhi);name="$(name)_h")
     nq,nh=length(qc.nodes),length(hc.nodes)
     nodal=[turbine_efficiency(c,x,y;extrapolation=:linear) for x in qc.nodes,y in hc.nodes]

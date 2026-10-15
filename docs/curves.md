@@ -7,7 +7,7 @@ when the operating domain extends beyond the calibration data.
 
 ## Turbine tables
 
-`TurbineTable` has discharge rows and reference-head columns. Heads are metres,
+`TurbineTable` accepts discharge rows and reference-head columns. Heads are metres,
 discharges are m³/s, and efficiencies are fractions in `(0, 1]`. Discharge knots
 must contain at least two strictly increasing points. Each reference head has
 supplied `qmin` and `qmax`, independently of the efficiency knots. These limits
@@ -31,6 +31,53 @@ Inside the table, `interpolation=:bilinear` is linear in discharge and head.
 discharge and linear interpolation in head. Outside the discharge knots,
 `:linear` always means end **secants**, including for PCHIP. It does not continue
 the cubic endpoint tangent.
+
+### Unequal discharge grids
+
+Supply one `TableCurve` per reference head when the measured discharge knots
+differ. Both the rectangular constructor and this headwise form use the same
+numerical representation:
+
+```julia
+table = TurbineTable(heads=[100.0,200.0], curves=[
+    TableCurve([1.0,3.0,5.0], [0.80,0.90,0.88]),
+    TableCurve([1.0,2.0,5.0], [0.82,0.87,0.94])],
+    qmin=[1.0,1.0], qmax=[5.0,5.0], interpolation=:pchip_discharge)
+```
+
+Each original curve is interpolated on its own discharge grid. At a head
+between references, OpenSHOP linearly interpolates those efficiencies at the
+same discharge. In the example, linear discharge interpolation gives
+`η(2.5,100)=0.875` and `η(2.5,200)=0.881666…`, hence
+`η(2.5,150)=0.878333…`. Original-grid PCHIP gives `η(2.5,100)=0.891875`.
+Resampling that first curve at an added `q=2` knot and recalculating PCHIP
+slopes would give `0.89025`; OpenSHOP preserves the original `0.891875`.
+
+The global equations use the union of the supplied discharge knots only as a
+polynomial partition. Each original cubic is re-expressed on its subintervals;
+its slopes are never recalculated on the union grid. These partition nodes are
+not additional calibration measurements. `table.curves` exposes the owned
+original per-head `TableCurve` records; derived knots and slopes are internal.
+Treat calibration tables as fixed after construction. Rectangular constructors
+and JSON remain supported. Unequal data serialize as `curves` containing the
+original `x`/`y` arrays in head order, without resampled columns.
+
+Efficiency coverage is separate from the supplied `qmin`/`qmax` envelope.
+A strict raw lookup at an exact reference head needs only that curve's domain.
+Between heads, discharge must be covered by both participating curves.
+Explicit linear continuation uses each original curve's own end secants before
+interpolating in head. A complete case with `discharge_extrapolation=:error`
+requires every head column participating over the unit's operating head range
+to cover its declared static discharge range, including the outer pair when
+head extrapolation is enabled. Otherwise declare discharge continuation
+explicitly; no operating limits are clipped or inferred from efficiency knots.
+
+The [worked example](../examples/unequal_turbine_grids.jl) checks water, power
+and revenue against hand calculations and solves the case through the ordinary
+API. The [SHOP generator reference](https://docs.shop.sintef.energy/objects/generator/generator.html#turb-eff-curves)
+describes discharge/efficiency curves at reference heads but does not establish
+this unequal-grid interpolation rule. The policy above is OpenSHOP's explicit
+mathematical contract; it does not claim undocumented SHOP equivalence.
 
 Raw lookup functions are strict by default. For example,
 `OpenSHOP.turbine_efficiency(table, q, h; extrapolation=:linear)` requests
