@@ -42,6 +42,7 @@ end
 function _add_power_bounds!(b,c)
     count=0
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
+        g.mode==:pump && continue # These supports bound generation, not consumption.
         g.turbine_table===nothing && continue
         hd=b.shared_heads[(plantof(c.system,g).name,t)]
         hlo=max(g.hmin,lower_bound(hd));hhi=min(g.hmax,upper_bound(hd))

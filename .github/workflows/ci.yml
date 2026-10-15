@@ -39,3 +39,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/river_splits.jl
       - name: Run the directional interlock example
         run: julia --pkgimages=no --project=. examples/directional_interlocks.jl
+      - name: Run the pumped-storage example
+        run: julia --pkgimages=no --project=. examples/pumped_storage.jl

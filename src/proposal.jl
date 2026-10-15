@@ -68,10 +68,7 @@ function propose_commitment(
                 reference.generator_q[k, t] for
                 (k, z) in enumerate(s.generators) if z.plant==g.plant
             ) : 0.0
-            h=reference.head[ix[p.source], t]-outlet_head(
-                p,
-                reference.head[ix[p.target], t],
-            )-tailwater(p, qtotal)
+            h=unit_head(g,p,reference.head[ix[p.source],t],reference.head[ix[p.target],t],qtotal)
             h=clamp(h, g.hmin, g.hmax)
         end
         qref=clamp(g.qbest, g.qmin, g.qmax)
@@ -241,7 +238,7 @@ function propose_commitment(
         m,
         Max,
         sum(
-            c.prices[t]*dt[t]*P[j, t] for j in 1:G, t in 1:T
+            c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*P[j, t] for j in 1:G, t in 1:T
         )-transition_costs(c,u; transitions=states)-gates.cost+water_scale*valuechange-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,

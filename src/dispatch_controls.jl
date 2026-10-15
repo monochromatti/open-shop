@@ -77,7 +77,7 @@ function dispatch_from_controls(
     req=release_requirements(c, z.river_release)
     operating_cost=transition_costs(c, u)
     adjustment_cost=tunnel_adjustment_cost(c, z.tunnel_opening)
-    objective=sum(c.prices[t]*dt[t]*z.power[j,t]
+    objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*z.power[j,t]
         for j in eachindex(s.generators), t in 1:T; init=0.0) -
         operating_cost-req.cost-adjustment_cost +
         sum(r.water_value*(z.storage[i,end]-r.v0)

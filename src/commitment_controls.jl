@@ -1,6 +1,45 @@
 # Fixed operating inputs are normalized once into unit and plant state bounds.
 # Every scheduler and independent commitment check uses the same interpretation.
 
+function commitment_exclusion_indices(c)
+    s=c.system
+    index=Dict(g.name=>i for (i,g) in enumerate(s.generators))
+    [begin
+        length(rule.groups)>=2 && all(!isempty,rule.groups) || throw(ArgumentError(
+            "$(rule.name): commitment exclusion needs at least two nonempty groups"))
+        names=reduce(vcat,rule.groups)
+        length(unique(names))==length(names) && all(n->haskey(index,n),names) ||
+            throw(ArgumentError("$(rule.name): exclusion members must be unique existing units"))
+        groups=[[index[n] for n in group] for group in rule.groups]
+        count(group->any(s.generators[j].initial_on==1 for j in group),groups)<=1 ||
+            throw(ArgumentError("$(rule.name): initial unit states violate commitment exclusion"))
+        groups
+    end for rule in s.commitment_exclusions]
+end
+
+function commitment_exclusions_admissible(c,u)
+    all(count(group->any(u[j,t]!=0 for j in group),groups)<=1
+        for groups in commitment_exclusion_indices(c), t in axes(u,2))
+end
+
+"""Alternative mode groups: every cross-group pair satisfies uᵢ + uⱼ ≤ 1.
+
+No group state or transition variables are needed. Numeric fixed commitments
+use the same equations and fail immediately when incompatible.
+"""
+function constrain_commitment_exclusions!(m,c,u)
+    for groups in commitment_exclusion_indices(c), a in 1:length(groups),
+        b in (a+1):length(groups), i in groups[a], j in groups[b], t in axes(u,2)
+        total=u[i,t]+u[j,t]
+        if total isa Number
+            total<=1 || throw(ArgumentError("fixed commitment violates mode exclusion"))
+        else
+            @constraint(m,total<=1)
+        end
+    end
+    nothing
+end
+
 function _plant_initial_commitment(c, plant, members)
     state=any(c.system.generators[j].initial_on==1 for j in members) ? 1 : 0
     plant.initial_on===nothing || plant.initial_on==state ||
@@ -53,6 +92,7 @@ restriction. Plant state means at least one member unit is on. Off restrictions
 propagate to every member; on restrictions retain the choice of member units.
 """
 function _commitment_bounds(c)
+    commitment_exclusion_indices(c)
     s=c.system
     G,P,T=length(s.generators),length(s.plants),length(c.prices)
     unit_lower=zeros(Int,G,T)
@@ -126,6 +166,7 @@ function _commitment_admissible(c,u;bounds=nothing)
         end
     end
     all(bounds.unit_lower .<= u .<= bounds.unit_upper) || return false
+    commitment_exclusions_admissible(c,u) || return false
     for (j,g) in enumerate(c.system.generators)
         _commitment_dwell_admissible(c.grid,view(u,j,:),g.initial_on,g.initial_age,
             g.minup,g.mindown) || return false

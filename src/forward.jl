@@ -26,6 +26,7 @@ function forward_step(
     tolerance = 1e-9,
     max_iterations = 100,
 )
+    validate_unit_modes(s)
     validate_delay_curves(s)
     validate_river_allocations(s)
     validate_curve_data(s)
@@ -141,10 +142,8 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         begin
             p=topology.generator_plant[i]
             plant=s.plants[p]
-            h[ix[plant.source]]-outlet_head(plant, h[ix[plant.target]]) - tailwater(
-                plant,
-                sum(generator_q[j] for j in topology.plant_generators[p]; init = 0.0),
-            )
+            unit_head(s.generators[i],plant,h[ix[plant.source]],h[ix[plant.target]],
+                sum(generator_q[j] for j in topology.plant_generators[p]; init = 0.0))
         end for i in eachindex(s.generators)
     ]
     pw=[power(g, generator_q[i], gh[i]) for (i, g) in enumerate(s.generators)]
@@ -310,6 +309,7 @@ function simulate(
     tunnel_opening = nothing,
 )
     s=c.system
+    validate_unit_modes(s)
     validate_delay_curves(s)
     validate_river_allocations(s)
     validate_curve_data(s)
@@ -317,6 +317,8 @@ function simulate(
     T=length(grid)-1
     size(generator_q)==(ng, length(c.grid)-1) && size(gate)==(nd, length(c.grid)-1) ||
         throw(DimensionMismatch("schedule dimensions"))
+    commitment_exclusions_admissible(c,generator_q.>0) ||
+        throw(ArgumentError("unit discharges violate commitment exclusion"))
     all(>=(0), generator_q) && all(x -> 0<=x<=1, gate) ||
         throw(ArgumentError("invalid generator discharges or river gates"))
     RiverRouting.check_grid(grid)

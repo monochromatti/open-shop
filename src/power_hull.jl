@@ -105,6 +105,7 @@ function _add_power_hull!(b,c)
     before_constraints=num_constraints(m;count_variable_in_set_constraints=false)
     skipped=Dict("fixed_off"=>0,"empty_on_box"=>0,"electrical"=>0)
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices)
+        g.mode==:pump && continue # The exact reciprocal-efficiency law remains in the model.
         n="power_hull_$(i)_$(t)"
         u=b.u[i,t]
         if _power_hull_fixed_off(u)

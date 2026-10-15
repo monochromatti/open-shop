@@ -175,7 +175,7 @@ function _build_dispatch(
         op=outlet_ops[plant.name]
         receiver=op===nothing ? H[ix[plant.target], t] :
                  op isa Real ? op : op(H[ix[plant.target], t])
-        hd=H[ix[plant.source], t]-receiver-tail
+        hd=unit_power_sign(g)*(H[ix[plant.source], t]-receiver-tail)
         eta=turbine_ops[i]===nothing ?
             g.efficiency-g.qcurvature*((GQ[i, t]-g.qbest)/g.qbest)^2-g.hcurvature*(
             (hd-g.hbest)/g.hbest
@@ -185,6 +185,9 @@ function _build_dispatch(
         qmax=opinterval(c, g.name, :qmax, t, g.qmax)
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
         pmax=opinterval(c, g.name, :pmax, t, g.pmax)
+        conversion=g.mode==:pump ?
+            P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
+            P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
         begin
             set_lower_bound(gq[i, t], qmin*u[i, t]/50)
             set_upper_bound(gq[i, t], qmax*u[i, t]/50)
@@ -194,14 +197,12 @@ function _build_dispatch(
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
             else
-                @constraint(m, (P[i, t]-0.00981*GQ[i, t]*hd*eta*electrical)/40==0)
+                @constraint(m, conversion/40==0)
                 @constraint(m, g.hmin<=hd<=g.hmax)
                 @constraint(m, g.min_efficiency<=eta<=1.0)
                 if g.turbine_table!==nothing
                     qlo, qhi=turbine_flow_ops[i]
-                    flow_margin=operational_margin/(
-                        0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))
-                    )
+                    flow_margin=operational_margin/unit_reference_power_slope(g)
                     @constraint(m, GQ[i, t]>=qlo(hd)+flow_margin)
                     @constraint(m, GQ[i, t]<=qhi(hd)-flow_margin)
                 end

@@ -85,7 +85,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 if z.plant==plant.name)
             graph=b.graphs.generator_graphs[i,t]
             receiver=physical.head[ix[plant.target],t]
-            h=physical.head[ix[plant.source],t]-outlet_head(plant,receiver)-tailwater(plant,total)
+            h=unit_head(g,plant,physical.head[ix[plant.source],t],receiver,total)
             put(graph.head.head,h)
             if graph.head.outlet!==nothing
                 floor=plant.outlet_head_floor

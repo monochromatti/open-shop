@@ -325,13 +325,14 @@ function _build_global_dispatch(
             end
             hlo=src[1]-dst[2]-tail_hi
             hhi=src[2]-dst[1]-tail_lo
+            g.mode==:pump && ((hlo,hhi)=(-hhi,-hlo))
             hd=@variable(
                 m,
                 lower_bound=hlo,
                 upper_bound=hhi,
                 base_name="net_head_$(i)_$(t)"
             )
-            @constraint(m, hd==H[ix[plant.source], t]-receiver-tail)
+            @constraint(m, hd==unit_power_sign(g)*(H[ix[plant.source], t]-receiver-tail))
             shared_heads[key]=hd
             plant_heads[key]=_PlantHeadGraph(hd,outletgraph,tailgraph)
         end
@@ -373,6 +374,9 @@ function _build_global_dispatch(
         pmin=opinterval(c, g.name, :pmin, t, g.pmin)
         pmax=opinterval(c, g.name, :pmax, t, g.pmax)
         effective=GQ[i,t]*eta
+        conversion=g.mode==:pump ?
+            P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
+            P[i,t]-0.00981*effective*hd*electrical
         if joint
             set_upper_bound(gq[i, t], flowmax/50)
             set_upper_bound(p[i, t], powmax/40)
@@ -385,7 +389,7 @@ function _build_global_dispatch(
             @constraint(m, GQ[i, t]<=qmax*u[i, t])
             @constraint(m, P[i, t]>=(pmin+operational_margin)*u[i, t])
             @constraint(m, P[i, t]<=max(0.0, pmax-operational_margin)*u[i, t])
-            @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
+            @constraint(m, conversion/40==0)
             ranges=(
                 head_min = hlo,
                 head_max = hhi,
@@ -410,7 +414,7 @@ function _build_global_dispatch(
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
             else
-                @constraint(m, (P[i, t]-0.00981*effective*hd*electrical)/40==0)
+                @constraint(m, conversion/40==0)
                 @constraint(m, g.hmin<=hd<=g.hmax)
                 @constraint(m, g.min_efficiency<=eta<=1.0)
 
@@ -426,9 +430,7 @@ function _build_global_dispatch(
                 h->_head_envelope(table,table.qmax,h,:linear),hd,hlo,hhi;
                 name=Symbol("qhi_",i,"_",t))
             qlo,qhi=qlograph.y,qhigraph.y
-            flow_margin=operational_margin/(
-                0.00981*g.hbest*max(g.min_efficiency, g.efficiency, eps(Float64))
-            )
+            flow_margin=operational_margin/unit_reference_power_slope(g)
             if joint
                 @constraint(
                     m,

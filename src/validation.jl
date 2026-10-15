@@ -37,6 +37,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     bound(name, x) = record(name, max.(x, 0.0))
     s=c.system
     try
+        validate_unit_modes(s)
+        commitment_exclusion_indices(c)
         validate_delay_curves(s)
         validate_curve_data(s)
     catch error
@@ -147,12 +149,12 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     for (i, g) in enumerate(s.generators)
         pl=plantof(s, g)
-        hd=H[ix[pl.source], :]-outlet_head.(Ref(pl), H[ix[pl.target], :])-[
+        hd=unit_power_sign(g)*(H[ix[pl.source], :]-outlet_head.(Ref(pl), H[ix[pl.target], :])-[
             tailwater(
                 pl,
                 sum(GQ[j, t] for (j, z) in enumerate(s.generators) if z.plant==g.plant),
             ) for t in 1:T
-        ]
+        ])
         bound(
             "unit_bounds_$(g.name)",
             vcat(
@@ -426,7 +428,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         exchange=cumsum(dt .* (external .- inflow))
         record("global_water", (@view inventory[2:end]) .- initial .+ 0.0036 .* exchange)
         operating_cost=transition_costs(c,u)
-        objective=sum(c.prices[t]*dt[t]*P[i, t] for i in 1:G, t in 1:T; init = 0.0)-operating_cost-adjustment_cost +
+        objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[i])*P[i, t]
+            for i in 1:G, t in 1:T; init = 0.0)-operating_cost-adjustment_cost +
                   sum(
                       r.water_value*(V[i, end]-r.v0) for (i, r) in enumerate(s.reservoirs);
                       init = 0.0,

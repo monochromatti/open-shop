@@ -90,8 +90,9 @@ end
 """
     Plant(; name, source, target, pmax, ...)
 
-A station sharing upstream head, outlet head, tailwater and operating limits
-across its generators. Power is MW, flow is m³/s, and dwell times are hours.
+A station sharing intake head, outlet head, losses and operating limits
+across its units. All members have the same generating or pumping mode;
+endpoints follow the actual water direction. Power is MW, flow is m³/s, and dwell times are hours.
 `discharge_river` optionally routes its water into a delayed river.
 """
 Base.@kwdef struct Plant
@@ -121,8 +122,10 @@ end
 """
     Generator(; name, plant, qmin, qmax, pmin, pmax, hmin, hmax, ...)
 
-A generating unit that is either off or within its on-state operating range.
-Discharge is m³/s, power is MW, net head is metres, and efficiencies are fractions.
+A unit that is either off or within its on-state operating range.
+`mode=:generate` produces power; [`Pump`](@ref) constructs `mode=:pump`.
+Discharge and power are positive magnitudes in m³/s and MW, effective head is
+metres, and efficiencies are fractions. Consumption is subtracted in [`net_power`](@ref).
 Supply `turbine_table` for measured efficiency data. The analytic efficiency
 parameters otherwise define a quadratic response. Startup/shutdown costs use
 the same currency as the objective; minimum dwell times are in hours.
@@ -130,6 +133,7 @@ the same currency as the objective; minimum dwell times are in hours.
 Base.@kwdef struct Generator
     name::Symbol
     plant::Symbol
+    mode::Symbol = :generate
     qmin::Float64
     qmax::Float64
     pmin::Float64
@@ -150,6 +154,7 @@ Base.@kwdef struct Generator
     shutdown::Float64 = 0.0
     turbine_table::Union{Nothing, TurbineTable} = nothing
     generator_efficiency_curve::Union{Nothing, TableCurve} = nothing
+    motor_efficiency::Float64 = 1.0
     ramp_up::Union{Nothing, Float64} = nothing
     ramp_down::Union{Nothing, Float64} = nothing
     discharge_ramp_up::Union{Nothing, Float64} = nothing
@@ -157,6 +162,30 @@ Base.@kwdef struct Generator
     initial_power::Union{Nothing, Float64} = nothing
     initial_discharge::Union{Nothing, Float64} = nothing
     initial_interval_hours::Float64 = 1.0
+end
+
+"""
+    Pump(; name, plant, qmin, qmax, pmin, pmax, hmin, hmax, ...)
+
+A pumping mode of the common unit record. `plant.source` is the water intake
+and `plant.target` is the pumped-water destination. Discharge and electrical
+consumption are positive magnitudes. Hydraulic efficiency uses `efficiency`
+or `turbine_table`; `motor_efficiency` is a constant fraction in (0,1].
+Pumps default to initially off. Electrical efficiency curves are not supported
+for pumps. Use [`CommitmentExclusion`](@ref) for alternative reversible modes.
+"""
+Pump(; initial_on=0, kwargs...) = Generator(; mode=:pump, initial_on, kwargs...)
+
+"""
+    CommitmentExclusion(; name, groups)
+
+At most one group of named units may run in any interval. Several units in
+the same group may run together. For a reversible machine, supply
+`groups=[[:Turbine], [:Pump]]`. This restricts commitment, not signed flow.
+"""
+Base.@kwdef struct CommitmentExclusion
+    name::Symbol
+    groups::Vector{Vector{Symbol}}
 end
 Base.@kwdef struct RiverJunction
     name::Symbol
@@ -210,7 +239,8 @@ end
 Named physical objects in their array order. Omitted collections are empty;
 include only the object types present in the watercourse. Names identify
 connections. Solve and simulation arrays follow the order of these collections.
-The numerical algorithms do not mutate the supplied objects.
+`generators` is the common, ordered unit collection for both `Generator` and
+`Pump` constructors. The numerical algorithms do not mutate the supplied objects.
 """
 Base.@kwdef struct HydroSystem
     reservoirs::Vector{Reservoir} = Reservoir[]
@@ -220,6 +250,7 @@ Base.@kwdef struct HydroSystem
     tunnel_interlocks::Vector{TunnelInterlock} = TunnelInterlock[]
     plants::Vector{Plant} = Plant[]
     generators::Vector{Generator} = Generator[]
+    commitment_exclusions::Vector{CommitmentExclusion} = CommitmentExclusion[]
     river_junctions::Vector{RiverJunction} = RiverJunction[]
     rivers::Vector{River} = River[]
 end

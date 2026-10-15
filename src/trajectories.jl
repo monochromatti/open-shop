@@ -35,7 +35,8 @@ end
 
 Columns of `storage` and `transit` are grid vertices; all other matrices use
 interval columns. Storage and transported volumes are Mm³, heads are metres,
-power is MW, and releases, injections and boundary outflows are m³/s.
+power is nonnegative production/consumption in MW, and releases, injections and
+boundary outflows are m³/s. Generating and pumping units share the unit axis.
 """
 struct HydraulicTrajectory
     grid::Vector{Float64}
