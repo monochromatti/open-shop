@@ -102,6 +102,40 @@ to the released cohort. Zero flow releases no water. Historical cohorts keep
 their original flows and release intervals, including water still in transit
 at time zero.
 
+The reference is the flow of **that release cohort**. It is not the previous
+time interval's release, the arrival flow, or a previous optimization iterate.
+Writing the reference flows as `q[j]`, a cohort released at `Q` between two
+references uses
+
+```math
+w=\frac{Q-q_j}{q_{j+1}-q_j},\qquad F_Q=(1-w)F_j+wF_{j+1}.
+```
+
+Here `F` is the travel-time CDF. Each historical cohort uses its own original
+release and interval to select these weights. A subsequent change in flow does
+not reselect the distribution of water already released. At a distributed
+confluence, total entry is the allocated arriving flow plus branch-local
+injections, averaged on its declared transport interval. This is the flow used
+for the new downstream cohort.
+
+Raw routing accepts the first and last reference exactly and rejects a flow
+below or above a multi-curve reference range. The full case additionally needs
+zero-through-capacity coverage. A single curve applies at every nonnegative
+flow, subject to the reach capacity in a full case. Endpoint holding outside
+a multi-curve domain is not an admitted routing policy.
+
+Numerical trial continuations are separate: Newton holds the nearest endpoint
+mixture when evaluating a trial release outside the references. Nonlinear
+optimizer transfer operators instead continue the outer released-transfer
+polynomial. Physical checks and optimization bounds retain the declared domain;
+neither continuation admits an out-of-range release.
+
+The nonlinear dispatch and global model both use `Q F_Q`, so the released
+transfer is piecewise quadratic in `Q`. The MILP commitment proposal freezes
+transfer coefficients at its reference schedule or a default capacity-based
+flow as a surrogate; its objective is not a bound on this nonlinear model.
+Feasibility and replay use the contemporaneous-cohort law.
+
 For example, mix a slow uniform delay `[2, 3]` at reference flow zero and a
 fast uniform delay `[0.5, 1.5]` at reference flow ten. A one-hour release at
 `2.5 m³/s` uses weights `3/4` and `1/4`. By hour two, the slow fraction has
@@ -127,3 +161,13 @@ reference establishes every endpoint policy above. The single-head assumption,
 separate operating envelope, strict low-flow admission and numerical
 extensions are OpenSHOP's declared semantics. They do not establish identical
 behavior in another optimizer.
+
+In particular, the river reference describes SHOP optimization selecting and
+interpolating the wave curves using flow from its **previous iteration**. This
+is an iterative approximation, distinct from OpenSHOP's contemporaneous-flow
+equations above. The public [time-delay example](https://docs.shop.sintef.energy/examples/river/advanced_time_delay.html)
+illustrates historical flow and dispersed arrivals, with one flow-independent
+wave curve. Matching such trajectories cannot establish equal optimization
+problems, multi-reference endpoint behavior or global bounds. Synthetic
+endpoint-holding simulations likewise do not establish SHOP's optimization
+equations. OpenSHOP makes no optimizer-equivalence claim from these examples.

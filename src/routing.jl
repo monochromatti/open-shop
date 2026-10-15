@@ -161,8 +161,15 @@ function check_releases(release_grid, releases)
         throw(ArgumentError("one finite nonnegative mean release is required per interval"))
 end
 
-# One curve is flow-independent. Multiple curves use a convex linear blend of
-# distributions at the contemporaneous release flow, with no extrapolation.
+"""Mix delay distributions using this cohort's total release flow `q`.
+
+Multiple curves interpolate their probability distributions linearly between
+neighboring reference flows, including the supplied endpoints. Out-of-range
+flows are rejected; one curve is flow-independent for every nonnegative flow.
+Historical cohorts use their own original release flow, never the current or
+previous interval's flow. Newton and optimizer trial continuations are separate
+numerical operations and do not enlarge this routing domain.
+"""
 function blend(curves, q)
     !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
     isfinite(q) && q>=0 || throw(ArgumentError("release flow must be finite and nonnegative"))

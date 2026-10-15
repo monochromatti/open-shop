@@ -480,6 +480,14 @@ $R$ within a reference-flow interval, multiplying the arrival fraction by
 released volume gives a quadratic dependence on $R$. Interpolating arrival
 volumes directly would give a different travel response.
 
+Each cohort selects $theta$ from its own contemporaneous total release,
+including historical cohorts at their original flows. The nonlinear dispatch,
+global model and physical reconstruction use this same law. A frozen-reference
+MILP proposes commitments but provides no bound for this nonlinear problem.
+Physical releases stay within the supplied reference domain;
+endpoint holding in Newton trials and outer-polynomial extensions in nonlinear
+operators are numerical continuations only.
+
 #block(breakable: false)[
 When all reaches have fixed travel times $delta_r>=0$, we propagate the
 piecewise-constant entry stream $tilde(R)_r (s)$ through the network. Each
