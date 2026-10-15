@@ -13,6 +13,7 @@ include("schedule_tests.jl")
 include("dispatch_data_tests.jl")
 include("commitment_controls_tests.jl")
 include("operating_controls_tests.jl")
+include("zero_minimum_tests.jl")
 
 @testset "Named object round trip and optimized dispatch" begin
     lake=Reservoir(

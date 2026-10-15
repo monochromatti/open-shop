@@ -72,7 +72,7 @@ function propose_commitment(
             h=clamp(h, g.hmin, g.hmax)
         end
         qref=clamp(g.qbest, g.qmin, g.qmax)
-        alpha[j, t]=power(g, qref, h)/qref
+        alpha[j, t]=iszero(qref) ? 0.0 : power(g, qref, h)/qref
         reference_heads[j,t]=h
         qlo=opvalue(c, g.name, :qmin, c.grid[t], g.qmin)
         qhi=opvalue(c, g.name, :qmax, c.grid[t], g.qmax)
