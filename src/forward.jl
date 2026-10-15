@@ -310,6 +310,7 @@ function simulate(
 )
     s=c.system
     validate_unit_modes(s)
+    validate_soft_constraints(c)
     validate_delay_curves(s)
     validate_river_allocations(s)
     validate_curve_data(s)

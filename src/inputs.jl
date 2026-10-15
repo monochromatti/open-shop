@@ -1,4 +1,5 @@
 function validate_inputs(c)
+    validate_soft_constraints(c)
     s=c.system
     validate_unit_modes(s)
     commitment_exclusion_indices(c)

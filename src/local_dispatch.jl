@@ -105,7 +105,7 @@ function _build_dispatch(
     constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
-            lo, hi=storage_bounds(c, r, c.grid[t])
+            lo, hi=soft_storage_bounds(c, r, c.grid[t])
             set_lower_bound(v[i, t], lo/r.vmax)
             set_upper_bound(v[i, t], hi/r.vmax)
             set_start_value(v[i, t], r.v0/r.vmax)
@@ -126,6 +126,7 @@ function _build_dispatch(
         level_ops[i]===nothing ? r.z0+r.slope*volume+r.curvature*volume^2 : level_ops[i](volume)
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], j.hmin/250)
         set_upper_bound(h[R + i, t], j.hmax/250)
@@ -372,7 +373,7 @@ function _build_dispatch(
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
-        initial_transit=history_initial, gate_cost=gates.cost)
+        initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -429,6 +430,7 @@ function _build_dispatch(
         starttime,
         shortfall_release,
         penalty_cost,
+        soft,
         transport = nd,
         warm_start,
         gates,
@@ -439,12 +441,13 @@ function _dispatch_values(b)
     c=b.case
     release=value.(b.RQ)
     opening=_tunnel_gate_solution(b.gates)
-    Schedule(copy(c.grid), round.(Int,value.(b.u)), value.(b.V), value.(b.H),
+    raw=Schedule(copy(c.grid), round.(Int,value.(b.u)), value.(b.V), value.(b.H),
         value.(b.Q), Matrix{Float64}(opening), value.(b.GQ), value.(b.P), value.(b.a),
         release, Matrix{Float64}(value.(b.arrivals)), Vector{Float64}(value.(b.terminal)), value.(b.shortfall_release),
         value(b.obj), value(b.gates.cost), value(b.penalty_cost),
         Dict{String,Any}("case"=>c.name,
             "fractional_tunnel_opening"=>value.(b.gates.opening)))
+    with_soft_assessment(c,raw;included_cost=value(b.soft.cost))
 end
 
 function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)

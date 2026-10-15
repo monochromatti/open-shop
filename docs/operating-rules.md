@@ -169,11 +169,91 @@ controls outside their original `[0,1]` domain.
 The [directional-interlock example](../examples/directional_interlocks.jl) optimizes
 a two-intake station with asymmetric waits on an irregular grid.
 
+## Explicit penalty limits
+
+`ScheduleCase.soft_constraints` enables bounded deviations from selected
+reservoir observations or unit/plant output targets. Existing hard schedules,
+availability, dwell, ramps and safety limits keep their meanings. In particular,
+a positive soft output target does not force a unit on, and a zero soft target
+does not force it off.
+
+For a named observation `x`, the lower and upper limits use separate slacks:
+
+```math
+x+s^-\ge L,\qquad x-s^+\le U,\qquad
+0\le s^-\le\bar s^-,\qquad0\le s^+\le\bar s^+.
+```
+
+Omit an inequality when its limit is absent. A zero allowance keeps that side
+hard. The cost subtracted from the objective is
+
+```math
+C=a\,(c^-s^-+c^+s^+).
+```
+
+For reservoir volume, `x=V(time)` and `a=1`; for level,
+`x=head(V(time))` and `a=1`. The cost is charged once at that state observation.
+A terminal target uses its original absolute terminal time. Its cost is not a
+running cost per hour.
+
+For power or discharge, `x` is the duration-weighted average over the supplied
+window `[time,end_time]`. A plant observation sums its units' outputs. The
+power quantity is a nonnegative magnitude: output for generators and
+consumption for pumps, as in hard operating schedules. It is distinct from
+signed net exchange with the grid. The
+factor `a` is the window duration in hours for power, or `0.0036` times that
+duration for discharge. These average targets permit one part of a window to
+offset another; use separate records to restrict separate windows.
+
+```julia
+target = SoftConstraint(name=:TerminalStorage, object=:Lake,
+    quantity=:volume, time=24.0, lower=5.0,
+    max_lower_slack=0.1, lower_cost=1000.0)
+production = SoftConstraint(name=:DesiredProduction, object=:Station,
+    quantity=:power, time=8.0, end_time=9.0, lower=20.0, upper=20.0,
+    max_lower_slack=5.0, max_upper_slack=2.0,
+    lower_cost=200.0, upper_cost=100.0)
+# Pass these separately as ScheduleCase(...; soft_constraints=[target, production]).
+```
+
+Conservation, head–storage relationships, pressure loss, turbine conversion and
+all static physical domains stay hard. A reservoir's static `vmin`/`vmax`
+remain safety bounds. The numerical domains used for global optimization can
+intersect them with `lower-max_lower_slack` and `upper+max_upper_slack` for volume
+observations. They cannot tighten to the nominal target while slack is allowed,
+or extend beyond the physical domain. Level observations retain the supplied
+head–storage law in nonlinear dispatch and the full global model.
+
+`soft_constraint_assessment(case, schedule)` independently computes the minimal
+actual deficit and excess, their units and costs, and any excess over the
+allowances. `Schedule.soft_slacks` and `soft_penalty_cost` expose this accounting.
+`validate` checks the reported accounting and objective, lists permitted
+deviations in `permitted_penalties`, and rejects a deviation beyond its allowance.
+An allowed penalty is compatible with a valid physical schedule.
+
+Refinement preserves the original observation times and rate windows. It does
+not add penalty points or multiply costs by the number of finer intervals.
+Restart drops observations and windows already completed, retains future ones
+at their original times, and therefore does not move a terminal target onto a
+new horizon endpoint. Restart inside a rate window is rejected: this profile
+does not carry partially assessed production history. Choose restart edges at
+assessment boundaries, or declare smaller original windows.
+
+The [penalty-cost documentation](https://docs.shop.sintef.energy/commands/penalty_cost.html)
+and [individual terminal-penalty documentation](https://docs.shop.sintef.energy/commands/individual_endpenalty.html)
+describe production, discharge and terminal storage penalty costs. OpenSHOP
+keeps their quantity-specific units explicit and always keeps water balance hard.
+The [worked example](../examples/soft_limits.jl) chooses full discharge at
+1000 currency/Mm³ and saves the water at 20000 currency/Mm³.
+
 ## Optimization scope
 
 Unit commitment remains binary throughout the horizon. The MILP proposal enforces
 commitment, discharge schedules and linear ramps to find candidate states.
 Nonlinear dispatch enforces physical power schedules and reservoir level ramps.
+The proposal also uses soft-limit costs, with surrogate power and a secant
+head–storage approximation for level observations; its candidate still needs
+the exact nonlinear dispatch and independent assessment.
 Proposal objectives are surrogate values, not bounds on the physical problem.
 
 Rolling, amplitude and nonsequential ramps and conditional environmental waivers

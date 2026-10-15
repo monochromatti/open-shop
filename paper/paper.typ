@@ -674,6 +674,67 @@ the latest unexpired closure deadline in each group, together with the gate
 positions and unit histories. Closing a gate at the restart edge starts a new
 wait in the continuation.
 
+== Explicitly penalized operating limits
+
+A separate named rule may permit bounded deviations from a reservoir
+observation or a unit or plant output target. Existing operating schedules
+remain hard unless replaced explicitly by such a rule. For an observed
+quantity $x_ell$, supplied limits $L_ell,U_ell$ use nonnegative slacks:
+
+$ x_ell + sigma_ell^- >= L_ell, quad
+  x_ell - sigma_ell^+ <= U_ell, quad
+  0 <= sigma_ell^(plus.minus) <= overline(sigma)_ell^(plus.minus). $ <eq:softlimits>
+
+Omit a side when its limit is absent. A zero allowance makes that side hard.
+Positive allowances have strictly positive penalty coefficients. A soft output
+target adds no commitment implication; generation can remain off and incur
+the permitted shortfall.
+
+Reservoir volume observations use $x_ell=V_i (theta_ell)$ and level
+observations use $x_ell=Z_i (V_i (theta_ell))$ at a declared absolute grid
+vertex $theta_ell$. Their slacks have units $"Mm"^3$ and metres. A terminal
+target is an observation at the original terminal time, which is retained
+when the case is continued. These rules constrain the recorded states and
+make no assertion about a continuous-time band between observations.
+
+For power and discharge, observe the average over an original window
+$[a_ell,b_ell]$ whose endpoints are grid edges:
+
+$ x_ell = 1/(b_ell-a_ell)
+  sum_(t: a_ell <= tau_t < tau_(t+1) <= b_ell) Delta_t y_t. $ <eq:softaverage>
+
+Here $y_t$ is one unit's output or the sum of the plant's member outputs.
+The slacks have units MW or $"m"^3$/s. Separate windows are required when
+one part of a window must not offset another.
+
+The nonnegative cost is
+
+$ C_ell = alpha_ell
+  (c_ell^- sigma_ell^- + c_ell^+ sigma_ell^+), quad
+  alpha_ell = cases(
+    1 & "reservoir volume or level observation",
+    b_ell-a_ell & "power window",
+    kappa (b_ell-a_ell) & "discharge window",
+  ). $ <eq:softcost>
+
+Costs are therefore supplied per $"Mm"^3$, per metre, per MWh or per
+$"Mm"^3$, respectively. State observation costs are charged once at the
+observation, without a duration multiplier. Finer replay keeps these same
+observations and windows and does not create additional penalty terms.
+Restart drops completed assessments, retains future times and rejects a
+restart inside an output window because partial assessment history is not
+part of this input profile.
+
+Water balance and every constitutive relation remain hard, together with
+the static domains needed for valid equipment calibration and global bounds.
+A reservoir volume rule can tighten its domain only to the expanded limits
+$L_ell-overline(sigma)_ell^-$ and $U_ell+overline(sigma)_ell^+$, intersected
+with its hard safety domain. The nominal limits alone cannot enclose all
+admitted solutions. Independent assessment reports the actual minimal
+slacks $max(0,L_ell-x_ell)$ and $max(0,x_ell-U_ell)$ and their costs. A
+permitted positive slack is compatible with an accepted schedule; exceeding
+an allowance or violating the physics is not.
+
 #block(breakable: false)[
 = Economic objective
 
@@ -687,7 +748,7 @@ to water in reservoirs and reaches, per $"Mm"^3$. We maximize
 $ cal(V) = & sum_t pi_t Delta_t sum_g sigma_g P_(g t)
   - sum_(g,t) (c_(g t)^+ s_(g t)^+ + c_(g t)^- s_(g t)^-) \
   & - sum_(e,t) c_(e t)^b abs(b_(e t) - b_(e,t-1))
-  - sum_(r,t) c_(r t)^r xi_(r t) \
+  - sum_(r,t) c_(r t)^r xi_(r t) - sum_ell C_ell \
   & + sum_i v_i (V_(i T) - V_(i 0)) + sum_r v_r (W_(r T) - W_(r 0)). $ <eq:objective>
 ]
 
@@ -721,6 +782,9 @@ budget. Candidates that pass the checks below become starting solutions
 for the full SCIP search~@scip, which can change the discrete choices.
 
 The MILP objective approximates @eq:objective and gives no enclosing bound.
+Its soft level observations use a secant approximation to storage-dependent
+level, and its power observations use the proposal's power surrogate. The
+nonlinear dispatch and global model retain the original observation laws.
 Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
 problem. A stationary solution need not be globally optimal.
 

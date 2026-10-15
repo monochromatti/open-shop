@@ -89,6 +89,7 @@ function dispatch_from_controls(
         z.river_release, z.arrival_volume, z.transit[:,end], req.shortfall,
         objective, adjustment_cost, req.cost,
         Dict{String,Any}("case"=>c.name,"status"=>status,"solver"=>"independent_forward"))
+    x=with_soft_assessment(c,x)
     x.diagnostics["validation"]=validate(c, x; transport=nd)
     x
 end

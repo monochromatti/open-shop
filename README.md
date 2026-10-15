@@ -62,6 +62,8 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [discrete tunnel gates](examples/tunnel_gates.jl).
 [Directional handovers](examples/directional_interlocks.jl) keep a station off
 for supplied waiting periods after intake closures.
+[Explicit penalty limits](examples/soft_limits.jl) trade generation revenue
+against a bounded terminal storage shortfall while preserving physical limits.
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
 case from an external public dataset; upstream data are not bundled.
 

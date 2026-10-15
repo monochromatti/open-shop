@@ -70,7 +70,7 @@ function _global_capacity_bounds(c, nd, rd)
         river_out=findall(reach->reach.source==r.name, s.rivers)
         river_in=findall(reach->reach.target==r.name, s.rivers)
         for t in 1:(T + 1)
-            lower[i, t], upper[i, t]=storage_bounds(c, r, c.grid[t])
+            lower[i, t], upper[i, t]=soft_storage_bounds(c, r, c.grid[t])
         end
         lower[i, 1]=upper[i, 1]=r.v0
         for t in 1:T

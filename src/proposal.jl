@@ -99,9 +99,16 @@ function propose_commitment(
     end
     constrain_dispatch_operations!(m,c,u,P,gq,rq; transitions=states, proposal=true)
     constrain_reservoir_ramps!(m,c,V) # Only linear storage ramps belong to the proposal.
+    level_at_vertex=(i,t)->begin
+        r=s.reservoirs[i]
+        lo,hi=r.vmin,r.vmax
+        h0,h1=head(r,lo),head(r,hi)
+        h0+(h1-h0)*(V[i,t]-lo)/(hi-lo)
+    end
+    soft=constrain_soft_constraints!(m,c,V,P,gq;level=level_at_vertex)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
-            lo, hi=storage_bounds(c, r, c.grid[t])
+            lo, hi=soft_storage_bounds(c, r, c.grid[t])
             set_lower_bound(V[i, t], lo)
             set_upper_bound(V[i, t], hi)
         end
@@ -239,7 +246,7 @@ function propose_commitment(
         Max,
         sum(
             c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*P[j, t] for j in 1:G, t in 1:T
-        )-transition_costs(c,u; transitions=states)-gates.cost+water_scale*valuechange-sum(
+        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost+water_scale*valuechange-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
                 t,

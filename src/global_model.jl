@@ -245,12 +245,14 @@ function _build_global_dispatch(
         if r.level_curve===nothing
             return r.z0+r.slope*volume+r.curvature*volume^2
         end
+        reservoir_vertices[i,t]===nothing || return reservoir_vertices[i,t].y
         graph=_global_tensor_table_graph!(m,r.level_curve,volume,domains.lower[i,t],domains.upper[i,t];
             name=Symbol("level_vertex_",i,"_",t))
         reservoir_vertices[i,t]=graph
         graph.y
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], node_bounds[(j.name,t)][1]/250)
         set_upper_bound(h[R + i, t], node_bounds[(j.name,t)][2]/250)
@@ -683,7 +685,7 @@ function _build_global_dispatch(
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
-        initial_transit=history_initial, gate_cost=gates.cost, transitions)
+        initial_transit=history_initial, gate_cost=gates.cost, transitions, soft_cost=soft.cost)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -748,6 +750,7 @@ function _build_global_dispatch(
         starttime,
         shortfall_release,
         penalty_cost,
+        soft,
         transport = nd,
         domains,
         bounds_seconds,

@@ -18,6 +18,7 @@ include("operations.jl")
 include("tunnel_controls.jl")
 include("commitment_controls.jl")
 include("operating_constraints.jl")
+include("soft_constraints.jl")
 include("inputs.jl")
 include("rivergraph.jl")
 include("river_sources.jl")
@@ -62,6 +63,9 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     HydroSystem,
     ScheduleCase,
     OperationalSeries,
+    SoftConstraint,
+    SoftConstraintSlack,
+    soft_constraint_assessment,
     FlowRequirement,
     TableCurve,
     LevelFlowCurve,
