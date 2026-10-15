@@ -111,3 +111,38 @@ end
     @test parts.total≈x.objective atol=1e-8
     @test validate(c,x)["valid"]
 end
+
+@testset "Objective accounting includes pumping, capacity and both penalty costs" begin
+    base=terminal_value_case()
+    pump=Pump(name=:Pump,plant=:Lift,qmin=1.0,qmax=2.0,pmin=0.1,pmax=5.0,
+        hmin=110.0,hmax=130.0,efficiency=0.85,motor_efficiency=0.95,
+        qbest=1.0,hbest=120.0,qcurvature=0.0,hcurvature=0.0,
+        minup=0.0,mindown=0.0,startup=2.0,shutdown=0.0)
+    system=tv_copy(base.system;generators=[base.system.generators;pump],
+        plants=[base.system.plants;Plant(name=:Lift,source=:LowerLake,target=:UpperLake,
+            pmax=5.0,ramp=nothing)])
+    group=ReserveGroup(name=:Capacity,generators=[:UpperUnit],up_requirement=0.75,
+        down_requirement=0.25,up_max=0.5,down_max=0.25,up_price=20.0,down_price=10.0,
+        shortfall_cost=4.0)
+    target=SoftConstraint(name=:TerminalTarget,object=:UpperLake,quantity=:volume,
+        time=2.0,lower=2.0,max_lower_slack=0.05,lower_cost=1000.0)
+    c=tv_copy(base;system,reserve_groups=[group],soft_constraints=[target])
+    q=[3.0 3.0;1.5 1.5;1.0 1.0];up=zeros(3,1,2);down=copy(up)
+    up[1,1,:].=0.5;down[1,1,:].=0.25
+    x=dispatch_from_controls(c,ones(Int,3,2),q,zeros(1,2);
+        reserves=ReserveAllocation(;up,down,generator_q=q))
+    parts=objective_components(c,x)
+    @test validate(c,x)["valid"]
+    @test replay_audit(c,x)["valid"]
+    @test parts.energy_revenue≈100.0*(sum(x.power[1:2,:])-sum(x.power[3,:])) atol=1e-9
+    @test parts.reserve_revenue≈25.0 atol=1e-10
+    @test parts.reserve_penalty≈2.0 atol=1e-10
+    @test parts.soft_penalty≈14.4 atol=1e-8
+    @test parts.transition_cost==10.0
+    @test parts.total≈x.objective atol=1e-8
+    reported=schedule_dict(x)
+    reported["soft_penalty_cost"]=0.0
+    reported["reserves"].up_shortfall.=99.0
+    @test !validate(c,reported)["valid"]
+    @test objective_components(c,reported).total≈parts.total atol=1e-8
+end
