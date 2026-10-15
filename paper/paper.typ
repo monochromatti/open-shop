@@ -432,8 +432,14 @@ The global model uses a binary positive-part graph followed by $w^2=[ell]_+$.
 Both formulations retain the crest boundary without smoothing the physical law.
 ]
 The analytic outlet laws are one-level responses; they do not calculate
-downstream backwater or gate geometry. A supplied response must include those
-effects where needed. Tunnel connections assume submerged entrances and exits.
+downstream backwater or gate geometry. A supplied one-level curve is valid only
+where the omitted conditions are fixed or accounted for in its calibration;
+it cannot describe independently varying downstream counterpressure. Directed
+river connections must be physically applicable over the operating range.
+Transport conservation does not enforce downhill flow or a gravitational
+energy balance along a routed reach. A plant or tunnel's hydraulic outlet
+reference must also represent its actual outfall head. Tunnel connections
+assume submerged entrances and exits.
 
 #block(breakable: false)[
 At a zero-storage river node, incoming water is distributed among outgoing

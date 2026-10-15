@@ -5,6 +5,12 @@ Reservoir outlets, plant discharges, directed tunnel outfalls, upstream reaches
 and natural inflow can supply it. Water in transit belongs to the river inventory
 until it arrives; it is not credited to downstream storage early.
 
+Delayed reaches assume physically valid downstream connections and calibrated
+entry responses. Routing does not check gravitational elevation compatibility
+or calculate backwater from changing downstream levels. A one-level entry
+curve cannot describe independently varying downstream counterpressure. See
+[model validity](model-validity.md) for these assumptions and time-grid limits.
+
 ## Connections
 
 A plant or tunnel sets `discharge_river` to a receiving reach's name. Its

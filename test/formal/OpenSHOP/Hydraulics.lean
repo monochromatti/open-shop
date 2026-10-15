@@ -186,4 +186,39 @@ theorem network_water_conservation {N E R : Type*}
     ring
   exact storage_and_transit_conservation _ _ release arrival transitChange total transitBalance
 
+
+/-- The positive/negative split in the global tunnel graph gives q|q| exactly
+at binary direction states. It does not assert exactness of its relaxation. -/
+theorem signed_square_split (direction positive negative capacity : ℝ)
+    (binary : direction=0 ∨ direction=1)
+    (hp : 0 ≤ positive) (hn : 0 ≤ negative)
+    (posBound : positive ≤ capacity*direction)
+    (negBound : negative ≤ capacity*(1-direction)) :
+    (positive-negative)*|positive-negative|=positive^2-negative^2 := by
+  rcases binary with h | h
+  · subst direction
+    have hz : positive=0 := by nlinarith
+    rw [hz,abs_of_nonpos (by linarith)]
+    ring
+  · subst direction
+    have hz : negative=0 := by nlinarith
+    rw [hz,abs_of_nonneg (by linarith)]
+    ring
+
+/-- The binary positive-part rows used by dry/wet outlets force exactly the
+nonnegative part of head, including the crest point. -/
+theorem wet_branch_exact (direction head wet lo hi : ℝ)
+    (binary : direction=0 ∨ direction=1) (nonnegative : 0 ≤ wet)
+    (aboveHead : head ≤ wet) (upper : wet ≤ hi*direction)
+    (branch : wet ≤ head-lo*(1-direction)) : wet=max head 0 := by
+  rcases binary with h | h
+  · subst direction
+    have hz : wet=0 := by nlinarith
+    have hh : head ≤ 0 := by linarith
+    simp [hz,max_eq_right hh]
+  · subst direction
+    have he : wet=head := by nlinarith
+    have hh : 0 ≤ head := by linarith
+    simp [he,max_eq_left hh]
+
 end OpenSHOP

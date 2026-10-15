@@ -103,4 +103,34 @@ theorem electrical_segment_root (a b shaft p : ℝ) (denominator : 1-shaft*b ≠
     have := (eq_div_iff denominator).1 h
     nlinarith
 
+
+/-- Power-basis to Bernstein conversion at the discharge degree used by the
+power supports. These are exactly the coefficients for degree four. -/
+theorem bernstein_four_identity (a₀ a₁ a₂ a₃ a₄ t : ℝ) :
+    a₀*(1-t)^4 + 4*(a₀+a₁/4)*t*(1-t)^3 +
+    6*(a₀+a₁/2+a₂/6)*t^2*(1-t)^2 +
+    4*(a₀+3*a₁/4+a₂/2+a₃/4)*t^3*(1-t) +
+    (a₀+a₁+a₂+a₃+a₄)*t^4 = a₀+a₁*t+a₂*t^2+a₃*t^3+a₄*t^4 := by ring
+
+/-- The corresponding degree-two conversion for the head coordinate. -/
+theorem bernstein_two_identity (a₀ a₁ a₂ t : ℝ) :
+    a₀*(1-t)^2+2*(a₀+a₁/2)*t*(1-t)+(a₀+a₁+a₂)*t^2 =
+    a₀+a₁*t+a₂*t^2 := by ring
+
+/-- The discharge Bernstein basis is a nonnegative partition on its cell. -/
+theorem bernstein_four_partition (t : ℝ) (h₀ : 0 ≤ t) (h₁ : t ≤ 1) :
+    0 ≤ (1-t)^4 ∧ 0 ≤ 4*t*(1-t)^3 ∧ 0 ≤ 6*t^2*(1-t)^2 ∧
+    0 ≤ 4*t^3*(1-t) ∧ 0 ≤ t^4 ∧
+    (1-t)^4+4*t*(1-t)^3+6*t^2*(1-t)^2+4*t^3*(1-t)+t^4=1 := by
+  have : 0 ≤ 1-t := sub_nonneg.mpr h₁
+  refine ⟨by positivity,by positivity,by positivity,by positivity,by positivity,?_⟩
+  ring
+
+/-- The head Bernstein basis is also a nonnegative partition. -/
+theorem bernstein_two_partition (t : ℝ) (h₀ : 0 ≤ t) (h₁ : t ≤ 1) :
+    0 ≤ (1-t)^2 ∧ 0 ≤ 2*t*(1-t) ∧ 0 ≤ t^2 ∧
+    (1-t)^2+2*t*(1-t)+t^2=1 := by
+  have : 0 ≤ 1-t := sub_nonneg.mpr h₁
+  exact ⟨by positivity,by positivity,by positivity,by ring⟩
+
 end OpenSHOP

@@ -143,6 +143,18 @@ of feasibility or optimality; independent residual checks remain necessary.
 
 ## Transport, operating rules and objective bounds
 
+Delayed reaches are directed transport responses, not pressure-flow laws. Their
+directions and one-level outlet responses must be physically applicable over the
+declared operating range. Input validation does not check downstream backwater
+or gravitational elevation compatibility. A supplied uphill river connection can
+conserve water and pass finer replay while creating unphysical potential energy.
+Unlike tunnels and delta-level channels, ordinary routed reaches have no
+head-difference equation that would prevent this. A one-level discharge curve
+cannot represent independently varying downstream counterpressure. Likewise,
+a plant/tunnel hydraulic target must supply the actual outfall head, even when
+its water enters a separately named delayed reach. These are calibration and
+connection assumptions, not consequences of the conservation proofs.
+
 Each release cohort keeps the travel-response mixture selected by its own
 release rate. A convex mixture of causal probability responses remains causal
 and volume preserving. Deterministic delays preserve source pulses through
