@@ -33,6 +33,8 @@ jobs:
         run: julia --pkgimages=no --project=. examples/level_channels.jl
       - name: Run the tunnel gate example
         run: julia --pkgimages=no --project=. examples/tunnel_gates.jl
+      - name: Run the shared-tailrace example
+        run: julia --pkgimages=no --project=. examples/shared_tailrace.jl
       - name: Run the single-head turbine example
         run: julia --pkgimages=no --project=. examples/turbine_tables.jl
       - name: Run the prescribed river-split example

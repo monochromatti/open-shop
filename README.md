@@ -57,6 +57,7 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [energy-based terminal valuation](examples/terminal_value.jl),
 [station operating rules](examples/operating_rules.jl),
 [many-to-one river connections](examples/mixed_source_network.jl),
+[distinct penstocks with a shared tailrace](examples/shared_tailrace.jl),
 [prescribed river splits](examples/river_splits.jl),
 [pumped-storage arbitrage](examples/pumped_storage.jl),
 [signed channels](examples/level_channels.jl) and
