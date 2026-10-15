@@ -68,6 +68,8 @@ upward/downward reservations under the [declared reserve contract](docs/reserves
 for supplied waiting periods after intake closures.
 [Explicit penalty limits](examples/soft_limits.jl) trade generation revenue
 against a bounded terminal storage shortfall while preserving physical limits.
+The [penalty settings API](docs/penalties.md) exposes effective defaults,
+allowances, units and cost equations before optimization.
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
 case from an external public dataset; upstream data are not bundled.
 

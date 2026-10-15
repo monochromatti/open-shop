@@ -76,6 +76,12 @@ and returns `slacks`, `cost` and per-rule `excess` beyond allowed slack.
 in `permitted_penalties`; they do not make a schedule invalid. Bare hydraulic
 simulation returns the physical trajectory without economic accounting.
 
+`penalty_settings(case)` returns effective `soft`, river `release` and `reserve`
+penalty equations plus an explicit `defaults` tuple. Entries retain original
+typed rules where present and expose physical/coefficient units, cost factors,
+bounded shortfalls, activity and mathematical origins. See [effective penalties](penalties.md)
+for defaults, original-window accrual and the distinction from public SHOP costs.
+
 An empty `Tunnel.gate_positions` leaves openings prescribed by `opening` and
 operating series. A nonempty sorted list enables discrete choices. Selectable
 positions must be exact listed values; a closed gate has zero flow and independent
