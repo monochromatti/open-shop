@@ -123,3 +123,11 @@ profile. A terminal target is assessed only at its original time.
 Supply `reserve_groups=[ReserveGroup(...)]` on `ScheduleCase`.
 `solve` and `solve_case` retain their ordinary `SolveResult`; capacity is in
 `result.solution.reserves::ReserveAllocation` when capacity contracts are present. See [reserve equations and scope](reserves.md).
+
+## Water values and objective accounting
+
+`energy_conversion_factor(head, efficiency)` gives MWh/Mm³ at explicit reference
+conditions. `volume_water_value(energy_value, factor; downstream_value=0)` gives
+currency/Mm³. `objective_components(case, schedule)` recomputes the economic
+accounting. See [terminal water values](terminal-value.md) for cascade,
+historical-transit and currency conventions.

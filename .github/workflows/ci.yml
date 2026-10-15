@@ -45,3 +45,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/soft_limits.jl
       - name: Run the spinning-reserve example
         run: julia --pkgimages=no --project=. examples/spinning_reserves.jl
+      - name: Run the terminal water-value example
+        run: julia --pkgimages=no --project=. examples/terminal_value.jl
