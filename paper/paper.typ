@@ -350,6 +350,17 @@ The reservoir loses $d=R-n$. Natural reach inflow enters the river directly
 and must not be subtracted from reservoir storage.
 
 #block(breakable: false)[
+The square-root derivative is singular at a dry outlet. Local dispatch instead
+uses $w>=0$ with $w^2=[ell]_+$. This piecewise polynomial equality gives
+exactly $w=sqrt([ell]_+)$, so withdrawal is $c a w$ or $c w^3$.
+The global model uses a binary positive-part graph followed by $w^2=[ell]_+$.
+Both formulations retain the crest boundary without smoothing the physical law.
+]
+The analytic outlet laws are one-level responses; they do not calculate
+downstream backwater or gate geometry. A supplied response must include those
+effects where needed. Tunnel connections assume submerged entrances and exits.
+
+#block(breakable: false)[
 At a zero-storage river node, incoming water is distributed among outgoing
 reaches with prescribed shares $alpha_r$. Local natural inflow and plant or
 tunnel outfalls enter each branch after this allocation. Let $L_(r t)$ collect
