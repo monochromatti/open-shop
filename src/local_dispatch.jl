@@ -210,6 +210,7 @@ function _build_dispatch(
             end
         end
     end
+    reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin)
     outlet_bounds = _dispatch_outlet_bounds(c)
     injections=river_injections(c,RQ,GQ,Q)
@@ -374,6 +375,7 @@ function _build_dispatch(
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost)
+    reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
     for i in 1:R, t in 1:T
@@ -413,7 +415,9 @@ function _build_dispatch(
             set_start_value(a[i, t], warm.gate[i, t])
         end
     end
+    _start_reserves!(reserves,c,warm)
     (;
+        reserves,
         case=c,
         m,
         obj,
@@ -446,7 +450,7 @@ function _dispatch_values(b)
         release, Matrix{Float64}(value.(b.arrivals)), Vector{Float64}(value.(b.terminal)), value.(b.shortfall_release),
         value(b.obj), value(b.gates.cost), value(b.penalty_cost),
         Dict{String,Any}("case"=>c.name,
-            "fractional_tunnel_opening"=>value.(b.gates.opening)))
+            "fractional_tunnel_opening"=>value.(b.gates.opening));reserves=_reserve_values(c,b.reserves))
     with_soft_assessment(c,raw;included_cost=value(b.soft.cost))
 end
 

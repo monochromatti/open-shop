@@ -134,6 +134,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         flow_requirements = c.flow_requirements,
         soft_constraints = [rule for rule in c.soft_constraints
             if (rule.end_time===nothing ? rule.time : rule.end_time)>time],
+        reserve_groups = c.reserve_groups,
     )
     validate_inputs(result)
     result

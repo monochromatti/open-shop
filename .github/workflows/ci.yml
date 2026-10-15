@@ -43,3 +43,5 @@ jobs:
         run: julia --pkgimages=no --project=. examples/pumped_storage.jl
       - name: Run the soft-limit example
         run: julia --pkgimages=no --project=. examples/soft_limits.jl
+      - name: Run the spinning-reserve example
+        run: julia --pkgimages=no --project=. examples/spinning_reserves.jl

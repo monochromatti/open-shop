@@ -117,3 +117,9 @@ Soft state observations and output assessment windows retain their original
 times. Restart removes completed assessments and rejects a restart inside an
 unfinished output window, whose partial history is not represented by this
 profile. A terminal target is assessed only at its original time.
+
+## Spinning capacity
+
+Supply `reserve_groups=[ReserveGroup(...)]` on `ScheduleCase`.
+`solve` and `solve_case` retain their ordinary `SolveResult`; capacity is in
+`result.solution.reserves::ReserveAllocation` when capacity contracts are present. See [reserve equations and scope](reserves.md).

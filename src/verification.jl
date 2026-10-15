@@ -63,10 +63,16 @@ function replay_audit(
             x.generator_q[:, indices],
             x.gate[:, indices];
             tunnel_opening=opening[:,indices],
+            reserves=_reserve_slice(x.reserves,indices),
         )
         audit=z["validation"]
         merge!(violations, audit["residuals"])
         append!(errors, audit["errors"])
+        # Reserve response is measured from each operating point, so its rates
+        # remain physical limits when ordinary scheduling ramps are stripped.
+        reserve_audit=validate_reserves(cc,z;tolerance)
+        merge!(violations,Dict("reserve_"*key=>value for (key,value) in reserve_audit["residuals"]))
+        append!(errors,reserve_audit["errors"])
         windows=operating_window_values(c,z,grid,indices,x.commitment)
         for (name,residual) in operating_residuals(c,windows)
             violations[name]=max(get(violations,name,0.0),residual)
@@ -286,7 +292,7 @@ function solve_verified(
         cc=with_grid(cc, nextgrid)
         warm=try
             dispatch_from_controls(cc, uu, x.generator_q[:, idx], x.gate[:, idx];
-                tunnel_opening=openings)
+                tunnel_opening=openings,reserves=_reserve_slice(x.reserves,idx))
         catch
             nothing
         end

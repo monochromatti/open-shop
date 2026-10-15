@@ -2,7 +2,7 @@
 
 OpenSHOP reads a JSON case with `readcase(path)` or a dictionary with `case_from_dict(data)`. `case_dict(case)` produces the public profile and `writejson(path, data)` writes it. Object names connect the watercourse; JSON arrays do not determine hydraulic connectivity.
 
-The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks`, `commitment_exclusions` and `soft_constraints`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
+The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks`, `commitment_exclusions`, `soft_constraints` and `reserve_groups`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
 
 ## Objects
 
@@ -169,3 +169,13 @@ and the [example](../examples/soft_limits.jl).
 | Efficiency, gate, opening, allocation and delay probability | dimensionless |
 
 Unknown fields at the case, object, table, delay-curve or operation level raise an error. Missing required fields, invalid bounds, unsupported laws/interpolation, unknown endpoints, duplicate names/series and invalid topology also fail input validation. Inputs use this documented profile; physical calibration must be supplied explicitly. Keep the case and returned schedule together: changing the grid changes schedule dimensions and the discrete optimization problem.
+
+## Reserve capacity
+
+`reserve_groups` is an optional case collection; legacy cases omit it. Each
+`ReserveGroup` names eligible generators and supplies up/down MW requirements,
+capacity prices and maxima, optional positive shortfall cost, response hours
+and optional sustained activation hours. `OperationalSeries` supports group
+requirements, prices and maxima, plus generator `reserve_available`. Generator
+`reserve_up_energy` and `reserve_down_energy` are optional qualified MWh budgets.
+See [spinning-capacity semantics and exclusions](reserves.md).

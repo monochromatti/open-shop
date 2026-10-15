@@ -3,6 +3,7 @@ function validate_inputs(c)
     s=c.system
     validate_unit_modes(s)
     commitment_exclusion_indices(c)
+    validate_reserve_inputs(c)
     for objects in (
         s.reservoirs,
         s.junctions,
