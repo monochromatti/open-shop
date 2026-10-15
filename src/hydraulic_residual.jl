@@ -86,7 +86,11 @@ function HydraulicStepData(
     end
     fixed_pumps=Int[]
     for (i,g) in enumerate(s.generators)
-        g.characteristic===nothing && continue
+        if g.characteristic===nothing
+            commitment===nothing || commitment[i]==1 || iszero(discharge[i]) ||
+                throw(ArgumentError("$(g.name): an off adjustable unit cannot have prescribed flow"))
+            continue
+        end
         on=commitment===nothing ? discharge[i]>0 : commitment[i]==1
         if on
             push!(fixed_pumps,i)

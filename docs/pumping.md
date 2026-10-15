@@ -93,7 +93,9 @@ the fixed-speed pump control; its `generator_q` entries are numerical guesses,
 and zero is a valid guess for a running pump. The returned schedule contains
 solved flows. `simulate(...; commitment=u)` uses the same rule; without explicit
 commitment it infers on from a positive flow entry and off from zero. Ordinary
-schedule validation checks stored flows without repairing them. Finer replay
+adjustable-unit flows must be zero when their supplied commitment is off;
+commitment may remain on at zero flow. Schedule validation checks stored flows
+without repairing them. Finer replay
 holds commitment and re-solves discharge at each finer midpoint. Restart retains
 the characteristic, commitment history and preceding physical flow/consumption.
 

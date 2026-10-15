@@ -309,7 +309,8 @@ to reconstruct and validate a complete schedule. Malformed inputs throw an
 selects fixed-speed pump operation independently of its discharge guess. Without
 it, positive flow entries mean on. Fixed-speed pump entries are guesses and
 their returned discharges follow the characteristic at each replay midpoint;
-other unit discharges remain prescribed.
+other unit discharges remain prescribed and must be zero when their supplied
+commitment is off. A committed adjustable unit may have zero prescribed flow.
 
 Source outlet laws, midpoint storage and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each

@@ -159,4 +159,12 @@ end
     reversible=OpenSHOP._river_replace(c;system)
     @test !admissible(reversible,ones(Int,2,3))
     @test_throws ArgumentError simulate(reversible,zeros(2,3),zeros(0,3);commitment=ones(Int,2,3))
+    hidden_flow=[zeros(1,3);ones(1,3)]
+    hidden_state=[ones(Int,1,3);zeros(Int,1,3)]
+    @test_throws ArgumentError simulate(reversible,hidden_flow,zeros(0,3);commitment=hidden_state)
+    @test_throws ArgumentError forward_step(system,[10.0,10.0],0.5,[0.0,1.0],
+        Float64[],Float64[];commitment=[1,0])
+    idle=simulate(reversible,zeros(2,3),zeros(0,3);
+        commitment=[zeros(Int,1,3);ones(Int,1,3)])
+    @test idle.converged && idle.generator_q==zeros(2,3)
 end
