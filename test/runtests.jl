@@ -73,6 +73,7 @@ include("power_hull_start_tests.jl")
 include("table_power_bounds_tests.jl")
 include("table_power_coordinate_tests.jl")
 include("power_cut_tests.jl")
+include("solver_start_budget_tests.jl")
 
 include("multireference_routing_tests.jl")
 include("delay_policy_tests.jl")
