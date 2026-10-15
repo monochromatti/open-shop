@@ -94,6 +94,36 @@ channel whose flow depends on both reservoir levels uses `law=:delta` instead.
 Unsupported geometry attributes are rejected. Reservoir-dependent outlet laws
 require a reservoir source and cannot replace a zero-storage river junction.
 
+## Distinct penstocks with a shared tailrace
+
+Represent each penstock by a tunnel leading to its own intake junction. Connect
+the corresponding Plants to one common outlet junction, then connect that
+junction to the receiving reservoir or boundary through a tailrace tunnel.
+The [shared-tailrace example](../examples/shared_tailrace.jl) gives a complete case.
+For two generating branches with positive discharges, conservation and the
+ordinary tunnel laws give
+
+```math
+Q_{tail}=q_A+q_B,\qquad H_{tail}=H_{receiver}+R_{tail}Q_{tail}^2,
+```
+
+```math
+H_{intake,i}=H_{source,i}-R_i q_i^2,\qquad
+h_i=H_{intake,i}-H_{tail}.
+```
+
+The penstock resistances can differ. Both units see the same outlet pressure,
+so increasing either discharge reduces both turbine heads. The shared loss is
+applied once through that pressure; do not repeat it in `tailwater_curve`.
+Forward simulation, nonlinear dispatch and global optimization use this same
+network and its conservation equations. No special tailrace object is needed.
+
+Each `Plant` groups units with a common intake and outlet reference. Separate
+Plants do not automatically share power caps, ramps, dwell rules, maintenance
+or reserve constraints merely because their outlets join. The capacity reserve
+contract holds scheduled hydraulic node heads fixed for its operating-point
+witnesses; it does not re-solve the shared tunnel network during activation.
+
 ## Turbine outlet elevation
 
 `Plant.outlet_head_floor=z_out` changes the turbine's outlet reference:

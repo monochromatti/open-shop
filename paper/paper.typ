@@ -276,6 +276,13 @@ $T_p (q_(p t))>=0$. We model shared penstocks as tunnels, whose friction
 loss depends on the combined discharge of the units they supply. For pumping,
 @eq:nethead is destination head minus intake head plus the path loss.
 
+Distinct penstocks can feed units that share a pressurized tailrace. Give each
+penstock its own intake node and connect the plant outlets to one junction.
+Conservation makes the tailrace tunnel carry their combined discharge.
+Its quadratic loss raises the common outlet head, reducing every unit's head
+once. These hydraulic supply groups remain separate plants for operating
+rules; a common outlet does not combine their power caps or commitment rules.
+
 #block(breakable: false)[
 The binary state $u_(g t)$ selects an idle unit or its running range:
 
