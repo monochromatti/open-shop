@@ -29,7 +29,7 @@ function _power_box_upper(table, qlo, qhi, hlo, hhi, electrical_max, slope, head
 end
 
 function _power_support(table,qlo,qhi,hlo,hhi,electrical_max,slope,head_slope=0.)
-    qs=_global_tensor_nodes(table.discharge,qlo,qhi)
+    qs=_global_tensor_nodes(table._discharge_knots,qlo,qhi)
     hs=_global_tensor_nodes(table.heads,hlo,hhi)
     # Subdivision tightens the coefficient enclosure without changing the model.
     segments=length(qs)==1 ? [(qlo,qhi)] :

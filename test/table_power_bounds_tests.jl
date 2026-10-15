@@ -5,7 +5,7 @@ using Test, JuMP, OpenSHOP, SCIP
     for interpolation in (:bilinear,:pchip_discharge)
         table=TurbineTable([1.0,2.0,3.0],[1.0,1.5,2.0],
             [.7 .5 .4;.95 .8 .6;.8 .7 .4],fill(1.0,3),fill(2.0,3);interpolation)
-        qnodes=OpenSHOP._global_tensor_nodes(table.discharge,0.0,3.0)
+        qnodes=OpenSHOP._global_tensor_nodes(table._discharge_knots,0.0,3.0)
         hnodes=OpenSHOP._global_tensor_nodes(table.heads,-1.0,5.0)
         for (qbox,hbox) in (((1.2,1.8),(1.4,2.6)),((0.25,2.5),(0.7,3.4)),
             ((1.3,1.3),(2.2,2.2)))

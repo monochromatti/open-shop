@@ -74,7 +74,17 @@ At each river node, outgoing reaches use `law="junction"` and finite `allocation
 
 A one-dimensional table contains `x` and `y` arrays, with strictly increasing coordinates. Level tables map storage to head; tailwater tables map aggregate discharge to additional head; discharge tables map source level to ungated outlet flow; generator-efficiency tables map electrical power to efficiency. Coverage and monotonicity requirements are validated according to the physical role.
 
-A turbine table contains `heads`, `discharge`, `efficiency`, `qmin`, `qmax`, and optional `interpolation` and `head_extrapolation`. Efficiency rows correspond to discharge coordinates and columns to head coordinates. Head-indexed `qmin` and `qmax` describe the operating discharge envelope. Interpolation is `bilinear` or `pchip_discharge`; the latter is cubic in discharge and linear in head. Turbine and electrical efficiencies are separate.
+A turbine table contains `heads`, `qmin`, `qmax` and either rectangular
+`discharge`/`efficiency` data or a head-ordered `curves` array of `{"x": [...],
+"y": [...]}` records. The latter preserves unequal discharge grids. Rectangular
+efficiency rows correspond to discharge coordinates and columns to heads. Each
+headwise curve uses its own linear or PCHIP discharge interpolant; values are
+then interpolated linearly between heads at the same discharge. `interpolation`
+is `bilinear` or `pchip_discharge`; optional `head_extrapolation` and
+`discharge_extrapolation` control continuation. Original PCHIP slopes are never
+refitted on a combined grid. Head-indexed `qmin`/`qmax` remain independent
+operating limits. See the [curve contract](curves.md#unequal-discharge-grids).
+Turbine and electrical efficiencies are separate.
 
 `head_extrapolation` defaults to `"error"`: reference heads must cover the generator's declared operating head range. Explicit `"linear"` extends efficiency and discharge envelopes using the outermost pair of reference heads. Supplied knots remain unchanged; the generator's head, discharge, power and efficiency restrictions still apply to the extended values. Raw table-query APIs remain strict unless the caller explicitly requests linear extrapolation.
 

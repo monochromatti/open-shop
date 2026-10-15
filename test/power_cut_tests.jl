@@ -9,7 +9,7 @@ end
     for interpolation in (:bilinear, :pchip_discharge)
         table = TurbineTable([1.0, 2.0, 3.0], [1.0, 1.5, 2.0],
             [.7 .5 .4; .95 .8 .6; .8 .7 .4], fill(1.0, 3), fill(2.0, 3); interpolation)
-        qnodes = OpenSHOP._global_tensor_nodes(table.discharge, 0.0, 3.0)
+        qnodes = OpenSHOP._global_tensor_nodes(table._discharge_knots, 0.0, 3.0)
         hnodes = OpenSHOP._global_tensor_nodes(table.heads, -1.0, 5.0)
         for (qbox, hbox) in (((1.2, 1.8), (1.4, 2.6)), ((0.25, 2.5), (0.7, 3.4)),
             ((1.3, 1.3), (2.2, 2.2))), fraction in OpenSHOP._POWER_CUT_FRACTIONS
@@ -130,7 +130,7 @@ function power_cut_native_witness(; certificate_budget=1.5, max_cuts=64, corrupt
     b = (m=m, GQ=reshape([q], 1, 1))
     c = (prices=[100.0], grid=[0.0, 1.0])
     separator = OpenSHOP._install_power_cuts!(b, c; certificate_budget, max_cuts)
-    corrupt && (table.efficiency[1,1] = NaN)
+    corrupt && (table.curves[1].y[1] = NaN)
     optimize!(m)
     @test termination_status(m) == JuMP.MOI.OPTIMAL
     (; m, separator, old_upper, exact_power, flow_cost, q, p)

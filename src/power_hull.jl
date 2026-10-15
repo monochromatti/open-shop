@@ -28,7 +28,7 @@ function _power_hull_eta_bounds(g,qbox,hbox)
         return _power_hull_outward_bounds(_global_analytic_eta_bounds(g,qbox...,hbox...)...)
     end
     table=g.turbine_table
-    qs=_global_tensor_nodes(table.discharge,qbox...)
+    qs=_global_tensor_nodes(table._discharge_knots,qbox...)
     hs=_global_tensor_nodes(table.heads,hbox...)
     lo=Inf;hi=-Inf
     for h in hs

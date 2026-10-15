@@ -20,12 +20,13 @@ function _global_polynomial_range(a, lo, hi)
 end
 
 function _global_discharge_coefficients(c, i, j, cubic)
-    a = c.efficiency[i, j]
-    b = c.efficiency[i + 1, j]
+    curve=c.curves[j]
+    a = curve.y[i]
+    b = curve.y[i + 1]
     cubic || return (a, b-a, 0.0, 0.0)
-    d = c.discharge[i + 1]-c.discharge[i]
-    u = d*c.discharge_slopes[i, j]
-    v = d*c.discharge_slopes[i + 1, j]
+    d = curve.x[i + 1]-curve.x[i]
+    u = d*c._discharge_slopes[j][i]
+    v = d*c._discharge_slopes[j][i + 1]
     (a, u, 3(b-a)-2u-v, 2(a-b)+u+v)
 end
 
@@ -36,5 +37,27 @@ function _global_shift_polynomial(a, origin, scale)
         scale^2*(a[3]+3origin*a[4]),
         scale^3*a[4],
     )
+end
+
+# Coefficients in the local [0,1] discharge coordinate at a supplied head.
+# Each extension segment keeps its original secant, even for PCHIP tables.
+function _global_column_polynomial(c,ql,qr,j)
+    grid=c.curves[j].x
+    # The common partition never crosses an original knot. Select by its left
+    # edge: a rounded midpoint can fall into the next cell on a very narrow grid.
+    i=_curve_segment(grid,ql,:linear)
+    cubic=c.interpolation==:pchip_discharge && first(grid)<=ql<=qr<=last(grid)
+    coefficients=_global_discharge_coefficients(c,i,j,cubic)
+    dq=grid[i+1]-grid[i]
+    _global_shift_polynomial(coefficients,(ql-grid[i])/dq,(qr-ql)/dq)
+end
+
+function _global_tensor_polynomial(c,ql,qr,h)
+    j,k,u=_turbine_head_weights(c,h,:linear)
+    a=_global_column_polynomial(c,ql,qr,j)
+    (j==k || u==0) && return a
+    b=_global_column_polynomial(c,ql,qr,k)
+    u==1 && return b
+    ntuple(i->a[i]+u*(b[i]-a[i]),4)
 end
 

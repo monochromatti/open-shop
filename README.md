@@ -55,6 +55,7 @@ and [river networks](docs/river-networks.md) describe case data.
 
 Examples cover a [single reservoir](examples/single_reservoir.jl),
 [energy-based terminal valuation](examples/terminal_value.jl),
+[unequal turbine discharge grids](examples/unequal_turbine_grids.jl),
 [station operating rules](examples/operating_rules.jl),
 [many-to-one river connections](examples/mixed_source_network.jl),
 [distinct penstocks with a shared tailrace](examples/shared_tailrace.jl),
