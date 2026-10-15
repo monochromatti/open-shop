@@ -291,14 +291,15 @@ One head column per pressure nullspace is fixed. All residual rows remain, so
 Julia's rectangular `\\` solve uses least squares for those components. This
 cannot hide incompatible water injections by discarding a conservation row.
 """
-function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations)
+function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations,
+    head_reference=nothing)
     floating = _floating_pressure_components(
         data.system,
         data.opening,
         data.generator_q;
         ix = data.topology.node_index,
     )
-    _normalize_pressure_references!(x, data.system, floating)
+    _normalize_pressure_references!(x, data.system, floating;reference=head_reference)
     columns = isempty(floating) ? collect(eachindex(x)) : setdiff(eachindex(x), first.(floating))
     residual, plus, minus, trial, step = (similar(x) for _ in 1:5)
     jacobian = Matrix{Float64}(undef, length(x), length(columns))
@@ -343,6 +344,6 @@ function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iter
         iterations = k
         accepted || break
     end
-    _normalize_pressure_references!(x, data.system, floating)
+    _normalize_pressure_references!(x, data.system, floating;reference=head_reference)
     iterations
 end

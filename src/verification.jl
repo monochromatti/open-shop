@@ -64,6 +64,7 @@ function replay_audit(
             x.gate[:, indices];
             tunnel_opening=opening[:,indices],
             reserves=_reserve_slice(x.reserves,indices),
+            head_reference=x.head[:,indices],
         )
         audit=z["validation"]
         merge!(violations, audit["residuals"])

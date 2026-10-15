@@ -336,8 +336,9 @@ $ underline(h)_g <= h_(p t) <= overline(h)_g, quad
 ]
 
 When $u_(g t)=0$, @eq:onoff gives $q=P=0$ and the operating inequalities in
-@eq:unitdomain are inactive. The plant head is still determined by the
-hydraulic network, even when none of its units runs.
+@eq:unitdomain are inactive. Plant head remains tied to the hydraulic node
+heads when all units are off. Isolated pressure components may retain a common
+reference freedom, as discussed below.
 
 Turbine efficiency is a supplied table or the analytic relationship
 
@@ -346,8 +347,9 @@ $ eta_g (q,h) = eta_g^0
   - beta_g (frac(h - h_g^*, h_g^*))^2. $ <eq:analyticeta>
 
 Here $q_g^*$ and $h_g^*$ are reference operating conditions, $eta_g^0$ is
-their turbine efficiency, and nonnegative $alpha_g,beta_g$ describe its
-decrease away from them. At reference head $h_j$, a supplied efficiency curve
+their turbine efficiency. Nonnegative $alpha_g,beta_g$ describe a decrease
+away from them; signed coefficients are also admitted, subject to the same
+operating efficiency bounds. At reference head $h_j$, a supplied efficiency curve
 $f_j(q)$ has its own discharge knots. These grids may differ between heads.
 Interpolate each original curve linearly or with its original shape-preserving
 cubic slopes, then interpolate its value at the same discharge between heads:
@@ -956,6 +958,24 @@ differences. A common shift in all heads leaves the flows unchanged.
 We choose one reference head for the numerical solve and keep every water
 balance. We can then shift the recovered heads to satisfy the junction
 bounds if the bounds admit such a shift.
+Replay retains the candidate's pressure reference where the equations permit
+this freedom. An idle committed unit can still have an operating head bound
+relative to another component, so choosing a different reference can wrongly
+make its operating point appear inadmissible. The reference does not replace
+any hydraulic equation or absolute head restriction.
+
+The nonlinear step need not have a unique solution. For example, a channel
+can be passive at each reference level while its conductance decreases so
+strongly with that level that the midpoint equations have several roots.
+Newton convergence alone does not select the continuous physical trajectory.
+Finer time steps are needed to assess such cases; a failed replay does not
+establish mathematical infeasibility.
+
+Even a constant channel conductance $K$ can cause coarse-grid overshoot.
+With equal affine level slopes $s$, the difference $d$ in reservoir levels
+obeys $d_"new"=(1-theta)/(1+theta) d_"old"$, where
+$theta=kappa Delta K s$. For $theta>1$, the levels cross during a discrete
+step; continuous passive equalization approaches equilibrium without crossing.
 
 We accept a reconstructed schedule only if it satisfies the interval equations
 and operating restrictions. We repeat the integration on a finer grid using
@@ -971,6 +991,18 @@ $ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
 
 The comparison estimates the effect of time discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
+
+Water conservation also does not imply exact energy conservation under midpoint
+integration. For $Z(V)=z+s V+c V^2$, define the potential integral
+$Psi(V)=z V+s V^2/2+c V^3/3$. Then
+
+$ Psi(b)-Psi(a) = (b-a) Z((a+b)/2)+c (b-a)^3/12. $ <eq:midpointerror>
+
+The remainder vanishes for an affine level curve. With curvature, unequal
+pumping and generating steps around a closed storage cycle can produce an
+artificial energy gain, even with ideal units. Finer replay measures sensitivity
+to this error but does not prove its absence. The interval-model objective and
+its optimization bound therefore concern an approximate physical time model.
 
 == Bounding the remaining objective improvement
 
@@ -1147,7 +1179,7 @@ We omit unit and time indices in the following bounds.
 These strengthening rows apply only to generating modes. Pump rows retain
 the original bounded work equality @eq:pump, without applying generation
 supports to consumption.
-For a running generating unit with nonnegative $q,h,eta$, let $overline(e)$ bound its
+For a running generating unit with nonnegative $q h eta$, let $overline(e)$ bound its
 electrical efficiency. Then $p^"ub" (q,h)=gamma overline(e) q h eta(q,h)$
 is an upper bound on physical electrical power. It is polynomial within
 each interpolation cell even when @eq:power is implicit in $P$.
@@ -1178,6 +1210,11 @@ $ sum_c z_c = u, quad sum_c q_c z_c = q, quad
   <= P <= gamma e_max sum_c q_c h_c eta_c z_c. $ <eq:box>
 
 Here $e_min,e_max$ bound electrical efficiency over the power range.
+Their use assumes $q h eta>=0$, which follows from @eq:power for nonnegative
+power and positive electrical efficiency. Commitment alone does not imply
+$h>=0$: an idle unit with zero minimum power may have any head in its declared
+running domain. The corner box retains that domain, and bounds on $h_"on"$
+include both zero and any negative running heads.
 For any point in the box, multilinear interpolation weights reproduce its
 coordinates and the product $q h eta$. Hence the inequalities include every
 physical running point. When $u=0$, all corner weights vanish. The original

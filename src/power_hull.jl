@@ -73,7 +73,8 @@ function _power_hull_unit!(m,q,head,eta,power,u,qbox,hbox,etabox,fullhead,fullet
     axes=map(box->box[1]==box[2] ? [box[1]] : [box[1],box[2]],(qbox,hbox,etabox))
     corners=[(qv,hv,ev) for qv in axes[1] for hv in axes[2] for ev in axes[3]]
     weights=@variable(m,[1:length(corners)],lower_bound=0,upper_bound=1,base_name="$(name)_corner")
-    onhead=@variable(m,lower_bound=0,upper_bound=hbox[2],base_name="$(name)_onhead")
+    onhead=@variable(m,lower_bound=min(0.0,hbox[1]),upper_bound=max(0.0,hbox[2]),
+        base_name="$(name)_onhead")
     oneta=@variable(m,lower_bound=0,upper_bound=etabox[2],base_name="$(name)_oneta")
     @constraint(m,sum(weights)==u)
     @constraint(m,q==sum(corners[k][1]*weights[k] for k in eachindex(corners)))
@@ -117,8 +118,10 @@ function _add_power_hull!(b,c)
         fullhead=_power_hull_bounds(hd);fulleta=_power_hull_bounds(eta)
         qbox=(max(0.0,opinterval(c,g.name,:qmin,t,g.qmin)),
               min(g.qmax,opinterval(c,g.name,:qmax,t,g.qmax)))
-        # Positive on-state power and nonnegative efficiencies force positive head.
-        hbox=(max(0.0,g.hmin,fullhead[1]),min(g.hmax,fullhead[2]))
+        # Commitment alone does not imply positive head: with zero minimum
+        # power, an idle on-state can have any head in its operating domain.
+        # A positive minimum power tightens this box below, through conversion.
+        hbox=(max(g.hmin,fullhead[1]),min(g.hmax,fullhead[2]))
         etabox=(max(0.0,g.min_efficiency,fulleta[1]),min(1.0,fulleta[2]))
         if !all(box->all(isfinite,box)&&box[1]<=box[2],(qbox,hbox,etabox,fullhead,fulleta))
             skipped["empty_on_box"]+=1;continue

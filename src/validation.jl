@@ -493,7 +493,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
     end
     try
-        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA,commitment=u)
+        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA,commitment=u,head_reference=H)
         replay.converged || push!(
             errors,
             "independent forward replay did not converge in the river-law domain",

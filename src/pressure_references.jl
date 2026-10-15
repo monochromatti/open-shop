@@ -45,16 +45,18 @@ function _floating_pressure_components(s,opening,generator_q;ix=nodeindex(s))
     groups
 end
 
-# Choose the midpoint of the compatible reference-shift interval. This moves
-# an entire nullspace component by one constant, never individual heads or
-# physical flows. Incompatible bounds remain violated and fail the usual audit.
-function _normalize_pressure_references!(heads,s,groups)
+# Retain a requested pressure reference within the compatible shift interval,
+# or choose its midpoint. Move the entire nullspace component by one constant;
+# physical flows remain unchanged. Incompatible bounds still fail validation.
+function _normalize_pressure_references!(heads,s,groups;reference=nothing)
     nr=length(s.reservoirs)
     for group in groups
         lo=maximum(s.junctions[i-nr].hmin-heads[i] for i in group)
         hi=minimum(s.junctions[i-nr].hmax-heads[i] for i in group)
         lo<=hi || continue
-        shift=isfinite(lo) && isfinite(hi) ? lo/2+hi/2 : clamp(0.0,lo,hi)
+        shift=reference===nothing ?
+            (isfinite(lo) && isfinite(hi) ? lo/2+hi/2 : clamp(0.0,lo,hi)) :
+            clamp(reference[first(group)]-heads[first(group)],lo,hi)
         for i in group
             heads[i]+=shift
         end

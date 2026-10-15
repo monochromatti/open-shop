@@ -96,6 +96,10 @@ Feasible-start preparation uses SCIP MILP proposals and Ipopt nonlinear dispatch
 The full SCIP search retains the original nonlinear equations. JuMP provides
 the common algebraic interface; Julia also hosts physical reconstruction and
 sparse river transport. See the paper for interpolation and certificate scope.
+The [model validity guide](docs/model-validity.md) explains conservation,
+midpoint energy error, possible nonunique hydraulic roots and numerical proof
+limits. Selected identities and counterexamples have
+[Lean proofs](test/formal/README.md), checked separately from the Julia tests.
 
 ## Paper
 

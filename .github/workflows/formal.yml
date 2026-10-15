@@ -1,0 +1,19 @@
+name: Model proofs
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: test/formal
+          build: true
+          build-args: --wfail
+      - name: Check proof axioms
+        working-directory: test/formal
+        run: lake env lean CheckAxioms.lean
