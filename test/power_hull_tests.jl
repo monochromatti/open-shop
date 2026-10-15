@@ -89,7 +89,7 @@ end
         generators=[g])
     c=ScheduleCase(name="tight_hull",system=system,grid=[0.0,1.0],prices=[1.0])
     graph=OpenSHOP._GeneratorPowerGraph(OpenSHOP._PlantHeadGraph(h,nothing,nothing),
-        eta,nothing,nothing,nothing,nothing)
+        eta,nothing,nothing,nothing,nothing,nothing)
     b=(m=m,u=reshape([u],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),
         graphs=(generator_graphs=reshape([graph],1,1),))
     OpenSHOP._add_power_hull!(b,c)
@@ -169,7 +169,7 @@ function power_hull_test_fixture()
         generators=[generator])
     c=ScheduleCase(name="hull_fixture",system=system,grid=[0.0,1.0],prices=[1.0])
     graph=OpenSHOP._GeneratorPowerGraph(OpenSHOP._PlantHeadGraph(h,nothing,nothing),
-        eta,nothing,nothing,nothing,nothing)
+        eta,nothing,nothing,nothing,nothing,nothing)
     b=(m=m,u=reshape([u],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),
         graphs=(generator_graphs=reshape([graph],1,1),))
     b,c,(q=q,h=h,eta=eta,p=p,u=u)

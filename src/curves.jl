@@ -20,6 +20,47 @@ struct TableCurve
 end
 TableCurve(; x, y) = TableCurve(x, y)
 
+"""Fixed-speed pump data: one discharge and hydraulic efficiency per head.
+
+Heads are metres, discharge is m³/s, and efficiency is a fraction. Values are
+piecewise linear in head. A single reference head requires the explicit policy
+`head_extrapolation=:constant`; multiple heads support `:error` or `:linear`.
+No variable-discharge efficiency surface or operating envelope is constructed.
+"""
+struct PumpCharacteristic
+    heads::Vector{Float64}
+    discharge::Vector{Float64}
+    efficiency::Vector{Float64}
+    head_extrapolation::Symbol
+    function PumpCharacteristic(heads, discharge, efficiency; head_extrapolation=:error)
+        h,q,e=Float64.(heads),Float64.(discharge),Float64.(efficiency)
+        length(h)==length(q)==length(e)>0 && all(isfinite,h) &&
+            all(diff(h).>0) && all(>(0),h) && all(x->isfinite(x)&&x>0,q) &&
+            all(x->isfinite(x)&&0<x<=1,e) ||
+            throw(ArgumentError("pump characteristic needs ordered positive heads, positive flow and efficiency in (0,1]"))
+        (length(h)==1 ? head_extrapolation==:constant : head_extrapolation in (:error,:linear)) ||
+            throw(ArgumentError("one pump head requires :constant; multiple heads require :error or :linear"))
+        new(h,q,e,head_extrapolation)
+    end
+end
+PumpCharacteristic(;heads,discharge,efficiency,head_extrapolation=:error) =
+    PumpCharacteristic(heads,discharge,efficiency;head_extrapolation)
+
+function _pump_value(c::PumpCharacteristic,values,h;extrapolation=:error)
+    extrapolation in (:error,:linear) || throw(ArgumentError("extrapolation must be :error or :linear"))
+    isfinite(h) || throw(DomainError(h,"pump head must be finite"))
+    length(c.heads)==1 && return only(values)+zero(h)
+    i=_curve_segment(c.heads,h,extrapolation)
+    values[i]+(h-c.heads[i])*(values[i+1]-values[i])/(c.heads[i+1]-c.heads[i])
+end
+pump_discharge(c::PumpCharacteristic,h;kwargs...) = _pump_value(c,c.discharge,h;kwargs...)
+pump_efficiency(c::PumpCharacteristic,h;kwargs...) = _pump_value(c,c.efficiency,h;kwargs...)
+function _pump_slope(c::PumpCharacteristic,h)
+    length(c.heads)==1 && return 0.0
+    i=_curve_segment(c.heads,h,:linear)
+    (c.discharge[i+1]-c.discharge[i])/(c.heads[i+1]-c.heads[i])
+end
+
 function _curve_segment(x, z, extrapolation)
     extrapolation in (:error, :linear) ||
         throw(ArgumentError("extrapolation must be :error or :linear"))

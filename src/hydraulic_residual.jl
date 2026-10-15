@@ -1,6 +1,6 @@
 """Data for one implicit midpoint hydraulic step, with prescribed controls.
 
-The unknown vector is `[Vnew; junction_head; tunnel_q; outlet_release]`.
+The unknown vector is `[Vnew; junction_head; tunnel_q; outlet_release; fixed_pump_q]`.
 Storage is in Mm³, heads in metres, rates in m³/s, and duration in hours.
 `network` is either a same-interval river transfer matrix or `nothing` for
 flow-dependent response curves. The type parameter specializes that choice.
@@ -20,6 +20,7 @@ struct HydraulicStepData{M, S}
     network::M
     sources::S
     active_rivers::Vector{Int}
+    fixed_pumps::Vector{Int}
     river_order::Vector{Int}
     fixed_inflow::Vector{Float64}
     river_inflow::Vector{Float64}
@@ -37,10 +38,13 @@ function HydraulicStepData(
     river_inflow = [r.inflow for r in s.rivers],
     tunnel_capacity = [e.capacity for e in s.tunnels],
     river_capacity = [r.capacity for r in s.rivers],
+    commitment = nothing,
 )
     previous_storage = Vector{Float64}(Vprev)
     duration = Float64(dt)
     discharge = Vector{Float64}(generator_q)
+    commitment===nothing || (length(commitment)==length(s.generators) &&
+        all(x->x==0||x==1,commitment)) || throw(ArgumentError("binary unit commitment required"))
     river_gate = Vector{Float64}(gate)
     tunnel_opening = Vector{Float64}(opening)
     previous_arrival = Vector{Float64}(arrival)
@@ -80,12 +84,23 @@ function HydraulicStepData(
         all(i -> iszero(original[i]) == iszero(normalized[i]), eachindex(normalized)) ||
             throw(ArgumentError("nonzero hydraulic controls must remain nonzero in Float64"))
     end
+    fixed_pumps=Int[]
+    for (i,g) in enumerate(s.generators)
+        g.characteristic===nothing && continue
+        on=commitment===nothing ? discharge[i]>0 : commitment[i]==1
+        if on
+            push!(fixed_pumps,i)
+            discharge[i]==0 && (discharge[i]=first(g.characteristic.discharge))
+        else
+            discharge[i]=0.0
+        end
+    end
     nr, nj = length(s.reservoirs), length(s.junctions)
     fixed = zeros(nr + nj)
     copyto!(fixed, 1, reservoir_inflow, 1, nr)
     for i in eachindex(fixed)
         for (j, sign) in topology.generator_incidence[i]
-            fixed[i] += sign * discharge[j]
+            j in fixed_pumps || (fixed[i] += sign * discharge[j])
         end
     end
     all(d -> 1 <= topology.river_source[d] <= nr, active_rivers) ||
@@ -103,6 +118,7 @@ function HydraulicStepData(
         current_network,
         sources,
         active_rivers,
+        fixed_pumps,
         river_order,
         fixed,
         river_inflow,
@@ -118,13 +134,15 @@ struct HydraulicWorkspace{T}
     release::Vector{T}
     arrival::Vector{T}
     injection::Vector{T}
+    generator_q::Vector{T}
 end
 
 function HydraulicWorkspace(data::HydraulicStepData, ::Type{T} = Float64) where {T}
     s = data.system
     nn = length(data.topology.node_names)
     nr, nj, nd = length(s.reservoirs), length(s.junctions), length(s.rivers)
-    HydraulicWorkspace(zeros(T, nn), zeros(T, nr + nj), zeros(T, nd), zeros(T, nd), zeros(T, nd))
+    HydraulicWorkspace(zeros(T, nn), zeros(T, nr + nj), zeros(T, nd), zeros(T, nd), zeros(T, nd),
+        zeros(T,length(s.generators)))
 end
 
 function midpoint_heads!(h, x, data::HydraulicStepData)
@@ -162,6 +180,11 @@ function river_rates!(work, x, data::HydraulicStepData)
     s, topology = data.system, data.topology
     nr, nj, ne = length(s.reservoirs), length(s.junctions), length(s.tunnels)
     release, arrival, injection = work.release, work.arrival, work.injection
+    copyto!(work.generator_q,data.generator_q)
+    offset=nr+nj+ne+length(data.active_rivers)
+    for (k,i) in enumerate(data.fixed_pumps)
+        work.generator_q[i]=x[offset+k]
+    end
     fill!(release, 0)
     copyto!(arrival, data.previous_arrival)
     for (k, d) in enumerate(data.active_rivers)
@@ -172,7 +195,7 @@ function river_rates!(work, x, data::HydraulicStepData)
             release[d]
         else
             data.river_inflow[d] +
-            sum(data.generator_q[j] for j in data.sources.generators[d]; init = 0.0) +
+            sum(work.generator_q[j] for j in data.sources.generators[d]; init = 0.0) +
             sum(x[nr + nj + j] for j in data.sources.tunnels[d]; init = 0.0)
         end
     end
@@ -213,6 +236,9 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
         net[i] =
             sum(sign * x[base + j] for (j, sign) in topology.tunnel_incidence[i]; init = 0.0) +
             data.fixed_inflow[i]
+        for (j,sign) in topology.generator_incidence[i]
+            j in data.fixed_pumps && (net[i]+=sign*work.generator_q[j])
+        end
     end
     for (d, river) in enumerate(s.rivers)
         source, target = topology.river_source[d], topology.river_target[d]
@@ -241,6 +267,16 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
                 inflow = data.river_inflow[d],
                 capacity = data.river_capacity[d],
             )
+    end
+    offset=nq+length(data.active_rivers)
+    for (k,i) in enumerate(data.fixed_pumps)
+        g=s.generators[i]
+        p=topology.generator_plant[i]
+        plant=s.plants[p]
+        source,target=topology.plant_nodes[p]
+        total=sum(work.generator_q[j] for j in topology.plant_generators[p];init=0.0)
+        hd=unit_head(g,plant,h[source],h[target],total)
+        residual[offset+k]=work.generator_q[i]-pump_discharge(g.characteristic,hd;extrapolation=:linear)
     end
     residual
 end

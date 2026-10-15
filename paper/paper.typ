@@ -306,9 +306,22 @@ $ P_(g t) eta_g(q_(g t),h_(p t)) e_g^"motor"
 Lower efficiency therefore increases consumption. The same on/off and
 operating-domain constraints apply, with positive pumping lift required.
 Hydraulic efficiency tables retain their declared interpolation. Electrical
-motor-efficiency curves and fixed rotational-speed single-point pump
-characteristics are outside this formulation; equal supplied discharge bounds
-can instead describe a fixed-flow operating point.
+motor-efficiency curves are outside this formulation. For a fixed-speed pump,
+one supplied discharge and hydraulic efficiency at each reference head define
+piecewise-linear functions $Q_g(h)$ and $eta_g(h)$. Its equations are
+
+$ q_(g t)=u_(g t) Q_g(h_(p t)), quad
+  P_(g t) eta_g(h_(p t)) e_g^"motor"=gamma q_(g t) h_(p t). $
+
+No variable-discharge efficiency surface is inferred. Head coverage is required
+unless linear end-secant extrapolation is explicitly supplied. A single
+reference head requires an explicit constant characteristic. Static and
+operative unit bounds intersect this point, and an incompatible bound makes
+operation infeasible. Independent integration retains commitment and solves
+characteristic flow jointly with storage and pressure, including on finer
+replay grids. Schedule validation checks the original flow against the
+characteristic without replacing it. Equal discharge bounds on an ordinary
+variable-discharge unit instead prescribe a fixed-flow operating point.
 
 #block(breakable: false)[
 When $u_(g t)=1$, the unit must also satisfy head and efficiency limits and,

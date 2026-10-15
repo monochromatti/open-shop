@@ -60,6 +60,7 @@ Examples cover a [single reservoir](examples/single_reservoir.jl),
 [distinct penstocks with a shared tailrace](examples/shared_tailrace.jl),
 [prescribed river splits](examples/river_splits.jl),
 [pumped-storage arbitrage](examples/pumped_storage.jl),
+[head-following fixed-speed pumps](examples/fixed_speed_pumping.jl),
 [signed channels](examples/level_channels.jl) and
 [discrete tunnel gates](examples/tunnel_gates.jl).
 [Spinning capacity](examples/spinning_reserves.jl) co-optimizes generation and

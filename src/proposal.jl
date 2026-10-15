@@ -60,7 +60,7 @@ function propose_commitment(
     reference_heads=similar(alpha)
     selectable=any(x->!(x isa Number),gates.opening)
     for (j, g) in enumerate(s.generators), t in 1:T
-        h=g.hbest
+        h=g.characteristic===nothing ? g.hbest : clamp(g.hbest,g.hmin,g.hmax)
         if reference.head!==nothing
             p=plantof(s, g)
             qtotal=reference.generator_q!==nothing ?
@@ -71,7 +71,8 @@ function propose_commitment(
             h=unit_head(g,p,reference.head[ix[p.source],t],reference.head[ix[p.target],t],qtotal)
             h=clamp(h, g.hmin, g.hmax)
         end
-        qref=clamp(g.qbest, g.qmin, g.qmax)
+        qref=g.characteristic===nothing ? clamp(g.qbest, g.qmin, g.qmax) :
+            pump_discharge(g.characteristic,h;extrapolation=:linear)
         alpha[j, t]=iszero(qref) ? 0.0 : power(g, qref, h)/qref
         reference_heads[j,t]=h
         qlo=opvalue(c, g.name, :qmin, c.grid[t], g.qmin)
@@ -85,6 +86,9 @@ function propose_commitment(
         @constraint(m, gq[j, t]>=qlo*u[j, t])
         @constraint(m, gq[j, t]<=qhi*u[j, t])
         if !selectable
+            if g.characteristic!==nothing
+                @constraint(m,gq[j,t]==qref*u[j,t])
+            end
             @constraint(m, alpha[j, t]*gq[j, t]>=plo*u[j, t])
             @constraint(m, alpha[j, t]*gq[j, t]<=phi*u[j, t])
         end

@@ -109,7 +109,8 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
                 rlo=rhi=plant.outlet_head_floor
             end
         end
-        qref=clamp(g.qbest,g.qmin,g.qmax)
+        qref=g.characteristic===nothing ? clamp(g.qbest,g.qmin,g.qmax) :
+            pump_discharge(g.characteristic,reference_heads[i,t];extrapolation=:linear)
         tailref=reference.generator_q===nothing ?
             sum(clamp(z.qbest,z.qmin,z.qmax) for z in s.generators
             if z.plant==plant.name;init=0.0) :
@@ -120,6 +121,9 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         g.mode==:pump && ((hlo,hhi)=(-hhi,-hlo))
         onhead=_bounded_binary_product!(m,nethead,u[i,t],hlo,hhi;name="proposal_unit_head_$(i)_$(t)")
         href=reference_heads[i,t]
+        if g.characteristic!==nothing
+            @constraint(m,gq[i,t]==qref*u[i,t]+_pump_slope(g.characteristic,href)*(onhead-href*u[i,t]))
+        end
         head_gain=g.mode==:pump ? 0.00981*qref/(
             efficiency(g,qref,href)*g.motor_efficiency) :
             0.00981*qref*efficiency(g,qref,href)*generator_efficiency(g,power(g,qref,href))
