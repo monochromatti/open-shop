@@ -51,6 +51,13 @@ Unit `startup` and `shutdown` series specify costs at transition times. Costs
 are charged once per transition, including the first interval relative to the
 initial state; they are not multiplied by interval duration.
 
+Unit limits accept `0 <= qmin <= qmax` and `0 <= pmin <= pmax`, with finite
+bounds. A zero minimum introduces no artificial epsilon. Commitment remains a
+separate operating state: a running unit may have zero flow and power when its
+limits and conversion law permit that point, and still incurs transitions and
+dwell obligations. An explicit zero output schedule retains its off-state
+meaning. Maintenance and forced states also retain their ordinary meanings.
+
 ## Directional ramps
 
 Generators and plants accept `ramp_up`/`ramp_down` for power and
