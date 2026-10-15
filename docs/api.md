@@ -31,6 +31,20 @@ Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
 `feasible_lower_bound` are derived properties. `solution` may be `nothing`.
 Detailed work counters and validation reports are in `diagnostics`.
 A time limit may leave an accepted schedule and an unfinished gap calculation.
+If preparation or initial reconstruction exhausts the allowance, `solve` skips
+global construction. It retains an independently checked incumbent when one is
+available, subject to the requested fixed controls and replay policy. The result
+reports `budget_exhausted_phase`, `total_seconds` and `budget_overrun_seconds`;
+its global bound and gaps remain unavailable when search did not supply a bound.
+Physical validation and replay can overrun the allowance.
+
+An audited initial schedule is retained independently of SCIP. After optimizer
+attachment, `native_start_audit` checks that every native variable has a finite
+start, including any objective-bridge slack. That slack uses the actual scaled
+objective, including constants. This is a completeness check, not a new physical
+feasibility proof. `scip_diagnostics.native_incumbent_available` and
+`native_incumbent_objective` report SCIP's own incumbent separately; retaining a
+preparation schedule does not establish that SCIP accepted it.
 
 For `solve`, `accepted` includes finer chronological replay.
 `global_certificate` records an enclosing objective bound within the

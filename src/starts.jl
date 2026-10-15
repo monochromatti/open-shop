@@ -7,6 +7,49 @@ function _sos2_residual(x,weights)
         for i in 1:(length(ordered)-1))
 end
 
+"""Complete an audited start after MOI has introduced objective-bridge variables.
+
+The slack equals the actual JuMP objective evaluated at its start, including
+constants and scaling. MOI's stock slack-start attribute requires constraint
+primal starts, which SCIP does not support. Only primal variable starts are
+needed here. Physical feasibility is established by `_lift_start!`, separately
+from this check of the native representation's completeness.
+"""
+function _complete_scip_start!(model)
+    optimizer=backend(model).optimizer
+    objective=value(start_value,objective_function(model))
+    isfinite(objective) || throw(ArgumentError("nonfinite start objective"))
+    objective_slacks=0
+    if optimizer isa MOI.Bridges.AbstractBridgeOptimizer &&
+        MOI.Bridges.is_objective_bridged(optimizer)
+        F=MOI.get(backend(model),MOI.ObjectiveFunctionType())
+        bridge=MOI.Bridges.bridge(optimizer,MOI.ObjectiveFunction{F}())
+        if bridge isa MOI.Bridges.Objective.SlackBridge
+            MOI.set(MOI.Bridges.recursive_model(optimizer),MOI.VariablePrimalStart(),bridge.slack,objective)
+            objective_slacks=1
+        end
+    end
+    native=unsafe_backend(model)
+    variables=MOI.get(native,MOI.ListOfVariableIndices())
+    starts=[MOI.get(native,MOI.VariablePrimalStart(),v) for v in variables]
+    missing=[v.value for (v,x) in zip(variables,starts) if x===nothing || !isfinite(x)]
+    Dict("valid"=>isempty(missing),"variables"=>length(variables),
+        "assigned"=>length(variables)-length(missing),"missing"=>missing,
+        "objective_slacks"=>objective_slacks,"scaled_objective"=>objective,
+        "scope"=>"native primal-start completeness; physical feasibility checked separately")
+end
+
+function _clear_scip_start!(model)
+    for variable in all_variables(model)
+        set_start_value(variable,nothing)
+    end
+    native=unsafe_backend(model)
+    for variable in MOI.get(native,MOI.ListOfVariableIndices())
+        MOI.set(native,MOI.VariablePrimalStart(),variable,nothing)
+    end
+    nothing
+end
+
 """Lift a physical incumbent into all algebraic variables and audit feasibility."""
 function _lift_start!(b, c, warm; tolerance = 1e-7)
     assigned=Dict{VariableRef,Float64}()

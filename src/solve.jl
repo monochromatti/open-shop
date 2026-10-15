@@ -30,6 +30,8 @@ function _scip_diagnostics(model)
             result["cuts_applied"]=SCIP.SCIPgetNCutsApplied(optimizer)
             result["final_upper_bound"]=_scip_bound_value(optimizer,SCIP.SCIPgetDualbound(optimizer))
             result["native_incumbent_objective"]=_scip_bound_value(optimizer,SCIP.SCIPgetPrimalbound(optimizer))
+            result["native_incumbent_available"]=result["solutions_found"]>0 &&
+                result["native_incumbent_objective"]!==nothing
             if Int(stage)>=5
                 root=SCIP.SCIPgetDualboundRoot(optimizer)
                 result["root_upper_bound"]=_scip_bound_value(optimizer,root)
@@ -151,10 +153,17 @@ declared discrete hydraulic model, under numerical solver tolerances. Supplying
 
 The time allowance includes preparation, construction and optimization; extraction/replay
 can overrun it and are included in `total_seconds`. Julia compilation is also
-included if this is the first call in a process.
+counted after entry timing begins; compilation needed to enter the public
+function can precede that clock. A known exhausted allowance prevents starting
+global construction. A validated preparation/initial schedule can still be
+returned, with no global bound or gap when search did not run.
 """
-function solve(
-    c::ScheduleCase;
+solve(c::ScheduleCase;kwargs...) = _solve(c,time,schedule_case,time();kwargs...)
+
+# Clock and preparation are explicit dependencies of this orchestration routine,
+# allowing deterministic deadline tests without sleeping or replacing solvers.
+function _solve(
+    c::ScheduleCase, clock, prepare, began=clock();
     time_limit = 60.0,
     relative_gap = 1e-3,
     absolute_gap = 0.0,
@@ -177,7 +186,6 @@ function solve(
     isfinite(operational_margin) && operational_margin>=0 ||
         throw(ArgumentError("nonnegative finite operational_margin required"))
     diagnostics_path!==nothing && (diagnostics_path=abspath(String(diagnostics_path)))
-    began = time()
     result = Dict{String,Any}(
         "case" => c.name,
         "solver" => "SCIP",
@@ -206,21 +214,24 @@ function solve(
         "preparation_seconds" => 0.0,
         "preparation_accepted" => false,
         "prepared_objective" => nothing,
+        "construction_seconds" => 0.0,
+        "solve_seconds" => 0.0,
     )
+    preparation_budget=min(preparation_time_limit,max(0.0,time_limit-(clock()-began)))
     if initial===nothing && fixed_u===nothing && fixed_tunnel_opening===nothing &&
-       preparation_time_limit>0
-        prepared=schedule_case(c;time_limit=preparation_time_limit,
-            proposal_time_limit=min(5.0,preparation_time_limit/4),
-            nlp_time_limit=min(20.0,preparation_time_limit),max_refinements=1,
+       preparation_budget>0
+        prepared=prepare(c;time_limit=preparation_budget,
+            proposal_time_limit=min(5.0,preparation_budget/4),
+            nlp_time_limit=min(20.0,preparation_budget),max_refinements=1,
             refine_grid=false,operational_margin)
-        result["preparation_seconds"]=time()-began
+        result["preparation_seconds"]=clock()-began
         result["preparation_accepted"]=prepared["accepted"]
         if prepared["accepted"]
             initial=prepared["solution"]
             result["prepared_objective"]=initial.objective
         end
     end
-    construction_started=time()
+    reconstruction_started=clock()
     best = nothing
     if initial !== nothing
         initial_audit = validate(c, initial)
@@ -231,6 +242,38 @@ function solve(
             throw(ArgumentError("initial controls fail reconstruction audit"))
         result["initial_objective"] = best.objective
     end
+    result["initial_reconstruction_seconds"]=clock()-reconstruction_started
+    if clock()-began>=time_limit
+        # Construction normally validates these inputs. Preserve that contract
+        # when the deadline prevents entering it, including fixed-state scope.
+        validate_inputs(c)
+        fixed_u===nothing || admissible(c,fixed_u) ||
+            throw(ArgumentError("invalid fixed commitment"))
+        opening=fixed_tunnel_opening===nothing ? nothing :
+            _physical_tunnel_openings(c,fixed_tunnel_opening)
+        opening===nothing || fixed_u===nothing || validate_tunnel_openings(c,opening,fixed_u)
+        if best!==nothing && ((fixed_u!==nothing && best.commitment!=fixed_u) ||
+            (opening!==nothing && best.tunnel_opening!=opening))
+            best=nothing
+            result["initial_rejected_by_fixed_controls"]=true
+        end
+        phase=result["preparation_seconds"]>=time_limit ? "preparation" : "initial_reconstruction"
+        result["budget_exhausted_phase"]=phase
+        result["status"]=phase=="preparation" ? "PREPARATION_BUDGET_EXHAUSTED" :
+            "INITIALIZATION_BUDGET_EXHAUSTED"
+        if best!==nothing
+            source=result["preparation_accepted"] ? "preparation" : "initial"
+            _set_incumbent!(result,best,source,relative_gap,absolute_gap)
+            if replay
+                result["replay_audit"]=replay_audit(c,best)
+                result["accepted"]=result["replay_audit"]["valid"]
+            end
+        end
+        result["total_seconds"]=clock()-began
+        result["budget_overrun_seconds"]=max(0.0,result["total_seconds"]-time_limit)
+        return SolveResult(result)
+    end
+    construction_started=clock()
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u,tunnel_opening=fixed_tunnel_opening)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     if best !== nothing
@@ -265,8 +308,9 @@ function solve(
     result["variable_count"] = num_variables(b.m)
     result["constraint_count"] =
         num_constraints(b.m; count_variable_in_set_constraints = false)
-    result["construction_seconds"] = time() - construction_started
-    remaining = time_limit - (time()-began)
+    result["construction_seconds"] = clock() - construction_started
+    remaining = time_limit - (clock()-began)
+    remaining>0 || (result["budget_exhausted_phase"]="global_construction")
     if remaining > 0
         factory=SCIP.Optimizer
         if diagnostics_path!==nothing
@@ -295,10 +339,16 @@ function solve(
         result["solve_seconds"] = @elapsed try
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
+            if best!==nothing
+                result["native_start_audit"]=_complete_scip_start!(b.m)
+                if !result["native_start_audit"]["valid"]
+                    _clear_scip_start!(b.m)
+                end
+            end
             if !isempty(get(b.m.ext,:global_table_power_supports,_TablePowerSupportCoordinate[]))
                 power_cuts=_install_power_cuts!(b,c)
             end
-            remaining_after_copy=max(0.,time_limit-(time()-began))
+            remaining_after_copy=max(0.,time_limit-(clock()-began))
             set_optimizer_attribute(b.m,"limits/time",remaining_after_copy)
             if diagnostics_path!==nothing
                 SCIP.SCIPsetMessagehdlrLogfile(JuMP.unsafe_backend(b.m),diagnostics_path)
@@ -403,7 +453,7 @@ function solve(
             end
         end
     end
-    result["total_seconds"] = time() - began
+    result["total_seconds"] = clock() - began
     result["budget_overrun_seconds"] = max(0.0, result["total_seconds"] - time_limit)
     SolveResult(result)
 end
