@@ -244,7 +244,9 @@ function propose_commitment(
     reserves=_reserve_variables!(m,c,u,P,gq)
     if reserves!==nothing
         for i in 1:G,t in 1:T,d in 1:2
-            @constraint(m,reserves.Ppoint[i,t,d]==alpha[i,t]*reserves.Qpoint[i,t,d])
+            s.generators[i].mode==:pump && continue
+            @constraint(m,reserves.Ppoint[i,t,d]-P[i,t]==
+                alpha[i,t]*(reserves.Qpoint[i,t,d]-gq[i,t]))
         end
     end
     @objective(

@@ -60,6 +60,7 @@ function dispatch_from_controls(
     tunnel_opening = nothing,
     reserves = nothing,
 )
+    validate_reserve_inputs(c)
     admissible(c, u) || throw(ArgumentError("inadmissible commitment"))
     opening=_physical_tunnel_openings(c,tunnel_opening)
     validate_tunnel_openings(c,opening,u)

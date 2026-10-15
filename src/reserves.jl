@@ -396,6 +396,13 @@ function validate_reserves(c,x::Schedule;tolerance=1e-4)
     end
     finish()=Dict("valid"=>isempty(errors),"residuals"=>residuals,"errors"=>errors,
         "scope"=>"spinning capacity at scheduled hydraulic heads; qualified activation energy only")
+    try
+        validate_reserve_inputs(c)
+    catch error
+        push!(errors,"invalid reserve data: "*sprint(showerror,error))
+        residuals["input"]=Inf
+        return finish()
+    end
     if isempty(c.reserve_groups)
         x.reserves===nothing || push!(errors,"reserve allocation requires reserve groups")
         return finish()

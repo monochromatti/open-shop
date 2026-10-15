@@ -762,7 +762,10 @@ For a hard requirement $sigma=0$. Positive shortfall costs make it equal
 $[D_(k t)^(plus.minus)-sum_g r_(g k t)^(plus.minus)]_+$ at optimum. Independent
 assessment recomputes that deficit from allocations and checks the stored value.
 
-All groups share each unit's physical headroom:
+The following reserve operating-point equations apply to generating stations.
+Pumps have zero reserve allocation and retain their nominal flow and
+consumption, $q_(g t)^(plus.minus)=q_(g t)$ and $P_(g t)^(plus.minus)=P_(g t)$.
+All groups share each generating unit's physical headroom:
 
 $ R_(g t)^(plus.minus) = sum_k r_(g k t)^(plus.minus), quad
   P_(g t)^+ = P_(g t) + R_(g t)^+, quad

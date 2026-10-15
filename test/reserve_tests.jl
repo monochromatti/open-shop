@@ -314,3 +314,91 @@ end
     @test validate(c,reconstructed)["valid"]
     @test all(reconstructed.reserves.down_q .> 6.9)
 end
+@testset "Generation reserves coexist with pumping and storage penalties" begin
+    lake=Reservoir(name=:Lake,z0=100.0,slope=0.01,v0=100.0,vmin=90.0,vmax=110.0,
+        water_value=0.0)
+    lower=Reservoir(name=:Lower,z0=-1.0,v0=1.0,vmin=0.9,vmax=2.0,water_value=0.0)
+    upper=Reservoir(name=:Upper,z0=99.0,v0=1.0,vmin=0.9,vmax=2.0,water_value=0.0)
+    generator=Generator(name=:Unit,plant=:Station,qmin=1.0,qmax=10.0,pmin=0.1,pmax=10.0,
+        hmin=90.0,hmax=110.0,efficiency=0.9,qbest=5.5,hbest=100.0,qcurvature=0.0,hcurvature=0.0,
+        initial_on=0,minup=0.0,mindown=0.0,startup=0.0,shutdown=0.0)
+    pump=Pump(name=:Pump,plant=:Lift,qmin=1.0,qmax=5.0,pmin=0.1,pmax=10.0,
+        hmin=90.0,hmax=110.0,efficiency=0.9,motor_efficiency=0.9,qbest=3.0,hbest=100.0,
+        qcurvature=0.0,hcurvature=0.0,minup=0.0,mindown=0.0,startup=0.0,shutdown=0.0)
+    system=HydroSystem(reservoirs=[lake,lower,upper],generators=[generator,pump],
+        boundaries=[Boundary(name=:Sea,head=0.0)],plants=[
+            Plant(name=:Station,source=:Lake,target=:Sea,pmax=10.0,ramp=nothing),
+            Plant(name=:Lift,source=:Lower,target=:Upper,pmax=10.0,ramp=nothing)])
+    group=ReserveGroup(name=:Reserve,generators=[:Unit],up_requirement=1.0,
+        down_requirement=0.5,up_max=1.0,down_max=0.5,up_price=20.0,down_price=10.0)
+    target=SoftConstraint(name=:StorageTarget,object=:Lake,quantity=:volume,time=2.0,
+        lower=100.0,max_lower_slack=0.05,lower_cost=1000.0)
+    c=ScheduleCase(name="pump and generator reserve",system=system,grid=[0.0,1.0,2.0],
+        prices=[50.0,50.0],reserve_groups=[group],soft_constraints=[target],operations=[
+            OperationalSeries(object=:Unit,attribute=:discharge,times=[0.0],values=[5.5]),
+            OperationalSeries(object=:Pump,attribute=:discharge,times=[0.0],values=[3.0])])
+    q=[5.5 5.5;3.0 3.0];up=zeros(2,1,2);down=copy(up)
+    up[1,1,:].=1.0;down[1,1,:].=0.5
+    capacity=ReserveAllocation(;up,down,generator_q=q)
+    x=dispatch_from_controls(c,ones(Int,2,2),q,zeros(0,2);reserves=capacity)
+    generated=[0.00981*5.5*0.9*(101.0-0.000099*(2t-1)) for t in 1:2]
+    consumed=[0.00981*3.0*(100.0+0.0108*(2t-1))/0.81 for t in 1:2]
+    expected=50.0*sum(generated-consumed)+2.0*(20.0+10.0*0.5)-39.6
+    @test x.power[1,:]≈generated atol=1e-9
+    @test x.power[2,:]≈consumed atol=1e-9
+    @test x.reserves.up_q[2,:]==x.reserves.down_q[2,:]==q[2,:]
+    @test x.soft_penalty_cost≈39.6 atol=1e-8
+    @test x.objective≈expected atol=1e-8
+    @test validate(c,x)["valid"]
+    @test replay_audit(c,x)["valid"]
+    @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
+    continued=restart_case(c,x,1.0)
+    remainder=dispatch_from_controls(continued,ones(Int,2,1),q[:,2:2],zeros(0,1);
+        reserves=ReserveAllocation(up=up[:,:,2:2],down=down[:,:,2:2],generator_q=q[:,2:2]))
+    @test validate(continued,remainder)["valid"]
+    @test remainder.reserves.up_q[2,1]==3.0
+    @test remainder.soft_penalty_cost≈39.6 atol=1e-8
+    for result in (solve_case(c;u=ones(Int,2,2),warm=x,time_limit=45.0),
+        solve(c;initial=x,time_limit=90.0,relative_gap=1e-4))
+        @test result.accepted
+        if result.solution!==nothing
+            @test result.solution.objective≈expected atol=2e-3
+            @test validate(c,result.solution)["valid"]
+            @test replay_audit(c,result.solution)["valid"]
+        end
+    end
+    invalid=case_dict(c);invalid["reserve_groups"][1]["generators"]=["Pump"]
+    @test_throws ArgumentError case_from_dict(invalid)
+    bad=ScheduleCase(name=c.name,system=c.system,grid=c.grid,prices=c.prices,
+        operations=c.operations,soft_constraints=c.soft_constraints,
+        reserve_groups=[ReserveGroup(name=:BadReserve,generators=[:Pump])])
+    @test !OpenSHOP.validate_reserves(bad,x)["valid"]
+    @test !validate(bad,x)["valid"]
+    @test_throws ArgumentError dispatch_from_controls(bad,ones(Int,2,2),q,zeros(0,2);reserves=capacity)
+    collision=case_dict(c);collision["soft_constraints"][1]["name"]="Reserve"
+    @test_throws ArgumentError case_from_dict(collision)
+
+    # A selectable intake changes nominal head from the supplied reference.
+    # Adding an independent reserve group must not pin a nonparticipating
+    # pump or generating station to its reference head in the proposal.
+    for mode in (:pump,:generate),with_reserves in (false,true)
+        profile=case_dict(c)
+        profile["junctions"]=[Dict("name"=>"Intake","hmin"=>90.0,"hmax"=>110.0)]
+        profile["tunnels"]=[Dict("name"=>"IntakeTunnel","source"=>"Lake","target"=>"Intake",
+            "resistance"=>0.1,"capacity"=>12.0,"opening"=>1.0,"gate_positions"=>[0.0,1.0])]
+        profile["plants"][1]["source"]="Intake"
+        if mode==:generate
+            profile["generators"][2]["mode"]="generate"
+            profile["generators"][2]["motor_efficiency"]=1.0
+            profile["plants"][2]["source"]="Upper"
+            profile["plants"][2]["target"]="Lower"
+        end
+        with_reserves || (profile["reserve_groups"]=[])
+        variant=case_from_dict(profile)
+        proposal=OpenSHOP.propose_commitment(variant;time_limit=20.0)
+        @test haskey(proposal,"u")
+        if haskey(proposal,"u")
+            @test proposal["u"]==ones(Int,2,2)
+        end
+    end
+end
