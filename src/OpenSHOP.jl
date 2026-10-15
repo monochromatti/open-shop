@@ -49,6 +49,7 @@ include("table_power_bounds.jl")
 include("power_cuts.jl")
 include("global_model.jl")
 include("reserves.jl")
+include("penalty_settings.jl")
 include("solve.jl")
 export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     ReserveGroup, ReserveAllocation,
@@ -69,7 +70,7 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     OperationalSeries,
     SoftConstraint,
     SoftConstraintSlack,
-    soft_constraint_assessment,
+    soft_constraint_assessment, penalty_settings,
     FlowRequirement,
     TableCurve,
     LevelFlowCurve,

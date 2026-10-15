@@ -147,7 +147,8 @@ future terminal target. A rate window crossing a horizon boundary is rejected.
 State bands are restrictions at their declared observations; they do not impose
 continuous-time bands between observations. Supply a record at each desired
 state observation or output window. See [penalty equations and continuation](operating-rules.md#explicit-penalty-limits)
-and the [example](../examples/soft_limits.jl).
+and the [example](../examples/soft_limits.jl). `penalty_settings(case)` exposes
+the [effective coefficients, allowances, units and defaults](penalties.md).
 
 ## Units and errors
 

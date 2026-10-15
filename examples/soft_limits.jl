@@ -20,12 +20,15 @@ end
 function main()
     for penalty in (1000.0,20000.0)
         c=soft_limit_case(;penalty)
+        setting=only(penalty_settings(c).soft)
+        println("Terminal policy: ",setting.lower_origin,"; allowance: ",setting.rule.max_lower_slack,
+            " ",setting.unit,"; coefficient: ",setting.rule.lower_cost," ",setting.coefficient_unit)
         initial=dispatch_from_controls(c,zeros(Int,1,1),zeros(1,1),zeros(0,1))
         result=solve(c;initial,time_limit=60.0,relative_gap=1e-4)
         result.accepted || error("No schedule passed physical and penalty checks")
         println("Penalty price: ",penalty," currency/Mm³; discharge: ",result.solution.generator_q[1,1])
         println("Terminal shortfall: ",result.solution.soft_slacks[1].lower," Mm³; cost: ",result.solution.soft_penalty_cost)
-        println("Net objective: ",result.solution.objective)
+        println("Economic components: ",objective_components(c,result.solution))
     end
 end
 end

@@ -748,6 +748,9 @@ admitted solutions. Independent assessment reports the actual minimal
 slacks $max(0,L_ell-x_ell)$ and $max(0,x_ell-U_ell)$ and their costs. A
 permitted positive slack is compatible with an accepted schedule; exceeding
 an allowance or violating the physics is not.
+
+All permitted deviations and their costs are explicit case data.
+Zero allowances retain hard limits; no implicit endpoint penalty is added.
 = Spinning reserve capacity
 
 A reserve group $k in cal(K)$ has eligible generating units $cal(G)_k$,
