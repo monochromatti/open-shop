@@ -76,3 +76,33 @@ end
         @test replay_audit(c,result.solution)["valid"]
     end
 end
+
+@testset "An idle committed unit may have a negative permitted head" begin
+    for table in (nothing, TurbineTable([1.0,10.0],[0.0,1.0],fill(0.9,2,2),
+        [0.0,0.0],[1.0,1.0];interpolation=:bilinear,head_extrapolation=:linear))
+        system=HydroSystem(
+            junctions=[Junction(name=:Intake,hmin=90.0,hmax=110.0)],
+            boundaries=[Boundary(name=:Supply,head=100.0),Boundary(name=:Tail,head=105.0)],
+            tunnels=[Tunnel(name=:Penstock,source=:Supply,target=:Intake,resistance=1.0,capacity=1.0)],
+            plants=[Plant(name=:Station,source=:Intake,target=:Tail,pmax=1.0,ramp=nothing)],
+            generators=[Generator(name=:Unit,plant=:Station,qmin=0.0,qmax=1.0,pmin=0.0,pmax=1.0,
+                hmin=-10.0,hmax=10.0,hbest=5.0,qbest=1.0,efficiency=0.9,
+                qcurvature=0.0,hcurvature=0.0,initial_on=1,minup=0.0,mindown=0.0,
+                startup=0.0,turbine_table=table)])
+        c=ScheduleCase(name="idle negative head",system=system,grid=[0.0,1.0],prices=[10.0],
+            operations=[OperationalSeries(object=:Unit,attribute=:forced_on,times=[0.0],values=[1.0])])
+        warm=dispatch_from_controls(c,ones(Int,1,1),zeros(1,1),zeros(0,1))
+        @test validate(c,warm)["valid"]
+        for result in (solve_case(c;u=ones(Int,1,1),warm,time_limit=30.0),
+            solve(c;initial=warm,time_limit=45.0))
+            @test result.accepted
+            if result.solution!==nothing
+                @test result.solution.commitment==ones(Int,1,1)
+                @test result.solution.power≈zeros(1,1) atol=1e-7
+                @test result.solution.generator_q≈zeros(1,1) atol=1e-7
+                @test result.solution.head[1,1]≈100.0 atol=1e-6
+                @test validate(c,result.solution)["valid"]
+            end
+        end
+    end
+end

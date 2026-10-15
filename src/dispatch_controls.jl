@@ -48,6 +48,8 @@ Adjustable-unit flows remain prescribed controls. Supply an explicit
 `tunnel_opening[tunnel, interval]` for selectable tunnel gates. Optional `reserves`
 contains capacity controls; their unit/plant flow witnesses are inferred at the
 scheduled hydraulic heads and never enter nominal water balances.
+Optional `head_reference[node,interval]` supplies head guesses and selects the
+reference in floating pressure components without relaxing any physical law.
 
 Returns a [`Schedule`](@ref) with physical arrays, `commitment` and `objective`.
 Inspect `schedule.diagnostics["validation"]["valid"]` before using it. Invalid commitment
@@ -63,6 +65,7 @@ function dispatch_from_controls(
     transport = nothing,
     tunnel_opening = nothing,
     reserves = nothing,
+    head_reference = nothing,
 )
     validate_reserve_inputs(c)
     admissible(c, u) || throw(ArgumentError("inadmissible commitment"))
@@ -77,7 +80,7 @@ function dispatch_from_controls(
                 "compiled deterministic transport cannot serve distributed reconstruction",
             ),
         )
-    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening,commitment=u)
+    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening,commitment=u,head_reference)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     s=c.system
     dt=diff(c.grid)
@@ -130,7 +133,8 @@ function _reconstruct_candidate(c, raw; transport = nothing)
             init = 0.0,
         ),
     )
-    x = dispatch_from_controls(c, raw.commitment, q, gate; transport, tunnel_opening = ta, reserves=raw.reserves)
+    x = dispatch_from_controls(c, raw.commitment, q, gate; transport, tunnel_opening = ta,
+        reserves=raw.reserves,head_reference=raw.head)
     x, correction
 end
 
@@ -183,6 +187,8 @@ function dispatch_from_controls(
     transport = nothing,
     tunnel_opening = nothing,
     reserves = nothing,
+    head_reference = nothing,
 )
-    dispatch_from_controls(c, commitment, generator_q, gate; status, transport, tunnel_opening,reserves)
+    dispatch_from_controls(c, commitment, generator_q, gate; status, transport,
+        tunnel_opening,reserves,head_reference)
 end

@@ -14,6 +14,9 @@ State and control inputs are normalized to Float64. Values that overflow, or
 nonzero controls that underflow to zero, throw `ArgumentError`. Sparse
 `current_network` matrices retain their sparse storage. All rate/state inputs
 are vectors, and transfer inputs are matrices.
+Optional `head_reference[node]` supplies a Newton head guess and selects the
+constant pressure reference in floating junction components. It imposes no
+additional head equation and cannot override a hydraulic law or head bound.
 """
 function forward_step(
     s::HydroSystem,
@@ -29,6 +32,7 @@ function forward_step(
     tolerance = 1e-9,
     max_iterations = 100,
     commitment = nothing,
+    head_reference = nothing,
 )
     validate_unit_modes(s)
     validate_delay_curves(s)
@@ -72,10 +76,14 @@ function forward_step(
         current_network,
         ;commitment,
     )
-    _forward_step(data; initial_guess, tolerance, max_iterations)
+    reference=head_reference===nothing ? nothing : Vector{Float64}(head_reference)
+    reference===nothing || (length(reference)==length(nodes(s)) && all(isfinite,reference)) ||
+        throw(ArgumentError("head reference must contain one finite value per hydraulic node"))
+    _forward_step(data; initial_guess, tolerance, max_iterations,head_reference=reference)
 end
 
-function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_iterations)
+function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_iterations,
+    head_reference=nothing)
     s, topology = data.system, data.topology
     nr, nj, ne = length(s.reservoirs), length(s.junctions), length(s.tunnels)
     base, nq = nr + nj, nr + nj + ne
@@ -95,6 +103,7 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         [b.head for b in s.boundaries],
     )
     x[(nr + 1):base].=isempty(known) ? 0.0 : sum(known)/length(known)
+    head_reference===nothing || (x[(nr+1):base].=head_reference[(nr+1):base])
     h = midpoint_heads!(work.head, x, data)
     for (k, t) in enumerate(s.tunnels)
         dh=h[ix[t.source]]-h[ix[t.target]]
@@ -130,7 +139,7 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
             x.=initial_guess
         end
     end
-    iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations)
+    iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations,head_reference)
     h = midpoint_heads!(work.head, x, data)
     for k in eachindex(s.tunnels)
         ta[k]==0 && (x[base + k]=0.0)
@@ -311,6 +320,9 @@ it, positive flow entries mean on. Fixed-speed pump entries are guesses and
 their returned discharges follow the characteristic at each replay midpoint;
 other unit discharges remain prescribed and must be zero when their supplied
 commitment is off. A committed adjustable unit may have zero prescribed flow.
+Optional `head_reference[node, control_interval]` supplies Newton guesses and
+retains the chosen reference in floating pressure components. It does not
+replace hydraulic equations or operating bounds; validate the returned schedule.
 
 Source outlet laws, midpoint storage and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each
@@ -326,6 +338,7 @@ function simulate(
     transport = nothing,
     tunnel_opening = nothing,
     commitment = nothing,
+    head_reference = nothing,
 )
     s=c.system
     validate_unit_modes(s)
@@ -335,6 +348,15 @@ function simulate(
     validate_curve_data(s)
     ng, nd=length(s.generators), length(s.rivers)
     T=length(grid)-1
+    reference=if head_reference===nothing
+        nothing
+    else
+        head_reference isa AbstractMatrix && size(head_reference)==(length(nodes(s)),length(c.prices)) ||
+            throw(DimensionMismatch("head reference must be node by control interval"))
+        converted=Matrix{Float64}(head_reference)
+        all(isfinite,converted) || throw(ArgumentError("head reference must remain finite in Float64"))
+        converted
+    end
     size(generator_q)==(ng, length(c.grid)-1) && size(gate)==(nd, length(c.grid)-1) ||
         throw(DimensionMismatch("schedule dimensions"))
     state=commitment===nothing ? generator_q.>0 : commitment
@@ -452,6 +474,7 @@ function simulate(
             initial_guess = isempty(steps) ? nothing : last(steps),
             tolerance = 1e-9,
             max_iterations = 100,
+            head_reference = reference===nothing ? nothing : view(reference,:,indices[t]),
         )
         push!(steps, z)
         V[:, t + 1].=z.storage
@@ -488,6 +511,7 @@ function simulate(
     transport = nothing,
     tunnel_opening = nothing,
     commitment = nothing,
+    head_reference = nothing,
 )
-    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment)
+    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment,head_reference)
 end
