@@ -153,6 +153,7 @@ Base.@kwdef struct Generator
     startup::Float64 = 120.0
     shutdown::Float64 = 0.0
     turbine_table::Union{Nothing, TurbineTable} = nothing
+    characteristic::Union{Nothing, PumpCharacteristic} = nothing
     generator_efficiency_curve::Union{Nothing, TableCurve} = nothing
     motor_efficiency::Float64 = 1.0
     ramp_up::Union{Nothing, Float64} = nothing
@@ -174,6 +175,8 @@ A pumping mode of the common unit record. `plant.source` is the water intake
 and `plant.target` is the pumped-water destination. Discharge and electrical
 consumption are positive magnitudes. Hydraulic efficiency uses `efficiency`
 or `turbine_table`; `motor_efficiency` is a constant fraction in (0,1].
+Supply `characteristic=PumpCharacteristic(...)` instead for a fixed-speed pump
+with one head-dependent operating point. Its discharge is solved hydraulically.
 Pumps default to initially off. Electrical efficiency curves are not supported
 for pumps. Use [`CommitmentExclusion`](@ref) for alternative reversible modes.
 """

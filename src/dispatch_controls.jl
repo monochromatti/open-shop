@@ -40,7 +40,11 @@ end
 
 Reconstruct and validate a physical schedule from prescribed controls.
 `commitment[unit, interval]` is 0 or 1, `generator_q[unit, interval]` is m³/s,
-and `gate[river, interval]` is an outlet opening in [0,1]. Supply an explicit
+and `gate[river, interval]` is an outlet opening in [0,1].
+For fixed-speed pumps, `commitment` selects on/off and the corresponding
+`generator_q` entries are initial guesses, including zero for a running pump.
+The returned schedule contains the hydraulically solved characteristic flows.
+Adjustable-unit flows remain prescribed controls. Supply an explicit
 `tunnel_opening[tunnel, interval]` for selectable tunnel gates. Optional `reserves`
 contains capacity controls; their unit/plant flow witnesses are inferred at the
 scheduled hydraulic heads and never enter nominal water balances.
@@ -73,7 +77,7 @@ function dispatch_from_controls(
                 "compiled deterministic transport cannot serve distributed reconstruction",
             ),
         )
-    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening)
+    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening,commitment=u)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     s=c.system
     dt=diff(c.grid)
@@ -81,7 +85,7 @@ function dispatch_from_controls(
     req=release_requirements(c, z.river_release)
     operating_cost=transition_costs(c, u)
     adjustment_cost=tunnel_adjustment_cost(c, z.tunnel_opening)
-    reserves=reserves===nothing ? _zero_reserves(c,q) :
+    reserves=reserves===nothing ? _zero_reserves(c,z.generator_q) :
         reserve_witnesses(c,_reserve_input(reserves,T),u,z)
     objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*z.power[j,t]
         for j in eachindex(s.generators), t in 1:T; init=0.0) -
@@ -91,7 +95,7 @@ function dispatch_from_controls(
         sum(r.water_value*(z.transit[i,end]-z.transit[i,1])
             for (i,r) in enumerate(s.rivers); init=0.0) + reserve_economics(c,reserves).value
     x=Schedule(copy(c.grid), copy(u), z.storage, z.head, z.tunnel_q,
-        z.tunnel_opening, Matrix{Float64}(q), z.power, Matrix{Float64}(gate),
+        z.tunnel_opening, z.generator_q, z.power, Matrix{Float64}(gate),
         z.river_release, z.arrival_volume, z.transit[:,end], req.shortfall,
         objective, adjustment_cost, req.cost,
         Dict{String,Any}("case"=>c.name,"status"=>status,"solver"=>"independent_forward");reserves)

@@ -1,5 +1,6 @@
 using Test, JuMP, OpenSHOP
 using OpenSHOP: river_order
+include("fixed_pump_tests.jl")
 include("rivergraph_tests.jl")
 include("forward_tests.jl")
 include("mixed_source_forward_tests.jl")

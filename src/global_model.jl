@@ -42,6 +42,7 @@ struct _GeneratorPowerGraph
     flow_min::Union{Nothing,_TensorTableGraph}
     flow_max::Union{Nothing,_TensorTableGraph}
     electrical::Union{Nothing,_TensorTableGraph}
+    characteristic::Union{Nothing,Tuple{_TensorTableGraph,_TensorTableGraph}}
 end
 
 struct _RiverLawGraph
@@ -346,7 +347,19 @@ function _build_global_dispatch(
         flowmin=known_state==1 ? opinterval(c,g.name,:qmin,t,g.qmin) : 0.0
         known_state==0 && (flowmax=0.0)
         turbinegraph=nothing
-        eta=if g.turbine_table===nothing
+        characteristic=nothing
+        eta=if g.characteristic!==nothing
+            curve=g.characteristic
+            flowgraph=_global_tensor_table_graph!(m,curve.heads,
+                h->pump_discharge(curve,h;extrapolation=:linear),hd,hlo,hhi;
+                name=Symbol("pump_flow_",i,"_",t))
+            etagraph=_global_tensor_table_graph!(m,curve.heads,
+                h->pump_efficiency(curve,h;extrapolation=:linear),hd,hlo,hhi;
+                name=Symbol("pump_eta_",i,"_",t))
+            @constraint(m,GQ[i,t]==flowgraph.y*u[i,t])
+            characteristic=(flowgraph,etagraph)
+            etagraph.y
+        elseif g.turbine_table===nothing
             emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
             @constraint(
@@ -451,7 +464,7 @@ function _build_global_dispatch(
                 @constraint(m, GQ[i, t]<=qhi-flow_margin)
             end
         end
-        generator_graphs[i,t]=_GeneratorPowerGraph(plant_heads[key],eta,turbinegraph,qlograph,qhigraph,electricalgraph)
+        generator_graphs[i,t]=_GeneratorPowerGraph(plant_heads[key],eta,turbinegraph,qlograph,qhigraph,electricalgraph,characteristic)
     end
     reserves=_global_reserve_points!(m,c,u,H,P,GQ,node_bounds,plant_heads)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)

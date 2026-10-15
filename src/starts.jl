@@ -93,6 +93,10 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 table(graph.head.outlet,TableCurve(nodes,max.(nodes,floor)),receiver)
             end
             table(graph.head.tailwater,plant.tailwater_curve,total)
+            if graph.characteristic!==nothing
+                table(graph.characteristic[1],z->pump_discharge(g.characteristic,z;extrapolation=:linear),h)
+                table(graph.characteristic[2],z->pump_efficiency(g.characteristic,z;extrapolation=:linear),h)
+            end
             if graph.turbine===nothing
                 put(graph.efficiency,efficiency(g,q,h))
             else

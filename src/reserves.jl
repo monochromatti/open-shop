@@ -306,7 +306,7 @@ function _global_reserve_points!(m,c,u,H,P,Q,node_bounds,plant_heads)
             @constraint(m,q>=qlo.y-max(0.0,upper_bound(qlo.y))*(1-u[i,t]))
             @constraint(m,q<=qhi.y+max(0.0,g.qmax-lower_bound(qhi.y))*(1-u[i,t]))
         end
-        graphs[i,t,d]=_GeneratorPowerGraph(headgraph,eta,turbine,qlo,qhi,electrical)
+        graphs[i,t,d]=_GeneratorPowerGraph(headgraph,eta,turbine,qlo,qhi,electrical,nothing)
     end
     (;r...,graphs)
 end

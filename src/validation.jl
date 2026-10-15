@@ -190,6 +190,10 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             [P[i, t]-power(g, GQ[i, t], hd[t]) for t in 1:T],
         )
         on=findall(==(1), u[i, :])
+        if g.characteristic!==nothing
+            record("pump_characteristic_$(g.name)",
+                [GQ[i,t]-pump_discharge(g.characteristic,hd[t];extrapolation=:linear) for t in on])
+        end
         eta=[efficiency(g, GQ[i, t], hd[t]) for t in on]
         bound(
             "unit_head_efficiency_$(g.name)",
@@ -489,7 +493,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
     end
     try
-        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA)
+        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA,commitment=u)
         replay.converged || push!(
             errors,
             "independent forward replay did not converge in the river-law domain",
@@ -500,6 +504,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         for (name, actual, expected) in (
             ("V",replay.storage,result.storage),
             ("tunnel_q",replay.tunnel_q,result.tunnel_q),
+            ("generator_q",replay.generator_q,result.generator_q),
             ("power",replay.power,result.power),
             ("river_release",replay.river_release,result.river_release),
             ("arrival_volume",replay.arrival_volume,result.arrival_volume),

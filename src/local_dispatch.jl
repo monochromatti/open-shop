@@ -59,6 +59,11 @@ function _build_dispatch(
         turbine_operator(m, g.turbine_table; name = Symbol("turbine_", i)) for
         (i, g) in enumerate(s.generators)
     ]
+    characteristic_ops=[g.characteristic===nothing ? nothing : (
+        JuMP.add_nonlinear_operator(m,1,h->pump_discharge(g.characteristic,h;extrapolation=:linear);
+            name=Symbol("pump_flow_",i)),
+        JuMP.add_nonlinear_operator(m,1,h->pump_efficiency(g.characteristic,h;extrapolation=:linear);
+            name=Symbol("pump_eta_",i))) for (i,g) in enumerate(s.generators)]
     electrical_ops=[
         g.generator_efficiency_curve===nothing ? nothing :
         table_operator(m, g.generator_efficiency_curve; name = Symbol("electrical_", i)) for
@@ -177,7 +182,7 @@ function _build_dispatch(
         receiver=op===nothing ? H[ix[plant.target], t] :
                  op isa Real ? op : op(H[ix[plant.target], t])
         hd=unit_power_sign(g)*(H[ix[plant.source], t]-receiver-tail)
-        eta=turbine_ops[i]===nothing ?
+        eta=characteristic_ops[i]!==nothing ? characteristic_ops[i][2](hd) : turbine_ops[i]===nothing ?
             g.efficiency-g.qcurvature*((GQ[i, t]-g.qbest)/g.qbest)^2-g.hcurvature*(
             (hd-g.hbest)/g.hbest
         )^2 : turbine_ops[i](GQ[i, t], hd)
@@ -198,6 +203,9 @@ function _build_dispatch(
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
             else
+                if characteristic_ops[i]!==nothing
+                    @constraint(m,(GQ[i,t]-characteristic_ops[i][1](hd))/50==0)
+                end
                 @constraint(m, conversion/40==0)
                 @constraint(m, g.hmin<=hd<=g.hmax)
                 @constraint(m, g.min_efficiency<=eta<=1.0)

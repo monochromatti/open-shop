@@ -4,7 +4,7 @@ head(r::Reservoir, v; extrapolation = :linear) =
     r.level_curve===nothing ? r.z0+r.slope*v+r.curvature*v^2 :
     table_value(r.level_curve, v; extrapolation)
 efficiency(g::Generator, q, h; extrapolation = :linear) =
-    g.turbine_table===nothing ?
+    g.characteristic!==nothing ? pump_efficiency(g.characteristic,h;extrapolation) : g.turbine_table===nothing ?
     g.efficiency-g.qcurvature*((q-g.qbest)/g.qbest)^2-g.hcurvature*((h-g.hbest)/g.hbest)^2 :
     turbine_efficiency(g.turbine_table, q, h; extrapolation)
 generator_efficiency(g::Generator, p; extrapolation = :linear) =
@@ -32,7 +32,8 @@ unit_head(g::Generator,p::Plant,source,target,total_q) =
 
 # Nominal MW per m³/s converts the existing operating/replay flow margins.
 function unit_reference_power_slope(g::Generator)
-    eta=max(g.min_efficiency,g.efficiency,eps(Float64))
+    eta=max(g.min_efficiency,g.characteristic===nothing ? g.efficiency :
+        pump_efficiency(g.characteristic,clamp(g.hbest,g.hmin,g.hmax);extrapolation=:linear),eps(Float64))
     g.mode==:pump ? 0.00981*g.hbest/(eta*g.motor_efficiency) : 0.00981*g.hbest*eta
 end
 
@@ -45,7 +46,11 @@ function validate_unit_modes(s::HydroSystem)
             g.hmin>0 || throw(ArgumentError("$(g.name): pumping requires positive operating head"))
             g.generator_efficiency_curve===nothing || throw(ArgumentError(
                 "$(g.name): pumping currently supports constant motor efficiency, not electrical efficiency curves"))
+            g.characteristic===nothing || g.turbine_table===nothing || throw(ArgumentError(
+                "$(g.name): supply a fixed-speed characteristic or a variable-flow turbine table, not both"))
         else
+            g.characteristic===nothing || throw(ArgumentError(
+                "$(g.name): a fixed-speed pump characteristic applies only to pumping"))
             g.motor_efficiency==1 || throw(ArgumentError(
                 "$(g.name): motor_efficiency applies only to pumps"))
         end
@@ -75,6 +80,17 @@ function validate_curve_data(s::HydroSystem)
         )
     end
     for g in s.generators
+        c=g.characteristic
+        if c!==nothing
+            c.head_extrapolation in (:linear,:constant) ||
+                first(c.heads)<=g.hmin<=g.hmax<=last(c.heads) || throw(ArgumentError(
+                    "$(g.name): pump characteristic must cover operating head"))
+            hh=unique(vcat(g.hmin,filter(h->g.hmin<h<g.hmax,c.heads),g.hmax))
+            all(h->isfinite(pump_discharge(c,h;extrapolation=:linear)) &&
+                pump_discharge(c,h;extrapolation=:linear)>0 &&
+                0<pump_efficiency(c,h;extrapolation=:linear)<=1,hh) || throw(ArgumentError(
+                    "$(g.name): extended pump characteristic requires positive flow and efficiency in (0,1] throughout operating head"))
+        end
         c=g.turbine_table
         if c!==nothing
             c.head_extrapolation in (:linear, :constant) ||

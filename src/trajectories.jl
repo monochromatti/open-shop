@@ -21,6 +21,7 @@ struct HydraulicStep
     river_injection::Vector{Float64}
     river_arrival::Vector{Float64}
     generator_head::Vector{Float64}
+    generator_q::Vector{Float64}
     power::Vector{Float64}
     residual::Float64
     converged::Bool
@@ -101,6 +102,7 @@ function jsonready(x::HydraulicStep)
         "river_injection"=>x.river_injection,
         "river_arrival"=>x.river_arrival,
         "generator_head"=>x.generator_head,
+        "generator_q"=>x.generator_q,
         "power"=>x.power,
         "residual"=>x.residual,
         "converged"=>x.converged,

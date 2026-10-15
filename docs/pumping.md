@@ -55,11 +55,54 @@ generation at high prices. Its parameters are illustrative. Tests calculate
 water balances and consumption independently and also connect pumping to a
 pressure junction, use hydraulic efficiency tables, and compare restarted replay.
 
-Variable discharge envelopes and fixed-flow points (`qmin == qmax`) are
-supported. A fixed-flow point is not a fixed rotational-speed characteristic.
-SHOP's head-dependent single-point fixed-speed pump curves require a dedicated
-characteristic that is outside this scope; no extra calibration points are
-invented. Electrical motor-efficiency curves are explicitly rejected for pumps.
+## Fixed-speed pumps
+
+Supply one discharge and hydraulic efficiency at each reference head:
+This follows SHOP's [binary-pump definition](https://docs.shop.sintef.energy/objects/pump/pump.html#binary-pumps).
+
+```julia
+curve = PumpCharacteristic([200.0, 250.0, 300.0],
+    [22.0, 20.0, 18.0], [0.86, 0.89, 0.87])
+pump = Pump(name=:Pump, plant=:Lift, characteristic=curve,
+    qmin=15.0, qmax=25.0, pmin=40.0, pmax=80.0,
+    hmin=200.0, hmax=300.0, motor_efficiency=0.96)
+```
+
+At each operating head, this is one point, not a variable-discharge envelope:
+
+```math
+q=uQ(h),\qquad P\eta(h)\eta_{motor}=0.00981qh.
+```
+
+Both supplied functions are piecewise linear in head. The default
+`head_extrapolation=:error` requires coverage of the operating head range.
+`:linear` explicitly permits end-secant continuation; its discharge and
+efficiency must remain positive, with efficiency at most one, throughout that
+range. A single reference head requires `head_extrapolation=:constant`, declaring
+constant discharge and hydraulic efficiency while consumption still uses actual
+head. Raw `pump_discharge` and `pump_efficiency` lookups reject out-of-table heads
+unless `extrapolation=:linear` is passed; a declared constant characteristic has
+no lookup head boundary. Heads must increase strictly. No knots are added,
+sorted, fitted or clipped. A characteristic cannot accompany `turbine_table`.
+Static and operational flow/power limits intersect the characteristic; an
+incompatible limit makes operation infeasible.
+
+Forward integration solves characteristic discharge together with midpoint
+storage, tunnel losses and pressure. In `dispatch_from_controls`, commitment is
+the fixed-speed pump control; its `generator_q` entries are numerical guesses,
+and zero is a valid guess for a running pump. The returned schedule contains
+solved flows. `simulate(...; commitment=u)` uses the same rule; without explicit
+commitment it infers on from a positive flow entry and off from zero. Ordinary
+adjustable-unit flows must be zero when their supplied commitment is off;
+commitment may remain on at zero flow. Schedule validation checks stored flows
+without repairing them. Finer replay
+holds commitment and re-solves discharge at each finer midpoint. Restart retains
+the characteristic, commitment history and preceding physical flow/consumption.
+
+The [fixed-speed example](../examples/fixed_speed_pumping.jl) shows these flows
+changing with storage and checks independently calculated consumption.
+Variable-discharge pumps and fixed-flow points (`qmin == qmax`) remain supported.
+Electrical motor-efficiency curves are explicitly rejected for pumps.
 Mixed pumping/generation members in one plant, shared ternary-machine
 short-circuit equipment characteristics, reserve services and machine-specific
 direction-change delays are also outside this model. Independently connected

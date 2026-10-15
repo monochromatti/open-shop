@@ -45,6 +45,12 @@ function _read_turbine(x)
         discharge_extrapolation = Symbol(get(x, "discharge_extrapolation", "error")),
     )
 end
+function _read_pump_characteristic(x)
+    x===nothing && return nothing
+    _input_keys(x,("heads","discharge","efficiency","head_extrapolation"),"pump characteristic")
+    PumpCharacteristic(x["heads"],x["discharge"],x["efficiency"];
+        head_extrapolation=Symbol(get(x,"head_extrapolation","error")))
+end
 function _read_object(T, x)
     _input_keys(x, fieldnames(T), string(nameof(T)))
     vals=Dict{Symbol,Any}()
@@ -76,6 +82,8 @@ function _read_object(T, x)
             v=_read_level_flow(v)
         elseif f==:turbine_table
             v=_read_turbine(v)
+        elseif f==:characteristic
+            v=_read_pump_characteristic(v)
         elseif fieldtype(T, f)==Vector{Float64}
             v=Float64.(v)
         elseif fieldtype(T, f)==Vector{Symbol}
@@ -137,10 +145,11 @@ _table_dict(t::TurbineTable) = Dict(
     (:heads, :discharge, :efficiency, :qmin, :qmax, :interpolation,
         :head_extrapolation, :discharge_extrapolation)
 )
+_table_dict(c::PumpCharacteristic) = Dict(string(f)=>getfield(c,f) for f in fieldnames(PumpCharacteristic))
 function component_dict(x)
     Dict(
         string(f)=>(
-            getfield(x, f) isa Union{TableCurve,TurbineTable,LevelFlowCurve} ?
+            getfield(x, f) isa Union{TableCurve,TurbineTable,LevelFlowCurve,PumpCharacteristic} ?
             _table_dict(getfield(x, f)) : getfield(x, f)
         ) for f in fieldnames(typeof(x))
     )
@@ -179,7 +188,10 @@ function curve_samples(c)
             ) for r in s.reservoirs
         ],
         "generators"=>[
-            Dict(
+            g.characteristic!==nothing ? Dict(
+                "name"=>g.name,"plant"=>g.plant,
+                "characteristic"=>_table_dict(g.characteristic),
+            ) : Dict(
                 "name"=>g.name,
                 "plant"=>g.plant,
                 "curves"=>[
@@ -204,7 +216,7 @@ function has_operational_data(c)
         any(!isempty(e.gate_positions) || e.gate_adjustment_cost!=0 for e in c.system.tunnels) ||
         any(r.level_curve!==nothing for r in c.system.reservoirs) ||
         any(
-            g.turbine_table!==nothing ||
+            g.turbine_table!==nothing || g.characteristic!==nothing ||
                 g.generator_efficiency_curve!==nothing ||
                 g.shutdown!=0.0 ||
                 g.min_efficiency!=0.0 for g in c.system.generators

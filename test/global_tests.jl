@@ -161,8 +161,10 @@ end
 
 @testset "Off-state controls have exactly zero physical flow" begin
     c=analytic_global_fixture(:off).case
-    raw=dispatch_from_controls(c,zeros(Int,1,1),fill(1e-7,1,1),zeros(0,1))
-    @test raw["validation"]["valid"]
+    @test_throws ArgumentError dispatch_from_controls(c,zeros(Int,1,1),fill(1e-7,1,1),zeros(0,1))
+    raw=dispatch_from_controls(c,zeros(Int,1,1),zeros(1,1),zeros(0,1))
+    # Solver candidates can contain feasibility noise; public controls cannot.
+    raw["generator_q"][1]=1e-7
     repaired,correction=OpenSHOP._reconstruct_candidate(c,raw)
     @test repaired["generator_q"]==zeros(1,1)
     @test repaired["power"]==zeros(1,1)
