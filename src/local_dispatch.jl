@@ -54,6 +54,9 @@ function _build_dispatch(
         table_operator(m, r.level_curve; name = Symbol("level_", i)) for
         (i, r) in enumerate(s.reservoirs)
     ]
+    mean_level_ops=[r.level_curve===nothing ? nothing :
+        _mean_head_operator(m,r;name=Symbol("mean_level_",i)) for
+        (i,r) in enumerate(s.reservoirs)]
     turbine_ops=[
         g.turbine_table===nothing ? nothing :
         turbine_operator(m, g.turbine_table; name = Symbol("turbine_", i)) for
@@ -119,9 +122,8 @@ function _build_dispatch(
         for t in 1:T
             set_lower_bound(h[i, t], head(r, r.vmin)/250)
             set_upper_bound(h[i, t], head(r, r.vmax)/250)
-            mid=(V[i, t]+V[i, t + 1])/2
-            level=level_ops[i]===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 :
-                  level_ops[i](mid)
+            level=mean_level_ops[i]===nothing ? mean_head(r,V[i,t],V[i,t+1]) :
+                  mean_level_ops[i](V[i,t],V[i,t+1])
             @constraint(m, (H[i, t]-level)/250==0)
         end
     end

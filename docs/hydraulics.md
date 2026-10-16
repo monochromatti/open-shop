@@ -1,8 +1,31 @@
 # Gate and outlet equations
 
 All elevations and heads use metres in the same datum. Discharge is m³/s.
-Reservoir head is evaluated at midpoint storage, `Z((V[t]+V[t+1])/2)`;
-it need not equal the average of the two endpoint elevations.
+Reservoir head is the volume average of its level curve during the interval:
+
+```math
+\overline Z(a,b)=\begin{cases}
+\displaystyle\frac{1}{b-a}\int_a^b Z(v)\,dv,&a\ne b,\\
+Z(a),&a=b.
+\end{cases}
+```
+
+The implementation avoids forming a quotient of nearby potential values.
+For `Z(v)=z+s*v+c*v²`, it is
+`z+s*(a+b)/2+c*((a+b)^2/4+(b-a)^2/12)`. Piecewise-linear level tables are integrated
+across their original segments. `mean_head(reservoir, a, b)` exposes the same
+calculation; `head(reservoir, v)` still returns instantaneous surface elevation.
+At an affine curve these agree with the former midpoint-volume equation.
+With curvature or a crossed table knot, the interval head generally changes.
+Stored schedules using the former equation must be reconstructed from controls
+before use as an initial solution.
+
+Multiplying the interval head by the volume change gives exactly the change in
+the level integral, in real arithmetic. Closed ideal pumping/generating cycles
+therefore have zero net work; physical conversion and friction losses dissipate
+energy. This is not an accuracy guarantee for coarse steps. See the
+[model validity guide](model-validity.md) for the delayed-river energy scope,
+possible overshoot and nonunique roots.
 
 ## Tunnel gates
 

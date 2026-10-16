@@ -87,7 +87,7 @@ sorted, fitted or clipped. A characteristic cannot accompany `turbine_table`.
 Static and operational flow/power limits intersect the characteristic; an
 incompatible limit makes operation infeasible.
 
-Forward integration solves characteristic discharge together with midpoint
+Forward integration solves characteristic discharge together with interval
 storage, tunnel losses and pressure. In `dispatch_from_controls`, commitment is
 the fixed-speed pump control; its `generator_q` entries are numerical guesses,
 and zero is a valid guess for a running pump. The returned schedule contains
@@ -96,7 +96,7 @@ commitment it infers on from a positive flow entry and off from zero. Ordinary
 adjustable-unit flows must be zero when their supplied commitment is off;
 commitment may remain on at zero flow. Schedule validation checks stored flows
 without repairing them. Finer replay
-holds commitment and re-solves discharge at each finer midpoint. Restart retains
+holds commitment and re-solves discharge at each finer interval head. Restart retains
 the characteristic, commitment history and preceding physical flow/consumption.
 
 The [fixed-speed example](../examples/fixed_speed_pumping.jl) shows these flows

@@ -1,4 +1,4 @@
-"""Independent midpoint hydraulic step. Rates are m³/s; storage is Mm³.
+"""Independent discrete-gradient hydraulic step. Rates are m³/s; storage is Mm³.
 
 `river_arrival` contains known history/prior-cohort arrivals. `current_transfer`
 contains the fractions of each current release cohort arriving in this same
@@ -104,7 +104,7 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
     )
     x[(nr + 1):base].=isempty(known) ? 0.0 : sum(known)/length(known)
     head_reference===nothing || (x[(nr+1):base].=head_reference[(nr+1):base])
-    h = midpoint_heads!(work.head, x, data)
+    h = interval_heads!(work.head, x, data)
     for (k, t) in enumerate(s.tunnels)
         dh=h[ix[t.source]]-h[ix[t.target]]
         x[base + k]=tunnel_flow(t, dh, ta[k])
@@ -140,7 +140,7 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         end
     end
     iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations,head_reference)
-    h = midpoint_heads!(work.head, x, data)
+    h = interval_heads!(work.head, x, data)
     for k in eachindex(s.tunnels)
         ta[k]==0 && (x[base + k]=0.0)
     end
@@ -310,21 +310,21 @@ interval]` is a river outlet opening in [0,1]. `tunnel_opening[tunnel, interval]
 is required when tunnels have selectable positions. Input arrays are read-only.
 
 Returns a [`HydraulicTrajectory`](@ref) with `storage[reservoir, vertex]` in Mm³,
-midpoint `head[node, interval]` in metres, `power[unit, interval]` in MW, river
+volume-averaged `head[node, interval]` in metres, `power[unit, interval]` in MW, river
 releases in m³/s, arrivals/transit in Mm³, and convergence diagnostics. A converged physical
 trajectory can violate operating limits; use [`dispatch_from_controls`](@ref)
 to reconstruct and validate a complete schedule. Malformed inputs throw an
 `ArgumentError` or `DimensionMismatch`. Optional `commitment[unit,interval]`
 selects fixed-speed pump operation independently of its discharge guess. Without
 it, positive flow entries mean on. Fixed-speed pump entries are guesses and
-their returned discharges follow the characteristic at each replay midpoint;
+their returned discharges follow the characteristic at each replay interval head;
 other unit discharges remain prescribed and must be zero when their supplied
 commitment is off. A committed adjustable unit may have zero prescribed flow.
 Optional `head_reference[node, control_interval]` supplies Newton guesses and
 retains the chosen reference in floating pressure components. It does not
 replace hydraulic equations or operating bounds; validate the returned schedule.
 
-Source outlet laws, midpoint storage and zero/short-delay transfers are solved
+Source outlet laws, volume-averaged heads and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each
 local injection's pulses through confluences. Distributed junction mixing
 conserves volume but rebins arriving water uniformly on the replay grid; refine

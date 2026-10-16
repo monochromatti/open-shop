@@ -1,7 +1,8 @@
 # Mathematical scope and validity
 
 OpenSHOP solves a deterministic, finite-horizon, discrete-time model. Its
-nonlinear equations describe quasi-steady hydraulics at midpoint storage.
+nonlinear equations describe quasi-steady hydraulics using discrete-gradient
+reservoir heads, averaged over each interval's storage change.
 They are not an exact time integration of the watercourse. This distinction
 matters even when a solver closes the objective gap.
 
@@ -42,9 +43,9 @@ At the same head and transferred volume, efficiencies in `(0,1]` ensure that
 generation cannot exceed ideal hydraulic work and pumping consumes at least
 that work. Pump consumption divides by hydraulic and motor efficiency. These
 pointwise inequalities do **not** establish an energy balance over a
-nonlinear, time-discretized storage cycle.
+nonlinear storage cycle unless its time discretization obeys a chain rule.
 
-## Midpoint energy error
+## Energy-consistent storage integration
 
 Let `Z(V)=z+sV+cV²` and let `Ψ(V)=zV+sV²/2+cV³/3` be its potential integral.
 For an interval with endpoint volumes `a,b`, real arithmetic gives
@@ -54,22 +55,44 @@ For an interval with endpoint volumes `a,b`, real arithmetic gives
 =(b-a)Z\!\left(\frac{a+b}{2}\right)+\frac{c(b-a)^3}{12}.
 ```
 
-Thus midpoint work is exact for affine storage-level curves, but generally
-not for curved ones. On the cycle `0 → 2 → 1 → 0`, midpoint pumping work minus
-generating work is `-c/2`, despite returning to the initial storage. Adding a
-constant to every volume leaves this cycle error unchanged.
+Midpoint work is exact for affine curves, but curved ones can create artificial
+work on unequal steps around a closed cycle. OpenSHOP therefore uses the
+discrete gradient `H̄(a,b)=integral(Z,a,b)/(b-a)`, continuously extended by
+`H̄(a,a)=Z(a)`. It satisfies `Ψ(b)-Ψ(a)=(b-a)H̄(a,b)` exactly in real arithmetic.
+For a quadratic curve, the head is `Z((a+b)/2)+c*(b-a)^2/12`. For a table it is
+the exact mean of its traversed linear segments, not the trapezoid of endpoint
+levels when intervening knots change the slope. Local evaluation uses segment
+slopes and normalized lengths; it never subtracts nearby potentials or uses a
+small-volume cutoff.
 
-The regression test uses an ideal pump and turbine, a curved reservoir and a
-closed water cycle `1 → 3 → 2 → 1` Mm³. Its coarse-grid artificial electrical
-gain is 0.2725 MWh. Halving each interval reduces that gain by a factor of four;
-quartering reduces it by sixteen. Losses can mask this error, so a plausible
-round-trip efficiency is not a discretization test.
+The tabulated global graph uses exact piecewise-quadratic endpoint potentials.
+It also imposes `H̄=Z(a)+D*(b-a)`, where `D` lies between half the minimum and half
+the maximum segment slope over the permitted storage range. At `a=b` this fixes
+the head, whereas the work equation alone reduces to `0=0`. Away from the
+diagonal the work equation determines the head uniquely. These bounds follow
+from `D=integral((1-θ)*Z′(a+θ*(b-a)), θ=0..1)`; they do not assume a flow direction
+or remove any valid mean head. Endpoint potentials subtract a common elevation
+datum and use scaled units to reduce cancellation.
 
-Finer replay estimates grid sensitivity for the chosen controls. One comparison
-is not an error enclosure or a convergence theorem. For sensitive cases, compare
-successively finer grids and judge absolute energy as well as relative objective
-change. An energy-preserving discrete storage head would require a formulation
-change; it is not supplied by the present midpoint equations.
+Tests cover the closed cycle `1 → 3 → 2 → 1` Mm³ with ideal and lossy units,
+polynomial and tabulated levels, knot crossings, reversed and equal storage
+endpoints, both optimizers, and finer replay. The former curved midpoint cycle
+gained 0.2725 MWh artificially; its ideal net work is now zero within rounding.
+A connected reservoir/junction/tunnel/channel case checks the potential change
+against electrical work and hydraulic losses independently of the model rows.
+
+The network energy identity applies to direct internal transfers and accounts
+for external inflows/outflows as energy ports. Delayed river reaches transport
+water without a mechanical-energy state: their release and arrival energy ports
+do not cancel as an instantaneous transfer. The new storage chain rule does not
+prove an energy law for those omitted river dynamics or arbitrary calibrated
+connections. Efficiencies must remain in `(0,1]` and all losses passive.
+
+Energy consistency is not time accuracy. Finer replay still estimates grid
+sensitivity for the chosen controls. One comparison is not an error enclosure
+or a convergence theorem. For sensitive cases, compare successively finer grids
+and judge absolute energy as well as relative objective change. Passive stiff
+steps can still overshoot equilibrium, and nonlinear roots need not be unique.
 
 ## Existence, uniqueness and pressure references
 

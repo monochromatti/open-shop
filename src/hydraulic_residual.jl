@@ -1,4 +1,4 @@
-"""Data for one implicit midpoint hydraulic step, with prescribed controls.
+"""Data for one implicit discrete-gradient hydraulic step, with prescribed controls.
 
 The unknown vector is `[Vnew; junction_head; tunnel_q; outlet_release; fixed_pump_q]`.
 Storage is in Mm³, heads in metres, rates in m³/s, and duration in hours.
@@ -149,11 +149,11 @@ function HydraulicWorkspace(data::HydraulicStepData, ::Type{T} = Float64) where 
         zeros(T,length(s.generators)))
 end
 
-function midpoint_heads!(h, x, data::HydraulicStepData)
+function interval_heads!(h, x, data::HydraulicStepData)
     s = data.system
     nr, nj = length(s.reservoirs), length(s.junctions)
     for (i, reservoir) in enumerate(s.reservoirs)
-        h[i] = head(reservoir, (data.previous_storage[i] + x[i]) / 2)
+        h[i] = mean_head(reservoir, data.previous_storage[i], x[i])
     end
     for i in (nr + 1):(nr + nj)
         h[i] = x[i]
@@ -225,7 +225,7 @@ end
 """Evaluate storage balance, junction balance, tunnel losses and outlet laws.
 
 For a reservoir, `(Vnew - Vprev) / (0.0036Δt) = net_inflow`.
-For a junction, `net_inflow = 0`. Heads use midpoint storage. Every physical
+For a junction, `net_inflow = 0`. Reservoir heads are volume averages. Every physical
 balance is retained, including those in floating pressure components.
 The scratch arrays and `residual` are overwritten; `x` and `data` are read-only.
 """
@@ -234,7 +234,7 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
     nr, nj, ne = length(s.reservoirs), length(s.junctions), length(s.tunnels)
     base, nq = nr + nj, nr + nj + ne
     h, net = work.head, work.net_inflow
-    midpoint_heads!(h, x, data)
+    interval_heads!(h, x, data)
     river_rates!(work, x, data)
     for i in eachindex(net)
         net[i] =
