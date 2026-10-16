@@ -13,7 +13,8 @@
   losses also affect the power obtained from each unit. We formulate the
   schedule as a mixed-integer nonlinear program with unit commitment, finite
   gate choices and delayed river transport. Reservoir balances use an implicit
-  midpoint step. Pressure losses and power conversion are nonlinear, and
+  discrete-gradient step that respects stored potential energy. Pressure losses
+  and power conversion are nonlinear, and
   tabulated equipment curves keep their specified interpolants. For fixed
   river travel times, releases are shifted through the network without
   averaging at confluences. Distributed delays use interval cohorts and track
@@ -70,8 +71,8 @@ Let $0=tau_0<dots.h.c<tau_T$ be time edges in hours,
 $Delta_t=tau_(t+1)-tau_t$ the interval duration, and
 $m_t=(tau_t+tau_(t+1)) \/ 2$ its midpoint, for $t=0,dots,T-1$.
 Interval inputs are piecewise constant, with changes at these edges.
-We record volumes at the edges and evaluate the interval hydraulics at
-midpoint reservoir volumes.
+We record volumes at the edges and evaluate interval hydraulics using
+volume-averaged reservoir heads.
 
 Hydraulic head is mechanical energy per unit weight, expressed in metres.
 At a reservoir it is the water-surface elevation. At a flooded junction it
@@ -163,18 +164,38 @@ $ F_(j t) = 0 quad (j in cal(J)), quad
 
 Initial volumes and volume limits are given data. Junction balances determine
 how flows meet and divide. Boundary nodes have prescribed heads and may
-exchange water with the exterior. Reservoir head depends on midpoint volume:
+exchange water with the exterior. Let $Z_(i)(V)$ be reservoir surface elevation
+and $Psi_(i)$ an antiderivative of $Z_(i)$. The interval head is
+the volume average of that elevation:
 
-$ H_(i t) = Z_i (frac(V_(i t) + V_(i,t+1), 2)), quad
-  underline(H)_j <= H_(j t) <= overline(H)_j, quad
-  H_(b t) = H_b^"given". $ <eq:heads>
+$ overline(Z)_(i) (a,b)=cases(
+  (Psi_(i) (b)-Psi_(i) (a))/(b-a) & "if" a != b,
+  Z_(i) (a) & "if" a=b), quad
+  H_(i t)=overline(Z)_(i) (V_(i t),V_(i,t+1)). $ <eq:heads>
 
-$Z_i$ converts volume to surface elevation. It is an increasing supplied
-table, or $Z_i (V)=z_i+s_i V+c_i V^2$ with given coefficients.
-The ending volume is unknown in @eq:storage. It also enters @eq:heads and
-therefore affects the flow during the interval. We solve these equations
-as an implicit midpoint step. If $Z_i$ is nonlinear, its value at the average
-volume is generally different from the average of its endpoint values.
+$ underline(H)_j <= H_(j t) <= overline(H)_j, quad
+  H_(b t) = H_b^"given". $ <eq:boundaryheads>
+
+$Z_(i)$ converts volume to surface elevation. It is an increasing supplied
+table, or $Z_(i) (V)=z_i+s_i V+c_i V^2$ with given coefficients.
+The ending volume is unknown in @eq:storage and also enters @eq:heads.
+We solve these coupled equations implicitly. The head is a discrete gradient
+of stored potential~@celledoni: multiplying it by the interval volume change
+gives exactly $Psi_(i) (b)-Psi_(i) (a)$. In MWh, the gravitational energy change is
+$(0.00981/kappa)(Psi_(i) (b)-Psi_(i) (a))$. A common elevation datum cancels from
+the balance of a closed water network.
+
+For a quadratic level curve, the formula requires no division:
+
+$ overline(Z)_(i) (a,b)=z_i+s_i (a+b)/2
+  +c_i ((a+b)^2/4+(b-a)^2/12). $ <eq:polynomialhead>
+
+For a tabulated curve, we integrate its original linear segments, splitting
+only at crossed knots. An endpoint trapezoid would be wrong if an intervening
+knot changes the slope. The implementation also avoids subtracting nearby
+potentials when $a$ and $b$ almost coincide. Affine curves retain the usual
+midpoint head. With curvature, this head differs from $Z_(i) ((a+b)/2)$ by
+$c_(i) (b-a)^2/12$.
 
 #figure(
   block(width: 144mm, height: 40mm)[
@@ -690,7 +711,7 @@ For the first interval, use the average and midpoint of the supplied previous
 window. Omit that comparison if no previous window is supplied.
 
 Reservoir volume and level ramps instead constrain vertex changes
-$V_(i,t+1)-V_(i t)$ and $Z_i (V_(i,t+1))-Z_i (V_(i t))$, with rate integrals
+$V_(i,t+1)-V_(i t)$ and $Z_(i) (V_(i,t+1))-Z_(i) (V_(i t))$, with rate integrals
 over $[tau_t,tau_(t+1)]$. The ramp limits apply between recorded states.
 
 #block(breakable: false)[
@@ -749,7 +770,7 @@ target adds no commitment implication; generation can remain off and incur
 the permitted shortfall.
 
 Reservoir volume observations use $x_ell=V_i (theta_ell)$ and level
-observations use $x_ell=Z_i (V_i (theta_ell))$ at a declared absolute grid
+observations use $x_ell=Z_(i) (V_i (theta_ell))$ at a declared absolute grid
 vertex $theta_ell$. Their slacks have units $"Mm"^3$ and metres. A terminal
 target is an observation at the original terminal time, which is retained
 when the case is continued. These rules constrain the recorded states and
@@ -972,7 +993,7 @@ any hydraulic equation or absolute head restriction.
 
 The nonlinear step need not have a unique solution. For example, a channel
 can be passive at each reference level while its conductance decreases so
-strongly with that level that the midpoint equations have several roots.
+strongly with that level that the interval equations have several roots.
 Newton convergence alone does not select the continuous physical trajectory.
 Finer time steps are needed to assess such cases; a failed replay does not
 establish mathematical infeasibility.
@@ -998,17 +1019,21 @@ $ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
 The comparison estimates the effect of time discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
-Water conservation also does not imply exact energy conservation under midpoint
-integration. For $Z(V)=z+s V+c V^2$, define the potential integral
-$Psi(V)=z V+s V^2/2+c V^3/3$. Then
+The discrete-gradient chain rule removes artificial storage-cycle work.
+For direct internal transfers, multiply each node balance by its own interval
+head and sum: the internal edge terms become minus transferred volume times
+source-minus-target head. Passive tunnels and channels dissipate this work.
+Ideal pumping and generating units exchange it without loss; efficiencies
+below one add conversion losses. Summing potential changes around a closed
+storage cycle gives zero, even when the interval lengths differ.
 
-$ Psi(b)-Psi(a) = (b-a) Z((a+b)/2)+c (b-a)^3/12. $ <eq:midpointerror>
-
-The remainder vanishes for an affine level curve. With curvature, unequal
-pumping and generating steps around a closed storage cycle can produce an
-artificial energy gain, even with ideal units. Finer replay measures sensitivity
-to this error but does not prove its absence. The interval-model objective and
-its optimization bound therefore concern an approximate physical time model.
+This identity concerns storage and direct transfers. A delayed river carries
+no mechanical-energy state in this model. Its release and arrival energy
+ports do not cancel as an instantaneous transfer, and the storage chain rule
+does not establish an energy balance for the omitted river dynamics.
+Nor does energy consistency remove coarse-step overshoot or nonunique roots.
+The interval-model objective and its bound still concern an approximation to
+continuous physical time.
 
 == Bounding the remaining objective improvement
 
@@ -1097,6 +1122,30 @@ SOS2 restricts the weights to one segment~@huch. The two neighboring weights
 sum to one, and the equation for $x$ fixes the interpolation fraction.
 The equation for $y$ then gives the interpolated output. Without adjacency,
 weights on distant knots could produce points away from the curve.
+
+For a reservoir level table, integrate each linear cell to obtain a quadratic
+potential. The endpoint level and potential share the same coordinate weights.
+Writing $delta v_k=v_(k+1)-v_k$ and
+$s_k=(Z_(k+1)-Z_k)/delta v_k$, the potential graph is
+
+$ Psi(v)=sum_k Psi(v_k) lambda_k
+  - sum_k (s_k delta v_k^2)/2 lambda_k lambda_(k+1). $ <eq:potentialgraph>
+
+The correction removes the quadratic's chord error. For endpoint volumes
+$a,b$, impose the work equation and a bounded divided-difference row:
+
+$ (b-a) H=Psi(b)-Psi(a), quad H=Z(a)+D(b-a), quad
+  (min_k s_k)/2 <= D <= (max_k s_k)/2. $ <eq:storagegraph>
+
+The slope bounds range over cells intersecting the permitted storage domain.
+They follow from
+$D=integral_0^1 (1-theta) Z'(a+theta(b-a)) dif theta$.
+For $a != b$, the first row fixes the mean head. At $a=b$, it is only $0=0$;
+the second row fixes $H=Z(a)$ without a direction binary or a volume-change
+threshold. Local dispatch and replay evaluate the segment integral directly.
+The global model subtracts one common elevation reference from $Z$ and
+integrates that shifted level, which leaves the equations unchanged while
+reducing cancellation. Polynomial storage uses @eq:polynomialhead directly.
 
 For a turbine table, let $q_i$ be the sorted union of the original discharge
 knots. These coordinates partition the interpolants; they are not newly

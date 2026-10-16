@@ -78,6 +78,13 @@ input arrays are read-only. `simulate` returns `HydraulicTrajectory`, and
 `forward_step` returns `HydraulicStep`. Physical convergence can coexist with
 an operating-limit violation.
 
+`head(reservoir, volume)` returns the surface elevation. The interval equations
+instead use `mean_head(reservoir, before, after)`, the volume-averaged elevation
+and discrete gradient of stored potential. This method integrates polynomial
+and piecewise-linear data, including crossings of table knots and equal endpoint
+volumes. The same equation is used by simulation, dispatch, global optimization
+and validation; see [hydraulic equations](hydraulics.md).
+
 `SoftConstraint` declares a separate bounded, priced operating or terminal
 restriction; see [penalty equations](operating-rules.md#explicit-penalty-limits).
 `Schedule.soft_slacks` contains `SoftConstraintSlack` records with `name`,

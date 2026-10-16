@@ -189,8 +189,9 @@ function _build_global_dispatch(
     @variable(m, rq[1:D, 1:T]>=0)
     @variable(m, 0<=a[1:D, 1:T]<=1)
     @variable(m, shortfall_release[1:D, 1:T]>=0)
-    reservoir_levels=Matrix{Union{Nothing,_TensorTableGraph}}(nothing,R,T)
     reservoir_vertices=Matrix{Union{Nothing,_TensorTableGraph}}(nothing,R,T+1)
+    reservoir_potentials=Matrix{Union{Nothing,_StoragePotentialGraph}}(nothing,R,T+1)
+    reservoir_slopes=Matrix{Union{Nothing,VariableRef}}(nothing,R,T)
     tunnel_losses=Matrix{Union{Nothing,_TunnelLossGraph}}(nothing,E,T)
     plant_heads=Dict{Tuple{Symbol,Int},_PlantHeadGraph}()
     generator_graphs=Matrix{_GeneratorPowerGraph}(undef,G,T)
@@ -220,24 +221,27 @@ function _build_global_dispatch(
             set_start_value(v[i, t], r.v0/r.vmax)
         end
         fix(v[i, 1], r.v0/r.vmax; force = true)
+        if r.level_curve!==nothing
+            reference_volume=minimum(view(domains.lower,i,:))
+            for t in 1:(T+1)
+                graph=_global_tensor_table_graph!(m,r.level_curve,V[i,t],
+                    domains.lower[i,t],domains.upper[i,t];name=Symbol("level_vertex_",i,"_",t))
+                reservoir_vertices[i,t]=graph
+                reservoir_potentials[i,t]=_global_storage_potential!(m,r.level_curve,
+                    graph,reference_volume,250r.vmax;name=Symbol("potential_",i,"_",t))
+            end
+        end
         for t in 1:T
             set_lower_bound(h[i, t], node_bounds[(r.name, t)][1]/250)
             set_upper_bound(h[i, t], node_bounds[(r.name, t)][2]/250)
-            mid=(V[i, t]+V[i, t + 1])/2
-            midlo=(domains.lower[i, t]+domains.lower[i, t + 1])/2
-            midhi=(domains.upper[i, t]+domains.upper[i, t + 1])/2
-            graph=r.level_curve===nothing ? nothing :
-                  _global_tensor_table_graph!(
-                m,
-                r.level_curve,
-                mid,
-                midlo,
-                midhi;
-                name = Symbol("level_", i, "_", t),
-            )
-            reservoir_levels[i,t]=graph
-            level=graph===nothing ? r.z0+r.slope*mid+r.curvature*mid^2 : graph.y
-            @constraint(m, (H[i, t]-level)/250==0)
+            if r.level_curve===nothing
+                @constraint(m,(H[i,t]-mean_head(r,V[i,t],V[i,t+1]))/250==0)
+            else
+                reservoir_slopes[i,t]=_global_storage_mean_slope!(m,r,V[i,t],V[i,t+1],H[i,t],
+                    reservoir_vertices[i,t],(reservoir_potentials[i,t],reservoir_potentials[i,t+1]),
+                    min(domains.lower[i,t],domains.lower[i,t+1]),
+                    max(domains.upper[i,t],domains.upper[i,t+1]);name=Symbol("mean_slope_",i,"_",t))
+            end
         end
     end
     level_at_vertex=(i,t)->begin
@@ -774,7 +778,8 @@ function _build_global_dispatch(
         shared_heads,
         node_bounds,
         gates,
-        graphs = (;reservoir_levels,reservoir_vertices,tunnel_losses,plant_heads,generator_graphs,river_graphs),
+        graphs = (;reservoir_vertices,reservoir_potentials,reservoir_slopes,
+            tunnel_losses,plant_heads,generator_graphs,river_graphs),
     )
     _add_power_bounds!(b,c)
     joint && _add_power_hull!(b,c)

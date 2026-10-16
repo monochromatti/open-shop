@@ -146,7 +146,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         )
         record(
             "head_storage_$(r.name)",
-            [H[i, t]-head(r, (V[i, t]+V[i, t + 1])/2) for t in 1:T],
+            [H[i, t]-mean_head(r, V[i, t], V[i, t + 1]) for t in 1:T],
         )
     end
     for (i, j) in enumerate(s.junctions)

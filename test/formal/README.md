@@ -19,7 +19,7 @@ lake env lean CheckAxioms.lean
 `lean-toolchain` pins Lean 4.24.0. The Lake manifest pins mathlib and its
 transitive dependencies. Neither is needed to install or use the Julia package.
 CI builds these proofs and checks every declaration in the `OpenSHOP` namespace,
-including generated auxiliaries. There are 52 explicitly stated theorems.
+including generated auxiliaries. There are 63 explicitly stated theorems.
 Only Lean's standard logical axioms (`propext`, `Classical.choice`, `Quot.sound`)
 are allowed. Proof placeholders and additional axioms fail that check.
 
@@ -30,6 +30,7 @@ are allowed. Proof placeholders and additional axioms fail that check.
 | `OpenSHOP/Interpolation.lean` | Hermite coefficients; SOS2 cubic correction and product bounds; affine cell reparameterization; signed tensor-product moment; corner partition; degree-four/two Bernstein conversion and basis partitions; coefficient enclosure implication; implicit electrical-power inversion | `curves.jl`, `polynomial_tables.jl`, `tensor_tables.jl`, `power_hull.jl`, `power_bounds.jl` |
 | `OpenSHOP/Commitment.lean` | Exact binary products for signed variables; positive-power head implication and its idle counterexample; binary transition rows; storage interval propagation; signed on-head bounds; conditional objective-gap implication | `algebra.jl`, `joint_states.jl`, `global_bounds.jl`, `power_hull.jl`, `solve.jl` |
 | `OpenSHOP/Routing.lean` | Convex transfer fractions; quadratic released transfers; cohort inventory partition; causal rectangular-cohort arrivals; window additivity; constant-release refinement | `routing.jl`, `temporal.jl`, `distributed_routing.jl` |
+| `OpenSHOP/Integration.lean` | Polynomial and linear-cell chain rules; reversal and diagonal limits; exact quadratic potential graph; weighted mean-slope bounds; global head-graph projection; telescoping work; weighted network incidence and passive closed-network dissipation | `storage_integration.jl`, `storage_tables.jl`, `hydraulic_residual.jl`, `global_model.jl` |
 
 This mapping is reviewed by humans; there is no automatic equivalence proof
 between Lean definitions and Julia source. The interpolation proofs concern a
@@ -40,8 +41,16 @@ CDF is causal and monotone; they do not verify the complete routing integrator.
 The gap theorem assumes a genuine enclosing real bound and does not certify
 SCIP output.
 
+The energy proofs concern exact real arithmetic. Mean-slope bounds assume
+nonnegative integration weights summing to one half; the segment-weight identity
+is checked separately. The complete floating-point segment loop and its JuMP
+translation are not verified. The network theorem covers direct internal
+transfers, not the omitted mechanical-energy dynamics of delayed rivers.
+
 The [model validity guide](../../docs/model-validity.md) explains the physical
 assumptions and numerical limits. `../model_consistency_tests.jl` contains the
-midpoint energy and nonuniqueness examples and the pressure-reference regression.
+nonuniqueness examples and the pressure-reference regression.
+`../storage_integration_tests.jl` checks energy balance and optimization with the
+new discrete gradient, including original and refined closed storage cycles.
 `../zero_minimum_tests.jl` checks that both local and global optimization retain
 an idle committed unit at negative permitted head.

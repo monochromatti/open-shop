@@ -100,7 +100,7 @@ Reservoirs accept `volume_ramp_up`/`volume_ramp_down` in Mm³/hour and
 `level_ramp_up`/`level_ramp_down` in metres/hour. These compare storage or level
 at consecutive grid vertices, with rate integrals over the full interval.
 Level limits use `head(V[t+1])-head(V[t])`, including nonlinear or tabulated
-head–storage curves, rather than midpoint hydraulic head. Initial storage
+head–storage curves, rather than volume-averaged interval head. Initial storage
 already supplies the first vertex. These are limits on the discrete trajectory;
 they do not establish a continuous-time derivative bound.
 

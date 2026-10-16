@@ -110,7 +110,7 @@ efficiency is `0.95`.
 
 Reservoir elevation is `98 + V` metres, initial storage is `2 Mm³`, and inflow
 is `2 m³/s`. Releasing `4 m³/s` in each of two one-hour intervals removes
-`0.0072 Mm³` per interval. The midpoint heads are `99.9964` and `99.9892 m`.
+`0.0072 Mm³` per interval. The interval heads are `99.9964` and `99.9892 m`.
 Electrical output is `P = 0.00981 × 4 × h × 0.94 × 0.95 MW`.
 At prices `50` and `100` currency/MWh, revenue is `50 P₁ + 100 P₂`.
 Terminal water value and transition costs are zero in this example.

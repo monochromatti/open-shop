@@ -93,6 +93,9 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         for (i,r) in enumerate(s.reservoirs), t in 1:(T+1)
             put(b.v[i,t],physical.storage[i,t]/r.vmax)
             table(b.graphs.reservoir_vertices[i,t],r.level_curve,physical.storage[i,t])
+            potential=b.graphs.reservoir_potentials[i,t]
+            potential===nothing || put(potential.y,_level_potential(r.level_curve,
+                potential.reference_volume,potential.reference_head,physical.storage[i,t])/potential.scale)
         end
         for i in axes(physical.head,1), t in 1:T
             put(b.h[i,t],physical.head[i,t]/250)
@@ -166,8 +169,9 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             end
         end
         for (i,r) in enumerate(s.reservoirs), t in 1:T
-            table(b.graphs.reservoir_levels[i,t],r.level_curve,
-                (physical.storage[i,t]+physical.storage[i,t+1])/2)
+            slope=b.graphs.reservoir_slopes[i,t]
+            slope===nothing || put(slope,_mean_level_data(r.level_curve,
+                physical.storage[i,t],physical.storage[i,t+1])[2]*r.vmax/250)
         end
         assessment=soft_constraint_assessment(c,physical)
         for (variables,result) in zip(b.soft.slacks,assessment.slacks)

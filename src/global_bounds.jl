@@ -122,11 +122,10 @@ function _global_capacity_bounds(c, nd, rd)
     hlo=zeros(R, T)
     hhi=similar(hlo)
     for (i, r) in enumerate(s.reservoirs), t in 1:T
-        hlo[i, t], hhi[i, t]=_global_level_range(
-            r,
-            (lower[i, t]+lower[i, t + 1])/2,
-            (upper[i, t]+upper[i, t + 1])/2,
-        )
+        # Validated level curves increase on the hard storage domain, so their
+        # volume average increases with either endpoint independently.
+        hlo[i,t]=mean_head(r,lower[i,t],lower[i,t+1])
+        hhi[i,t]=mean_head(r,upper[i,t],upper[i,t+1])
         hlo[i, t]-=1e-7
         hhi[i, t]+=1e-7
     end

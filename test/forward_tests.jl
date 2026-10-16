@@ -72,7 +72,7 @@ using Test
     for _ in 1:100
         mid=(lo+hi)/2
         vmean=(2+mid)/2
-        f=mid-2-0.0036*(2-5*0.7*sqrt(20+3vmean+0.5vmean^2-10))
+        f=mid-2-0.0036*(2-5*0.7*sqrt(20+3vmean+0.5*(vmean^2+(mid-2)^2/12)-10))
         if f>0
             hi=mid
         else

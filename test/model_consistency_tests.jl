@@ -1,34 +1,3 @@
-@testset "Curved storage levels have a quantified midpoint energy error" begin
-    curvature=0.2
-    lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,curvature=curvature,
-        v0=1.0,vmin=0.5,vmax=3.5,water_value=0.0)
-    generators=[Generator(name=name,plant=plant,mode=mode,qmin=0.0,qmax=600.0,
-        pmin=0.0,pmax=1000.0,hmin=90.0,hmax=120.0,hbest=100.0,qbest=300.0,
-        efficiency=1.0,qcurvature=0.0,hcurvature=0.0,initial_on=0,
-        minup=0.0,mindown=0.0,startup=0.0) for (name,plant,mode) in
-        ((:Turbine,:Generation,:generate),(:Pump,:Pumping,:pump))]
-    system=HydroSystem(reservoirs=[lake],boundaries=[Boundary(name=:Sea,head=0.0)],
-        plants=[Plant(name=:Generation,source=:Lake,target=:Sea,pmax=1000.0,ramp=nothing),
-            Plant(name=:Pumping,source=:Sea,target=:Lake,pmax=1000.0,ramp=nothing)],generators=generators)
-    c=ScheduleCase(name="ideal closed water cycle",system=system,grid=[0.0,1.0,2.0,3.0],
-        prices=ones(3))
-    u=[0 1 1;1 0 0]
-    q=[0.0 1.0 1.0;2.0 0.0 0.0]/0.0036
-    coarse=dispatch_from_controls(c,u,q,zeros(0,3))
-    @test validate(c,coarse)["valid"]
-    @test coarse.storage≈[1.0 3.0 2.0 1.0] atol=1e-10
-    # Integral of level dV returns to zero. Midpoint work differs by
-    # curvature*ΔV³/12 on each step, yielding this artificial electrical gain.
-    gain=(0.00981/0.0036)*curvature/2
-    @test sum(net_power(c,coarse))≈gain atol=1e-9
-    for factor in (2,4)
-        fine=simulate(c,q,zeros(0,3);commitment=u,grid=OpenSHOP.refined_grid(c.grid;factor))
-        @test fine.converged
-        @test fine.storage[1,end]≈lake.v0 atol=1e-10
-        @test sum(net_power(c,fine).*diff(fine.grid))≈gain/factor^2 atol=1e-9
-    end
-end
-
 @testset "Passivity alone does not imply a unique midpoint step" begin
     conductances=[3.0,1.0,1/3]/0.0036
     response=LevelFlowCurve([2.25,2.5,2.75],

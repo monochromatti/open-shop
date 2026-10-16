@@ -5,9 +5,9 @@ struct HydraulicBoundViolations
     river_flow::Float64
 end
 
-"""One independently integrated midpoint step.
+"""One independently integrated discrete-gradient step.
 
-`storage` is endpoint storage in Mm³, `head` is midpoint head in metres,
+`storage` is endpoint storage in Mm³, `head` is interval head in metres,
 `power` is MW, and all flow arrays are m³/s. Each step owns its output arrays;
 later integration steps do not overwrite them. Operating-bound exceedances
 are reported separately from convergence of the physical equations.

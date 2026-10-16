@@ -31,15 +31,14 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
     bounds=Matrix{Tuple{Float64,Float64}}(undef,length(names),T)
     reference_head=fill(NaN,length(names),T)
     for (i,r) in enumerate(s.reservoirs),t in 1:T
-        vref=reference.storage===nothing ? r.v0 :
-            (reference.storage[i,t]+reference.storage[i,t+1])/2
-        slope=r.level_curve===nothing ? r.slope+2r.curvature*vref :
-            table_slope(r.level_curve,vref;extrapolation=:linear)
-        intercept=head(r,vref)-slope*vref
-        reference_head[i,t]=head(r,vref)
-        H[i,t]=intercept+slope*(V[i,t]+V[i,t+1])/2
+        a,b=reference.storage===nothing ? (r.v0,r.v0) :
+            (reference.storage[i,t],reference.storage[i,t+1])
+        da,db=_mean_head_partials(r,a,b)
+        reference_head[i,t]=mean_head(r,a,b)
+        H[i,t]=reference_head[i,t]+da*(V[i,t]-a)+db*(V[i,t+1]-b)
         lo1,hi1=storage_bounds(c,r,c.grid[t]);lo2,hi2=storage_bounds(c,r,c.grid[t+1])
-        bounds[i,t]=extrema((intercept+slope*(lo1+lo2)/2,intercept+slope*(hi1+hi2)/2))
+        bounds[i,t]=extrema(reference_head[i,t]+da*(x-a)+db*(y-b)
+            for x in (lo1,hi1),y in (lo2,hi2))
     end
     for (j,node) in enumerate(s.junctions),t in 1:T
         i=length(s.reservoirs)+j

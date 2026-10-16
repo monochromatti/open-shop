@@ -202,8 +202,8 @@ function _solve(
         "tunnel_opening_fixed" => fixed_tunnel_opening !== nothing,
         "certificate_scope" =>
             fixed_u === nothing && fixed_tunnel_opening===nothing ?
-            "declared discrete midpoint model; numerical global bound" :
-            "declared discrete midpoint model with "*join(
+            "declared discrete-gradient model; numerical global bound" :
+            "declared discrete-gradient model with "*join(
                 vcat(fixed_u===nothing ? String[] : ["fixed commitment"],
                     fixed_tunnel_opening===nothing ? String[] : ["fixed tunnel openings"])," and ")*
                 "; numerical global bound",

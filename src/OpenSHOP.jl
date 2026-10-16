@@ -9,9 +9,11 @@ include("types.jl")
 include("results.jl")
 include("algebra.jl")
 include("curve_physics.jl")
+include("storage_integration.jl")
 include("tunnel_physics.jl")
 include("polynomial_tables.jl")
 include("tensor_tables.jl")
+include("storage_tables.jl")
 include("distributed_routing.jl")
 include("channel_physics.jl")
 include("operations.jl")
@@ -83,6 +85,7 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     nodes,
     nodeindex,
     head,
+    mean_head,
     plantof,
     tunnel_opening_schedule,
     validate_tunnel_openings,
