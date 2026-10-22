@@ -42,14 +42,14 @@ end
     @test abs(bad.head[1]-bad.head[2]-only(bad.tunnel_q)^2) > 1.0
 end
 
-@testset "Open tunnels recover signed flow from a zero-flow guess" begin
-    for delta in (-10.0, 10.0)
+@testset "Open tunnels recover signed flow from zero and opposed guesses" begin
+    for delta in (-4.0, 4.0), guess in (0.0, -2sign(delta), 5sign(delta))
         system = HydroSystem(boundaries=[Boundary(name=:A, head=100.0+delta),
                 Boundary(name=:B, head=100.0)],
             tunnels=[Tunnel(name=:Link, source=:A, target=:B, resistance=1.0,
                 capacity=10.0)])
         step = forward_step(system, Float64[], 1.0, Float64[], Float64[], Float64[];
-            initial_guess=[0.0])
+            initial_guess=[guess])
         @test step.converged
         @test only(step.tunnel_q) ≈ sign(delta)*sqrt(abs(delta)) atol=1e-9
     end

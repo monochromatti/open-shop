@@ -143,13 +143,15 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
             x.=initial_guess
         end
     end
-    # q|q| has zero derivative at q=0. Seed an open, unbalanced tunnel from
-    # its exact pressure law rather than stalling at that Newton stationary point.
+    # q|q| has zero derivative at q=0. A zero or opposed flow guess can land
+    # there during Newton. Seed those guesses from the passive pressure law;
+    # retain warm flows that already have the pressure difference's direction.
     h = interval_heads!(work.head, x, data)
     for (j, tunnel) in enumerate(s.tunnels)
-        if iszero(x[base + j]) && ta[j] > 0
-            source, target = topology.tunnel_nodes[j]
-            x[base + j] = tunnel_flow(tunnel, h[source] - h[target], ta[j])
+        source, target = topology.tunnel_nodes[j]
+        difference = h[source] - h[target]
+        if ta[j] > 0 && sign(x[base + j]) != sign(difference)
+            x[base + j] = tunnel_flow(tunnel, difference, ta[j])
         end
     end
     iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations,head_reference)
