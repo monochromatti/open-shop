@@ -285,7 +285,23 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
     residual
 end
 
-"""Damped Newton iteration with central differences and reusable residual buffers.
+"""Test every equation, allowing reservoir-coordinate rounding in water balances.
+
+Two ULPs of storage, divided by `0.0036Δt`, set the flow-residual allowance
+for rounding the endpoint volume. Algebraic equations retain the
+requested tolerance. This allowance does not relax physical operating bounds.
+"""
+function hydraulic_converged(residual, x, data::HydraulicStepData, tolerance)
+    nr = length(data.previous_storage)
+    for i in eachindex(residual)
+        rounding = i <= nr ?
+            2eps(max(abs(x[i]), abs(data.previous_storage[i]))) / (0.0036 * data.duration) : 0.0
+        isfinite(residual[i]) && abs(residual[i]) <= tolerance + rounding || return false
+    end
+    true
+end
+
+"""Damped Newton iteration with automatic derivatives of the hydraulic residual.
 
 One head column per pressure nullspace is fixed. All residual rows remain, so
 Julia's rectangular `\\` solve uses least squares for those components. This
@@ -293,6 +309,13 @@ cannot hide incompatible water injections by discarding a conservation row.
 """
 function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations,
     head_reference=nothing)
+    isempty(x) && return 0
+    solve_hydraulics!(x, data, work, ForwardDiff.Chunk(x); tolerance, max_iterations,
+        head_reference)
+end
+
+function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.Chunk{N};
+    tolerance, max_iterations, head_reference=nothing) where {N}
     floating = _floating_pressure_components(
         data.system,
         data.opening,
@@ -301,24 +324,22 @@ function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iter
     )
     _normalize_pressure_references!(x, data.system, floating;reference=head_reference)
     columns = isempty(floating) ? collect(eachindex(x)) : setdiff(eachindex(x), first.(floating))
-    residual, plus, minus, trial, step = (similar(x) for _ in 1:5)
-    jacobian = Matrix{Float64}(undef, length(x), length(columns))
+    residual, plus, trial, step = (similar(x) for _ in 1:4)
+    hydraulic_residual!(residual, x, data, work)
+    hydraulic_converged(residual, x, data, tolerance) && return 0
+    # An operation tag gives the scratch arrays a concrete dual-number type
+    # before the residual closure is constructed. Reuse all derivative buffers.
+    tag = ForwardDiff.Tag((hydraulic_residual!,), eltype(x))
+    dual_work = HydraulicWorkspace(data, ForwardDiff.Dual{typeof(tag),eltype(x),N})
+    equations! = (r, z) -> hydraulic_residual!(r, z, data, dual_work)
+    config = ForwardDiff.JacobianConfig(equations!, residual, x, chunk, tag)
+    full_jacobian = Matrix{Float64}(undef, length(x), length(x))
+    jacobian = isempty(floating) ? full_jacobian : view(full_jacobian, :, columns)
     iterations = 0
     for k in 1:max_iterations
         hydraulic_residual!(residual, x, data, work)
-        maximum(abs, residual; init = 0.0) <= tolerance && break
-        copyto!(trial, x)
-        for (column, j) in enumerate(columns)
-            ε = 1e-5 * max(abs(x[j]), 1.0)
-            trial[j] = x[j] + ε
-            hydraulic_residual!(plus, trial, data, work)
-            trial[j] = x[j] - ε
-            hydraulic_residual!(minus, trial, data, work)
-            for i in eachindex(residual)
-                jacobian[i, column] = (plus[i] - minus[i]) / (2ε)
-            end
-            trial[j] = x[j]
-        end
+        hydraulic_converged(residual, x, data, tolerance) && break
+        ForwardDiff.jacobian!(full_jacobian, equations!, residual, x, config)
         direction = try
             -(jacobian \ residual)
         catch error

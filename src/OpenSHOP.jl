@@ -1,5 +1,6 @@
 module OpenSHOP
 using JuMP, Ipopt, SCIP, JSON3, LinearAlgebra, Random, SHA, Dates, Statistics
+import ForwardDiff
 const MOI=JuMP.MOI
 include("routing.jl")
 using .RiverRouting
