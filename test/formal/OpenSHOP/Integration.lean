@@ -2,6 +2,18 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- A flow-unit stopping allowance is exactly a volume-unit balance allowance.
+This is a real-arithmetic unit conversion, not a floating-point error bound. -/
+theorem storage_balance_rounding_units (before after rate step tolerance rounding : ℝ)
+    (hs : 0 < step) :
+    |(after-before)/step-rate| ≤ tolerance+rounding/step ↔
+      |after-before-step*rate| ≤ step*tolerance+rounding := by
+  have identity : (after-before)/step-rate = (after-before-step*rate)/step := by
+    field_simp
+  rw [identity, abs_div, abs_of_pos hs, div_le_iff₀ hs,
+    add_mul, div_mul_cancel₀ _ (ne_of_gt hs)]
+  rw [mul_comm tolerance step]
+
 /-- The polynomial discrete gradient has no division by the volume change. -/
 theorem quadratic_storage_chain_rule (a b z slope curvature : ℝ) :
     (b-a)*(z+slope*((a+b)/2)+curvature*(((a+b)/2)^2+(b-a)^2/12)) =

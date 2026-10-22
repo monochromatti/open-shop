@@ -298,7 +298,12 @@ function river_law_value(r, h, a; inflow=r.inflow, capacity=r.capacity)
     r.discharge_curve!==nothing &&
         return a*table_value(r.discharge_curve, h; extrapolation = :linear)
     r.law==:controlled && return max(0.0,capacity-inflow)*a
-    r.law==:orifice && return r.coefficient*a*sqrt(max(h-r.crest, 0.0))
+    if r.law==:orifice
+        # Use the dry branch at the crest; the wet square-root derivative is
+        # singular there. A closed gate has zero head derivative at every level.
+        (a==0 || r.coefficient==0 || ForwardDiff.value(h)<=r.crest) && return zero(h)
+        return r.coefficient*a*sqrt(h-r.crest)
+    end
     r.law==:weir && return r.coefficient*max(h-r.crest, 0.0)^1.5
     throw(ArgumentError("unsupported river law"))
 end

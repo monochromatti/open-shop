@@ -17,6 +17,10 @@ are vectors, and transfer inputs are matrices.
 Optional `head_reference[node]` supplies a Newton head guess and selects the
 constant pressure reference in floating junction components. It imposes no
 additional head equation and cannot override a hydraulic law or head bound.
+Newton uses automatic derivatives. Water-balance convergence includes a
+two-ULP allowance for stored-volume rounding, converted to m³/s; other equations
+use `tolerance` directly. `residual` retains the unadjusted maximum equation
+error, so it can exceed `tolerance` even when `converged` is true.
 """
 function forward_step(
     s::HydroSystem,
@@ -139,6 +143,15 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
             x.=initial_guess
         end
     end
+    # q|q| has zero derivative at q=0. Seed an open, unbalanced tunnel from
+    # its exact pressure law rather than stalling at that Newton stationary point.
+    h = interval_heads!(work.head, x, data)
+    for (j, tunnel) in enumerate(s.tunnels)
+        if iszero(x[base + j]) && ta[j] > 0
+            source, target = topology.tunnel_nodes[j]
+            x[base + j] = tunnel_flow(tunnel, h[source] - h[target], ta[j])
+        end
+    end
     iterations = solve_hydraulics!(x, data, work; tolerance, max_iterations,head_reference)
     h = interval_heads!(work.head, x, data)
     for k in eachindex(s.tunnels)
@@ -187,7 +200,9 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
         boundary!(r.source, -(release[i]-data.river_inflow[i]))
         boundary!(r.target, arrival[i])
     end
-    residual = maximum(abs, hydraulic_residual!(similar(x), x, data, work); init = 0.0)
+    residual_vector = hydraulic_residual!(similar(x), x, data, work)
+    residual = maximum(abs, residual_vector; init = 0.0)
+    converged = hydraulic_converged(residual_vector, x, data, tolerance)
     domain=all(isfinite, vcat(x, h, pw, release, arrival)) &&
            all(
                _forward_domain(r, release[d];
@@ -226,7 +241,7 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
     )
     HydraulicStep(
         x[1:nr], h, x[(base + 1):nq], copy(ta), release, injection, arrival,
-        gh, copy(generator_q), pw, residual, isfinite(residual) && residual<=tolerance && domain,
+        gh, copy(generator_q), pw, residual, converged && domain,
         iterations, exchange, domain, violations,
         all(
             is_channel(s.rivers[d]) ||

@@ -78,6 +78,14 @@ input arrays are read-only. `simulate` returns `HydraulicTrajectory`, and
 `forward_step` returns `HydraulicStep`. Physical convergence can coexist with
 an operating-limit violation.
 
+The independent hydraulic solve uses automatic derivatives of its equations.
+Its `tolerance` applies directly to algebraic laws. Reservoir water balances
+also allow two floating-point spacings of the endpoint storage, converted to
+m³/s by dividing by `0.0036 * duration`. This accounts for rounding a small
+volume change into a large stored volume. `residual` reports the raw maximum
+equation error, so it can exceed `tolerance` when `converged` is true. Operating
+bounds and time-discretization checks remain separate.
+
 `head(reservoir, volume)` returns the surface elevation. The interval equations
 instead use `mean_head(reservoir, before, after)`, the volume-averaged elevation
 and discrete gradient of stored potential. This method integrates polynomial
