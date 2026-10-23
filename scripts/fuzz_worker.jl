@@ -159,10 +159,20 @@ function check_result!(report,c,result,stage,reference,options)
         known = max(known,result.solution.objective)
     end
     tolerance = 1e-5+1e-7max(1.0,abs(known))
+    function check_bound(name,bound,source)
+        if bound!==nothing && bound<known-tolerance &&
+           !any(f->f["kind"]=="invalid_upper_bound" && f["stage"]==name,report["findings"])
+            finding!(report,"invalid_upper_bound",name,Dict(
+                "source"=>source,"bound"=>bound,"known_feasible_objective"=>known))
+        end
+    end
     for (name,bound) in (("global_bound",result.global_bound),
         ("rejected_global_bound",get(result.diagnostics,"rejected_global_bound",nothing)))
-        bound===nothing || bound>=known-tolerance || finding!(report,"invalid_upper_bound",stage,
-            Dict("source"=>name,"bound"=>bound,"known_feasible_objective"=>known))
+        check_bound(stage,bound,name)
+    end
+    # A later solve may disprove a bound that enclosed all earlier incumbents.
+    for (name,previous) in get(report,"stages",Dict())
+        check_bound(name,previous["global_bound"],"global_bound")
     end
     if stage!="local" && result.status in ("INFEASIBLE","INFEASIBLE_OR_UNBOUNDED")
         finding!(report,"false_infeasibility",stage,result.status)

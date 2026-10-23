@@ -53,11 +53,17 @@ end
     # Running the stages in the opposite order must not call that a regression.
     r = report()
     r["stages"] = Dict("warm"=>Dict("objective"=>reference.objective+100,
-        "checks"=>Dict("audit"=>Dict("valid"=>true))))
+        "global_bound"=>nothing,"checks"=>Dict("audit"=>Dict("valid"=>true))))
     local_result = SolveResult(Dict("status"=>"LOCALLY_SOLVED","accepted"=>true,
         "solution"=>reference))
     FuzzWorker.check_result!(r,data.case,local_result,"local",reference,options)
     @test !any(f["kind"]=="local_objective_regression" for f in r["findings"])
+    r = report()
+    r["stages"] = Dict("warm"=>Dict("objective"=>reference.objective-200,
+        "global_bound"=>reference.objective-100,
+        "checks"=>Dict("audit"=>Dict("valid"=>true))))
+    FuzzWorker.check_result!(r,data.case,local_result,"local",reference,options)
+    @test any(f["kind"]=="invalid_upper_bound" && f["stage"]=="warm" for f in r["findings"])
 end
 
 @testset "Campaign ledger integrates inflow changes inside a control interval" begin

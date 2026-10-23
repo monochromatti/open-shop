@@ -71,7 +71,8 @@ intermediate grid edge to check restart histories and river cohorts.
 Failures include an accepted invalid schedule, exceptions or process crashes,
 false infeasibility despite a valid reference, a global upper bound below a known
 feasible objective, a rejected physical warm start, changed fixed controls, and
-an unsupported global-certificate claim. Physical audits remain numerical checks;
+an unsupported global-certificate claim. Each new feasible candidate is compared
+with bounds from earlier stages as well as its own bound. Physical audits remain numerical checks;
 the campaign is not a proof of correctness or exhaustive domain coverage.
 
 Time limits without a schedule are `search_inconclusive` warnings. Other local
