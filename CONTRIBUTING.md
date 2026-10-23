@@ -6,6 +6,10 @@ Run the test suite before submitting a change:
 ./scripts/julia.sh -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 ```
 
+For changes to physical equations or numerical solvers, also consider an
+overnight [optimization fuzz campaign](docs/fuzzing.md). It saves exact synthetic
+inputs and solver diagnostics; it is separate from the per-PR suite.
+
 Physical changes need an independent conservation or equation check, not only
 a test of the JuMP model that implements them. Solver changes should preserve
 the distinction between feasibility, finer replay and global bound quality.
