@@ -59,6 +59,11 @@ establish that the optimizers excluded a feasible solution. A validated referenc
 does establish feasibility of the original interval model; it need not be optimal
 or pass finer replay.
 
+Routed networks start from a steady prehistory: station outfalls, natural inflow
+and both sides of each split obey conservation, with station flows consistent
+with their initial on/off histories. Analytic outlets in the channel family are
+instantaneous, so no arbitrary pre-horizon outlet inventory is invented.
+
 ## Checks and interpretation
 
 Each input passes through the package's JSON admission rules. Each returned

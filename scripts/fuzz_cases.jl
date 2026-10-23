@@ -151,8 +151,8 @@ function rivers(rng,n,grid)
         inflow=uniform(rng,0.0,1.0)) for i in 1:n]
     fraction = uniform(rng,0.1,0.9)
     append!(reaches,[
-        reach(rng,:Left,:Fork,:Merge;allocation=fraction,distributed,inflow=0.5),
-        reach(rng,:Right,:Fork,:Merge;allocation=1-fraction,distributed),
+        reach(rng,:Left,:Fork,:Merge;allocation=fraction,capacity=20.0n,distributed,inflow=0.5),
+        reach(rng,:Right,:Fork,:Merge;allocation=1-fraction,capacity=20.0n,distributed),
         reach(rng,:Downstream,:Merge,n>=4 ? :LowerFork : :Receiver;capacity=300.0,distributed)])
     if n>=4
         fraction = uniform(rng,0.1,0.9)
@@ -165,6 +165,16 @@ function rivers(rng,n,grid)
     u,q = controls(rng,units,T)
     gate = zeros(length(reaches),T)
     gate[end,:] .= rand(rng,(0.0,0.25,0.5,0.75,1.0),T)
+    # A steady prehistory obeys the same split/merge conservation laws. Its
+    # station flows also agree with the supplied initial commitment ages.
+    outfalls = Dict(p.discharge_river=>q[i,1] for (i,p) in enumerate(plants))
+    incoming = Dict{Symbol,Float64}()
+    for (i,r) in enumerate(reaches)
+        flow = r.law==:junction ? r.allocation*get(incoming,r.source,0.0)+
+            get(outfalls,r.name,0.0)+r.inflow : r.capacity*gate[i,1]
+        reaches[i] = updated(r;history_release=fill(flow,length(r.history_release)))
+        incoming[r.target] = get(incoming,r.target,0.0)+flow
+    end
     system = HydroSystem(;reservoirs=lakes,plants,generators=units,rivers=reaches,
         boundaries=[Boundary(name=:Sea,head=0.0)])
     (;system,u,q,gate,opening=zeros(0,T),operations=OperationalSeries[])
@@ -209,7 +219,8 @@ function channels(rng,n,grid)
     outlet = reach(rng,:Outlet,lakes[end].name,:Sea;capacity=20.0,
         law=law==:tabulated ? :orifice : law,
         coefficient=uniform(rng,0.5,2.0),crest)
-    outlet = updated(outlet;allow_dry=true)
+    outlet = updated(outlet;allow_dry=true,deterministic_delay=0.0,
+        history_release=zeros(length(outlet.history_release)))
     if law==:tabulated
         outlet=updated(outlet;discharge_curve=TableCurve([95.0,100.0,105.0],[0.0,1.0,5.0]))
     end

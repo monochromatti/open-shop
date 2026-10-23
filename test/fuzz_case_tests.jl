@@ -91,3 +91,19 @@ end
         @test saved.q==expected.q
     end
 end
+
+@testset "Generated river histories conserve flow through consecutive forks" begin
+    for size in ("small","medium","large")
+        data = FuzzWorker.FuzzCases.generate_case(7,"rivers",size)
+        s = data.case.system
+        for r in s.rivers
+            r.law==:junction || continue
+            upstream = sum(last(p.history_release) for p in s.rivers if p.target==r.source;init=0.0)
+            local_flow = sum(data.q[i,1] for (i,g) in enumerate(s.generators)
+                if plantof(s,g).discharge_river==r.name;init=0.0)
+            expected = r.allocation*upstream+local_flow+r.inflow
+            @test maximum(abs,r.history_release.-expected)<1e-9
+            @test expected<=r.capacity
+        end
+    end
+end
