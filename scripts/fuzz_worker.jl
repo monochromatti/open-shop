@@ -183,9 +183,9 @@ function check_result!(report,c,result,stage,reference,options)
         kind = occursin("LIMIT",result.status) || occursin("BUDGET_EXHAUSTED",result.status) ?
             "search_inconclusive" : "solver_failure"
         finding!(report,kind,stage,result.status;severity="warning")
-    elseif stage=="local" && result.objective<known-tolerance
+    elseif stage=="local" && result.objective<reference.objective-tolerance
         finding!(report,"local_objective_regression",stage,
-            Dict("reference"=>known,"returned"=>result.objective);severity="warning")
+            Dict("reference"=>reference.objective,"returned"=>result.objective);severity="warning")
     end
     Dict("status"=>result.status,"accepted"=>result.accepted,"objective"=>result.objective,
         "global_bound"=>result.global_bound,"relative_gap"=>result.relative_gap,

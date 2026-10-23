@@ -49,6 +49,15 @@ end
         FuzzWorker.check_result!(r,data.case,result,"warm",reference,options)
         @test any(f["severity"]=="error" for f in r["findings"])
     end
+    # A free-commitment search can outperform the fixed-control local problem.
+    # Running the stages in the opposite order must not call that a regression.
+    r = report()
+    r["stages"] = Dict("warm"=>Dict("objective"=>reference.objective+100,
+        "checks"=>Dict("audit"=>Dict("valid"=>true))))
+    local_result = SolveResult(Dict("status"=>"LOCALLY_SOLVED","accepted"=>true,
+        "solution"=>reference))
+    FuzzWorker.check_result!(r,data.case,local_result,"local",reference,options)
+    @test !any(f["kind"]=="local_objective_regression" for f in r["findings"])
 end
 
 @testset "Campaign ledger integrates inflow changes inside a control interval" begin
