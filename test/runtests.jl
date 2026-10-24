@@ -110,3 +110,4 @@ include("penalty_settings_tests.jl")
 include("unequal_turbine_grids_tests.jl")
 
 include("head_flow_rules_tests.jl")
+include("window_rules_tests.jl")

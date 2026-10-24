@@ -256,6 +256,7 @@ function _build_global_dispatch(
         graph.y
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    level_windows=constrain_level_windows!(m,c,level_at_vertex)
     constrain_gross_heads!(m,c,u,(i,t)->H[i,t],level_at_vertex;transitions)
     soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
@@ -700,7 +701,7 @@ function _build_global_dispatch(
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
-    constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
+    flow_integrals=constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
     river_operations=constrain_river_operations!(m,c,RQ;relaxed)
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
@@ -748,6 +749,11 @@ function _build_global_dispatch(
         end
     end
     _start_reserves!(reserves,c,warm)
+    if warm!==nothing
+        for (variable,value) in window_start_values(c,physical,flow_integrals,level_windows)
+            set_start_value(variable,value)
+        end
+    end
     b=(;
         reserves,
         m,
@@ -780,6 +786,7 @@ function _build_global_dispatch(
         shared_heads,
         node_bounds,
         gates,river_operations,
+        flow_integrals,level_windows,
         graphs = (;reservoir_vertices,reservoir_potentials,reservoir_slopes,
             tunnel_losses,plant_heads,generator_graphs,river_graphs),
     )

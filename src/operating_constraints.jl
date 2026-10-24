@@ -260,7 +260,7 @@ function operating_residuals(c,x)
         end
     end
     merge!(residuals,gross_head_residuals(c,x),flow_requirement_residuals(c,x),
-        river_operation_residuals(c,RQ))
+        river_operation_residuals(c,RQ),window_residuals(c,x))
     residuals
 end
 

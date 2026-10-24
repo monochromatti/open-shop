@@ -292,7 +292,7 @@ function generate_case(seed::Integer, family::AbstractString, size::AbstractStri
 end
 
 """Add operating restrictions around an independently reconstructed feasible schedule."""
-function restrict_case(seed, case, witness)
+function restrict_case(seed, case, witness;window_rules=true)
     rng = Xoshiro(seed ⊻ 0x1c4b7a21)
     s,grid = case.system,case.grid
     dt = diff(grid)
@@ -400,7 +400,35 @@ function restrict_case(seed, case, witness)
     soft = [SoftConstraint(name=:TerminalStorage,object=r.name,quantity=:volume,
         time=last(grid),lower=min(r.vmax,witness.storage[1,end]+0.3allowance),
         max_lower_slack=allowance,lower_cost=uniform(rng,100.0,30000.0))]
-    updated(case;system=updated(s;rivers,generators),operations,flow_requirements=requirements,soft_constraints=soft)
+    if !window_rules
+        return updated(case;system=updated(s;rivers,generators),operations,
+            flow_requirements=requirements,soft_constraints=soft)
+    end
+    middle=grid[clamp(div(length(grid),2)+1,2,length(grid)-1)]
+    hours=1.3first(dt)
+    requirements=[begin
+        q=OpenSHOP.observed_flow(case,rule,witness.generator_q,witness.river_release,
+            witness.arrival_volume,witness.tunnel_q)
+        a,b=first(grid)+0.25first(dt),last(grid)-0.25last(dt)
+        total=0.0036sum(max(0.0,min(b,grid[t+1])-max(a,grid[t]))*q[t]
+            for t in eachindex(dt))
+        margin=0.1abs(total)+1e-6
+        difference=maximum(q)-minimum(q)+1e-4
+        updated(rule;history_grid=[first(grid)-hours,first(grid)],history_flow=[first(q)],
+            volume_windows=[VolumeWindow(start_time=a,end_time=b,
+                min_volume=total-margin,max_volume=total+margin)],
+            rolling_ramps=[RollingRamp(;hours,up=difference,down=difference)],
+            period_ramps=[PeriodRamp(grid=[first(grid)-hours,first(grid),middle,last(grid)],
+                up=difference,down=difference)])
+    end for rule in requirements]
+    reservoirs=[begin
+        levels=head.(Ref(r),witness.storage[i,:])
+        difference=maximum(levels)-minimum(levels)
+        updated(r;level_windows=[LevelWindow(start_time=first(grid),end_time=last(grid),
+            max_change=1.1difference+1e-5)])
+    end for (i,r) in enumerate(s.reservoirs)]
+    updated(case;system=updated(s;rivers,generators,reservoirs),operations,
+        flow_requirements=requirements,soft_constraints=soft)
 end
 
 end

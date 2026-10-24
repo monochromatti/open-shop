@@ -38,8 +38,11 @@ function validate_flow_requirements(c)
 end
 
 function constrain_flow_requirements!(m,c,generator_q,release,arrivals,tunnel_q)
-    for rule in c.flow_requirements
+    integrals=NamedTuple{(:index,:volume),Tuple{Int,Vector{VariableRef}}}[]
+    for (i,rule) in enumerate(c.flow_requirements)
         observed=observed_flow(c,rule,generator_q,release,arrivals,tunnel_q)
+        windows=constrain_flow_windows!(m,c,rule,observed)
+        windows===nothing || push!(integrals,(index=i,volume=windows))
         for t in eachindex(c.prices)
             lo=opinterval(c,rule.name,:min_flow,t,rule.min_flow)
             hi=optional_operation(c,rule.name,:max_flow,t;default=rule.max_flow)
@@ -50,8 +53,9 @@ function constrain_flow_requirements!(m,c,generator_q,release,arrivals,tunnel_q)
                 hi===nothing || @constraint(m,observed[t]<=hi)
             end
         end
-        volume=rule.initial_volume+sum(0.0036*(c.grid[t+1]-c.grid[t])*observed[t]
-            for t in eachindex(c.prices);init=0.0)
+        volume=rule.initial_volume+(windows===nothing ?
+            sum(0.0036*(c.grid[t+1]-c.grid[t])*observed[t]
+                for t in eachindex(c.prices);init=0.0) : last(windows))
         if rule.min_volume!==nothing && rule.min_volume==rule.max_volume
             @constraint(m,volume==rule.min_volume)
         else
@@ -59,7 +63,7 @@ function constrain_flow_requirements!(m,c,generator_q,release,arrivals,tunnel_q)
             rule.max_volume===nothing || @constraint(m,volume<=rule.max_volume)
         end
     end
-    nothing
+    integrals
 end
 
 function flow_requirement_residuals(c,x)

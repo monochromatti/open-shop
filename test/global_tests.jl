@@ -195,7 +195,9 @@ end
     # counterexample to the lower of those purported upper bounds.
     data = FuzzWorker.FuzzCases.generate_case(2,"pressure","small")
     reference = FuzzWorker.reconstruct(data)
-    c = FuzzWorker.FuzzCases.restrict_case(2,data.case,reference)
+    # Preserve the original counterexample's operating domain. Newly generated
+    # window limits need not admit its independently known better schedule.
+    c = FuzzWorker.FuzzCases.restrict_case(2,data.case,reference;window_rules=false)
     initial = dispatch_from_controls(c,data.u,data.q,data.gate;tunnel_opening=data.opening)
     u = [1 1 1 1 1; 0 1 1 1 1]
     q = [1.4128023058253234 5.768442277750943 8.947747936893713 4.272118894763986 8.947747936893713;

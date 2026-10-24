@@ -23,6 +23,7 @@ include("commitment_controls.jl")
 include("operating_constraints.jl")
 include("head_constraints.jl")
 include("flow_requirements.jl")
+include("window_constraints.jl")
 include("river_operations.jl")
 include("soft_constraints.jl")
 include("inputs.jl")
@@ -81,6 +82,7 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     SoftConstraintSlack,
     soft_constraint_assessment, penalty_settings,
     FlowRequirement,
+    LevelWindow, VolumeWindow, RollingRamp, PeriodRamp,
     TableCurve,
     LevelFlowCurve,
     level_flow_value,

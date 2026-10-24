@@ -10,7 +10,7 @@ The fields below are the accepted object attributes. Fields marked “required�
 
 | Object | Required fields | Optional fields |
 | --- | --- | --- |
-| Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
+| Reservoir | `name`, `v0`, `vmin`, `vmax`, `water_value` | `z0`, `slope`, `curvature`, `inflow`, `level_curve`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down`, `level_windows`, `history_grid`, `history_storage` |
 | Hydraulic junction | `name` | `hmin`, `hmax` |
 | Boundary | `name`, `head` | None |
 | Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `gate_positions`, `initial_opening`, `gate_adjustment_cost`, `gate_loss_factor_curve`, `discharge_river` |
@@ -141,6 +141,18 @@ executed prefix and retains the original terminal bounds. The allowance does
 not impose an intermediate minimum or duplicate water in storage. Rate bounds
 apply to every interval average. Finer replay checks them over the original
 control windows. These bounds are hard; the observation has no penalty slack.
+
+## Window restrictions
+
+Window rules are described in [operating rules](operating-rules.md#restrictions-over-time-windows).
+Reservoir `level_windows` contains records with `start_time`, `end_time`, and
+`max_change` (metres). Flow observations accept `volume_windows` with
+`start_time`, `end_time`, and optional `min_volume`/`max_volume` (Mm³),
+`rolling_ramps` with `hours` and optional `up`/`down` (m³/s), and `period_ramps`
+with a period `grid` and optional `up`/`down` (m³/s).
+All four collections use JSON arrays of objects. Flow history uses
+`history_grid` and `history_flow`; reservoir storage history uses
+`history_grid` and `history_storage`. Times stay absolute through restart.
 
 ## Explicit penalty limits
 
