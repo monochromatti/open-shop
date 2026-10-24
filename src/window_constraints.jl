@@ -255,16 +255,18 @@ function constrain_level_windows!(m,c,level)
             hi=min(hi,minimum(history))
         end
         lo<=hi || throw(ArgumentError("$(r.name): known history violates the level range"))
-        floor=@variable(m,lower_bound=lo,upper_bound=hi,start=clamp(head(r,r.v0),lo,hi),
+        # Use the same dimensionless level coordinate as the hydraulic heads.
+        floor=@variable(m,lower_bound=lo/250,upper_bound=hi/250,
+            start=clamp(head(r,r.v0),lo,hi)/250,
             base_name="level_window_$(r.name)_$j")
         for t in vertices
             t==1 && continue # Known initial surface already bounds the band.
             z=level(i,t)
             if w.max_change==0
-                @constraint(m,(z-floor)/250==0)
+                @constraint(m,z/250-floor==0)
             else
-                @constraint(m,(z-floor)/250>=0)
-                @constraint(m,(z-floor)/250<=w.max_change/250)
+                @constraint(m,z/250-floor>=0)
+                @constraint(m,z/250-floor<=w.max_change/250)
             end
         end
         push!(bands,(reservoir=i,window=j,floor=floor))
@@ -288,7 +290,7 @@ function window_start_values(c,x,integrals,bands)
         w=r.level_windows[band.window]
         levels=head.(Ref(r),x.storage[band.reservoir,level_window_vertices(c,w)])
         append!(levels,level_window_history(c,r,w))
-        push!(pairs,band.floor=>minimum(levels))
+        push!(pairs,band.floor=>minimum(levels)/250)
     end
     pairs
 end
