@@ -976,8 +976,10 @@ problem. A stationary solution need not be globally optimal.
 An independent integration holds the selected unit discharges and openings
 fixed and recovers the resulting water trajectory. At each interval, Newton's
 method solves jointly for ending storage, junction heads, tunnel flows and
-active outlet releases. With a delay shorter than the interval, some current
-release arrives before the interval ends and belongs in the same hydraulic
+active outlet releases. Column-pivoted QR handles rank deficiency in the
+linearized equations, including cycles with zero tunnel flow. With a delay
+shorter than the interval, some current release arrives before the interval
+ends and belongs in the same hydraulic
 solve. Equation @eq:power then gives electrical output.
 
 In some isolated pressure components, the equations determine only head

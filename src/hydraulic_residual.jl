@@ -306,6 +306,7 @@ end
 One head column per pressure nullspace is fixed. All residual rows remain, so
 Julia's rectangular `\\` solve uses least squares for those components. This
 cannot hide incompatible water injections by discarding a conservation row.
+Column-pivoted QR also handles zero-flow cycles, whose loss derivatives vanish.
 """
 function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations,
     head_reference=nothing)
@@ -341,7 +342,7 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
         hydraulic_converged(residual, x, data, tolerance) && break
         ForwardDiff.jacobian!(full_jacobian, equations!, residual, x, config)
         direction = try
-            -(jacobian \ residual)
+            -(qr(jacobian, ColumnNorm()) \ residual)
         catch error
             error isa Union{SingularException, LAPACKException, RankDeficientException} ||
                 rethrow()

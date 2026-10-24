@@ -32,6 +32,42 @@ include("../scripts/fuzz_worker.jl")
     end
 end
 
+@testset "Pressure rings reconstruct without a supplied head trajectory" begin
+    # Opening changes leave zero-flow cycles in the initial Newton system.
+    # These feasible networks previously failed with the default head guess.
+    for (size, seed) in (("medium", 1), ("medium", 3), ("large", 2))
+        data = FuzzWorker.FuzzCases.generate_case(seed, "pressure", size)
+        c = data.case
+        trajectory = simulate(c, data.q, data.gate;
+            commitment=data.u, tunnel_opening=data.opening)
+        @test trajectory.converged
+        if trajectory.converged
+            schedule = dispatch_from_controls(c, data.u, data.q, data.gate;
+                tunnel_opening=data.opening)
+            @test validate(c, schedule)["valid"]
+            # There are no rivers or boundary exchanges in these rings.
+            # All station transfers remain inside the reservoir network.
+            total = vec(sum(trajectory.storage; dims=1))
+            @test maximum(abs, total .- first(total)) < 1e-9
+            ix = OpenSHOP.nodeindex(c.system)
+            error = 0.0
+            for (j, e) in enumerate(c.system.tunnels), t in eachindex(c.prices)
+                q = trajectory.tunnel_q[j,t]
+                opening = data.opening[j,t]
+                if opening == 0
+                    error = max(error, abs(q))
+                else
+                    resistance = e.gate_loss_factor_curve === nothing ?
+                        e.resistance/opening : e.resistance+OpenSHOP.table_value(e.gate_loss_factor_curve,opening)
+                    dh = trajectory.head[ix[e.source],t]-trajectory.head[ix[e.target],t]
+                    error = max(error, abs(dh-resistance*q*abs(q)))
+                end
+            end
+            @test error < 1e-8
+        end
+    end
+end
+
 @testset "Campaign distinguishes false claims from unfinished search" begin
     data = FuzzWorker.FuzzCases.generate_case(1,"cascade","small")
     reference = FuzzWorker.reconstruct(data)
