@@ -49,6 +49,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         validate_unit_modes(s)
         validate_gross_heads(c)
         validate_flow_requirements(c)
+        validate_window_rules(c)
         validate_river_operations(c)
         commitment_exclusion_indices(c)
         validate_delay_curves(s)

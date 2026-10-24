@@ -787,6 +787,49 @@ Only supplied upper or volume bounds apply. A continuation adds executed
 observed volume to $B_o^0$ and retains the terminal allowance. Downstream
 observations use delayed arrivals even when no release schedule is supplied.
 
+Some restrictions apply to a day or a preceding time window rather than to
+one interval. Extend each observation as the constant $F_(o t)$ over its
+interval and retain the supplied pre-horizon history. Let
+$C_o(s)=kappa integral_(tau_1)^s F_o(v) dif v$. Its vertex values satisfy
+
+$ C_(o,t+1)=C_(o t)+kappa Delta_t F_(o t), quad C_(o 1)=0. $
+
+Linear interpolation gives $C_o$ inside an interval. Historical values are
+known constants. Bounds on a window's volume constrain $C_o(b)-C_o(a)$.
+For a rolling duration $w>0$, define
+
+$ M_o(s;w)=frac(C_o(s)-C_o(s-w), kappa w), quad
+  -d_o <= F_o(s)-M_o(s;w) <= u_o. $
+
+These limits are flow differences, not rates of change per hour. The
+deviation is affine between changes of $F_o$ and those changes shifted by
+$w$. We therefore test both sides of each such knot. A pulse leaving the
+history window can make a constraint bind between scheduling boundaries.
+This construction adds no time steps. Cumulative variables keep the
+integral equations sparse. Fixed-period ramps instead bound differences
+between $(C_o(b)-C_o(a))/(kappa (b-a))$ for consecutive declared periods.
+All averages use elapsed time, including when periods have unequal lengths.
+
+The constant record is an operating observation. For downstream arrivals it
+retains their original interval means, not their instantaneous waveform.
+Cutting such an interval apportions its recorded volume in proportion to
+time. Finer replay checks flow windows on these original intervals.
+
+For a reservoir level range $D$ over a declared window, introduce one lower
+level $ell$ and impose
+
+$ ell <= Z_i(V_(i t)) <= ell+D $
+
+at every vertex in the window, together with its historical extrema. This
+has the same feasible projection as bounding every pairwise level difference
+by $D$, with a linear rather than quadratic number of rows. Window endpoints
+inside the horizon must be vertices. The increasing level law and the
+piecewise-linear storage path place all extrema at these vertices; finer
+replay also checks its additional vertices. A range may constrain the known
+prefix of a window extending past the horizon. A volume total or fixed-period
+mean requires its full period within the known past and scheduling horizon.
+Restart retains the executed history and the original window times.
+
 A routed river may have a minimum flowing rate $R_r^"min">0$. Binary state
 $z_(r t)$ then imposes
 

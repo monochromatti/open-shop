@@ -205,6 +205,9 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             end
         end
         _lift_reserves!(b,c,physical,put,table)
+        for (variable,value) in window_start_values(c,physical,b.flow_integrals,b.level_windows)
+            put(variable,value)
+        end
         _lift_distributed_references!(b.m, assigned)
         _lift_power_hulls!(b.m, assigned)
         _lift_table_power_bounds!(b.m, assigned)

@@ -111,6 +111,7 @@ function propose_commitment(
     end
     constrain_gross_heads!(m,c,u,(i,t)->(level_at_vertex(i,t)+level_at_vertex(i,t+1))/2,
         level_at_vertex;transitions=states)
+    constrain_level_windows!(m,c,level_at_vertex)
     soft=constrain_soft_constraints!(m,c,V,P,gq;level=level_at_vertex)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)

@@ -308,6 +308,78 @@ keeps their quantity-specific units explicit and always keeps water balance hard
 The [worked example](../examples/soft_limits.jl) chooses full discharge at
 1000 currency/Mm³ and saves the water at 20000 currency/Mm³.
 
+## Restrictions over time windows
+
+Window times are absolute hours. There are four input records:
+
+```julia
+lake = Reservoir(name=:Lake, v0=10.0, vmin=8.0, vmax=12.0,
+    water_value=1000.0,
+    level_windows=[LevelWindow(start_time=0.0, end_time=24.0, max_change=0.2)])
+gauge = FlowRequirement(name=:Gauge, generators=[:Unit],
+    history_grid=[-6.0, 0.0], history_flow=[4.0],
+    volume_windows=[VolumeWindow(start_time=0.0, end_time=24.0,
+        min_volume=0.1, max_volume=0.4)],
+    rolling_ramps=[RollingRamp(hours=6.0, up=2.0, down=1.0)],
+    period_ramps=[PeriodRamp(grid=[0.0, 12.0, 24.0], up=1.0, down=2.0)])
+```
+
+Pass the reservoir through `HydroSystem` and the gauge through
+`ScheduleCase(...; flow_requirements=[gauge])`. A plant discharge observation
+lists its units; a river observation can use releases or downstream arrivals.
+These rules add no water balance and no binary decision.
+
+`VolumeWindow` bounds the integral of the observed rate in Mm³. A window can
+cut intervals; only its overlap with each interval contributes. Unlike the
+horizon allowance, these bounds have fixed start and end times, and exclude
+`initial_volume`. Negative bounds are permitted for signed observations.
+
+`RollingRamp` bounds `flow(time) - mean(flow, time-hours, time)` between
+`-down` and `up`. The limits are differences in m³/s, not rates per hour.
+We enforce them throughout the piecewise-constant observed-rate record,
+including both sides of internal jumps. Between a flow change or a flow change
+shifted by the window duration, the rolling deviation is affine. Testing its
+endpoints is therefore sufficient. Historical knots matter even when they do
+not coincide with scheduling boundaries. The horizon start uses the right
+limit; the horizon end uses the left limit.
+
+`PeriodRamp` compares the time-weighted average of one fixed period with that
+of the preceding period. `grid` supplies the period boundaries; periods can
+have unequal lengths and can cut scheduling intervals. The first period has
+no comparison unless a preceding period is included in this grid.
+
+The observed rate retains the existing interval-average semantics. In
+particular, downstream river arrivals contribute `arrival_volume/(0.0036*dt)`
+held over the original observation interval. A subinterval integral of this
+record is not an exact integral of the instantaneous delayed arrival signal.
+Use finer observation intervals when that distinction matters. Finer replay
+checks flow windows on the original observation intervals, so refinement does
+not silently change the operating rule.
+
+`LevelWindow` bounds the highest minus the lowest reservoir surface, in metres.
+Both endpoints inside the horizon must be scheduling vertices. All vertices
+within the window count, including internal rises and falls. Since the level
+law increases and storage is interpolated linearly in time, extrema occur at
+vertices. One auxiliary lower level and a band of width `max_change` express
+the range with a linear number of rows. A level window extending beyond the
+horizon constrains its known prefix; it does not assume any future trajectory.
+Finer replay checks every finer storage vertex within the window.
+
+No history is extrapolated. `RollingRamp` requires full history for its longest
+initial window. Other rules crossing the horizon start require history back to
+their earliest needed time. Flow observations use `history_grid` and
+`history_flow`, with one rate per interval. Reservoirs use `history_grid` and
+`history_storage`, with one storage per vertex; the final storage must equal
+`v0`. All history ends exactly at the horizon start. History for a preceding
+fixed ramp period must cover that whole period.
+
+Restart carries the executed observation intervals and reservoir vertices,
+retaining their absolute times. It can occur inside these windows. Completed
+volume and level windows are dropped, and remaining water is neither counted
+twice nor reset. Active volume windows and fixed ramp periods must end within
+the current horizon: the optimizer cannot enforce a total for unknown future
+water. This differs from a level range, whose prefix is already meaningful.
+
 ## Optimization scope
 
 Unit commitment remains binary throughout the horizon. The MILP proposal enforces
@@ -318,5 +390,6 @@ head–storage approximation for level observations; its candidate still needs
 the exact nonlinear dispatch and independent assessment.
 Proposal objectives are surrogate values, not bounds on the physical problem.
 
-Rolling, amplitude and nonsequential ramps and conditional environmental waivers
-are outside this input profile.
+Reservoir rolling-average ramps, extrema-based discharge ramps, amplitude and
+nonsequential ramps, and conditional environmental waivers remain outside this
+input profile. The supported rolling and period flow limits use averages.

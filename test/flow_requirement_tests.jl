@@ -32,9 +32,13 @@
         OperationalSeries(object=:Reach,attribute=:min_flow,times=[0.0,1.0],values=[8.0,9.0])])
     schedule=dispatch_from_controls(longer,ones(Int,1,2),fill(5.0,1,2),fill(0.2,1,2))
     @test schedule["validation"]["valid"]
-    @test with_grid(longer,[0.0,0.5,1.0,1.5,2.0]).flow_requirements==[rule]
+    refined=with_grid(longer,[0.0,0.5,1.0,1.5,2.0])
+    fine=dispatch_from_controls(refined,ones(Int,1,4),fill(5.0,1,4),fill(0.2,1,4))
+    @test validate(refined,fine)["valid"]
     continued=restart_case(longer,schedule,1.0)
-    @test continued.flow_requirements==[rule]
+    tail=dispatch_from_controls(continued,ones(Int,1,1),fill(5.0,1,1),fill(0.2,1,1))
+    @test validate(continued,tail)["valid"]
+    @test tail.storage≈schedule.storage[:,2:end] atol=1e-10
     @test OpenSHOP.opinterval(continued,:Reach,:inflow,1,0.0)==2.0
     @test_throws ArgumentError OpenSHOP.validate_inputs(OpenSHOP._river_replace(c;
         flow_requirements=[FlowRequirement(name=:Reach,rivers=[:Missing])]))

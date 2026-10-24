@@ -204,6 +204,15 @@ interval-arithmetic guarantee.
 Dwell times, ramps and observation windows use physical hours. Terminal dwell
 obligations are reported for continuation; they do not prove that a future
 continuation exists. Terminal water values are supplied economic assumptions.
+Flow windows integrate the piecewise-constant observation record. In particular,
+cutting an arrival interval apportions its recorded mean; it does not recover
+the instantaneous delayed-arrival signal. Rolling limits cover this entire
+record, including shifted history knots and both sides of flow changes. Level
+ranges cover the piecewise-linear storage path under the increasing level law,
+and finer replay checks its additional vertices. Historical windows require
+complete supplied records; no pre-horizon value is extrapolated. These window
+identities are among the [Lean statements](../test/formal/README.md), not proofs
+of the floating-point implementation.
 Reserve capacity witnesses hold scheduled hydraulic node heads fixed and do not
 certify a physically activated tunnel/river trajectory.
 

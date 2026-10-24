@@ -29,6 +29,13 @@ supplied decisions.
 a warm schedule supplies omitted states, otherwise enabled rivers default to on.
 See [river operating costs and head restrictions](operating-rules.md).
 
+`LevelWindow`, `VolumeWindow`, `RollingRamp`, and `PeriodRamp` specify
+[restrictions over time windows](operating-rules.md#restrictions-over-time-windows).
+Attach level windows to a reservoir and flow windows to a `FlowRequirement`.
+Their absolute times, history and physical time weights survive restart and
+refinement. Rolling/period flow limits compare averages of the observation
+record; reservoir windows bound the complete recorded level range.
+
 Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
 `status`, `accepted`, `solution`, `global_certificate`, `global_bound`,
 `relative_gap`, `absolute_gap` and `total_seconds`; `objective` and

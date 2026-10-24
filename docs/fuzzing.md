@@ -49,7 +49,8 @@ storage-to-level curves, efficiencies and capacities vary. Unit histories and
 minimum on/off times accompany on/off controls. Additional restrictions include
 time-dependent reservoir bounds, unit flow and power limits, gross/startup head
 limits at explicit reference endpoints, river switching and flow-change costs,
-arrival observations and volume allowances, ramps, maintenance,
+arrival observations and volume allowances, window volume budgets, rolling and
+fixed-period flow averages, reservoir level ranges, ramps, maintenance,
 forced states, hard discharge schedules, tunnel capacities, late gate schedules,
 outlet bounds, minimum release, a flow observation and a priced terminal target.
 They are constructed to admit the reference schedule. The numerical values are
