@@ -1,3 +1,47 @@
+"""Maximum reservoir level range, metres, over a closed absolute-hour window.
+Both window endpoints inside the horizon must be scheduling vertices. A window
+crossing the horizon start requires reservoir storage history; at the horizon
+end its known prefix is constrained.
+"""
+Base.@kwdef struct LevelWindow
+    start_time::Float64
+    end_time::Float64
+    max_change::Float64
+end
+
+"""Bounds on observed water volume, Mm³, over `[start_time,end_time]` in hours.
+Endpoints may cut scheduling intervals. A window crossing the horizon start
+requires observed-flow history. An active window must finish within the horizon.
+"""
+Base.@kwdef struct VolumeWindow
+    start_time::Float64
+    end_time::Float64
+    min_volume::Union{Nothing,Float64} = nothing
+    max_volume::Union{Nothing,Float64} = nothing
+end
+
+"""Bound the difference from the preceding `hours`-long flow average, m³/s.
+`up` and `down` are nonnegative differences, not rates per hour. The complete
+piecewise-constant observed-flow record is constrained, including both sides
+of jumps. Full pre-horizon history is required; no shortened windows are used.
+"""
+Base.@kwdef struct RollingRamp
+    hours::Float64
+    up::Union{Nothing,Float64} = nothing
+    down::Union{Nothing,Float64} = nothing
+end
+
+"""Bounds, m³/s, on changes between consecutive time-weighted period averages.
+`grid` gives fixed absolute-hour period boundaries. Periods may have unequal
+lengths. Active periods must finish within the scheduling horizon; completed
+periods are supplied through observed-flow history.
+"""
+Base.@kwdef struct PeriodRamp
+    grid::Vector{Float64}
+    up::Union{Nothing,Float64} = nothing
+    down::Union{Nothing,Float64} = nothing
+end
+
 """
     Reservoir(; name, v0, vmin, vmax, water_value, ...)
 
@@ -20,6 +64,9 @@ Base.@kwdef struct Reservoir
     volume_ramp_down::Union{Nothing, Float64} = nothing
     level_ramp_up::Union{Nothing, Float64} = nothing # metres/hour, between level vertices
     level_ramp_down::Union{Nothing, Float64} = nothing
+    level_windows::Vector{LevelWindow} = LevelWindow[]
+    history_grid::Vector{Float64} = Float64[] # storage vertices, ending at horizon start
+    history_storage::Vector{Float64} = Float64[] # Mm³, piecewise linear between vertices
 end
 """
     Junction(; name, hmin=0.0, hmax=700.0)
@@ -287,7 +334,11 @@ end
 `rivers` names upstream releases; `river_arrivals` names downstream arrivals.
 Tunnel contributions use their declared positive direction. `initial_volume`
 carries previously counted water into a continuation. Volume bounds apply at
-the horizon end. This observation adds no water or hydraulic node.
+the horizon end. `volume_windows`, `rolling_ramps` and `period_ramps` instead
+constrain the time-weighted observation record at their declared times. Supply
+`history_grid`/`history_flow` for windows reaching into the past. Downstream
+arrivals retain their interval-average interpretation, including inside a window.
+This observation adds no water or hydraulic node.
 """
 Base.@kwdef struct FlowRequirement
     name::Symbol
@@ -301,6 +352,11 @@ Base.@kwdef struct FlowRequirement
     min_volume::Union{Nothing, Float64} = nothing
     max_volume::Union{Nothing, Float64} = nothing
     initial_volume::Float64 = 0.0
+    volume_windows::Vector{VolumeWindow} = VolumeWindow[]
+    rolling_ramps::Vector{RollingRamp} = RollingRamp[]
+    period_ramps::Vector{PeriodRamp} = PeriodRamp[]
+    history_grid::Vector{Float64} = Float64[] # observed-rate interval edges
+    history_flow::Vector{Float64} = Float64[] # m³/s, held within each historical interval
 end
 """A bounded, explicitly penalized operating restriction.
 

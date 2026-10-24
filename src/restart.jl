@@ -13,6 +13,8 @@ state/dwell age and previous plant interval power are carried into the new case.
 Each river keeps original historical and executed release cohorts, without
 rebinning. Absolute times are retained. Declared arrival averaging windows must
 also have a boundary at the restart time; partial-window accounting is rejected.
+Flow-observation windows and reservoir level ranges can cross the restart;
+their original observed intervals and storage vertices are retained as history.
 
 The resulting objective measures incremental wealth from the restart state, so
 its constant stock/transit reference differs from the original full horizon.
@@ -44,10 +46,15 @@ function restart_case(c::ScheduleCase, x, time::Real)
     x=_schedule_input(x; case=c)
     s=c.system
     previous=edge-1
-    reservoirs=[
-        _restart_replace(r; v0 = Float64(x.storage[i, edge])) for
-        (i, r) in enumerate(s.reservoirs)
-    ]
+    reservoirs=[begin
+        needs_history=!isempty(r.level_windows) || !isempty(r.history_grid)
+        first_new=isempty(r.history_grid) ? 1 : 2
+        history_grid=needs_history ? vcat(r.history_grid,c.grid[first_new:edge]) : Float64[]
+        history_storage=needs_history ? vcat(r.history_storage,
+            vec(x.storage[i,first_new:edge])) : Float64[]
+        _restart_replace(r;v0=Float64(x.storage[i,edge]),history_grid,history_storage,
+            level_windows=[w for w in r.level_windows if w.end_time>time])
+    end for (i,r) in enumerate(s.reservoirs)]
     generators=Generator[]
     for (i, g) in enumerate(s.generators)
         state=g.initial_on
@@ -127,8 +134,17 @@ function restart_case(c::ScheduleCase, x, time::Real)
     flow_requirements=[begin
         observed=observed_flow(c,rule,x.generator_q,x.river_release,x.arrival_volume,x.tunnel_q)
         counted=sum(0.0036*(c.grid[t+1]-c.grid[t])*observed[t] for t in 1:previous;init=0.0)
-        rule.min_volume===nothing && rule.max_volume===nothing ? rule :
-            _restart_replace(rule;initial_volume=rule.initial_volume+counted)
+        needs_history=!isempty(rule.volume_windows) || !isempty(rule.rolling_ramps) ||
+            !isempty(rule.period_ramps) || !isempty(rule.history_grid)
+        first_new=isempty(rule.history_grid) ? 1 : 2
+        history_grid=needs_history ? vcat(rule.history_grid,
+            c.grid[first_new:edge]) : Float64[]
+        history_flow=needs_history ? vcat(rule.history_flow,observed[1:previous]) : Float64[]
+        _restart_replace(rule;
+            initial_volume=rule.min_volume===nothing && rule.max_volume===nothing ?
+                rule.initial_volume : rule.initial_volume+counted,
+            history_grid,history_flow,
+            volume_windows=[w for w in rule.volume_windows if w.end_time>time])
     end for rule in c.flow_requirements]
     system=_restart_replace(s; reservoirs, generators, plants, rivers, tunnels,tunnel_interlocks)
     result=ScheduleCase(

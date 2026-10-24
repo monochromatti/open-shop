@@ -55,6 +55,7 @@ function validate_inputs(c)
     length(unique([p.name for p in s.plants]))==length(s.plants)||error("Duplicate plant")
     length(c.prices)==length(c.grid)-1 && all(isfinite, c.prices)||error("Prices")
     RiverRouting.check_grid(c.grid)
+    validate_window_rules(c)
     all(diff(c.grid) .> 0)||error("Grid")
     for r in s.reservoirs
         r.vmin<=r.v0<=r.vmax && r.vmin>=0 && r.vmax>r.vmin || error("Storage bounds")

@@ -87,6 +87,14 @@ function _read_object(T, x)
             v=_read_turbine(v)
         elseif f==:characteristic
             v=_read_pump_characteristic(v)
+        elseif f==:level_windows
+            v=[_read_object(LevelWindow,w) for w in v]
+        elseif f==:volume_windows
+            v=[_read_object(VolumeWindow,w) for w in v]
+        elseif f==:rolling_ramps
+            v=[_read_object(RollingRamp,w) for w in v]
+        elseif f==:period_ramps
+            v=[_read_object(PeriodRamp,w) for w in v]
         elseif fieldtype(T, f)==Vector{Float64}
             v=Float64.(v)
         elseif fieldtype(T, f)==Vector{Symbol}
@@ -159,7 +167,9 @@ function component_dict(x)
     Dict(
         string(f)=>(
             getfield(x, f) isa Union{TableCurve,TurbineTable,LevelFlowCurve,PumpCharacteristic} ?
-            _table_dict(getfield(x, f)) : getfield(x, f)
+            _table_dict(getfield(x, f)) :
+            f in (:level_windows,:volume_windows,:rolling_ramps,:period_ramps) ?
+                component_dict.(getfield(x,f)) : getfield(x, f)
         ) for f in fieldnames(typeof(x))
     )
 end
