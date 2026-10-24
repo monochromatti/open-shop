@@ -87,6 +87,9 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         for (variable,value) in _tunnel_gate_values(b.gates,c,openings)
             put(variable,value)
         end
+        for (variable,value) in river_operation_start_values(b.river_operations,c,physical.river_release)
+            put(variable,value)
+        end
         for variable in variables
             is_fixed(variable) && put(variable,fix_value(variable))
         end

@@ -351,13 +351,56 @@ function restrict_case(seed, case, witness)
     end
     requirements = isempty(s.generators) ? FlowRequirement[] : [FlowRequirement(
         name=:ObservedStationFlow,generators=[first(s.generators).name],
-        min_flow=0.7minimum(witness.generator_q[1,:]))]
+        min_flow=0.7minimum(witness.generator_q[1,:]),
+        max_flow=maximum(witness.generator_q[1,:])+0.1first(s.generators).qmax,
+        max_volume=1.2*0.0036sum(dt.*witness.generator_q[1,:]))]
+    if !isempty(s.rivers)
+        arrivals=witness.arrival_volume[1,:]
+        rates=arrivals./(0.0036.*dt)
+        push!(requirements,FlowRequirement(name=:ObservedArrival,
+            river_arrivals=[first(s.rivers).name],min_flow=minimum(rates)-0.1maximum(abs,rates)-1e-5,
+            max_flow=maximum(rates)+0.1maximum(abs,rates)+1e-5,
+            min_volume=sum(arrivals)-0.1abs(sum(arrivals))-1e-6,
+            max_volume=sum(arrivals)+0.1abs(sum(arrivals))+1e-6))
+    end
+    rivers=[begin
+        initial=something(r.initial_release,isempty(r.history_release) ? 0.0 : last(r.history_release))
+        positive=filter(>(0.0),vcat(witness.river_release[i,:],initial))
+        minimum_flow=isempty(positive) ? min(0.1,0.01r.capacity) : 0.5minimum(positive)
+        change_cost=uniform(rng,0.0,5.0)
+        if r.law==:controlled && minimum_flow>=1e-5
+            updated(r;flow_change_cost=change_cost,min_allowed_flow=minimum_flow,
+                flow_start_cost=uniform(rng,0.0,100.0),flow_stop_cost=uniform(rng,0.0,30.0))
+        else
+            updated(r;flow_change_cost=change_cost)
+        end
+    end for (i,r) in enumerate(s.rivers)]
+    references=Set(vcat([r.name for r in s.reservoirs],[b.name for b in s.boundaries]))
+    surface(name)=begin
+        i=findfirst(r->r.name==name,s.reservoirs)
+        i===nothing ? fill(only(b.head for b in s.boundaries if b.name==name),length(grid)) :
+            head.(Ref(s.reservoirs[i]),witness.storage[i,:])
+    end
+    ix=nodeindex(s)
+    generators=[begin
+        p=plantof(s,g)
+        if p.source in references && p.target in references
+            sign=g.mode==:pump ? -1.0 : 1.0
+            heads=sign.*(witness.head[ix[p.source],:]-witness.head[ix[p.target],:])
+            vertices=sign.*(surface(p.source)-surface(p.target))
+            minimum(heads)>=0 && minimum(vertices)>=0 ? updated(g;
+                gross_head_min=0.9minimum(heads),gross_head_max=1.1maximum(heads)+1e-6,
+                startup_gross_head_min=0.9minimum(vertices)) : g
+        else
+            g
+        end
+    end for g in s.generators]
     r = first(s.reservoirs)
     allowance = 0.15(r.vmax-r.vmin)
     soft = [SoftConstraint(name=:TerminalStorage,object=r.name,quantity=:volume,
         time=last(grid),lower=min(r.vmax,witness.storage[1,end]+0.3allowance),
         max_lower_slack=allowance,lower_cost=uniform(rng,100.0,30000.0))]
-    updated(case;operations,flow_requirements=requirements,soft_constraints=soft)
+    updated(case;system=updated(s;rivers,generators),operations,flow_requirements=requirements,soft_constraints=soft)
 end
 
 end

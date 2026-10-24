@@ -64,7 +64,7 @@ full-horizon objective. Changing valuation between horizons changes the problem.
 
 `objective_components(case, schedule)` independently recomputes signed energy
 revenue, reservoir/transit increments, reserve revenue, transitions, gate costs,
-release penalties, soft-target penalties and reserve-shortfall penalties.
+river flow-change/start/stop costs, release penalties, soft-target penalties and reserve-shortfall penalties.
 Its `total` includes every component. Pump consumption is subtracted from
 generation before applying the energy price. Penalties use actual deficits,
 not the schedule's reported cost fields. It does not establish feasibility or return a dual price; use

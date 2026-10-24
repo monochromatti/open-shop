@@ -124,6 +124,12 @@ function restart_case(c::ScheduleCase, x, time::Real)
             ),
         )
     end
+    flow_requirements=[begin
+        observed=observed_flow(c,rule,x.generator_q,x.river_release,x.arrival_volume,x.tunnel_q)
+        counted=sum(0.0036*(c.grid[t+1]-c.grid[t])*observed[t] for t in 1:previous;init=0.0)
+        rule.min_volume===nothing && rule.max_volume===nothing ? rule :
+            _restart_replace(rule;initial_volume=rule.initial_volume+counted)
+    end for rule in c.flow_requirements]
     system=_restart_replace(s; reservoirs, generators, plants, rivers, tunnels,tunnel_interlocks)
     result=ScheduleCase(
         name = c.name*"_restart_"*string(time),
@@ -131,7 +137,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         grid = Float64.(c.grid[edge:end]),
         prices = Float64.(c.prices[edge:end]),
         operations = c.operations,
-        flow_requirements = c.flow_requirements,
+        flow_requirements = flow_requirements,
         soft_constraints = [rule for rule in c.soft_constraints
             if (rule.end_time===nothing ? rule.time : rule.end_time)>time],
         reserve_groups = c.reserve_groups,

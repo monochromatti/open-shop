@@ -47,6 +47,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     try
         validate_unit_modes(s)
+        validate_gross_heads(c)
+        validate_flow_requirements(c)
+        validate_river_operations(c)
         commitment_exclusion_indices(c)
         validate_delay_curves(s)
         validate_curve_data(s)
@@ -379,15 +382,6 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         end
     end
     requirements=release_requirements(c, RQ)
-    for rule in c.flow_requirements
-        gs, rs=flow_requirement_indices(c, rule)
-        bound("flow_requirement_$(rule.name)", [
-            opinterval(c, rule.name, :min_flow, t, rule.min_flow)-
-            opinterval(c, rule.name, :inflow, t, rule.inflow)-
-            sum(GQ[i, t] for i in gs; init=0.0)-
-            sum(RQ[i, t] for i in rs; init=0.0) for t in 1:T
-        ])
-    end
     bound("hard_release_requirements", requirements.hard)
     if any(opinterval(c, r.name, :release_penalty, t, 0.0)>0 for r in s.rivers, t in 1:T)
         if !haskey(result, "shortfall_release") ||
@@ -483,7 +477,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                       r.water_value*(W[d, end]-W[d, 1]) for (d, r) in enumerate(s.rivers);
                       init = 0.0,
                   )
-        objective-=requirements.cost+soft.cost
+        objective-=requirements.cost+soft.cost+river_operating_cost(c,RQ).total
         objective+=reserve_economics(c,result.reserves).value
         record(
             "objective_relative",

@@ -259,6 +259,8 @@ function operating_residuals(c,x)
             residuals["$(label)_$(r.name)"]=violation
         end
     end
+    merge!(residuals,gross_head_residuals(c,x),flow_requirement_residuals(c,x),
+        river_operation_residuals(c,RQ))
     residuals
 end
 
@@ -268,6 +270,12 @@ function without_interval_controls(c)
         changes=Dict{Symbol,Any}(attribute=>nothing for attribute in RAMP_ATTRIBUTES
             if attribute in fieldnames(typeof(object)))
         object isa Plant && (changes[:ramp]=nothing)
+        if object isa River
+            changes[:min_allowed_flow]=nothing
+            for a in RIVER_COST_ATTRIBUTES
+                changes[a]=0.0
+            end
+        end
         _river_replace(object;changes...)
     end
     system=_river_replace(c.system;
@@ -276,8 +284,9 @@ function without_interval_controls(c)
         plants=strip.(c.system.plants),
         rivers=strip.(c.system.rivers))
     operations=[z for z in c.operations if z.attribute ∉ RAMP_ATTRIBUTES &&
-        z.attribute ∉ (:power,:discharge)]
-    _river_replace(c;system,operations)
+        z.attribute ∉ (:power,:discharge) && z.attribute ∉ RIVER_COST_ATTRIBUTES &&
+        !any(rule->rule.name==z.object,c.flow_requirements)]
+    _river_replace(c;system,operations,flow_requirements=FlowRequirement[])
 end
 
 function operating_window_values(c,z,grid,indices,u)
@@ -287,5 +296,7 @@ function operating_window_values(c,z,grid,indices,u)
         for i in axes(values,1), t in eachindex(c.prices)]
     vertices=[something(findfirst(==(time),grid)) for time in c.grid]
     (;commitment=u, power=average(z.power), generator_q=average(z.generator_q),
-        river_release=average(z.river_release), storage=z.storage[:,vertices])
+        river_release=average(z.river_release), storage=z.storage[:,vertices],
+        tunnel_q=average(z.tunnel_q),arrival_volume=average(z.arrival_volume ./ permutedims(0.0036 .*dt)) .*
+            permutedims(0.0036 .*original_dt))
 end

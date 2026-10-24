@@ -5,7 +5,7 @@ in-transit water value, less unit transitions, named penalties and gate motion.
 Physical replay evaluates these quantities independently.
 """
 function dispatch_objective(model, c, P, V, terminal, u, shortfall;
-    initial_transit, gate_cost, transitions=nothing, soft_cost=0.0)
+    initial_transit, gate_cost, transitions=nothing, soft_cost=0.0,river_cost=0.0)
     dt=diff(c.grid)
     s=c.system
     operating_cost=transition_costs(c,u;transitions)
@@ -17,7 +17,7 @@ function dispatch_objective(model, c, P, V, terminal, u, shortfall;
             for j in axes(P,1), t in eachindex(dt)) +
         sum(r.water_value*(V[i,end]-r.v0) for (i,r) in enumerate(s.reservoirs)) +
         sum(r.water_value*(terminal[i]-initial_transit[i]) for (i,r) in enumerate(s.rivers)) -
-        operating_cost-penalty-gate_cost-soft_cost)
+        operating_cost-penalty-gate_cost-soft_cost-river_cost)
     objective, penalty
 end
 

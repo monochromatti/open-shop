@@ -94,6 +94,8 @@ A station sharing intake head, outlet head, losses and operating limits
 across its units. All members have the same generating or pumping mode;
 endpoints follow the actual water direction. Power is MW, flow is m³/s, and dwell times are hours.
 `discharge_river` optionally routes its water into a delayed river.
+Optional `gross_head_source`/`gross_head_target` name reservoir or boundary
+references for unit gross-head limits when a plant endpoint is a junction.
 """
 Base.@kwdef struct Plant
     name::Symbol
@@ -106,6 +108,8 @@ Base.@kwdef struct Plant
     initial_interval_hours::Float64 = 1.0
     tailwater_curve::Union{Nothing, TableCurve} = nothing
     outlet_head_floor::Union{Nothing, Float64} = nothing
+    gross_head_source::Union{Nothing, Symbol} = nothing # reservoir/boundary; defaults to source
+    gross_head_target::Union{Nothing, Symbol} = nothing # reservoir/boundary; defaults to target
     pmin::Float64 = 0.0
     qmin::Float64 = 0.0
     qmax::Union{Nothing, Float64} = nothing
@@ -129,6 +133,8 @@ metres, and efficiencies are fractions. Consumption is subtracted in [`net_power
 Supply `turbine_table` for measured efficiency data. The analytic efficiency
 parameters otherwise define a quadratic response. Startup/shutdown costs use
 the same currency as the objective; minimum dwell times are in hours.
+Optional `gross_head_min`/`gross_head_max` bound reference-level differences;
+`startup_gross_head_min` applies only at an off-to-on control edge.
 """
 Base.@kwdef struct Generator
     name::Symbol
@@ -146,6 +152,9 @@ Base.@kwdef struct Generator
     hcurvature::Float64 = 0.015
     hmin::Float64
     hmax::Float64
+    gross_head_min::Union{Nothing, Float64} = nothing
+    gross_head_max::Union{Nothing, Float64} = nothing
+    startup_gross_head_min::Union{Nothing, Float64} = nothing
     initial_on::Int = 1
     initial_age::Float64 = 8.0
     minup::Float64 = 3.0
@@ -210,6 +219,8 @@ Supply `deterministic_delay` and `curves=[]` for a fixed travel time, or
 `curves` for distributed responses. Reservoir outlets use the selected
 `law`; a `:delta` channel instead exchanges water instantaneously according to
 one supplied delta-level response curve.
+`flow_change_cost` charges changes in upstream rate. Optional `min_allowed_flow`
+enables a zero-or-positive-flow state and its `flow_start_cost`/`flow_stop_cost`.
 """
 Base.@kwdef struct River
     name::Symbol
@@ -238,6 +249,10 @@ Base.@kwdef struct River
     ramp_down::Union{Nothing, Float64} = nothing
     initial_release::Union{Nothing, Float64} = nothing # previous control-window average, separate from cohorts
     initial_interval_hours::Float64 = 1.0
+    flow_change_cost::Float64 = 0.0 # currency/(m³/s), per change rather than per hour
+    flow_start_cost::Float64 = 0.0 # currency per off-to-on transition
+    flow_stop_cost::Float64 = 0.0
+    min_allowed_flow::Union{Nothing, Float64} = nothing # on-state lower bound
 end
 """
     HydroSystem(; reservoirs=[], plants=[], generators=[], ...)
@@ -267,18 +282,25 @@ Base.@kwdef struct OperationalSeries
     times::Vector{Float64}
     values::Vector{Float64}
 end
-"""Hard minimum of a named flow observation, in m³/s.
+"""Bounds on a named sum of flows, in m³/s, and its horizon volume in Mm³.
 
-Contributions are generator discharge and river release at the observation;
-this records an operating rule and adds no water or hydraulic node. Delayed
-arrivals must be constrained on the corresponding River instead.
+`rivers` names upstream releases; `river_arrivals` names downstream arrivals.
+Tunnel contributions use their declared positive direction. `initial_volume`
+carries previously counted water into a continuation. Volume bounds apply at
+the horizon end. This observation adds no water or hydraulic node.
 """
 Base.@kwdef struct FlowRequirement
     name::Symbol
     generators::Vector{Symbol} = Symbol[]
     rivers::Vector{Symbol} = Symbol[]
+    river_arrivals::Vector{Symbol} = Symbol[]
+    tunnels::Vector{Symbol} = Symbol[]
     inflow::Float64 = 0.0
     min_flow::Float64 = 0.0
+    max_flow::Union{Nothing, Float64} = nothing
+    min_volume::Union{Nothing, Float64} = nothing
+    max_volume::Union{Nothing, Float64} = nothing
+    initial_volume::Float64 = 0.0
 end
 """A bounded, explicitly penalized operating restriction.
 

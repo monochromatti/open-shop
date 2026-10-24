@@ -108,3 +108,5 @@ include("reserve_tests.jl")
 include("river_reference_semantics_tests.jl")
 include("penalty_settings_tests.jl")
 include("unequal_turbine_grids_tests.jl")
+
+include("head_flow_rules_tests.jl")

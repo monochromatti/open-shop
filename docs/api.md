@@ -17,13 +17,17 @@ if result.accepted
 end
 ```
 
-`solve` searches unit commitment, eligible tunnel positions and nonlinear
+`solve` searches unit commitment, eligible tunnel positions, enabled river flow states and nonlinear
 dispatch. Feasible-start preparation uses SCIP MILP proposals and Ipopt dispatch;
 SCIP searches the full nonlinear model and supplies its upper bound.
 `preparation_time_limit=0` disables preparation. An accepted `initial` schedule
 skips it and supplies a checked start without fixing decisions.
 `fixed_u` and `fixed_tunnel_opening` restrict the search and certificate to those
 supplied decisions.
+
+`solve_case` fixes river operating states through `river_on[river, interval]`;
+a warm schedule supplies omitted states, otherwise enabled rivers default to on.
+See [river operating costs and head restrictions](operating-rules.md).
 
 Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
 `status`, `accepted`, `solution`, `global_certificate`, `global_bound`,

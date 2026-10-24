@@ -15,11 +15,11 @@ The fields below are the accepted object attributes. Fields marked “required�
 | Boundary | `name`, `head` | None |
 | Tunnel | `name`, `source`, `target`, `resistance`, `capacity` | `opening`, `gate_positions`, `initial_opening`, `gate_adjustment_cost`, `gate_loss_factor_curve`, `discharge_river` |
 | Tunnel interlock | `name`, `tunnels` | `min_open`, `max_open`, `forward_tunnels`, `backward_tunnels`, `plants`, `forward_switch_time`, `backward_switch_time`, `initial_forward_wait`, `initial_backward_wait` |
-| Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
-| Unit (`Generator` or `Pump`) | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `mode`, `motor_efficiency`, `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
+| Plant | `name`, `source`, `target`, `pmax` | `discharge_river`, `ramp`, `initial_power`, `initial_interval_hours`, `tailwater_curve`, `outlet_head_floor`, `gross_head_source`, `gross_head_target`, `pmin`, `qmin`, `qmax`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_discharge`, `minup`, `mindown`, `initial_on`, `initial_age` |
+| Unit (`Generator` or `Pump`) | `name`, `plant`, `qmin`, `qmax`, `pmin`, `pmax`, `hmin`, `hmax` | `gross_head_min`, `gross_head_max`, `startup_gross_head_min`, `mode`, `motor_efficiency`, `efficiency`, `min_efficiency`, `qbest`, `qcurvature`, `hbest`, `hcurvature`, `initial_on`, `initial_age`, `minup`, `mindown`, `startup`, `shutdown`, `turbine_table`, `generator_efficiency_curve`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down`, `initial_power`, `initial_discharge`, `initial_interval_hours` |
 | Commitment exclusion | `name`, `groups` | — |
 | River junction | `name` | None |
-| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `allocation`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours` |
+| River | `name`, `target`, `curves`, `capacity`, `water_value` | `source`, `allocation`, `inflow`, `law`, `coefficient`, `crest`, `min_arrival`, `arrival_policy`, `arrival_window_grid`, `deterministic_delay`, `gate_min`, `history_grid`, `history_release`, `discharge_curve`, `delta_level_ref_up_flow_curve`, `delta_level_ref_down_flow_curve`, `allow_dry`, `ramp_up`, `ramp_down`, `initial_release`, `initial_interval_hours`, `flow_change_cost`, `flow_start_cost`, `flow_stop_cost`, `min_allowed_flow` |
 | Operation | `object`, `attribute`, `times`, `values` | None |
 | Flow requirement | `name` | `generators`, `rivers`, `inflow`, `min_flow` |
 | Soft constraint | `name`, `object`, `quantity`, `time` | `end_time`, `lower`, `upper`, `max_lower_slack`, `max_upper_slack`, `lower_cost`, `upper_cost` |
@@ -99,11 +99,11 @@ An operation names an existing object and one supported attribute:
 | Object | Attributes |
 | --- | --- |
 | Reservoir | `inflow`, `vmin`, `vmax`, `volume_ramp_up`, `volume_ramp_down`, `level_ramp_up`, `level_ramp_down` |
-| Generator | `qmin`, `qmax`, `pmin`, `pmax`, `forced_on`, `maintenance`, `power`, `discharge`, `startup`, `shutdown`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
+| Generator | `qmin`, `qmax`, `pmin`, `pmax`, `forced_on`, `maintenance`, `power`, `discharge`, `gross_head_min`, `gross_head_max`, `startup_gross_head_min`, `startup`, `shutdown`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
 | Plant | `pmin`, `pmax`, `qmin`, `qmax`, `forced_on`, `maintenance`, `power`, `discharge`, `ramp_up`, `ramp_down`, `discharge_ramp_up`, `discharge_ramp_down` |
 | Tunnel | `capacity`, `opening`, `gate_adjustment_cost` |
 | Tunnel interlock | `min_open`, `max_open` |
-| River | `inflow`, `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty`, `ramp_up`, `ramp_down` |
+| River | `inflow`, `capacity`, `gate_min`, `gate_max`, `min_arrival`, `min_release`, `release_penalty`, `flow_change_cost`, `flow_start_cost`, `flow_stop_cost`, `ramp_up`, `ramp_down` |
 | Flow requirement | `inflow`, `min_flow` |
 
 `times` are strictly increasing absolute-hour knots and `values` are piecewise constant. Before the first knot the object's default applies; the last value is held afterward. Ordinary dispatch interval data use time averages. Storage edges and pointwise arrival requirements retain their corresponding endpoint/event semantics. Place knots on scheduling edges when a commitment or outage transition must occur at a particular time.
@@ -116,15 +116,31 @@ Plant `qmax` defaults to no additional aggregate discharge restriction. Directio
 
 ## Flow observations
 
-A `flow_requirements` entry records a hard minimum at an operating measurement point. Its `generators` list names unit discharges; its `rivers` list names river releases. The constraint is
+A `FlowRequirement` names an operating measurement, without adding water or a
+hydraulic node. `generators` contributes unit discharge, `rivers` upstream river
+release, `river_arrivals` downstream arrival volume divided by the interval
+length, and `tunnels` signed flow in each tunnel's declared direction. Optional
+`inflow` adds an externally accounted contribution. The network must already
+account for all of this water.
 
-```math
-\sum_{g\in G_o} q_{g,t}+\sum_{r\in R_o} Q^{release}_{r,t}+I_{o,t}\ge Q^{min}_{o,t}.
+`min_flow` defaults to zero; optional `max_flow` bounds the same sum from above.
+Both accept operating series. Bounds may be negative for a signed measurement.
+`inflow` is nonnegative and also accepts a series. Each contribution list must
+contain unique existing names. An observation can combine several tributaries
+without inserting a confluence or routing water again.
+
+```julia
+FlowRequirement(name=:DownstreamGauge, river_arrivals=[:North, :South],
+    min_flow=3.0, max_flow=20.0, max_volume=0.25)
 ```
 
-All terms are in m³/s. `inflow` and `min_flow` default to zero and accept time-dependent operations. The measurement adds no hydraulic node or water balance term. The physical network must already account for the observed water. Contributions must be unique existing names, and observation names must be globally unique. River contributions denote releases, not delayed arrivals; constrain a River’s `min_arrival` when travel time matters.
-
-Refinement retains these rules and their physical input times. Independent equation validation and finer replay check the aggregate minimum. Flow requirements are hard constraints; conditional waivers and soft shortfall penalties are not supplied by this observation profile.
+Optional `min_volume` and `max_volume` bound total observed water at the horizon
+end, in Mm³. The total is `initial_volume + 0.0036*sum(dt .* observed_flow)`.
+The default `initial_volume=0` starts a new accounting period; restart adds the
+executed prefix and retains the original terminal bounds. The allowance does
+not impose an intermediate minimum or duplicate water in storage. Rate bounds
+apply to every interval average. Finer replay checks them over the original
+control windows. These bounds are hard; the observation has no penalty slack.
 
 ## Explicit penalty limits
 
