@@ -93,7 +93,8 @@ and transient pressure dynamics are outside the current model.
 extrapolation and zero-flow river-delay coverage, with hand-calculated examples.
 
 Feasible-start preparation uses SCIP MILP proposals and Ipopt nonlinear dispatch.
-The full SCIP search retains the original nonlinear equations. JuMP provides
+SCIP bounds a numerical outer problem with explicit equality bands; schedules
+are reconstructed against the original nonlinear equations. JuMP provides
 the common algebraic interface; Julia also hosts physical reconstruction and
 sparse river transport. See the paper for interpolation and certificate scope.
 The [model validity guide](docs/model-validity.md) explains conservation,

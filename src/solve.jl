@@ -91,6 +91,26 @@ function _remove_constant_constraints!(model)
     count
 end
 
+# This is an outer problem for bounds, not the physical feasibility test.
+# Explicit bands keep roundoff in coupled graph equalities from making the
+# bounding problem empty. Every exact equality solution remains in its band.
+const _GLOBAL_EQUALITY_RADIUS=1e-9
+
+function _enclose_global_equalities!(model)
+    count=0
+    for ref in all_constraints(model;include_variable_in_set_constraints=false)
+        object=constraint_object(ref)
+        object.set isa MOI.EqualTo || continue
+        rhs=object.set.value
+        label=name(ref)
+        delete(model,ref)
+        add_constraint(model,ScalarConstraint(object.func,
+            MOI.Interval(rhs-_GLOBAL_EQUALITY_RADIUS,rhs+_GLOBAL_EQUALITY_RADIUS)),label)
+        count+=1
+    end
+    count
+end
+
 function _unresolved_root_certificate(diagnostics, status)
     status=="OPTIMAL" && get(diagnostics,"available",false) &&
     get(diagnostics,"lp_iterations",0)>0 &&
@@ -276,6 +296,8 @@ function _solve(
     construction_started=clock()
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u,tunnel_opening=fixed_tunnel_opening)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
+    result["enclosed_equalities"] = _enclose_global_equalities!(b.m)
+    result["equality_enclosure_radius"] = _GLOBAL_EQUALITY_RADIUS
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
         result["start_audit"] = start_audit
@@ -329,7 +351,9 @@ function _solve(
                 "limits/time" => remaining,
                 "limits/gap" => relative_gap,
                 "limits/absgap" => absolute_gap / 10000,
-                "numerics/feastol" => 1e-8,
+                "numerics/feastol" => 1e-10,
+                "numerics/epsilon" => 1e-12,
+                "numerics/sumepsilon" => 1e-12,
                 "parallel/maxnthreads" => 1,
                 "propagating/obbt/createbilinineqs" => false,
                 "propagating/obbt/itlimitfactor" => 1.0,
