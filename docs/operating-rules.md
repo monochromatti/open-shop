@@ -58,6 +58,61 @@ limits and conversion law permit that point, and still incurs transitions and
 dwell obligations. An explicit zero output schedule retains its off-state
 meaning. Maintenance and forced states also retain their ordinary meanings.
 
+## Gross head and startup eligibility
+
+Unit `gross_head_min` and `gross_head_max` restrict the difference between
+reference reservoir surfaces or fixed boundary levels before waterway losses.
+The existing `hmin` and `hmax` still restrict effective head at the machine.
+Running gross head uses volume-averaged interval levels. A separate
+`startup_gross_head_min` is assessed at the starting time using vertex storage;
+it does not prevent an already running unit from continuing below that level.
+All three optional limits accept operating series and apply only in their
+respective running or starting states.
+
+A plant's reservoir/boundary endpoints supply the default references. If an
+endpoint is a hydraulic junction, name its reference explicitly with
+`gross_head_source` or `gross_head_target`. These references are fixed model
+inputs, independent of gate choices. They do not select a reservoir by searching
+the network. Pump references follow actual water motion: gross lift is the
+target level minus the source level. Submerged outlet floors and friction
+remain in the effective-head equation, not this reference-level difference.
+
+Storage operating bounds are enforced at their timestamps, including a change
+exactly at the final endpoint. Because storage is continuous, both sides of a
+held-bound change apply there. An isolated point target belongs in a
+`SoftConstraint` with zero slack allowance rather than a held operating series.
+
+## River operating costs
+
+`River.flow_change_cost` charges the absolute change in upstream interval-average
+flow, in currency per (m³/s). It is paid once at each change, without an interval
+duration multiplier. The first comparison uses `initial_release`, or the last
+historical release when that explicit value is absent. With neither, the first
+flow-change comparison is omitted.
+
+Optional `min_allowed_flow` gives a river an operating state: flow is zero while
+off and at least that positive minimum while on. `flow_start_cost` and
+`flow_stop_cost` charge changes in this state. They require `min_allowed_flow`
+and a compatible initial release/history. Instantaneous signed delta-level
+channels do not have this operating state, but may have flow-change costs.
+The state describes upstream release, not whether water remains in transit;
+downstream arrivals can continue after upstream flow stops. Natural inflow is
+part of upstream river flow and must obey the same limits.
+A capacity restriction below the minimum permits only the off state.
+
+`solve` searches river states alongside unit commitment and tunnel positions.
+`solve_case(...; river_on=...)` fixes a binary `[river, interval]` matrix for its
+continuous subproblem. Without it, a warm schedule supplies these states;
+otherwise enabled rivers default to on, as units do. `schedule_case` passes the
+MILP's river states to nonlinear dispatch. No extra state is stored in a physical
+schedule: on-state flow lies in a disjoint positive range, so the state follows
+from the resulting flow.
+
+Restart carries the last control-window release independently of river transport
+cohorts. Finer replay assesses flow states and costs on the original control
+windows, so refinement adds no switching events. `objective_components` reports
+`river_change_cost`, `river_start_cost` and `river_stop_cost` separately.
+
 ## Directional ramps
 
 Generators and plants accept `ramp_up`/`ramp_down` for power and

@@ -60,7 +60,7 @@ function _read_object(T, x)
     for f in fieldnames(T)
         haskey(x, string(f)) || continue
         v=x[string(f)]
-        if fieldtype(T, f)==Symbol || (f==:discharge_river && v!==nothing)
+        if fieldtype(T, f)==Symbol || (f in (:discharge_river,:gross_head_source,:gross_head_target) && v!==nothing)
             v=Symbol(v)
         elseif f==:curves
             v=[
@@ -227,6 +227,7 @@ function has_operational_data(c)
         any(
             g.turbine_table!==nothing || g.characteristic!==nothing ||
                 g.generator_efficiency_curve!==nothing ||
+                any(a->getfield(g,a)!==nothing,GROSS_HEAD_ATTRIBUTES) ||
                 g.shutdown!=0.0 ||
                 g.min_efficiency!=0.0 for g in c.system.generators
         ) ||
@@ -234,5 +235,6 @@ function has_operational_data(c)
             p.tailwater_curve!==nothing || p.outlet_head_floor!==nothing for
             p in c.system.plants
         ) ||
-        any(r.discharge_curve!==nothing || r.allow_dry for r in c.system.rivers)
+        any(r.discharge_curve!==nothing || r.allow_dry || r.min_allowed_flow!==nothing ||
+            any(a->getfield(r,a)>0,RIVER_COST_ATTRIBUTES) for r in c.system.rivers)
 end

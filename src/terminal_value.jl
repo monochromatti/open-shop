@@ -52,12 +52,14 @@ function objective_components(c::ScheduleCase,x)
         for (i,r) in enumerate(s.rivers);init=0.0)
     transition_cost=transition_costs(c,x.commitment)
     gate_cost=tunnel_adjustment_cost(c,x.tunnel_opening)
+    river_cost=river_operating_cost(c,x.river_release)
     release_penalty=release_requirements(c,x.river_release).cost
     soft_penalty=soft_constraint_assessment(c,x).cost
     reserve=reserve_economics(c,x.reserves)
+    river_change_cost,river_start_cost,river_stop_cost=river_cost.change,river_cost.start,river_cost.stop
     reserve_revenue,reserve_penalty=reserve.revenue,reserve.cost
     total=energy_revenue+reservoir_value+transit_value+reserve_revenue-
-        transition_cost-gate_cost-release_penalty-soft_penalty-reserve_penalty
+        transition_cost-gate_cost-release_penalty-soft_penalty-reserve_penalty-river_cost.total
     (;energy_revenue,reservoir_value,transit_value,reserve_revenue,
-        transition_cost,gate_cost,release_penalty,soft_penalty,reserve_penalty,total)
+        transition_cost,gate_cost,release_penalty,soft_penalty,reserve_penalty,river_change_cost,river_start_cost,river_stop_cost,total)
 end

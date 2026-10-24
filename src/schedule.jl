@@ -101,12 +101,12 @@ function schedule_case(
         )
         push!(proposals, p)
     end
-    candidates=[(p["u"],p["tunnel_opening"]) for p in proposals if haskey(p, "u")]
-    fallback_gates_valid && admissible(c,fallback) && push!(candidates,(fallback,fallback_opening))
-    seen=Set{Tuple{String,String}}()
-    for (u,opening) in candidates
+    candidates=[(p["u"],p["tunnel_opening"],p["river_on"]) for p in proposals if haskey(p, "u")]
+    fallback_gates_valid && admissible(c,fallback) && push!(candidates,(fallback,fallback_opening,fixed_river_on(c,nothing,nothing)))
+    seen=Set{Tuple{String,String,String}}()
+    for (u,opening,river_on) in candidates
         time()<deadline || break
-        key=(join(vec(u)),join(vec(opening),','))
+        key=(join(vec(u)),join(vec(opening),','),join(vec(river_on)))
         key in seen && continue
         push!(seen, key)
         admissible(c, u) || continue
@@ -115,6 +115,7 @@ function schedule_case(
                 c;
                 u,
                 tunnel_opening=opening,
+                river_on,
                 max_refinements,
                 time_limit = nlp_time_limit,
                 warm = reference,

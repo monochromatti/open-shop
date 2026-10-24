@@ -55,7 +55,6 @@ function propose_commitment(
     @variable(m, gq[1:G, 1:T]>=0)
     @variable(m, rq[1:D, 1:T]>=0)
     @variable(m, release_shortfall[1:D, 1:T]>=0)
-    constrain_flow_requirements!(m, c, gq, rq)
     alpha=zeros(G, T)
     reference_heads=similar(alpha)
     selectable=any(x->!(x isa Number),gates.opening)
@@ -105,10 +104,13 @@ function propose_commitment(
     constrain_reservoir_ramps!(m,c,V) # Only linear storage ramps belong to the proposal.
     level_at_vertex=(i,t)->begin
         r=s.reservoirs[i]
+        t==1 && return head(r,r.v0) # Initial storage is known exactly, even for a curved level law.
         lo,hi=r.vmin,r.vmax
         h0,h1=head(r,lo),head(r,hi)
         h0+(h1-h0)*(V[i,t]-lo)/(hi-lo)
     end
+    constrain_gross_heads!(m,c,u,(i,t)->(level_at_vertex(i,t)+level_at_vertex(i,t+1))/2,
+        level_at_vertex;transitions=states)
     soft=constrain_soft_constraints!(m,c,V,P,gq;level=level_at_vertex)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
@@ -186,6 +188,8 @@ function propose_commitment(
         )
     end
     constrain_river_sources!(m,c,rq,arrivals,injections)
+    constrain_flow_requirements!(m,c,gq,rq,arrivals,Q)
+    river_operations=constrain_river_operations!(m,c,rq)
     # Hydraulic continuity is retained. Selectable gates use the affine/secant
     # pressure surrogate above; nonlinear outlet laws are absent from proposals.
     for i in 1:(R + length(s.junctions)), t in 1:T
@@ -258,7 +262,7 @@ function propose_commitment(
         Max,
         sum(
             c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*P[j, t] for j in 1:G, t in 1:T
-        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost+water_scale*valuechange+
+        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost-river_operations.cost+water_scale*valuechange+
         (reserves===nothing ? 0.0 : reserves.value)-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
@@ -287,6 +291,7 @@ function propose_commitment(
         "nonlinear_bound"=>false,
     )
     if has_values(m)
+        result["river_on"]=river_on_schedule(c,value.(rq))
         result["u"]=round.(Int, value.(u))
         result["generator_q"]=value.(gq)
         result["river_release"]=value.(rq)

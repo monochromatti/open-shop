@@ -691,6 +691,20 @@ to be off. Zero scheduled output requires the off state, and positive output
 requires the on state. These constraints also apply during mandatory initial
 running or stopped periods. A conflict makes the model infeasible.
 
+Optional gross-head limits use named reservoir or fixed-level references,
+before waterway losses. With the same mode sign $sigma_g$ as the power
+balance, let $h_(g t)^G=sigma_g (overline(Z)_(s t)-overline(Z)_(d t))$.
+Running and starting restrictions have different assessment times:
+
+$ u_(g t)=1 & ==> underline(h)_(g t)^G <= h_(g t)^G <= overline(h)_(g t)^G, \
+  s_(g t)^+=1 & ==> sigma_g (Z_s (V_(s t))-Z_d (V_(d t))) >= h_(g t)^"start". $
+
+A fixed boundary contributes its prescribed level in either expression.
+The startup condition uses the surface at the control edge, not the subsequent
+interval average. It does not stop a running unit when the level later falls
+below the startup threshold. References remain fixed when tunnel gates move;
+we require explicit references where a plant endpoint is a pressure junction.
+
 #block(breakable: false)[
 For interval-average discharge or release $x_t$, supplied upward and downward
 rates $r_x^+,r_x^-$ limit changes between interval midpoints:
@@ -752,6 +766,45 @@ implied closure time. Zero declares no pending wait. On restart we retain
 the latest unexpired closure deadline in each group, together with the gate
 positions and unit histories. Closing a gate at the restart edge starts a new
 wait in the continuation.
+
+== Flow observations and river operating states
+
+An operating observation can sum unit discharges, tunnel flows, upstream reach
+entries and downstream arrivals. Its interval-average rate is
+
+$ F_(o t) = sum_(g in cal(G)_o) q_(g t)
+  + sum_(e in cal(E)_o) Q_(e t) + sum_(r in cal(R)_o^"in") R_(r t)
+  + sum_(r in cal(R)_o^"out") frac(A_(r t), kappa Delta_t) + I_(o t). $
+
+Tunnel contributions retain their declared direction. Each listed contribution
+must describe water already present in the physical network. The observation
+adds no water balance. Bounds may constrain this rate and its horizon volume:
+
+$ underline(F)_(o t) <= F_(o t) <= overline(F)_(o t), quad
+  underline(B)_o <= B_o^0 + kappa sum_t Delta_t F_(o t) <= overline(B)_o. $
+
+Only supplied upper or volume bounds apply. A continuation adds executed
+observed volume to $B_o^0$ and retains the terminal allowance. Downstream
+observations use delayed arrivals even when no release schedule is supplied.
+
+A routed river may have a minimum flowing rate $R_r^"min">0$. Binary state
+$z_(r t)$ then imposes
+
+$ R_r^"min" z_(r t) <= R_(r t) <= C_(r t) z_(r t). $
+
+Starts $a_(r t)^+$ and stops $a_(r t)^-$ obey the transition equations above
+with $z$ in place of $u$, and no minimum-duration requirement. Costs depend on
+these transitions and on changes in upstream rate:
+
+$ C^"river" = sum_(r,t) (c_(r t)^"change" abs(R_(r t)-R_(r,t-1))
+  + c_(r t)^"start" a_(r t)^+ + c_(r t)^"stop" a_(r t)^-). $
+
+The rate-change term also applies without a river operating state. Each cost
+is charged once, without a duration multiplier. The first comparison uses
+supplied previous flow; an unspecified previous flow omits that rate-change
+comparison. Transition costs require a known initial state and a positive
+minimum rate. Signed instantaneous channels have no such state. Finer replay
+assesses these costs and flow observations over the original control windows.
 
 == Explicitly penalized operating limits
 
@@ -910,7 +963,7 @@ to water in reservoirs and reaches, per $"Mm"^3$. We maximize
 $ cal(V) = & sum_t pi_t Delta_t sum_g sigma_g P_(g t)
   - sum_(g,t) (c_(g t)^+ s_(g t)^+ + c_(g t)^- s_(g t)^-) \
   & - sum_(e,t) c_(e t)^b abs(b_(e t) - b_(e,t-1))
-  - sum_(r,t) c_(r t)^r xi_(r t) - sum_ell C_ell \
+  - sum_(r,t) c_(r t)^r xi_(r t) - sum_ell C_ell - C^"river" \
   & + sum_i v_i (V_(i T) - V_(i 0)) + sum_r v_r (W_(r T) - W_(r 0)) \
   & + sum_(k,t) Delta_t (pi_(k t)^+ sum_g r_(g k t)^+
       + pi_(k t)^- sum_g r_(g k t)^-
@@ -964,7 +1017,8 @@ hydraulic laws. The procedure may try several proposals within a time
 budget. Candidates that pass the checks below become starting solutions
 for the full SCIP search~@scip, which can change the discrete choices.
 
-The MILP objective approximates @eq:objective and gives no enclosing bound.
+The proposal also selects enabled river operating states; nonlinear dispatch
+holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
 Its soft level observations use a secant approximation to storage-dependent
 level, and its power observations use the proposal's power surrogate. The
 nonlinear dispatch and global model retain the original observation laws.

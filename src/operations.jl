@@ -3,7 +3,8 @@ const OPERATION_ATTRIBUTES=Dict(
         :level_ramp_up, :level_ramp_down)),
     Generator=>Set((:qmin, :qmax, :pmin, :pmax, :forced_on, :maintenance,
         :power, :discharge, :startup, :shutdown, :ramp_up, :ramp_down,
-        :discharge_ramp_up, :discharge_ramp_down, :reserve_available)),
+        :discharge_ramp_up, :discharge_ramp_down, :reserve_available,
+        :gross_head_min, :gross_head_max, :startup_gross_head_min)),
     Plant=>Set((:pmin, :pmax, :qmin, :qmax, :forced_on, :maintenance,
         :power, :discharge, :ramp_up, :ramp_down,
         :discharge_ramp_up, :discharge_ramp_down)),
@@ -19,8 +20,9 @@ const OPERATION_ATTRIBUTES=Dict(
         :release_penalty,
         :ramp_up,
         :ramp_down,
+        :flow_change_cost, :flow_start_cost, :flow_stop_cost,
     )),
-    FlowRequirement=>Set((:inflow, :min_flow)),
+    FlowRequirement=>Set((:inflow, :min_flow, :max_flow)),
     ReserveGroup=>Set((:up_requirement,:down_requirement,:up_price,:down_price,:up_max,:down_max)),
 )
 
@@ -76,7 +78,6 @@ opinterval(c, object, attribute, t, default; grid = c.grid) =
 """Continuous storage satisfies both sides of an internal bound change."""
 function opvertex(c, object, attribute, time, default; lower = true, grid = c.grid)
     time==first(grid) && return opvalue(c, object, attribute, time, default)
-    time==last(grid) && return opvalue(c, object, attribute, time, default; side = :left)
     left=opvalue(c, object, attribute, time, default; side = :left)
     right=opvalue(c, object, attribute, time, default)
     lower ? max(left, right) : min(left, right)
@@ -148,6 +149,8 @@ function validate_operations(c)
         elseif z.attribute in (:min_open, :max_open)
             all(x->isinteger(x) && 0<=x<=length(obj.tunnels),z.values) ||
                 throw(ArgumentError("interlock counts must be integers within their tunnel group"))
+        elseif obj isa FlowRequirement && z.attribute in (:min_flow,:max_flow)
+            nothing
         elseif z.attribute in (:up_price,:down_price)
             nothing
         else
@@ -219,26 +222,6 @@ function validate_operations(c)
     end
     _commitment_bounds(c) # Intersect operational states with initial dwell obligations.
     _validate_tunnel_operating_controls(c)
-    nothing
-end
-
-function flow_requirement_indices(c, requirement)
-    generators=Dict(g.name=>i for (i, g) in enumerate(c.system.generators))
-    rivers=Dict(r.name=>i for (i, r) in enumerate(c.system.rivers))
-    ([generators[n] for n in requirement.generators], [rivers[n] for n in requirement.rivers])
-end
-
-"""Add the same linear operating observation to local, proposal and global models."""
-function constrain_flow_requirements!(m, c, generator_q, release)
-    for rule in c.flow_requirements
-        gs, rs=flow_requirement_indices(c, rule)
-        for t in eachindex(c.prices)
-            observed=sum(generator_q[i, t] for i in gs; init=0.0)+
-                     sum(release[i, t] for i in rs; init=0.0)+
-                     opinterval(c, rule.name, :inflow, t, rule.inflow)
-            @constraint(m, observed>=opinterval(c, rule.name, :min_flow, t, rule.min_flow))
-        end
-    end
     nothing
 end
 

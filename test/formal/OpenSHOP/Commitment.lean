@@ -2,6 +2,41 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- A zero-or-minimum-flow disjunction has an unambiguous operating state. -/
+theorem river_flow_disjunction (q minimum capacity state : ℝ)
+    (positive : 0 < minimum) (binary : state=0 ∨ state=1)
+    (lower : minimum*state ≤ q) (upper : q ≤ capacity*state) :
+    (state=0 ∧ q=0) ∨ (state=1 ∧ minimum ≤ q ∧ 0 < q) := by
+  rcases binary with h | h
+  · left; constructor
+    · exact h
+    · rw [h] at lower upper; nlinarith
+  · right; refine ⟨h, ?_, ?_⟩
+    · simpa [h] using lower
+    · rw [h] at lower; linarith
+
+/-- The gross-head lower row imposes the stated limit precisely in the on
+state; the off state retains the pre-existing physical lower bound. -/
+theorem conditional_head_lower (head limit lower state : ℝ)
+    (domain : lower ≤ head) (binary : state=0 ∨ state=1) :
+    (limit-max 0 (limit-lower)*(1-state) ≤ head) ↔ (state=1 → limit ≤ head) := by
+  rcases binary with h | h <;> subst state <;> simp only [sub_zero, sub_self, mul_one, mul_zero]
+  · constructor
+    · intro _ impossible; norm_num at impossible
+    · intro _; have hm := le_max_right (0 : ℝ) (limit-lower); linarith
+  · simp
+
+/-- Restarted volume allowances count each executed interval exactly once. -/
+theorem observed_volume_restart (initial consumed remaining : ℝ) :
+    initial+(consumed+remaining)=(initial+consumed)+remaining := by ring
+
+/-- The linear epigraph used for a rate-change charge encloses the exact
+absolute change. Positive costs make its smallest feasible value exact. -/
+theorem flow_change_epigraph (change variation : ℝ) :
+    (change ≤ variation ∧ -change ≤ variation) ↔ |change| ≤ variation := by
+  rw [abs_le]
+  constructor <;> rintro ⟨h₁,h₂⟩ <;> constructor <;> linarith
+
 /-- The four product rows are exact at either binary state, for signed x. -/
 theorem binary_product_exact (u x z lo hi : ℝ)
     (binary : u = 0 ∨ u = 1) (bounds : lo ≤ x ∧ x ≤ hi) :

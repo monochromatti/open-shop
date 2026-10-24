@@ -92,7 +92,7 @@ function dispatch_from_controls(
         reserve_witnesses(c,_reserve_input(reserves,T),u,z)
     objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*z.power[j,t]
         for j in eachindex(s.generators), t in 1:T; init=0.0) -
-        operating_cost-req.cost-adjustment_cost +
+        operating_cost-req.cost-adjustment_cost-river_operating_cost(c,z.river_release).total +
         sum(r.water_value*(z.storage[i,end]-r.v0)
             for (i,r) in enumerate(s.reservoirs); init=0.0) +
         sum(r.water_value*(z.transit[i,end]-z.transit[i,1])

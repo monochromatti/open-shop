@@ -110,7 +110,8 @@ function replay_audit(
         edges=[searchsortedfirst(grid, t) for t in c.grid]
         storage_error=maximum(abs, z.storage[:, edges]-x.storage; init = 0.0)
         transit_error=maximum(abs, z.terminal_transit-x.terminal_transit; init = 0.0)
-        objective_error=z.objective-x.objective
+        replayed_objective=z.objective-river_operating_cost(c,windows.river_release).total
+        objective_error=replayed_objective-x.objective
         numerical=storage_error<=storage_convergence &&
                   transit_error<=storage_convergence &&
                   abs(objective_error)<=objective_convergence*max(1.0, abs(x.objective))
@@ -131,7 +132,7 @@ function replay_audit(
             "max_water_residual_Mm3"=>get(violations, "global_water", Inf),
             "max_storage_difference_Mm3"=>storage_error,
             "terminal_transit_difference_Mm3"=>transit_error,
-            "replayed_objective"=>z.objective,
+            "replayed_objective"=>replayed_objective,
             "objective_difference"=>objective_error,
             "storage_convergence_tolerance_Mm3"=>storage_convergence,
             "relative_objective_convergence_tolerance"=>objective_convergence,
@@ -172,6 +173,7 @@ function solve_verified(
     feasibility_only = false,
     warm = nothing,
     tunnel_opening = nothing,
+    river_on = nothing,
     operational_margin = 0.0,
     deadline = Inf,
     refine_grid = true,
@@ -191,6 +193,15 @@ function solve_verified(
         )
     initial!==nothing && haskey(initial, "grid") && initial["grid"]!=c.grid &&
         throw(ArgumentError("initial candidate control grid differs from requested grid"))
+    if river_on!==nothing
+        river_on=fixed_river_on(c,river_on,nothing)
+        if initial!==nothing
+            initial_states=river_on_schedule(c,_schedule_input(initial;case=c).river_release)
+            all(r.min_allowed_flow===nothing || initial_states[i,:]==river_on[i,:]
+                for (i,r) in enumerate(c.system.rivers)) ||
+                throw(ArgumentError("initial candidate river states differ from requested states"))
+        end
+    end
     isfinite(operational_margin) && operational_margin >= 0 ||
         throw(ArgumentError("nonnegative finite operational_margin required"))
     openings=tunnel_opening===nothing ? nothing :
@@ -222,6 +233,7 @@ function solve_verified(
             time_limit = remaining,
             feasibility_only = feasibility_only,
             tunnel_opening = openings,
+            river_on,
         )
         dispatch=x
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
@@ -288,6 +300,7 @@ function solve_verified(
                 length(cc.prices),
             ) for t in 1:(length(nextgrid) - 1)
         ]
+        river_on=river_on===nothing ? river_on_schedule(cc,x.river_release)[:,idx] : river_on[:,idx]
         uu=uu[:, idx]
         openings=_physical_tunnel_openings(cc,get(x,"tunnel_opening",nothing))[:,idx]
         cc=with_grid(cc, nextgrid)

@@ -212,7 +212,6 @@ function _build_global_dispatch(
     GQ=50 .* gq
     P=40 .* p
     RQ=100 .* rq
-    constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=domains.lower[i, t], domains.upper[i, t]
@@ -257,6 +256,7 @@ function _build_global_dispatch(
         graph.y
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    constrain_gross_heads!(m,c,u,(i,t)->H[i,t],level_at_vertex;transitions)
     soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], node_bounds[(j.name,t)][1]/250)
@@ -700,10 +700,12 @@ function _build_global_dispatch(
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
+    constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
+    river_operations=constrain_river_operations!(m,c,RQ;relaxed)
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
-        initial_transit=history_initial, gate_cost=gates.cost, transitions, soft_cost=soft.cost)
+        initial_transit=history_initial, gate_cost=gates.cost, transitions, soft_cost=soft.cost,river_cost=river_operations.cost)
     reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
@@ -777,7 +779,7 @@ function _build_global_dispatch(
         bounds_seconds,
         shared_heads,
         node_bounds,
-        gates,
+        gates,river_operations,
         graphs = (;reservoir_vertices,reservoir_potentials,reservoir_slopes,
             tunnel_losses,plant_heads,generator_graphs,river_graphs),
     )

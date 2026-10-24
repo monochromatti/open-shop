@@ -11,6 +11,7 @@ function _build_dispatch(
     feasibility_only = false,
     transport = nothing,
     tunnel_opening = nothing,
+    river_on = nothing,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -110,7 +111,6 @@ function _build_dispatch(
     GQ=50 .* gq
     P=40 .* p
     RQ=100 .* rq
-    constrain_flow_requirements!(m, c, GQ, RQ)
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=soft_storage_bounds(c, r, c.grid[t])
@@ -133,6 +133,7 @@ function _build_dispatch(
         level_ops[i]===nothing ? r.z0+r.slope*volume+r.curvature*volume^2 : level_ops[i](volume)
     end
     constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    constrain_gross_heads!(m,c,u,(i,t)->H[i,t],level_at_vertex)
     soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], j.hmin/250)
@@ -381,10 +382,12 @@ function _build_dispatch(
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
+    constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
+    river_operations=constrain_river_operations!(m,c,RQ;fixed=fixed_river_on(c,river_on,warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     history_initial=exact ? nd.initial_transit : rd["history_initial"]
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
-        initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost)
+        initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost,river_cost=river_operations.cost)
     reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
@@ -424,6 +427,9 @@ function _build_dispatch(
             set_start_value(rq[i, t], warm.river_release[i, t]/100)
             set_start_value(a[i, t], warm.gate[i, t])
         end
+        for (variable,value) in river_operation_start_values(river_operations,c,warm.river_release)
+            set_start_value(variable,value)
+        end
     end
     _start_reserves!(reserves,c,warm)
     (;
@@ -448,6 +454,7 @@ function _build_dispatch(
         transport = nd,
         warm_start,
         gates,
+        river_operations,
     )
 end
 
@@ -498,10 +505,12 @@ end
 
 """
     solve_case(case; u=ones(Int, length(case.system.generators), length(case.prices)),
-               tunnel_opening=nothing, time_limit=45.0, warm=nothing, ...)
+               tunnel_opening=nothing, river_on=nothing, time_limit=45.0, warm=nothing, ...)
 
 Optimize continuous dispatch with Ipopt for fixed commitment `u[unit, interval]`
-and fixed tunnel gate positions. Gate positions default to the case's prescribed
+and fixed tunnel gate positions. Enabled river states are fixed by `river_on`,
+or inferred from a warm schedule; otherwise they default to on.
+Gate positions default to the case's prescribed
 schedule; this routine never searches discrete states. Use [`solve`](@ref) for
 the global mixed-integer problem, or [`schedule_case`](@ref) to prepare a feasible
 schedule by combining MILP proposals with nonlinear dispatch.
@@ -523,6 +532,7 @@ function solve_case(
     feasibility_only = false,
     transport = nothing,
     tunnel_opening = nothing,
+    river_on = nothing,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -538,6 +548,7 @@ function solve_case(
         feasibility_only,
         transport,
         tunnel_opening,
+        river_on,
     )
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds
