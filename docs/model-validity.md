@@ -12,6 +12,17 @@ real numbers. Julia regression tests connect those statements to numerical
 examples. The Julia implementation, its translation through JuMP, and the
 solvers have not been formally verified.
 
+Global search uses a numerical outer problem: each scalar equality `f(x)=b`
+is enclosed by `b−10⁻⁹ ≤ f(x) ≤ b+10⁻⁹` in its existing model coordinates.
+The solver's feasibility tolerance is `10⁻¹⁰`, below this explicit radius.
+These bands prevent microscopic inconsistencies between coupled floating-point
+curve graphs from being treated as an empty bounding problem. Every exact
+equality solution remains in its band, so a genuine upper bound over the
+outer problem also bounds the original equations. Lean checks this implication.
+The radius is a numerical relaxation, not a rigorous error bound for SCIP or
+for coefficient arithmetic. Returned schedules are independently reconstructed
+and checked against the original equations and operating restrictions.
+
 Input validation does not promise a nonempty feasible set. Physical limits,
 water availability and operating requirements can conflict in a particular
 case. That is different from a redundant formulation inequality incorrectly

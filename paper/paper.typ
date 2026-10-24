@@ -1056,6 +1056,15 @@ feasible schedule and can exclude some of these excessive values.
 The algebraic curve representations and bound constructions are given in
 @sec:graphs.
 
+For numerical bounding, each scalar equality $f(x)=b$ is enclosed by
+$b-delta <= f(x) <= b+delta$, with $delta=10^(-9)$ in the equation's model
+coordinates. The solver feasibility tolerance is $10^(-10)$. This explicit
+band prevents small inconsistencies between floating-point curve graphs from
+making the bounding problem empty. It enlarges the feasible set, so its
+upper bound also bounds exact equality solutions. The band is used only in
+global search; reconstruction and acceptance use the original equations.
+It does not enclose every error in coefficient arithmetic or in the solver.
+
 Here $L$ is the independently reconstructed value of a schedule feasible for
 the interval model, and $U$ must be a finite enclosing bound. The absolute
 and relative limits on possible improvement are

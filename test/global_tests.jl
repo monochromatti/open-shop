@@ -188,3 +188,29 @@ end
     @test result["relative_gap"]===nothing
     @test occursin("independently reconstructed",result["bound_rejection"])
 end
+
+@testset "A global bound encloses a better feasible pressure-network schedule" begin
+    # This generated case admitted two different native "optimal" bounds,
+    # depending on the initial schedule. The controls below give an independent
+    # counterexample to the lower of those purported upper bounds.
+    data = FuzzWorker.FuzzCases.generate_case(2,"pressure","small")
+    reference = FuzzWorker.reconstruct(data)
+    c = FuzzWorker.FuzzCases.restrict_case(2,data.case,reference)
+    initial = dispatch_from_controls(c,data.u,data.q,data.gate;tunnel_opening=data.opening)
+    u = [1 1 1 1 1; 0 1 1 1 1]
+    q = [1.4128023058253234 5.768442277750943 8.947747936893713 4.272118894763986 8.947747936893713;
+         0.0 0.25199928882280176 5.599984196101138 3.9935270686054203 1.1199968392202295]
+    opening = [1.0 0 0 0 0; 1.0 0.5 1 1 1; 1.0 1 1 1 1; 1.0 1 1 1 1]
+    better = dispatch_from_controls(c,u,q,zeros(0,5);tunnel_opening=opening)
+    @test validate(c,better)["valid"]
+    @test better.objective > initial.objective + 100.0
+    result = solve(c;initial,time_limit=45.0,replay=false)
+    @test result.solution !== nothing
+    if result.solution !== nothing
+        @test validate(c,result.solution)["valid"]
+    end
+    @test result.global_bound !== nothing
+    if result.global_bound !== nothing
+        @test result.global_bound >= better.objective-1e-4
+    end
+end

@@ -19,7 +19,7 @@ lake env lean CheckAxioms.lean
 `lean-toolchain` pins Lean 4.24.0. The Lake manifest pins mathlib and its
 transitive dependencies. Neither is needed to install or use the Julia package.
 CI builds these proofs and checks every declaration in the `OpenSHOP` namespace,
-including generated auxiliaries. There are 64 explicitly stated theorems.
+including generated auxiliaries. There are 66 explicitly stated theorems.
 Only Lean's standard logical axioms (`propext`, `Classical.choice`, `Quot.sound`)
 are allowed. Proof placeholders and additional axioms fail that check.
 
@@ -39,7 +39,9 @@ coefficient enclosure theorem assumes valid coefficient bounds; it does not
 certify their floating-point computation. The routing proofs assume the supplied
 CDF is causal and monotone; they do not verify the complete routing integrator.
 The gap theorem assumes a genuine enclosing real bound and does not certify
-SCIP output.
+SCIP output. The equality-band theorems prove that a bound over the numerical
+outer problem also bounds exact solutions; they do not certify a solver or
+bound its rounding errors.
 
 The energy proofs concern exact real arithmetic. Mean-slope bounds assume
 nonnegative integration weights summing to one half; the segment-weight identity

@@ -51,6 +51,26 @@ theorem absolute_gap_bound (incumbent upper candidate epsilon : ℝ)
     (enclosing : candidate ≤ upper) (gap : upper-incumbent ≤ epsilon) :
     candidate-incumbent ≤ epsilon := by linarith
 
+/-- An equality is contained in every nonnegative band about its right side.
+The band is used only for bounding; it does not redefine physical feasibility. -/
+theorem equality_in_band (value rhs radius : ℝ) (nonnegative : 0 ≤ radius)
+    (equation : value=rhs) : rhs-radius ≤ value ∧ value ≤ rhs+radius := by
+  rw [equation]
+  constructor <;> linarith
+
+/-- An upper bound over banded equalities also bounds their exact solutions.
+This proves the relaxation implication, not a floating-point solver's output. -/
+theorem equality_band_upper_bound {X I : Type*}
+    (objective : X → ℝ) (equation : I → X → ℝ) (rhs radius : I → ℝ) (upper : ℝ)
+    (nonnegative : ∀ i, 0 ≤ radius i)
+    (enclosing : ∀ x, (∀ i, rhs i-radius i ≤ equation i x ∧
+      equation i x ≤ rhs i+radius i) → objective x ≤ upper) :
+    ∀ x, (∀ i, equation i x=rhs i) → objective x ≤ upper := by
+  intro x exactEquations
+  apply enclosing x
+  intro i
+  exact equality_in_band _ _ _ (nonnegative i) (exactEquations i)
+
 
 /-- Interval propagation of storage bounds follows directly from mass balance.
 Backward propagation is the same equation solved for the preceding state. -/
