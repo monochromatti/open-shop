@@ -22,6 +22,23 @@ function warm_dispatch_fixture(; rivers = true, minimum_power = 0.1)
         prices = [50.0, 90.0], operations = operations)
 end
 
+@testset "Preparation improves an accepted schedule and preserves its feasibility" begin
+    c=warm_dispatch_fixture(;rivers=false)
+    off=dispatch_from_controls(c,zeros(Int,2,2),zeros(2,2),zeros(0,2))
+    @test replay_audit(c,off)["valid"]
+    prepared=schedule_case(c;initial=off,time_limit=15.0,proposal_time_limit=2.0,
+        nlp_time_limit=5.0,max_refinements=0,refine_grid=false)
+    @test prepared["accepted"]
+    if prepared["accepted"]
+        @test prepared["solution"]["objective"]>off.objective+1.0
+        @test validate(c,prepared["solution"])["valid"]
+        @test replay_audit(c,prepared["solution"])["valid"]
+    end
+    damaged=OpenSHOP.schedule_dict(off)
+    damaged["power"][1]=1.0
+    @test_throws ArgumentError schedule_case(c;initial=damaged,time_limit=15.0)
+end
+
 @testset "Shared preparation deadline" begin
     c=warm_dispatch_fixture()
     u=zeros(Int,2,2)

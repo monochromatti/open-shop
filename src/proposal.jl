@@ -105,9 +105,11 @@ function propose_commitment(
     level_at_vertex=(i,t)->begin
         r=s.reservoirs[i]
         t==1 && return head(r,r.v0) # Initial storage is known exactly, even for a curved level law.
-        lo,hi=r.vmin,r.vmax
-        h0,h1=head(r,lo),head(r,hi)
-        h0+(h1-h0)*(V[i,t]-lo)/(hi-lo)
+        a=reference.storage===nothing ? r.v0 : reference.storage[i,t]
+        slope=ForwardDiff.derivative(v->head(r,v),a)
+        # Anchor the affine level at the physical reference. A full-range
+        # secant can introduce a false jump from the exact initial level.
+        head(r,a)+slope*(V[i,t]-a)
     end
     constrain_gross_heads!(m,c,u,(i,t)->(level_at_vertex(i,t)+level_at_vertex(i,t+1))/2,
         level_at_vertex;transitions=states)

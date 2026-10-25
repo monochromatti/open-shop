@@ -89,27 +89,13 @@ function schedule_case(
     end
     reference=best!==nothing && best["case"].grid==c.grid ? best["solution"] : initial
     proposals=Any[]
-    for scale in (1.0, 0.7, 1.3)
-        time()<deadline || break
-        p=propose_commitment(
-            c;
-            water_scale = scale,
-            time_limit = proposal_time_limit,
-            reference,
-            deadline,
-            optimizer=proposal_optimizer,
-        )
-        push!(proposals, p)
-    end
-    candidates=[(p["u"],p["tunnel_opening"],p["river_on"]) for p in proposals if haskey(p, "u")]
-    fallback_gates_valid && admissible(c,fallback) && push!(candidates,(fallback,fallback_opening,fixed_river_on(c,nothing,nothing)))
     seen=Set{Tuple{String,String,String}}()
-    for (u,opening,river_on) in candidates
-        time()<deadline || break
+    function dispatch_candidate!(u,opening,river_on)
+        time()<deadline || return
         key=(join(vec(u)),join(vec(opening),','),join(vec(river_on)))
-        key in seen && continue
+        key in seen && return
         push!(seen, key)
-        admissible(c, u) || continue
+        admissible(c, u) || return
         try
             v=solve_verified(
                 c;
@@ -139,11 +125,31 @@ function schedule_case(
             if v["accepted"] &&
                (best===nothing || v["solution"]["objective"]>best["solution"]["objective"])
                 best=v
+                # A refined schedule may be retained as the answer, but its
+                # arrays cannot anchor a proposal on the original grid.
+                v["case"].grid==c.grid && (reference=v["solution"])
             end
         catch e
             push!(attempts, Dict("accepted"=>false, "error"=>sprint(showerror, e)))
         end
     end
+    for scale in (1.0, 0.7, 1.3)
+        time()<deadline || break
+        p=propose_commitment(
+            c;
+            water_scale = scale,
+            time_limit = proposal_time_limit,
+            reference,
+            deadline,
+            optimizer=proposal_optimizer,
+        )
+        push!(proposals, p)
+        # Dispatch before building the next surrogate so an accepted gain can
+        # supply both its hydraulic reference and its nonlinear starting point.
+        haskey(p,"u") && dispatch_candidate!(p["u"],p["tunnel_opening"],p["river_on"])
+    end
+    fallback_gates_valid && admissible(c,fallback) &&
+        dispatch_candidate!(fallback,fallback_opening,fixed_river_on(c,nothing,nothing))
     Dict(
         "accepted"=>best!==nothing,
         "case"=>best===nothing ? case_dict(c) : case_dict(best["case"]),
