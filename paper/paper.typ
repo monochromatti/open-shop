@@ -1056,14 +1056,18 @@ leaves the optimal decisions unchanged.
 We build the models in JuMP~@jump. SCIP first solves a MILP approximation
 to propose unit states and gate positions. We fix those choices and use
 Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
-hydraulic laws. The procedure may try several proposals within a time
-budget. Candidates that pass the checks below become starting solutions
+hydraulic laws. We dispatch each proposal before constructing the next one.
+The best accepted trajectory on the proposal grid supplies the reference for the next
+approximation and the starting point for its nonlinear dispatch. All attempts
+share a time budget. Candidates that pass the checks below become starting solutions
 for the full SCIP search~@scip, which can change the discrete choices.
 
 The proposal also selects enabled river operating states; nonlinear dispatch
 holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
-Its soft level observations use a secant approximation to storage-dependent
-level, and its power observations use the proposal's power surrogate. The
+Its level observations use first-order affine approximations at the reference
+storage, or at initial storage when no reference is available. Each approximation
+equals the physical level at its reference point. Its power observations use the
+proposal's power surrogate. The
 nonlinear dispatch and global model retain the original observation laws.
 Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
 problem. A stationary solution need not be globally optimal.

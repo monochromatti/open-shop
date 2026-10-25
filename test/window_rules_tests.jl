@@ -162,6 +162,28 @@ end
     @test result.solution.generator_q==zeros(1,4)
 end
 
+@testset "Proposals preserve a constant level on curved storage laws" begin
+    # Constant storage is physically possible with discharge equal to inflow.
+    # Even a zero-width window must permit it when the storage law is curved.
+    for table in (nothing,TableCurve([8.0,10.0,12.0],[80.0,100.0,140.0]))
+        base=window_rule_case(grid=[0.0,1.0,2.0],inflow=2.0,level_curve=table,
+            level_windows=[LevelWindow(start_time=0.0,end_time=2.0,max_change=0.0)])
+        lake=OpenSHOP._river_replace(only(base.system.reservoirs);curvature=0.1)
+        c=OpenSHOP._river_replace(base;system=OpenSHOP._river_replace(base.system;reservoirs=[lake]))
+        x=window_dispatch(c,[2.0,2.0])
+        @test validate(c,x)["valid"]
+        for reference in (nothing,x)
+            proposal=OpenSHOP.propose_commitment(c;reference,time_limit=10.0)
+            @test haskey(proposal,"u")
+            if haskey(proposal,"u")
+                @test proposal["generator_q"]≈fill(2.0,1,2) atol=1e-6
+                y=dispatch_from_controls(c,proposal["u"],proposal["generator_q"],zeros(0,2))
+                @test replay_audit(c,y)["valid"]
+            end
+        end
+    end
+end
+
 @testset "Incomplete or ambiguous window input is rejected" begin
     for rule in (
         FlowRequirement(name=:Gauge,rolling_ramps=[RollingRamp(hours=1.0,up=1.0)]),
