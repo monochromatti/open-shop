@@ -38,8 +38,9 @@ end
 
 function main()
     c=terminal_value_case()
-    result=solve(c;time_limit=60.0)
-    result.accepted || error("No schedule passed validation and finer replay")
+    # The allowance includes compilation in a fresh Julia process.
+    result=solve(c;time_limit=180.0)
+    result.accepted || error("No schedule passed validation and finer replay: $(result.status)")
     println("Reservoir values (currency/Mm³): ",[r.water_value for r in c.system.reservoirs])
     println("Objective components: ",objective_components(c,result.solution))
 end

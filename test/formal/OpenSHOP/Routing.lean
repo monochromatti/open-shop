@@ -59,4 +59,33 @@ theorem window_partition (primitive : ℕ → ℝ) (n : ℕ) :
   | zero => simp
   | succ n ih => rw [Finset.sum_range_succ,ih]; ring
 
+/-- Conservation on transport cells recovers the original control-window
+balance. No new control decision is introduced by subdividing transport. -/
+theorem transport_cell_aggregation {M : Type*} [Fintype M]
+    (conversion duration localFlow share meanFlow : ℝ)
+    (cellDuration cellFlow cellArrival : M → ℝ)
+    (partition : duration = ∑ m, cellDuration m)
+    (mean : duration*meanFlow = ∑ m, cellDuration m*cellFlow m)
+    (balance : ∀ m, conversion*cellDuration m*cellFlow m =
+      conversion*cellDuration m*localFlow+share*cellArrival m) :
+    conversion*duration*meanFlow =
+      conversion*duration*localFlow+share*∑ m, cellArrival m := by
+  have total : conversion*(∑ m, cellDuration m*cellFlow m) =
+      conversion*(∑ m, cellDuration m)*localFlow+share*∑ m, cellArrival m := by
+    calc
+      conversion*(∑ m, cellDuration m*cellFlow m) =
+          ∑ m, conversion*cellDuration m*cellFlow m := by
+        rw [Finset.mul_sum]
+        apply Finset.sum_congr rfl
+        intro m _
+        ring
+      _ = ∑ m, (conversion*cellDuration m*localFlow+share*cellArrival m) := by
+        apply Finset.sum_congr rfl
+        intro m _
+        exact balance m
+      _ = conversion*(∑ m, cellDuration m)*localFlow+share*∑ m, cellArrival m := by
+        simp only [Finset.sum_add_distrib, ← Finset.sum_mul, ← Finset.mul_sum]
+  rw [← mean, ← partition] at total
+  simpa only [mul_assoc] using total
+
 end OpenSHOP

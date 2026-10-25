@@ -417,19 +417,20 @@ Base.@kwdef struct ScheduleCase
     flow_requirements::Vector{FlowRequirement} = FlowRequirement[]
     soft_constraints::Vector{SoftConstraint} = SoftConstraint[]
     reserve_groups::Vector{ReserveGroup} = ReserveGroup[]
+    routing_grid::Vector{Float64} = Float64[] # optional river transport mesh; controls retain grid
     function ScheduleCase(name::String, system::HydroSystem, grid::Vector{Float64},
         prices::Vector{Float64}, operations::Vector{OperationalSeries},
         flow_requirements::Vector{FlowRequirement}, soft_constraints::Vector{SoftConstraint},
-        reserve_groups::Vector{ReserveGroup})
+        reserve_groups::Vector{ReserveGroup}, routing_grid::Vector{Float64}=Float64[])
         new(name, normalize_river_connections(system), grid, prices, operations, flow_requirements,
-            soft_constraints, reserve_groups)
+            soft_constraints, reserve_groups, routing_grid)
     end
 end
 ScheduleCase(name, system::HydroSystem, grid, prices, operations, flow_requirements,
-    soft_constraints=SoftConstraint[], reserve_groups=ReserveGroup[]) =
+    soft_constraints=SoftConstraint[], reserve_groups=ReserveGroup[], routing_grid=Float64[]) =
     ScheduleCase(String(name), system, Vector{Float64}(grid), Vector{Float64}(prices),
         Vector{OperationalSeries}(operations), Vector{FlowRequirement}(flow_requirements),
-        Vector{SoftConstraint}(soft_constraints), Vector{ReserveGroup}(reserve_groups))
+        Vector{SoftConstraint}(soft_constraints), Vector{ReserveGroup}(reserve_groups),Vector{Float64}(routing_grid))
 
 nodes(s) = vcat(
     [r.name for r in s.reservoirs],

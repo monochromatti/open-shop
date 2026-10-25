@@ -27,8 +27,8 @@ system=HydroSystem(reservoirs=lakes,junctions=Junction[],
 case=ScheduleCase(name="supplied lake responses",system=system,grid=collect(0.0:4.0),
     prices=[-20.0,80.0,120.0,-10.0],operations=[
         OperationalSeries(object=:PressureLink,attribute=:opening,times=[2.0],values=[0.0])])
-result=OpenSHOP.solve(case;time_limit=60.0,relative_gap=1e-3)
-result.accepted || error("No schedule passed physical validation and finer replay")
+result=OpenSHOP.solve(case;time_limit=180.0,relative_gap=1e-3)
+result.accepted || error("No schedule passed physical validation and finer replay: $(result.status)")
 solution=result.solution
 println("Objective: ",solution.objective)
 println("Unit commitment: ",vec(solution.commitment))

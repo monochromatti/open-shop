@@ -26,7 +26,7 @@ case=ScheduleCase(name="station operating rules",system=system,
             times=collect(0.0:1.0:5.0),values=[0.0,10.0,20.0,30.0,20.0,0.0]),
     ])
 
-result=solve(case;time_limit=60.0,relative_gap=1e-3)
+result=solve(case;time_limit=180.0,relative_gap=1e-3)
 result.accepted || error("no validated schedule: $(result.status)")
 schedule=result.solution
 println("Unit states: ",schedule.commitment)

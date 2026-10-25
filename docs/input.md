@@ -2,7 +2,7 @@
 
 OpenSHOP reads a JSON case with `readcase(path)` or a dictionary with `case_from_dict(data)`. `case_dict(case)` produces the public profile and `writejson(path, data)` writes it. Object names connect the watercourse; JSON arrays do not determine hydraulic connectivity.
 
-The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks`, `commitment_exclusions`, `soft_constraints` and `reserve_groups`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
+The top-level fields are `schema_version` (use `2`), `name`, `grid`, `prices`, `reservoirs`, `junctions`, `boundaries`, `tunnels`, `plants`, `generators`, `river_junctions`, `rivers`, `operations`, and optional `flow_requirements`, `tunnel_interlocks`, `commitment_exclusions`, `soft_constraints`, `reserve_groups` and `routing_grid`. Component arrays may be empty. `grid` contains strictly increasing finite time edges; `prices` has one value per interval. Matrices are stored as arrays of rows.
 
 ## Objects
 
@@ -90,7 +90,7 @@ Turbine and electrical efficiencies are separate.
 
 Each distributed delay curve contains `reference_flow`, `edges`, and `weights`. Edges are finite increasing nonnegative delays; weights are nonnegative bin probabilities summing to one. One distributed curve is independent of flow. Multiple curves have strictly increasing reference flows covering zero through `capacity`; their neighboring transfer distributions are blended using contemporaneous release flow. A deterministic reach instead supplies nonnegative `deterministic_delay`; `curves` may be an empty array. History edges end at the scheduling horizon's first edge and have one nonnegative release value per interval. History is physical water already in transit, not an optimization decision.
 
-Deterministic transport preserves release cohorts through confluences. A network containing distributed reaches uses interval-average mixing at downstream junctions. Its scheduling grid is therefore part of the model; numerical refinement does not turn its discrete global bound into a continuous-time certificate.
+Deterministic transport preserves release cohorts through confluences. A network containing distributed reaches mixes downstream flows on a separate transport mesh. The optional top-level `routing_grid` supplies its edges; they must span the horizon and include every control boundary. Otherwise distributed confluences use four transport cells per control interval. Source cohorts, reservoir states and operating windows retain `grid`. Both grids are part of the model; numerical refinement does not turn its discrete global bound into a continuous-time certificate.
 
 ## Operating series
 

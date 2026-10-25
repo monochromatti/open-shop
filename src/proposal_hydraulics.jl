@@ -6,7 +6,9 @@
 function _proposal_reference(c, point)
     if point isa Schedule || point isa SolveResult
         point=_schedule_input(point;case=c)
-        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release)
+        cohorts=all(r->r.deterministic_delay!==nothing,c.system.rivers) ? nothing :
+            routed_schedule(c,point.river_release;generator_q=point.generator_q,tunnel_q=point.tunnel_q).cohorts
+        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release,cohorts)
     end
     # A linearization point may prescribe only some physical quantities.
     # Missing components retain the surrogate's existing nominal defaults.
@@ -20,7 +22,33 @@ function _proposal_reference(c, point)
         head=matrix("H",length(nodes(s)),T),
         tunnel_q=matrix("tunnel_q",length(s.tunnels),T),
         generator_q=matrix("generator_q",length(s.generators),T),
-        river_release=matrix("river_release",length(s.rivers),T))
+        river_release=matrix("river_release",length(s.rivers),T),cohorts=nothing)
+end
+
+"""Freeze delay mixtures at physical reference cohorts or the last recorded flow."""
+function _proposal_delay_references(c,reference,mesh)
+    flows=Vector{Vector{Float64}}(undef,length(c.system.rivers))
+    for (i,r) in enumerate(c.system.rivers)
+        if reference.cohorts!==nothing
+            flows[i]=copy(reference.cohorts[i].release)
+        elseif reference.river_release!==nothing
+            periods=mesh.source_cohorts[i] ? eachindex(c.prices) : mesh.control
+            flows[i]=Float64[reference.river_release[i,t] for t in periods]
+        else
+            initial,_=river_initial_output(r)
+            flows[i]=fill(something(initial,0.0),length(mesh.cohort_grid[i])-1)
+        end
+    end
+    flows
+end
+
+function _proposal_delay_coordinate(r,flow)
+    r.deterministic_delay!==nothing && return nothing
+    weights=zeros(length(r.curves))
+    for (j,w) in RiverRouting.blend(r.curves,clamp(flow,0.0,r.capacity))
+        weights[j]=w
+    end
+    (;weights)
 end
 
 function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,reference)

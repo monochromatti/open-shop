@@ -55,6 +55,12 @@ function validate_inputs(c)
     length(unique([p.name for p in s.plants]))==length(s.plants)||error("Duplicate plant")
     length(c.prices)==length(c.grid)-1 && all(isfinite, c.prices)||error("Prices")
     RiverRouting.check_grid(c.grid)
+    if !isempty(c.routing_grid)
+        RiverRouting.check_grid(c.routing_grid)
+        first(c.routing_grid)==first(c.grid) && last(c.routing_grid)==last(c.grid) &&
+            all(t in c.routing_grid for t in c.grid) || throw(ArgumentError(
+                "routing grid must span the horizon and retain every control boundary"))
+    end
     validate_window_rules(c)
     all(diff(c.grid) .> 0)||error("Grid")
     for r in s.reservoirs
@@ -170,8 +176,8 @@ function validate_inputs(c)
     validate_delay_curves(c.system)
     validate_curve_data(c.system)
     validate_operations(c)
-    # Exact transport does not need dense transfer tensors for input checks.
-    all(r->r.deterministic_delay!==nothing, s.rivers) ? river_order(c) : routing_data(c)
+    # Graph and cohort validation do not require transfer tensors.
+    river_order(c)
     true
 end
 jsonready(x::AbstractMatrix) = [jsonready(collect(row)) for row in eachrow(x)]
@@ -206,5 +212,6 @@ function with_grid(c::ScheduleCase, newgrid)
         !is_channel(r) && r.arrival_policy==:interval_average && isempty(r.arrival_window_grid) ?
         _river_replace(r; arrival_window_grid = copy(c.grid)) : r for r in c.system.rivers
     ]
-    _river_replace(c; grid, prices, system = _river_replace(c.system; rivers))
+    routing_grid=isempty(c.routing_grid) ? Float64[] : sort!(unique!(vcat(c.routing_grid,grid)))
+    _river_replace(c; grid, prices, routing_grid, system = _river_replace(c.system; rivers))
 end

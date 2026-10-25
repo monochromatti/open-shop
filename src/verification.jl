@@ -89,13 +89,6 @@ function replay_audit(
                 ),
             )
         end
-        for r in c.system.rivers
-            violations["environmental_$(r.name)"]=max(
-                get(violations, "environmental_arrival_$(r.name)", 0.0),
-                get(violations, "pointwise_arrival_$(r.name)", 0.0),
-                get(violations, "exact_arrival_$(r.name)", 0.0),
-            )
-        end
         transport_check=transport_audit(
             c,
             x;
@@ -103,9 +96,20 @@ function replay_audit(
             absolute_tolerance = isfinite(storage_convergence) ? storage_convergence/10 :
                                  2e-4,
             transport = nd,
+            tolerance,
         )
+        for (name,residual) in transport_check["violations"]
+            violations[name]=max(get(violations,name,0.0),residual)
+        end
+        for r in c.system.rivers
+            violations["environmental_$(r.name)"]=max(
+                get(violations, "environmental_arrival_$(r.name)", 0.0),
+                get(violations, "pointwise_arrival_$(r.name)", 0.0),
+                get(violations, "exact_arrival_$(r.name)", 0.0),
+            )
+        end
         transport_check["accepted"] ||
-            push!(errors, "transport convergence or schedule discrepancy exceeds tolerance")
+            push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
         physical=isempty(errors)
         edges=[searchsortedfirst(grid, t) for t in c.grid]
         storage_error=maximum(abs, z.storage[:, edges]-x.storage; init = 0.0)

@@ -35,6 +35,10 @@ accepted trajectory. A supplied `initial` must pass independent acceptance for t
 it is not an unchecked guess for changed physical inputs. All proposal and
 dispatch attempts share `time_limit`, with individual limits set by
 `proposal_time_limit` and `nlp_time_limit`.
+Distributed-delay proposals use the accepted trajectory's entry-cohort flows
+as their reference. Without a trajectory, they use each reach's last recorded
+flow, or zero when no previous flow is known. The proposal freezes only the
+delay mixture; nonlinear dispatch retains the flow-dependent response.
 
 `solve_case` fixes river operating states through `river_on[river, interval]`;
 a warm schedule supplies omitted states, otherwise enabled rivers default to on.
@@ -107,6 +111,14 @@ m³/s by dividing by `0.0036 * duration`. This accounts for rounding a small
 volume change into a large stored volume. `residual` reports the raw maximum
 equation error, so it can exceed `tolerance` when `converged` is true. Operating
 bounds and time-discretization checks remain separate.
+
+`ScheduleCase(routing_grid=...)` optionally supplies a river transport mesh
+containing every control boundary. Distributed confluences otherwise use four
+transport cells per control interval. This mesh adds no controls or reservoir
+states; schedule arrays and operating windows retain `case.grid`.
+`transport_audit` separately checks timing convergence and operating arrival
+and capacity limits on the independently routed waves, including peaks between
+control boundaries. See [river networks](river-networks.md).
 
 `head(reservoir, volume)` returns the surface elevation. The interval equations
 instead use `mean_head(reservoir, before, after)`, the volume-averaged elevation

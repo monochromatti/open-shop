@@ -137,11 +137,28 @@ can change at an interior reference flow.
 
 Numerical distributed routing accumulates only transfers whose delay support
 overlaps the arrival grid; it does not allocate a dense tensor for replay.
-Optimization still compiles transfer coefficients on its decision grid.
+Optimization compiles transfer coefficients between each reach's entry-cohort
+grid and the river transport grid.
 
 A network containing distributed reaches mixes upstream arrivals over the
-scheduling intervals. This also applies to deterministic reaches within that
-network. Transport refinement checks convergence of cumulative arrivals and
+transport cells. This also applies to deterministic reaches within that
+network. The default uses four transport cells per control interval when the
+network contains distributed confluences. An optional `routing_grid` on
+`ScheduleCase` overrides this mesh; it must span the horizon and contain every
+control boundary. Source releases, unit decisions, gate positions, operating
+ramps and observation windows retain their original control grid. Refining
+transport adds no reservoir states or control decisions. Downstream cell flows
+are determined by conservation, and their interval averages remain the reported
+river releases. Restart history preserves the actual cell cohorts.
+
+A confluence's incoming wave must respect the outgoing reach's capacity before
+cell averaging. The optimizers enforce this at every upstream arrival knot and
+both sides of jumps, where a piecewise affine wave reaches its extrema. A mean
+flow below capacity can still hide a peak above it. Independent transport
+acceptance checks these peaks again, as well as minimum arrival rates and
+declared arrival windows, on the finer routed cohorts.
+
+Transport refinement checks convergence of cumulative arrivals and
 inventory; it is not a continuous-time global certificate. `transport_audit`
 reports exhaustion of its refinement limit explicitly.
 

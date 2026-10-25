@@ -302,69 +302,6 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("channel_arrival_$(r.name)",A[d,:]-0.0036 .* diff(c.grid) .* RQ[d,:])
             continue
         end
-        windows=isempty(r.arrival_window_grid) ? c.grid : r.arrival_window_grid
-
-        averaged=exact ?
-                 [
-            _transport_value(
-                _pulse_expression(nd.arrival_pulses[d], windows[k], windows[k + 1]),
-                injections,
-            ) for k in 1:(length(windows) - 1)
-        ] :
-                 windows==c.grid ? vec(A[d, :]) :
-                 route_volumes(r, windows, c.grid, vec(RQ[d, :]))+route_volumes(
-            r,
-            windows,
-            r.history_grid,
-            r.history_release,
-        )
-        bound(
-            "environmental_arrival_$(r.name)",
-            [
-                opaverage(
-                    c,
-                    r.name,
-                    :min_arrival,
-                    windows[k],
-                    windows[k + 1],
-                    r.min_arrival,
-                )-averaged[k]/(0.0036*(windows[k + 1]-windows[k])) for
-                k in 1:(length(windows) - 1)
-            ],
-        )
-        if exact
-            for kind in (:arrival, :release)
-                knots=sort!(unique!(vcat(deterministic_knots(nd, d; kind), c.grid)))
-                deviations=Float64[]
-                for time in knots,
-                    side in (
-                        time==first(c.grid) ? (:right,) :
-                        time==last(c.grid) ? (:left,) : (:left, :right)
-                    )
-
-                    rate=_transport_value(
-                        deterministic_point_data(nd, d, time; side, kind),
-                        injections,
-                    )
-                    kind==:release && push!(
-                        deviations,
-                        rate-opvalue(c, r.name, :capacity, time, r.capacity; side),
-                    )
-                    kind==:arrival &&
-                        r.arrival_policy==:pointwise &&
-                        push!(
-                            deviations,
-                            opvalue(c, r.name, :min_arrival, time, r.min_arrival; side)-rate,
-                        )
-                end
-                bound("exact_$(kind)_$(r.name)", deviations)
-            end
-        elseif r.arrival_policy==:pointwise
-            bound(
-                "pointwise_arrival_$(r.name)",
-                [arrival_requirement_violation(c, r, c.grid, vec(RQ[d, :]))],
-            )
-        end
         if r.law!=:junction
             if !r.allow_dry && r.discharge_curve===nothing && r.law!=:controlled
                 bound("river_law_domain_$(r.name)", r.crest .- H[ix[r.source], :])
@@ -439,11 +376,14 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         )
     end
     try
-        routed=exact ? route_network_exact(c, RQ; transport = nd,injections) : route_network(c, RQ;injections)
-        record("routing_release", routed["release"]-RQ)
-        record("routing_arrival", routed["arrival_volume"]-A)
-        record("terminal_transit", routed["transit"][:, end]-result.terminal_transit)
-        W=routed["transit"]
+        routed=routed_schedule(c,RQ;transport=nd,injections)
+        for (name,residual) in river_arrival_residuals(c,routed)
+            bound(name,[residual])
+        end
+        record("routing_release", routed.release-RQ)
+        record("routing_arrival", routed.arrival_volume-A)
+        record("terminal_transit", routed.transit[:, end]-result.terminal_transit)
+        W=routed.transit
         external=zeros(T)
         for b in s.boundaries
             for (d, e) in enumerate(s.tunnels)
