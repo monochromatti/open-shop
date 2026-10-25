@@ -210,3 +210,63 @@ end
     wrong_grid["grid"]=[0.0, 0.5, 2.0]
     @test_throws ArgumentError solve_verified(c; u, initial=wrong_grid, max_refinements=0)
 end
+
+@testset "Preparation finds and improves a cold physical schedule" begin
+    c=warm_dispatch_fixture()
+    prepared=schedule_case(c;time_limit=20.0,proposal_time_limit=3.0,
+        nlp_time_limit=5.0,max_refinements=0,refine_grid=false)
+    @test prepared["accepted"]
+    if prepared["accepted"]
+        @test validate(c,prepared["solution"])["valid"]
+        @test replay_audit(c,prepared["solution"])["valid"]
+        @test prepared["case"]["grid"]==c.grid
+        @test prepared["solution"]["objective"]>0.0
+    end
+end
+
+@testset "Physical proposal domains enclose curved heads and signed flows" begin
+    lakes=[Reservoir(name=name,z0=z,slope=0.5,curvature=0.02,v0=2.0,
+        vmin=1.0,vmax=3.0,water_value=0.0) for (name,z) in ((:A,100.0),(:B,99.0))]
+    link=Tunnel(name=:Link,source=:A,target=:B,resistance=0.5,capacity=10.0,
+        gate_positions=[0.0,0.5,1.0],
+        gate_loss_factor_curve=TableCurve([0.0,0.5,1.0],[2.0,1.0,0.0]))
+    delta=LevelFlowCurve([99.0,103.0],[TableCurve([-4.0,0.0,4.0],[-2.0,0.0,3.0]),
+        TableCurve([-4.0,0.0,4.0],[-1.0,0.0,4.0])])
+    channel=River(name=:Channel,source=:A,target=:B,law=:delta,capacity=10.0,
+        deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0,
+        delta_level_ref_up_flow_curve=delta)
+    c=ScheduleCase(name="physical domains",system=HydroSystem(reservoirs=lakes,
+        tunnels=[link],rivers=[channel]),grid=[0.0,1.0],prices=[0.0])
+    domains=OpenSHOP._proposal_flow_bounds(c)
+    for a in range(1.0,3.0;length=9),b in range(1.0,3.0;length=9),p in link.gate_positions
+        ha,hb=head(lakes[1],a),head(lakes[2],b)
+        q=OpenSHOP.tunnel_flow(link,ha-hb,p)
+        r=OpenSHOP.channel_flow(channel,ha,hb)
+        @test domains.tunnel_lower[1]<=q<=domains.tunnel_upper[1]
+        @test domains.river_lower[1]<=r<=domains.river_upper[1]
+    end
+end
+
+@testset "A joint neighborhood counts switches and categorical gates once" begin
+    base=warm_dispatch_fixture()
+    tunnel=OpenSHOP._river_replace(only(base.system.tunnels);gate_positions=[0.0,0.5,1.0])
+    river=OpenSHOP._river_replace(only(base.system.rivers);law=:controlled,min_allowed_flow=1.0)
+    c=OpenSHOP._river_replace(base;operations=OperationalSeries[],
+        system=OpenSHOP._river_replace(base.system;tunnels=[tunnel],rivers=[river]))
+    x=dispatch_from_controls(c,ones(Int,2,2),fill(2.0,2,2),fill(0.5,1,2);
+        tunnel_opening=ones(1,2))
+    @test replay_audit(c,x)["valid"]
+    for radius in (0,1,3)
+        p=OpenSHOP.propose_commitment(c;reference=x,incumbent=x,radius,time_limit=5.0)
+        @test haskey(p,"u")
+        if haskey(p,"u")
+            changes=sum(p["u"].!=x.commitment)+sum(p["tunnel_opening"].!=x.tunnel_opening)+
+                sum(p["river_on"].!=OpenSHOP.river_on_schedule(c,x.river_release))
+            @test changes<=radius
+            @test admissible(c,p["u"])
+            @test validate_tunnel_openings(c,p["tunnel_opening"],p["u"])
+        end
+    end
+    @test_throws ArgumentError OpenSHOP.propose_commitment(c;radius=1)
+    @test_throws ArgumentError OpenSHOP.propose_commitment(c;incumbent=x,radius=-1)
+end

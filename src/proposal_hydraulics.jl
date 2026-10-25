@@ -1,8 +1,8 @@
 # A gate proposal must distinguish the heads supplied by alternative intakes.
 # These affine head/storage and secant loss equations are a scheduling surrogate,
 # never a physical audit or a bound on the nonlinear problem. They are used only
-# when the case contains selectable gates; the existing prescribed-gate proposal
-# keeps its original construction.
+# when the case contains selectable gates. Prescribed-gate proposals instead
+# enclose omitted pressure laws through their physical flow domains.
 function _proposal_reference(c, point)
     if point isa Schedule || point isa SolveResult
         point=_schedule_input(point;case=c)
@@ -129,4 +129,61 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         P[i,t]=alpha[i,t]*gq[i,t]+head_gain*(onhead-href*u[i,t])
     end
     P
+end
+"""Enclose passive flows over the permitted heads and gate positions.
+
+Reservoir interval heads are volume averages, so endpoint storage domains
+enclose them. No trajectory or proposed discrete state enters these bounds.
+Flow-dependent delay laws do not change these local hydraulic domains.
+"""
+function _proposal_flow_bounds(c)
+    s=c.system
+    T=length(c.prices)
+    ix=nodeindex(s)
+    lower=zeros(length(nodes(s)),T)
+    upper=similar(lower)
+    for (i,r) in enumerate(s.reservoirs),t in 1:T
+        a,b=soft_storage_bounds(c,r,c.grid[t])
+        d,e=soft_storage_bounds(c,r,c.grid[t+1])
+        lower[i,t],upper[i,t]=_global_level_range(r,min(a,d),max(b,e))
+    end
+    for (j,node) in enumerate(s.junctions)
+        lower[length(s.reservoirs)+j,:].=node.hmin
+        upper[length(s.reservoirs)+j,:].=node.hmax
+    end
+    for (j,node) in enumerate(s.boundaries)
+        i=length(s.reservoirs)+length(s.junctions)+j
+        lower[i,:].=node.head
+        upper[i,:].=node.head
+    end
+    tunnel_lower=zeros(length(s.tunnels),T)
+    tunnel_upper=similar(tunnel_lower)
+    for (i,e) in enumerate(s.tunnels),t in 1:T
+        a,b=ix[e.source],ix[e.target]
+        lo,hi=lower[a,t]-upper[b,t],upper[a,t]-lower[b,t]
+        tunnel_lower[i,t],tunnel_upper[i,t]=extrema(
+            tunnel_flow(e,h,p) for p in tunnel_allowed_positions(c,e,t),h in (lo,hi))
+    end
+    river_lower=zeros(length(s.rivers),T)
+    river_upper=similar(river_lower)
+    for (i,r) in enumerate(s.rivers),t in 1:T
+        cap=opinterval(c,r.name,:capacity,t,r.capacity)
+        natural=opinterval(c,r.name,:inflow,t,r.inflow)
+        river_lower[i,t],river_upper[i,t]=river_flow_lower(r,cap,natural),cap
+        if is_channel(r)
+            a,b=ix[r.source],ix[r.target]
+            lo,hi=lower[a,t]-upper[b,t],upper[a,t]-lower[b,t]
+            ref=r.delta_level_ref_up_flow_curve===nothing ? b : a
+            river_lower[i,t],river_upper[i,t]=level_flow_bounds(
+                channel_curve(r),lo,hi,lower[ref,t],upper[ref,t])
+        elseif r.law!=:junction
+            a=ix[r.source]
+            gl=r.law==:weir ? 1.0 : opinterval(c,r.name,:gate_min,t,r.gate_min)
+            gh=r.law==:weir ? 1.0 : opinterval(c,r.name,:gate_max,t,1.0)
+            river_lower[i,t],river_upper[i,t]=extrema(
+                natural+river_law_value(r,h,g;inflow=natural,capacity=cap)
+                for h in (lower[a,t],upper[a,t]),g in (gl,gh))
+        end
+    end
+    (;tunnel_lower,tunnel_upper,river_lower,river_upper)
 end

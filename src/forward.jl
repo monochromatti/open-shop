@@ -159,19 +159,8 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
     for k in eachindex(s.tunnels)
         ta[k]==0 && (x[base + k]=0.0)
     end
-    # Exact law evaluation removes Newton roundoff from a shut outlet. Its
-    # storage consequence is included in the recomputed convergence residual.
-    for (k, d) in enumerate(active)
-        x[nq + k]=data.river_inflow[d]+outlet_flow(
-            s.rivers[d],
-            h,
-            gate[d],
-            topology.river_source[d],
-            topology.river_target[d],
-            inflow = data.river_inflow[d],
-            capacity = data.river_capacity[d],
-        )
-    end
+    # Keep the jointly converged flows. Replacing them with separate law
+    # evaluations can accumulate their rounding errors in a node's balance.
     river_rates!(work, x, data)
     generator_q=work.generator_q
     release, arrival, injection = work.release, work.arrival, work.injection

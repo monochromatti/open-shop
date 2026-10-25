@@ -6,6 +6,8 @@ const _PROPOSAL_OPTIMIZER = optimizer_with_attributes(
 
 """A linear surrogate proposes commitments; its objective/bound is NOT a bound
 for the nonlinear scheduling problem. Every proposed commitment needs an NLP.
+An `incumbent` schedule supplies joint discrete starts; `radius` limits changed
+unit states, enabled river states and categorical tunnel positions together.
 """
 function propose_commitment(
     c;
@@ -24,6 +26,7 @@ function propose_commitment(
         throw(ArgumentError("Proposal time limit must be finite and positive"))
     isnan(deadline) && throw(ArgumentError("Invalid proposal deadline"))
     reference=_proposal_reference(c,reference)
+    domains=_proposal_flow_bounds(c)
     s=c.system
     G=length(s.generators)
     T=length(c.prices)
@@ -127,8 +130,16 @@ function propose_commitment(
         cap=opinterval(c,e.name,:capacity,t,e.capacity)
         opened=gates.open[j,t]
         opened isa Number && (cap*=opened)
-        set_lower_bound(Q[j, t], e.discharge_river===nothing ? -cap : 0.0)
-        set_upper_bound(Q[j, t], cap)
+        # Supply domains for the omitted pressure laws. The gate surrogate's
+        # secant loss graph has its own flow domain: intersecting it with an
+        # exact-law box can exclude a useful approximate hydraulic point.
+        lo,hi=(e.discharge_river===nothing ? -cap : 0.0),cap
+        if !selectable
+            lo=max(lo,domains.tunnel_lower[j,t]-1e-7)
+            hi=min(hi,domains.tunnel_upper[j,t]+1e-7)
+        end
+        set_lower_bound(Q[j,t],lo)
+        set_upper_bound(Q[j,t],hi)
         if !(opened isa Number)
             @constraint(m,Q[j,t]<=cap*opened)
             e.discharge_river===nothing && @constraint(m,Q[j,t]>=-cap*opened)
@@ -148,8 +159,10 @@ function propose_commitment(
                 for t in 1:T,k in 1:T]
         end
         for t in 1:T
-            set_upper_bound(rq[d, t], opvalue(c, r.name, :capacity, c.grid[t], r.capacity))
-            set_lower_bound(rq[d,t],river_flow_lower(r,opinterval(c,r.name,:capacity,t,r.capacity),opinterval(c,r.name,:inflow,t,r.inflow)))
+            set_upper_bound(rq[d,t],min(opinterval(c,r.name,:capacity,t,r.capacity),
+                domains.river_upper[d,t]+1e-7))
+            set_lower_bound(rq[d,t],max(river_flow_lower(r,opinterval(c,r.name,:capacity,t,r.capacity),
+                opinterval(c,r.name,:inflow,t,r.inflow)),domains.river_lower[d,t]-1e-7))
             if is_channel(r)
                 fix(release_shortfall[d,t],0.0;force=true)
                 arrivals[d,t]=0.0036*dt[t]*rq[d,t]
@@ -231,17 +244,36 @@ function propose_commitment(
         end
     end
     if incumbent!==nothing
-        size(incumbent)==(G, T) || error("Incorrect incumbent shape")
-        all(x->x==0||x==1, incumbent) || error("Nonbinary incumbent")
+        point=_schedule_input(incumbent;case=c)
+        point.grid==c.grid || throw(ArgumentError("incumbent grid differs from proposal grid"))
         for j in 1:G, t in 1:T
-            set_start_value(u[j, t], incumbent[j, t])
+            set_start_value(u[j,t],point.commitment[j,t])
+        end
+        river_states=river_on_schedule(c,point.river_release)
+        distance=sum(point.commitment[j,t]==1 ? 1-u[j,t] : u[j,t]
+            for j in 1:G,t in 1:T;init=AffExpr(0.0))
+        for d in 1:D,t in 1:T
+            state=river_operations.on[d,t]
+            state isa VariableRef || continue
+            set_start_value(state,river_states[d,t])
+            distance+=river_states[d,t]==1 ? 1-state : state
+        end
+        for ((e,t),weights) in gates.weights
+            positions=tunnel_allowed_positions(c,s.tunnels[e],t)
+            k=findfirst(==(point.tunnel_opening[e,t]),positions)
+            k===nothing && throw(ArgumentError("incumbent gate position is not permitted"))
+            for j in eachindex(weights)
+                weights[j] isa VariableRef && set_start_value(weights[j],Float64(j==k))
+            end
+            # A categorical gate change counts once, regardless of its encoding.
+            distance+=1-weights[k]
         end
         if radius!==nothing
-            @constraint(
-                m,
-                sum(incumbent[j, t]==1 ? 1-u[j, t] : u[j, t] for j in 1:G, t in 1:T)<=radius
-            )
+            radius isa Integer && radius>=0 || throw(ArgumentError("nonnegative integer neighborhood radius required"))
+            @constraint(m,distance<=radius)
         end
+    elseif radius!==nothing
+        throw(ArgumentError("a neighborhood radius requires an incumbent schedule"))
     end
     valuechange=sum(
         r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
@@ -282,6 +314,7 @@ function propose_commitment(
         "construction_seconds"=>construction,
         "total_seconds"=>time()-started,
         "water_scale"=>water_scale,
+        "neighborhood_radius"=>radius,
         "nonlinear_bound"=>false,
     )
     set_time_limit_sec(m, remaining)
@@ -291,6 +324,7 @@ function propose_commitment(
         "seconds"=>elapsed,
         "construction_seconds"=>construction,
         "water_scale"=>water_scale,
+        "neighborhood_radius"=>radius,
         "nonlinear_bound"=>false,
     )
     if has_values(m)

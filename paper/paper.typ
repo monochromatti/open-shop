@@ -1057,6 +1057,9 @@ We build the models in JuMP~@jump. SCIP first solves a MILP approximation
 to propose unit states and gate positions. We fix those choices and use
 Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
 hydraulic laws. We dispatch each proposal before constructing the next one.
+Without an accepted trajectory, a short solve with constant objective first
+seeks a feasible point. Revenue optimization follows, whether or not that
+attempt succeeds. An accepted feasibility point is retained if optimization fails.
 The best accepted trajectory on the proposal grid supplies the reference for the next
 approximation and the starting point for its nonlinear dispatch. All attempts
 share a time budget. Candidates that pass the checks below become starting solutions
@@ -1064,6 +1067,15 @@ for the full SCIP search~@scip, which can change the discrete choices.
 
 The proposal also selects enabled river operating states; nonlinear dispatch
 holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
+When the proposal omits tunnel pressure equations, the permitted head ranges
+and gate positions supply necessary flow bounds. We do not intersect these
+exact-law bounds with a secant pressure approximation, whose approximate
+flows need not lie in the same interval. Later proposals limit the total
+number of changed unit states, river states and gate positions around the
+accepted trajectory. A different gate position counts as one change. The
+neighborhood starts at four changes, doubles after an unsuccessful attempt,
+and resets after a gain.
+
 Its level observations use first-order affine approximations at the reference
 storage, or at initial storage when no reference is available. Each approximation
 equals the physical level at its reference point. Its power observations use the
@@ -1078,7 +1090,11 @@ An independent integration holds the selected unit discharges and openings
 fixed and recovers the resulting water trajectory. At each interval, Newton's
 method solves jointly for ending storage, junction heads, tunnel flows and
 active outlet releases. Column-pivoted QR handles rank deficiency in the
-linearized equations, including cycles with zero tunnel flow. With a delay
+linearized equations, including cycles with zero tunnel flow.
+Nonnegative outlet and pump flow domains are imposed on Newton trial iterates;
+convergence still requires all the original equations. The jointly converged
+flows are retained, since reevaluating separate outlet laws can disturb a
+water balance by accumulating their rounding errors. With a delay
 shorter than the interval, some current release arrives before the interval
 ends and belongs in the same hydraulic
 solve. Equation @eq:power then gives electrical output.
