@@ -39,8 +39,8 @@ end
 
 function main()
     case=river_split_case()
-    result=solve(case;time_limit=60.0,relative_gap=1e-4)
-    result.accepted || error("No schedule passed validation and finer replay")
+    result=solve(case;time_limit=180.0,relative_gap=1e-4)
+    result.accepted || error("No schedule passed validation and finer replay: $(result.status)")
     println("Unit discharge (m³/s): ",vec(result.solution.generator_q))
     println("Left branch discharge (m³/s): ",vec(result.solution.river_release[2,:]))
     println("Right branch discharge (m³/s): ",vec(result.solution.river_release[3,:]))

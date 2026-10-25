@@ -43,8 +43,8 @@ end
 
 function run_example()
     case=pumped_storage_case()
-    result=solve(case;time_limit=60.0,relative_gap=1e-4)
-    result.accepted || error("pumped-storage schedule was not accepted")
+    result=solve(case;time_limit=180.0,relative_gap=1e-4)
+    result.accepted || error("pumped-storage schedule was not accepted: $(result.status)")
     println("Unit order: ", [g.name for g in case.system.generators])
     println("Net electrical exchange (MW): ",net_power(case,result.solution))
     println("Objective: ",result.solution.objective)

@@ -37,8 +37,8 @@ end
 
 function main()
     case=directional_interlock_case()
-    result=solve(case;time_limit=90.0,relative_gap=1e-4)
-    result.accepted || error("No schedule passed validation and finer replay")
+    result=solve(case;time_limit=180.0,relative_gap=1e-4)
+    result.accepted || error("No schedule passed validation and finer replay: $(result.status)")
     println("Grid (hours): ",case.grid)
     println("Unit commitment: ",vec(result.solution.commitment))
     println("Unit discharge (m³/s): ",vec(result.solution.generator_q))

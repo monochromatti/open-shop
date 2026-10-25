@@ -75,6 +75,11 @@ allowances, units and cost equations before optimization.
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
 case from an external public dataset; upstream data are not bundled.
 
+Examples that search without an initial schedule allow 180 seconds, including
+Julia's first-use compilation. Repeated solves in the same process reuse the
+compiled code; the library still charges construction and compilation to the
+caller's time allowance.
+
 ## Scope
 
 Scheduling is deterministic. Head–storage relationships, signed quadratic
