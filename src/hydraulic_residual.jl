@@ -307,6 +307,9 @@ One head column per pressure nullspace is fixed. All residual rows remain, so
 Julia's rectangular `\\` solve uses least squares for those components. This
 cannot hide incompatible water injections by discarding a conservation row.
 Column-pivoted QR also handles zero-flow cycles, whose loss derivatives vanish.
+Trial iterates retain the nonnegative domain of ordinary outlet and pump flows;
+signed channel and tunnel flows remain unrestricted. Convergence still requires
+every original equation. Storage, head and operational capacities are not clipped.
 """
 function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations,
     head_reference=nothing)
@@ -325,6 +328,12 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
     )
     _normalize_pressure_references!(x, data.system, floating;reference=head_reference)
     columns = isempty(floating) ? collect(eachindex(x)) : setdiff(eachindex(x), first.(floating))
+    nq=length(data.previous_storage)+length(data.system.junctions)+length(data.system.tunnels)
+    nonnegative=[nq+k for (k,d) in enumerate(data.active_rivers) if !is_channel(data.system.rivers[d])]
+    append!(nonnegative,(nq+length(data.active_rivers)+1):length(x))
+    for i in nonnegative
+        x[i]=max(0.0,x[i])
+    end
     residual, plus, trial, step = (similar(x) for _ in 1:4)
     hydraulic_residual!(residual, x, data, work)
     hydraulic_converged(residual, x, data, tolerance) && return 0
@@ -355,6 +364,9 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
         accepted, scale = false, 1.0
         for _ in 1:45
             @. trial = x + scale * step
+            for i in nonnegative
+                trial[i]=max(0.0,trial[i])
+            end
             hydraulic_residual!(plus, trial, data, work)
             if all(isfinite, plus) && sum(abs2, plus) < merit
                 copyto!(x, trial)

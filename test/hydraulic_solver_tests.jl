@@ -42,6 +42,28 @@ end
     @test abs(bad.head[1]-bad.head[2]-only(bad.tunnel_q)^2) > 1.0
 end
 
+@testset "Converged channel flows retain the coupled water balance" begin
+    lakes=[Reservoir(name=name,z0=100.0-1e-5,slope=1e-6,v0=10.0,
+        vmin=9.0,vmax=11.0,water_value=0.0) for name in (:A,:B,:C)]
+    curve=LevelFlowCurve([100.0],[TableCurve([-1.0,0.0,1.0],[-1.0,0.0,1.0])])
+    channels=[River(name=name,source=a,target=b,law=:delta,capacity=1.0,
+        deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0,
+        delta_level_ref_up_flow_curve=curve) for (name,a,b) in ((:AB,:A,:B),(:BC,:B,:C))]
+    system=HydroSystem(reservoirs=lakes,rivers=channels)
+    tolerance=1e-9
+    flow=[0.9tolerance,-0.9tolerance]
+    net=[-flow[1],flow[1]-flow[2],flow[2]]
+    storage=fill(10.0,3)+0.0036net
+    # Both flow-law residuals and all balances already satisfy tolerance.
+    # Their errors have opposite signs at the middle reservoir.
+    step=forward_step(system,fill(10.0,3),1.0,Float64[],zeros(2),zeros(2);
+        initial_guess=vcat(storage,flow),max_iterations=0,tolerance)
+    @test step.converged
+    net=[-step.river_release[1],step.river_release[1]-step.river_release[2],step.river_release[2]]
+    @test maximum(abs,(step.storage.-10.0)./0.0036-net)<=tolerance
+    @test maximum(abs,step.river_release)<=tolerance
+end
+
 @testset "Open tunnels recover signed flow from zero and opposed guesses" begin
     for delta in (-4.0, 4.0), guess in (0.0, -2sign(delta), 5sign(delta))
         system = HydroSystem(boundaries=[Boundary(name=:A, head=100.0+delta),
@@ -107,5 +129,24 @@ end
         @test step.converged
         @test only(step.storage) ≈ expected atol=1e-12
         @test only(step.river_release) ≈ discharge(expected) atol=1e-8
+    end
+end
+
+@testset "Dry outlets retain a nonnegative flow domain during Newton" begin
+    lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,v0=2.0,vmin=1.0,vmax=3.0,
+        inflow=2.0,water_value=0.0)
+    rivers=[River(name=name,source=:Lake,target=:Sea,law=:weir,crest=200.0,
+        coefficient=1.0,allow_dry=true,capacity=10.0,deterministic_delay=0.0,
+        curves=RiverRouting.DelayCurve[],water_value=0.0) for name in (:A,:B,:C)]
+    system=HydroSystem(reservoirs=[lake],rivers=rivers,
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    # Zero laws can acquire tiny negative values in a coupled linear solve.
+    # Retain the rate domain without sacrificing the storage equation.
+    for guess in ([2.0,-1e-30,1e-30,-1e-30],[2.0,0.1,0.2,0.3])
+        step=forward_step(system,[2.0],1.0,Float64[],ones(3),zeros(3);initial_guess=guess)
+        @test step.converged
+        @test all(>=(0.0),step.river_release)
+        @test maximum(abs,step.river_release)<=1e-9
+        @test abs((only(step.storage)-2.0)/0.0036+sum(step.river_release)-2.0)<=1e-9
     end
 end

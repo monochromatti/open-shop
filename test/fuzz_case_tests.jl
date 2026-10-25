@@ -1,5 +1,19 @@
 include("../scripts/fuzz_worker.jl")
 
+@testset "Channel-network replay preserves convergence on finer grids" begin
+    data=FuzzWorker.FuzzCases.generate_case(11,"channels","medium")
+    x=FuzzWorker.reconstruct(data)
+    c=FuzzWorker.FuzzCases.restrict_case(11,data.case,x)
+    x=FuzzWorker.reconstruct(merge(data,(case=c,)))
+    @test replay_audit(c,x)["valid"]
+    for factor in (2,4,8)
+        grid=OpenSHOP.refined_grid(c.grid;factor)
+        z=simulate(c,data.q,data.gate;grid,commitment=data.u,tunnel_opening=data.opening)
+        @test z.converged
+        @test FuzzWorker.water_error(with_grid(c,grid),z)<1e-8
+    end
+end
+
 @testset "Synthetic campaign inputs have reconstructible feasible references" begin
     for (seed,family) in enumerate(FuzzWorker.FuzzCases.FAMILIES)
         @testset "$family" begin
