@@ -110,7 +110,7 @@ end
         x=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates)
         @test x["validation"]["valid"]
         coarse_replay=replay_audit(c,x)
-        @test coarse_replay["valid"]==!distributed
+        @test coarse_replay["valid"]
         z=simulate(c,fixture.q,fixture.gates)
         @test z["converged"]
         mixed_source_conservation(c,z)
@@ -140,21 +140,19 @@ end
         @test remainder["validation"]["valid"]
         @test remainder["V"]≈x["V"][:,4:end] atol=1e-8
         @test remainder["terminal_transit"]≈x["terminal_transit"] atol=1e-8
-        @test replay_audit(continued,remainder)["valid"]==!distributed
+        @test replay_audit(continued,remainder)["valid"]
 
         global_model=OpenSHOP._build_global_dispatch(c;joint=true,warm=x)
         lift=OpenSHOP._lift_start!(global_model,c,x)
         @test lift["valid"]
         local_result=solve_case(c;u=fixture.u,warm=x,feasibility_only=true,time_limit=20.0)
         @test get(get(local_result,"validation",Dict()),"valid",false)
-        if !distributed && haskey(local_result,"validation") && local_result["validation"]["valid"]
+        if haskey(local_result,"validation") && local_result["validation"]["valid"]
             @test replay_audit(c,local_result)["valid"]
         end
         if distributed
-            # Coarse confluence averages are a discretization, not exact waves.
-            # Refine physical integration while retaining the original operation
-            # windows, exactly as replay_audit does; no physical data or tolerance
-            # is changed and no optimization is repeated on this refined grid.
+            # Finer hydraulic replay retains the original operating windows and
+            # its own transport mesh. Restart must preserve both sets of times.
             grid=OpenSHOP.refined_grid(c.grid;factor=8)
             indices=[searchsortedlast(c.grid,(grid[t]+grid[t+1])/2)
                 for t in 1:length(grid)-1]

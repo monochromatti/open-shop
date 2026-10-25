@@ -12,7 +12,7 @@ function bounds_only_domains(c)
     OpenSHOP.validate_inputs(c)
     exact=all(r->r.deterministic_delay!==nothing, c.system.rivers)
     nd=exact ? OpenSHOP._transport_data(c, nothing) : nothing
-    rd=exact ? nothing : routing_data(c)
+    rd=exact ? nothing : OpenSHOP.DistributedRouting(c)
     OpenSHOP._global_capacity_bounds(c, nd, rd)
 end
 

@@ -7,7 +7,7 @@ flow-dependent response curves. The type parameter specializes that choice.
 Physical curves and connectivity remain fixed; interval inflows and operating
 capacities are numerical arrays. Replay reuses topology and source indices.
 """
-struct HydraulicStepData{M, S}
+struct HydraulicStepData{M, S, D}
     system::HydroSystem
     topology::HydraulicTopology
     previous_storage::Vector{Float64}
@@ -26,6 +26,7 @@ struct HydraulicStepData{M, S}
     river_inflow::Vector{Float64}
     tunnel_capacity::Vector{Float64}
     river_capacity::Vector{Float64}
+    routing::D
 end
 
 function HydraulicStepData(
@@ -39,6 +40,7 @@ function HydraulicStepData(
     tunnel_capacity = [e.capacity for e in s.tunnels],
     river_capacity = [r.capacity for r in s.rivers],
     commitment = nothing,
+    routing::Union{Nothing,DistributedRoutingStep} = nothing,
 )
     previous_storage = Vector{Float64}(Vprev)
     duration = Float64(dt)
@@ -75,7 +77,8 @@ function HydraulicStepData(
             tunnel_capacity,
             river_capacity,
         ),
-    ) && (current_network === nothing || all(isfinite, current_network)) ||
+    ) && (current_network === nothing || all(isfinite, current_network)) &&
+        (routing===nothing || all(isfinite,routing.known_arrival)) ||
         throw(ArgumentError("hydraulic inputs must remain finite in Float64"))
     # Exact zero identifies closed gates and inactive generating units. Reject
     # underflow instead of changing that physical state during normalization.
@@ -128,6 +131,7 @@ function HydraulicStepData(
         river_inflow,
         tunnel_capacity,
         river_capacity,
+        routing,
     )
 end
 
@@ -139,14 +143,17 @@ struct HydraulicWorkspace{T}
     arrival::Vector{T}
     injection::Vector{T}
     generator_q::Vector{T}
+    routing_release::Matrix{T}
+    routing_arrival::Matrix{T}
 end
 
 function HydraulicWorkspace(data::HydraulicStepData, ::Type{T} = Float64) where {T}
     s = data.system
     nn = length(data.topology.node_names)
     nr, nj, nd = length(s.reservoirs), length(s.junctions), length(s.rivers)
+    cells=data.routing===nothing ? 0 : length(data.routing.duration)
     HydraulicWorkspace(zeros(T, nn), zeros(T, nr + nj), zeros(T, nd), zeros(T, nd), zeros(T, nd),
-        zeros(T,length(s.generators)))
+        zeros(T,length(s.generators)),zeros(T,nd,cells),zeros(T,nd,cells))
 end
 
 function interval_heads!(h, x, data::HydraulicStepData)
@@ -203,6 +210,10 @@ function river_rates!(work, x, data::HydraulicStepData)
             sum(x[nr + nj + j] for j in data.sources.tunnels[d]; init = 0.0)
         end
     end
+    if data.routing!==nothing
+        distributed_river_rates!(work,data)
+        return work
+    end
     if data.network !== nothing
         mul!(arrival, data.network, injection, 1, 1)
     end
@@ -218,6 +229,39 @@ function river_rates!(work, x, data::HydraulicStepData)
                 max(0.0, release[d]) *
                 _current_arrival_fraction(river, release[d], data.transfer, d)
         end
+    end
+    work
+end
+
+"""Confluence conservation on transport cells inside one hydraulic interval."""
+function distributed_river_rates!(work,data)
+    routing=data.routing
+    arrival,release=work.routing_arrival,work.routing_release
+    copyto!(arrival,routing.known_arrival)
+    fill!(release,0)
+    cells=length(routing.duration)
+    for d in data.river_order
+        r=data.system.rivers[d]
+        if routing.source_cohorts[d]
+            work.release[d]=data.sources.reservoirs[d] ? work.release[d] : work.injection[d]
+            release[d,:].=work.release[d]
+            for k in 1:cells
+                arrival[d,k]+=0.0036*data.duration*released_fraction(
+                    r,work.release[d],view(routing.source_transfer[d],k,:))
+            end
+        else
+            for j in 1:cells
+                release[d,j]=work.injection[d]+r.allocation*sum(
+                    arrival[i,j] for i in data.topology.river_upstream[d];init=0.0)/
+                    (0.0036*routing.duration[j])
+            end
+            for k in 1:cells,j in 1:cells
+                arrival[d,k]+=0.0036*routing.duration[j]*released_fraction(
+                    r,release[d,j],view(routing.relay_transfer[d],k,j,:))
+            end
+            work.release[d]=sum(release[d,j]*routing.duration[j] for j in 1:cells)/data.duration
+        end
+        work.arrival[d]=sum(view(arrival,d,:))/(0.0036*data.duration)
     end
     work
 end

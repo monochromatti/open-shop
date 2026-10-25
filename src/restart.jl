@@ -96,8 +96,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
             initial_interval_hours = Float64(c.grid[edge]-c.grid[edge - 1]),
         ) for (j,p) in enumerate(s.plants)
     ]
-    exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    routed=exact ? route_network_exact(c, x.river_release;generator_q=x.generator_q,tunnel_q=x.tunnel_q) : nothing
+    routed=routed_schedule(c,x.river_release;generator_q=x.generator_q,tunnel_q=x.tunnel_q)
     rivers=River[]
     for (i, r) in enumerate(s.rivers)
         windows=isempty(r.arrival_window_grid) ? Float64[] :
@@ -107,17 +106,11 @@ function restart_case(c::ScheduleCase, x, time::Real)
         if is_channel(r)
             history_grid=[Float64(time)-1.0,Float64(time)]
             history_release=[0.0]
-        elseif exact
-            cohorts=routed["release_cohorts"][i]
+        else
+            cohorts=routed.cohorts[i]
             executed=release_history(cohorts.grid, cohorts.release, time)
             history_grid=vcat(r.history_grid, executed.grid[2:end])
             history_release=vcat(r.history_release, executed.release)
-        else
-            history_grid=vcat(r.history_grid, c.grid[2:edge])
-            history_release=vcat(
-                r.history_release,
-                Float64.(x.river_release[i, 1:previous]),
-            )
         end
         push!(
             rivers,
@@ -157,6 +150,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
         soft_constraints = [rule for rule in c.soft_constraints
             if (rule.end_time===nothing ? rule.time : rule.end_time)>time],
         reserve_groups = c.reserve_groups,
+        routing_grid = isempty(c.routing_grid) ? Float64[] : filter(>=(time),c.routing_grid),
     )
     validate_inputs(result)
     result

@@ -192,8 +192,12 @@ connection assumptions, not consequences of the conservation proofs.
 Each release cohort keeps the travel-response mixture selected by its own
 release rate. A convex mixture of causal probability responses remains causal
 and volume preserving. Deterministic delays preserve source pulses through
-confluences. Distributed routing at confluences instead rebins arrivals uniformly
-on each interval: it conserves volume but approximates timing.
+confluences. Distributed confluences use a separate transport mesh, with four
+cells per control interval by default. `routing_grid` can supply a different mesh
+that retains every control boundary. Reservoir releases retain their original
+cohorts; downstream releases follow conservation on the transport cells.
+Controls, ramps, flow costs and operating windows retain the original grid.
+This conserves volume but still approximates continuous arrival timing.
 
 The mathematical identities assume response weights and branch shares sum
 exactly to one. Input checks admit tiny floating-point discrepancies in those

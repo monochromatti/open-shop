@@ -262,13 +262,14 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
     T=length(grid)-1
     size(source_release)==(D, length(c.grid)-1) ||
         throw(ArgumentError("source release matrix has incorrect dimensions"))
-    reservoirs=Set(r.name for r in s.reservoirs)
+    sources=river_cohort_sources(s)
     release=zeros(D, T)
     arrival=zeros(D, T)
     transit=zeros(D, T+1)
+    cohorts=Vector{NamedTuple{(:grid,:release),Tuple{Vector{Float64},Vector{Float64}}}}(undef,D)
     for d in order
         r=s.rivers[d]
-        if r.source in reservoirs
+        if sources[d]
             q=collect(source_release[d, :])
             cohort_grid=c.grid
             _check_river_releases(r,cohort_grid,q)
@@ -285,6 +286,7 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
         end
         all(q .<= r.capacity) ||
             throw(ArgumentError("release in $(r.name) exceeds routing curve domain"))
+        cohorts[d]=(grid=Float64.(cohort_grid),release=Float64.(q))
         arrival[d, :]=route_volumes(r, grid, cohort_grid, q) +
                       route_volumes(r, grid, r.history_grid, r.history_release)
         transit[d, :]=[
@@ -292,7 +294,8 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
             remaining_volume(r, t, r.history_grid, r.history_release) for t in grid
         ]
     end
-    Dict("release"=>release, "arrival_volume"=>arrival, "transit"=>transit, "order"=>order)
+    Dict{String,Any}("grid"=>Float64.(grid),"release"=>release,"arrival_volume"=>arrival,
+        "transit"=>transit,"order"=>order,"release_cohorts"=>cohorts)
 end
 
 # Fixed atoms and distributed bins share the same conservation interface.

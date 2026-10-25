@@ -20,33 +20,31 @@
         @variable(m, q[1:3, 1:4])
         set_start_value.(q, rates)
         routing=OpenSHOP._dispatch_transport_expressions(m,c, q)
-        evaluate(x)=value(start_value, x)
+        if !exact
+            expected=OpenSHOP.routed_schedule(c,rates)
+            source=OpenSHOP.river_source_indices(c.system).reservoirs
+            for i in eachindex(source)
+                source[i] && continue
+                set_start_value.(routing.rates[i],expected.cohorts[i].release)
+                set_start_value.(q[i,:],expected.release[i,:])
+            end
+        end
+        evaluate(x)=value(start_value,x)
         arrivals=evaluate.(routing.arrivals)
         terminal=evaluate.(routing.terminal)
         @test routing.exact==exact
+        expected=OpenSHOP.routed_schedule(c,rates)
+        @test arrivals≈expected.arrival_volume atol=1e-13
+        @test terminal≈expected.transit[:,end] atol=1e-13
+        for (i,r) in enumerate(rivers)
+            initial=OpenSHOP.remaining_volume(r,first(grid),r.history_grid,r.history_release)
+            @test sum(arrivals[i,:])+terminal[i]≈
+                initial+0.0036sum(diff(grid).*expected.release[i,:]) atol=1e-13
+        end
         if exact
-            # Exact confluence routing carries upstream cohorts through the junction.
-            expected=OpenSHOP.route_network_exact(c, rates)
-            @test arrivals≈expected["arrival_volume"] atol=1e-13
-            @test terminal≈expected["transit"][:, end] atol=1e-13
-            cached=OpenSHOP._dispatch_transport_expressions(m,c, q;
-                transport = routing.nd)
+            cached=OpenSHOP._dispatch_transport_expressions(m,c,q;transport=routing.nd)
             @test evaluate.(cached.arrivals)≈arrivals atol=1e-13
             @test evaluate.(cached.terminal)≈terminal atol=1e-13
-        else
-            # Distributed routing transports each prescribed reach release independently.
-            for (i, r) in enumerate(rivers)
-                expected=OpenSHOP.route_volumes(r, grid, grid, rates[i, :])+
-                    OpenSHOP.route_volumes(r, grid, r.history_grid, r.history_release)
-                inventory=OpenSHOP.remaining_volume(r, last(grid), grid, rates[i, :])+
-                    OpenSHOP.remaining_volume(r, last(grid), r.history_grid, r.history_release)
-                @test arrivals[i, :]≈expected atol=1e-13
-                @test terminal[i]≈inventory atol=1e-13
-                initial=OpenSHOP.remaining_volume(r, first(grid), r.history_grid,
-                    r.history_release)
-                @test sum(arrivals[i, :])+terminal[i]≈
-                    initial+0.0036sum(diff(grid).*rates[i, :]) atol=1e-13
-            end
         end
     end
     empty_case=warm_dispatch_fixture(; rivers = false)

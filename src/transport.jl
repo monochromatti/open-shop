@@ -429,14 +429,12 @@ function _transport_subdivide(grid, factor)
     )
 end
 
-function _transport_evaluate_previous(c, previous, previous_grid, newgrid)
-    reservoirs=Set(r.name for r in c.system.reservoirs)
+function _transport_evaluate_previous(c, previous, newgrid)
     A=zeros(length(c.system.rivers), length(newgrid)-1)
     W=zeros(length(c.system.rivers), length(newgrid))
     for (d, r) in enumerate(c.system.rivers)
-        oldgrid=r.source in reservoirs ? c.grid : previous_grid
-        q=r.source in reservoirs ? previous["source_release"][d, :] :
-          previous["release"][d, :]
+        cohort=previous["release_cohorts"][d]
+        oldgrid,q=cohort.grid,cohort.release
         A[d, :]=route_volumes(r, newgrid, oldgrid, q)+route_volumes(
             r,
             newgrid,
@@ -491,7 +489,6 @@ function route_network_controlled(
         throw(ArgumentError("transport grid must span horizon"))
     current_grid=sort!(unique!(vcat(Float64.(grid), c.grid)))
     previous=route_network(c, q; grid = current_grid,injections)
-    previous["source_release"]=injections
     error=Inf
     transiterror=Inf
     converged=false
@@ -500,10 +497,9 @@ function route_network_controlled(
         2(length(current_grid)-1)>max_internal_intervals && break
         newgrid=_transport_subdivide(current_grid, 2)
         current=route_network(c, q; grid = newgrid,injections)
-        oldA, oldW=_transport_evaluate_previous(c, previous, current_grid, newgrid)
+        oldA, oldW=_transport_evaluate_previous(c, previous, newgrid)
         error=maximum(abs, cumsum(current["arrival_volume"]-oldA; dims = 2); init = 0.0)
         transiterror=maximum(abs, current["transit"]-oldW; init = 0.0)
-        current["source_release"]=injections
         previous=current
         current_grid=newgrid
         rounds=iteration
@@ -538,14 +534,7 @@ function route_network_controlled(
         "estimated_transit_error_Mm3"=>transiterror,
         "termination"=>converged ? "tolerance" :
                        rounds==max_refinements ? "refinement_limit" : "interval_limit",
-        "release_cohorts"=>[
-            (
-                grid = r.source in Set(x.name for x in c.system.reservoirs) ? copy(c.grid) :
-                       current_grid,
-                release = r.source in Set(x.name for x in c.system.reservoirs) ?
-                          collect(injections[d, :]) : collect(previous["release"][d, :]),
-            ) for (d, r) in enumerate(c.system.rivers)
-        ],
+        "release_cohorts"=>previous["release_cohorts"],
     )
 end
 
@@ -558,6 +547,7 @@ function transport_audit(
     schedule_tolerance = 2e-3,
     max_internal_intervals = 2048,
     transport = nothing,
+    tolerance = 1e-4,
 )
     x=_schedule_input(x; case=c)
     routed=route_network_controlled(
@@ -576,14 +566,20 @@ function transport_audit(
         init = 0.0,
     )
     terminal=maximum(abs, routed["transit"][:, end]-x.terminal_transit; init = 0.0)
+    injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
+    residuals=river_arrival_residuals(c,(;cohorts=routed["release_cohorts"],injections))
+    violations=Dict(k=>v for (k,v) in residuals if !isfinite(v) || v>tolerance)
+    operating_valid=isempty(violations)
     Dict(
-        "accepted"=>routed["converged"] &&
+        "accepted"=>operating_valid && routed["converged"] &&
                     max(discrepancy, terminal)+max(
             routed["estimated_cumulative_error_Mm3"],
             routed["estimated_transit_error_Mm3"],
         )<=schedule_tolerance,
         "converged"=>routed["converged"],
         "exact"=>routed["exact"],
+        "operating_valid"=>operating_valid,
+        "violations"=>violations,
         "cumulative_schedule_discrepancy_Mm3"=>discrepancy,
         "terminal_schedule_discrepancy_Mm3"=>terminal,
         "estimated_cumulative_error_Mm3"=>routed["estimated_cumulative_error_Mm3"],

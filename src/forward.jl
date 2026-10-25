@@ -87,7 +87,7 @@ function forward_step(
 end
 
 function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_iterations,
-    head_reference=nothing)
+    head_reference=nothing,work=HydraulicWorkspace(data))
     s, topology = data.system, data.topology
     nr, nj, ne = length(s.reservoirs), length(s.junctions), length(s.tunnels)
     base, nq = nr + nj, nr + nj + ne
@@ -96,7 +96,6 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
     nv = offset+length(data.fixed_pumps)
     ix = topology.node_index
     Vprev, generator_q, gate, ta = data.previous_storage, data.generator_q, data.gate, data.opening
-    work = HydraulicWorkspace(data)
     x=zeros(nv)
     for (k,i) in enumerate(data.fixed_pumps)
         x[offset+k]=generator_q[i]
@@ -268,42 +267,11 @@ function _forward_river_order(s)
     order
 end
 _forward_atom(r) = hasproperty(r, :deterministic_delay) && r.deterministic_delay!==nothing
-function _forward_weights(r, q)
-    _forward_atom(r) && return [(1, 1.0)]
-    length(r.curves)==1 && return [(1, 1.0)]
-    refs=[c.reference_flow for c in r.curves]
-    RiverRouting.blend(r.curves, clamp(q, first(refs), last(refs)))
-end
 function _forward_domain(r, q; capacity=r.capacity)
     river_flow_valid(r,q;capacity) || return false
     _forward_atom(r) ||
         length(r.curves)==1 ||
         first(r.curves).reference_flow-1e-10<=q<=last(r.curves).reference_flow+1e-9
-end
-function _forward_coefficients(grid, r)
-    _forward_atom(r) || return RiverRouting.coefficients(grid, grid, r.curves)
-    a=RiverRouting.fixed_coefficients(grid, grid, r.deterministic_delay)
-    reshape(a, size(a, 1), size(a, 2), 1)
-end
-function _forward_history(grid, r)
-    _forward_atom(r) || return (
-        RiverRouting.route(grid, r.history_grid, r.history_release, r.curves),
-        RiverRouting.remaining_volume(first(grid), r.history_grid, r.history_release, r.curves),
-    )
-    RiverRouting.check_releases(r.history_grid, r.history_release)
-    a=RiverRouting.fixed_coefficients(grid, r.history_grid, r.deterministic_delay)*(
-        0.0036 .* diff(r.history_grid) .* r.history_release
-    )
-    time=first(grid)
-    w=sum(
-        0.0036*r.history_release[k]*(
-            max(0.0, min(time, r.history_grid[k + 1])-r.history_grid[k])-max(
-                0.0,
-                min(time-r.deterministic_delay, r.history_grid[k + 1])-r.history_grid[k],
-            )
-        ) for k in eachindex(r.history_release)
-    )
-    a, w
 end
 
 """
@@ -333,8 +301,9 @@ replace hydraulic equations or operating bounds; validate the returned schedule.
 Source outlet laws, volume-averaged heads and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each
 local injection's pulses through confluences. Distributed junction mixing
-conserves volume but rebins arriving water uniformly on the replay grid; refine
-the grid to assess this timing approximation. Each cohort contributes once.
+conserves volume on an independent transport mesh. It uses four transport cells
+per control interval by default, or the case's `routing_grid`. Refinement changes
+neither the held controls nor their operating windows. Each cohort contributes once.
 """
 function simulate(
     c::ScheduleCase,
@@ -412,30 +381,14 @@ function simulate(
     !exact &&
         transport!==nothing &&
         throw(ArgumentError("compiled deterministic transport cannot serve distributed replay"))
-    B=exact ? Array{Float64, 3}[] : [_forward_coefficients(grid, r) for r in s.rivers]
-    # Retain reference-curve column dimensions even when the exact network
-    # matrix supplies the current arrivals instead of reference fractions.
-    nc=exact ? maximum((length(r.curves) for r in s.rivers); init = 1) :
-       maximum((size(b, 3) for b in B); init = 1)
-    transfer=zeros(nd, nc)
-    network=exact ? zeros(nd, nd) : nothing
-    sizehint!(steps, T)
-    if exact
-        W[:, 1].=ndat.initial_transit
-    else
-        for (d, r) in enumerate(s.rivers)
-            ah, wh=_forward_history(grid, r)
-            A[d, :].=ah
-            W[d, 1]=wh
-        end
-    end
+    mesh=exact ? nothing : DistributedRouting(nc_case;grid=river_routing_grid(c;physical_grid=grid))
+    routing_arrival=exact ? zeros(0,0) : copy(mesh.history_arrival)
+    transfer=zeros(nd,maximum((river_curve_count(r) for r in s.rivers);init=1))
+    network=exact ? zeros(nd,nd) : nothing
+    sizehint!(steps,T)
+    W[:,1].=exact ? ndat.initial_transit : mesh.history_initial
     for t in 1:T
         dt=grid[t + 1]-grid[t]
-        if !exact
-            for d in 1:nd, l in axes(B[d], 3)
-                transfer[d, l]=B[d][t, t, l]
-            end
-        end
         if exact
             fill!(network, 0.0)
             for d in 1:nd
@@ -461,6 +414,7 @@ function simulate(
             river_inflow[d]=opaverage(c, r.name, :inflow, grid[t], grid[t + 1], r.inflow)
             river_capacity[d]=opaverage(c, r.name, :capacity, grid[t], grid[t + 1], r.capacity)
         end
+        routing=exact ? nothing : DistributedRoutingStep(mesh,s,t,routing_arrival)
         data=HydraulicStepData(
             s,
             @view(V[:, t]),
@@ -474,12 +428,15 @@ function simulate(
             topology, sources, active_rivers, river_order,
             reservoir_inflow, river_inflow, tunnel_capacity, river_capacity,
             commitment=@view(state[:,indices[t]]),
+            routing,
         )
+        work=HydraulicWorkspace(data)
         z=_forward_step(
             data;
             initial_guess = isempty(steps) ? nothing : last(steps),
             tolerance = 1e-9,
             max_iterations = 100,
+            work,
             head_reference = reference===nothing ? nothing : view(reference,:,indices[t]),
         )
         push!(steps, z)
@@ -492,13 +449,26 @@ function simulate(
         L[:, t].=z.river_injection
         out[t]=sum(z.boundary_net_inflow)
         A[:, t].=0.0036dt .* z.river_arrival
-        for (d, r) in enumerate(s.rivers)
-            if !exact
-                for (l, w) in _forward_weights(r, R[d, t])
-                    A[d, (t + 1):end].+=0.0036dt*R[d, t]*w .* B[d][(t + 1):end, t, l]
+        if !exact
+            block=mesh.vertices[t]:(mesh.vertices[t+1]-1)
+            future=mesh.vertices[t+1]:(length(mesh.grid)-1)
+            for (d,r) in enumerate(s.rivers)
+                if mesh.source_cohorts[d]
+                    for k in future
+                        routing_arrival[d,k]+=0.0036dt*released_fraction(
+                            r,R[d,t],view(mesh.coefficients[d],k,t,:))
+                    end
+                else
+                    for k in future,(j,cohort) in enumerate(block)
+                        duration=mesh.grid[cohort+1]-mesh.grid[cohort]
+                        routing_arrival[d,k]+=0.0036duration*released_fraction(
+                            r,work.routing_release[d,j],view(mesh.coefficients[d],k,cohort,:))
+                    end
                 end
             end
-            W[d, t + 1]=W[d, t]+0.0036dt*R[d, t]-A[d, t]
+        end
+        for d in 1:nd
+            W[d,t+1]=W[d,t]+0.0036dt*R[d,t]-A[d,t]
         end
     end
     HydraulicTrajectory(

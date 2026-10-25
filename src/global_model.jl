@@ -166,7 +166,7 @@ function _build_global_dispatch(
                 "compiled deterministic transport cannot serve distributed dispatch",
             ),
         )
-    rd=exact ? nothing : routing_data(c)
+    rd=exact ? nothing : DistributedRouting(c)
     domains=_global_capacity_bounds(c, nd, rd)
     bounds_seconds=time()-bound_start
     m=Model()
@@ -474,15 +474,10 @@ function _build_global_dispatch(
     reserves=_global_reserve_points!(m,c,u,H,P,GQ,node_bounds,plant_heads)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
     injections=river_injections(c,RQ,GQ,Q)
-    coordinates=exact ? nothing : [
-        river_reference_coordinate!(m,r,RQ[i,t];name=Symbol("routing_",i,"_",t))
-        for (i,r) in enumerate(s.rivers),t in 1:T
-    ]
-    transfer=(i,k,b)->river_transfer_expression(m,s.rivers[i],RQ[i,k],b; coordinate=coordinates[i,k])
-    arrivals=Matrix{Any}(undef, D, T)
-    terminal=Any[]
+    coordinate=(r,q,i,k)->river_reference_coordinate!(m,r,q;name=Symbol("routing_",i,"_",k))
+    routing=_dispatch_transport_expressions(m,c,RQ;transport,injections,coordinate,distributed=rd)
+    arrivals,terminal=routing.arrivals,routing.terminal
     for (i, r) in enumerate(s.rivers)
-        B=exact ? nothing : rd["B"][i]
         for t in 1:T
             cap=opinterval(c, r.name, :capacity, t, r.capacity)
             set_upper_bound(rq[i, t], cap/100)
@@ -517,19 +512,6 @@ function _build_global_dispatch(
             else
                 fix(shortfall_release[i, t], 0.0; force = true)
                 requirement>0 && @constraint(m, RQ[i, t]>=requirement)
-            end
-            if exact
-                arrivals[i, t]=nd.arrival_history[i, t]+sum(
-                    v*injections[d, k] for (d, k, v) in nd.arrival_terms[i, t];
-                    init = 0.0,
-                )
-            else
-                # Skip structural zeros to preserve banded routing sparsity.
-                ks=[k for k in 1:T if any(!iszero,view(B,t,k,:))]
-                arrivals[i, t]=rd["history_arrival"][i, t]+sum(
-                    0.0036*dt[k]*transfer(i,k,collect(view(B,t,k,:))) for k in ks;
-                    init = 0.0,
-                )
             end
             if r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)
                 @constraint(
@@ -610,101 +592,28 @@ function _build_global_dispatch(
         end
         if r.arrival_policy==:interval_average && !isempty(r.arrival_window_grid)
             windows=r.arrival_window_grid
-            K=exact ? nothing : transfer_coefficients(r, windows, c.grid)
-            hist=exact ? nothing :
-                 route_volumes(r, windows, r.history_grid, r.history_release)
-            for j in 1:(length(windows) - 1)
-                if exact
-                    ex=_pulse_expression(nd.arrival_pulses[i], windows[j], windows[j + 1])
-                    volume=ex.history+sum(v*injections[d, k] for (d, k, v) in ex.terms; init = 0.0)
-                else
-                    ks=[k for k in 1:T if any(!iszero,view(K,j,k,:))]
-                    volume=hist[j]+sum(
-                        0.0036*dt[k]*transfer(i,k,collect(view(K,j,k,1:river_curve_count(r)))) for k in ks;
-                        init = 0.0,
-                    )
-                end
-                @constraint(
-                    m,
-                    volume>=0.0036*(windows[j + 1]-windows[j])*opaverage(
-                        c,
-                        r.name,
-                        :min_arrival,
-                        windows[j],
-                        windows[j + 1],
-                        r.min_arrival,
-                    )
-                )
+            for j in 1:(length(windows)-1)
+                volume=routing_volume_expression(m,c,routing,i,windows[j],windows[j+1])
+                @constraint(m,volume>=0.0036*(windows[j+1]-windows[j])*opaverage(
+                    c,r.name,:min_arrival,windows[j],windows[j+1],r.min_arrival))
             end
         end
         if r.arrival_policy==:pointwise
-            knots=exact ?
-                  sort!(unique!(vcat(deterministic_knots(nd, i), [z for z in c.grid]))) :
-                  operational_arrival_knots(c, r, c.grid)
-            for time in knots
+            for time in routing_arrival_knots(c,routing,i)
                 sides=time==first(c.grid) ? (:right,) :
-                      time==last(c.grid) ? (:left,) : (:left, :right)
+                    time==last(c.grid) ? (:left,) : (:left,:right)
                 for side in sides
-                    if exact
-                        ex=deterministic_point_data(nd, i, time; side)
-                        rate=ex.history+sum(
-                            v*injections[d, k] for (d, k, v) in ex.terms;
-                            init = 0.0,
-                        )
-                    else
-                        K=point_coefficients(r, c.grid, time; side = side)
-                        history=point_arrival(r, c.grid, zeros(T), time; side = side)
-                        ks=[k for k in 1:T if any(!iszero,view(K,k,:))]
-                        rate=history+sum(
-                            transfer(i,k,collect(view(K,k,1:river_curve_count(r)))) for
-                            k in ks;
-                            init = 0.0,
-                        )
-                    end
-                    @constraint(
-                        m,
-                        rate>=opvalue(c, r.name, :min_arrival, time, r.min_arrival; side)+arrival_margin
-                    )
+                    rate=routing_point_expression(m,c,routing,i,time;side)
+                    @constraint(m,rate>=opvalue(c,r.name,:min_arrival,time,r.min_arrival;side)+arrival_margin)
                 end
             end
-        end
-        if exact
-            push!(
-                terminal,
-                nd.terminal_history[i]+sum(
-                    v*injections[d, k] for (d, k, v) in nd.terminal_terms[i];
-                    init = 0.0,
-                ),
-            )
-            # Intermediate capacity constrains actual arrival-shaped releases, not only their averages.
-            for time in
-                sort!(unique!(vcat(deterministic_knots(nd, i; kind = :release), c.grid)))
-                for side in (
-                    time==first(c.grid) ? (:right,) :
-                    time==last(c.grid) ? (:left,) : (:left, :right)
-                )
-                    ex=deterministic_point_data(nd, i, time; side, kind = :release)
-                    rate=ex.history+sum(v*injections[d, k] for (d, k, v) in ex.terms; init = 0.0)
-                    @constraint(
-                        m,
-                        rate<=opvalue(c, r.name, :capacity, time, r.capacity; side)
-                    )
-                end
-            end
-        else
-            push!(
-                terminal,
-                rd["history_terminal"][i]+sum(
-                    0.0036*dt[k]*transfer(i,k,[1-sum(view(B,:,k,l)) for l in 1:river_curve_count(r)]) for k in 1:T
-                ),
-            )
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
     flow_integrals=constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
     river_operations=constrain_river_operations!(m,c,RQ;relaxed)
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
-    history_initial=exact ? nd.initial_transit : rd["history_initial"]
+    history_initial=exact ? nd.initial_transit : rd.history_initial
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial, gate_cost=gates.cost, transitions, soft_cost=soft.cost,river_cost=river_operations.cost)
     reserves===nothing || (obj+=reserves.value)

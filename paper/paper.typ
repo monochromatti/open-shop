@@ -500,6 +500,11 @@ The cumulative fraction that has arrived after elapsed time $s$ is
 $ F_(r j) (s) = sum_ell w_(r j ell)
   min{1, max{0, frac(s - delta_(r j ell), delta_(r j,ell+1) - delta_(r j ell))}}. $ <eq:cdf>
 
+Each reach has entry cohorts $[sigma_(r k),sigma_(r,k+1))$, with duration
+$Delta_(r k)^c$ and rate $hat(R)_(r k)$. Reservoir outlets and reaches with only
+local injections retain the control cohort grid. Other downstream reaches may
+use a finer transport grid, described below.
+
 Entry flow may change the travel response. For two or more nonnegative, strictly increasing reference
 flows covering zero through reach capacity, interpolate between the neighboring
 distributions. A missing zero-flow reference is rejected. Zero flow releases
@@ -507,7 +512,7 @@ no water. In the following equations, SOS2 is a _special ordered set of
 type 2_: at most two weights may be nonzero, and their indices must be adjacent.
 
 $ theta_(r k j) >= 0, quad sum_j theta_(r k j) = 1, quad
-  R_(r k) = sum_j rho_(r j) theta_(r k j), quad
+  hat(R)_(r k) = sum_j rho_(r j) theta_(r k j), quad
   theta_(r k) in op("SOS2"). $ <eq:delayweights>
 
 The weights reproduce the cohort's total entry flow, including natural inflow
@@ -518,31 +523,31 @@ reference flow does not fix the release.
 Once released, each cohort keeps its chosen mixture. Reference flows are
 calibration data and are unaffected by changes in operating capacity.
 
-Consider water entering at time $s$ in interval $k$. The fraction of it arriving
+Consider water entering at time $s$ in cohort $k$. The fraction of it arriving
 during interval $t$ is the cumulative fraction at age $tau_(t+1)-s$ minus
 that at age $tau_t-s$. Averaging over the release interval gives
 
-$ B_(r t k j) = frac(1, Delta_k) integral_(tau_k)^(tau_(k+1))
+$ B_(r t k j) = frac(1, Delta_(r k)^c) integral_(sigma_(r k))^(sigma_(r,k+1))
   [F_(r j) (tau_(t+1) - s) - F_(r j) (tau_t - s)] dif s. $ <eq:transfer>
 
 Multiplying by released volume and summing over cohorts gives arrival volume
 $A_(r t)$:
 
 $ A_(r t) = A_(r t)^"hist"
-  + kappa sum_k Delta_k R_(r k) sum_j theta_(r k j) B_(r t k j). $ <eq:arrival>
+  + kappa sum_k Delta_(r k)^c hat(R)_(r k) sum_j theta_(r k j) B_(r t k j). $ <eq:arrival>
 
 Water arriving at clock time $s$ from cohort $k$ must have a travel time between
-$s-tau_(k+1)$ and $s-tau_k$. Integrating the delay density over this range
+$s-sigma_(r,k+1)$ and $s-sigma_(r k)$. Integrating the delay density over this range
 gives the difference of cumulative fractions below. Multiplying by the
 cohort's release rate gives its contribution to instantaneous arrival rate:
 
-$ f_r (s) = f_r^"hist" (s) + sum_k R_(r k) sum_j theta_(r k j)
-  [F_(r j) (s - tau_k) - F_(r j) (s - tau_(k+1))]. $ <eq:pointarrival>
+$ f_r (s) = f_r^"hist" (s) + sum_k hat(R)_(r k) sum_j theta_(r k j)
+  [F_(r j) (s - sigma_(r k)) - F_(r j) (s - sigma_(r,k+1))]. $ <eq:pointarrival>
 
 The historical terms account for releases before $tau_0$. We evaluate the
 integrals exactly for the uniform bins. Since $theta$ depends linearly on
-$R$ within a reference-flow interval, multiplying the arrival fraction by
-released volume gives a quadratic dependence on $R$. Interpolating arrival
+cohort flow within a reference-flow interval, multiplying the arrival fraction by
+released volume gives a quadratic dependence on that flow. Interpolating arrival
 volumes directly would give a different travel response.
 
 Each cohort selects $theta$ from its own contemporaneous total release,
@@ -582,13 +587,40 @@ A release can reach downstream within its control interval when the delay
 is zero or shorter than that interval. We check entry capacities on the
 stream, including both sides of each jump.
 
-If any reach has a distributed delay, @eq:confluence instead uses the mean
-upstream arrivals as the next reach's interval release. Equations @eq:transfer
-and @eq:arrival are exact for those rectangular cohorts, but this downstream
-averaging approximates the continuous timing. We assess this error on a
-finer transport grid by comparing cumulative
-arrivals and water in transit. A volume balance cannot detect water that
-arrives at the wrong time.
+If any reach has a distributed delay, we use a separate transport mesh that
+retains every control boundary. Let its cells have durations $epsilon_m$ in hours,
+and let $cal(M)_t$ contain the cells within control interval $t$. At a river
+node, cell arrivals $hat(A)_(s m)$ determine the outgoing cell rates:
+
+$ hat(R)_(r m) = L_(r t) + alpha_r sum_(s -> r)
+  frac(hat(A)_(s m), kappa epsilon_m), quad m in cal(M)_t, \
+  R_(r t) = frac(1,Delta_t) sum_(m in cal(M)_t) epsilon_m hat(R)_(r m), quad
+  A_(r t) = sum_(m in cal(M)_t) hat(A)_(r m). $ <eq:transportmesh>
+
+We apply @eq:transfer on this mesh for cell arrivals. Summing the cell balances
+recovers @eq:confluence. The cell rates are determined by conservation; they
+do not add control decisions. Source cohorts, reservoir states and operating
+windows retain their original grid. The default at confluences is four transport cells per
+control interval, and an explicit mesh may be supplied.
+
+Cell means alone cannot enforce the capacity of a stream. At a river node,
+we also require
+
+$ L_(r t) + alpha_r sum_(s -> r) f_s (v) <= C_(r t), quad
+  v in [tau_t,tau_(t+1)). $ <eq:confluencecapacity>
+
+For fixed entry cohorts, the left side is piecewise affine in clock time.
+It is enough to impose this bound at its arrival knots and both sides of
+jumps, including changes in local injections and capacity. The same release
+mixtures determine cell volumes and these peak rates. A mean of five cubic
+metres per second can hide a peak of ten; neither conservation nor cumulative delivery detects
+that capacity violation.
+
+Equations @eq:transfer and @eq:arrival are exact for the rectangular entry
+cohorts. Averaging within transport cells still approximates continuous timing.
+We assess that error on a finer transport grid by comparing cumulative arrivals
+and water in transit, and checking operating arrival and capacity limits again.
+A volume balance cannot detect water that arrives at the wrong time.
 
 == Water in transit, history and environmental flows
 
@@ -1067,6 +1099,11 @@ for the full SCIP search~@scip, which can change the discrete choices.
 
 The proposal also selects enabled river operating states; nonlinear dispatch
 holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
+Proposals use the same transport mesh and conservation equations. They freeze
+each cohort's delay mixture at the accepted trajectory's flow, or at the last
+recorded reach flow before any trajectory is available. An unspecified previous
+flow uses zero. The nonlinear dispatch re-evaluates the mixture at its chosen
+flow; the frozen mixture supplies neither a physical certificate nor a bound.
 When the proposal omits tunnel pressure equations, the permitted head ranges
 and gate positions supply necessary flow bounds. We do not intersect these
 exact-law bounds with a secant pressure approximation, whose approximate

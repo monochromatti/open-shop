@@ -125,7 +125,7 @@ function case_from_dict(d)
         d,
         vcat(
             string.(collect(keys(objects))),
-            ["schema_version", "name", "grid", "prices", "operations", "flow_requirements", "soft_constraints", "reserve_groups"],
+            ["schema_version", "name", "grid", "prices", "operations", "flow_requirements", "soft_constraints", "reserve_groups", "routing_grid"],
         ),
         "case",
     )
@@ -144,6 +144,7 @@ function case_from_dict(d)
         flow_requirements = [_read_object(FlowRequirement, x) for x in get(d, "flow_requirements", [])],
         soft_constraints = [_read_object(SoftConstraint, x) for x in get(d, "soft_constraints", [])],
         reserve_groups = [_read_object(ReserveGroup, x) for x in get(d, "reserve_groups", [])],
+        routing_grid = Float64.(get(d,"routing_grid",[])),
     )
     validate_inputs(c)
     c
@@ -184,6 +185,7 @@ function case_dict(c)
         "soft_constraints"=>component_dict.(c.soft_constraints),
         "reserve_groups"=>component_dict.(c.reserve_groups),
     )
+    isempty(c.routing_grid) || (d["routing_grid"]=c.routing_grid)
     for f in fieldnames(HydroSystem)
         d[string(f)]=component_dict.(getfield(c.system, f))
     end
