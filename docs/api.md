@@ -29,7 +29,7 @@ supplied decisions.
 immediately and uses the best accepted trajectory on the proposal grid to update the next proposal
 and nonlinear starting point. Rejected candidates do not replace the accepted
 schedule. Without an accepted trajectory, a short feasibility-only dispatch
-precedes revenue optimization. Later proposals search joint neighborhoods of
+precedes revenue optimization. Proposals with an accepted reference search joint neighborhoods of
 unit states, river states and categorical gate positions around the best
 accepted trajectory. A supplied `initial` must pass independent acceptance for this case;
 it is not an unchecked guess for changed physical inputs. All proposal and

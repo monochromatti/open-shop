@@ -111,9 +111,9 @@ function schedule_case(
         end
     end
     radius=4
-    for (iteration,scale) in enumerate((1.0,0.7,1.3))
+    for scale in (1.0,0.7,1.3)
         time()<deadline || break
-        local_reference=iteration>1 ? reference : nothing
+        local_reference=reference
         previous=best===nothing ? -Inf : best["solution"]["objective"]
         p=propose_commitment(
             c;
@@ -131,7 +131,7 @@ function schedule_case(
         haskey(p,"u") && dispatch_candidate!(p["u"],p["tunnel_opening"],p["river_on"])
         # Expand after an unsuccessful neighborhood; restart locally after a
         # gain. The budget, rather than a claim of local completeness, stops us.
-        radius=best!==nothing && best["solution"]["objective"]>previous ? 4 : 2radius
+        radius=local_reference===nothing || (best!==nothing && best["solution"]["objective"]>previous) ? 4 : 2radius
     end
     fallback_gates_valid && admissible(c,fallback) &&
         dispatch_candidate!(fallback,fallback_opening,fixed_river_on(c,nothing,nothing))

@@ -1070,7 +1070,7 @@ holds those states fixed. The MILP objective approximates @eq:objective and give
 When the proposal omits tunnel pressure equations, the permitted head ranges
 and gate positions supply necessary flow bounds. We do not intersect these
 exact-law bounds with a secant pressure approximation, whose approximate
-flows need not lie in the same interval. Later proposals limit the total
+flows need not lie in the same interval. With an accepted trajectory, proposals limit the total
 number of changed unit states, river states and gate positions around the
 accepted trajectory. A different gate position counts as one change. The
 neighborhood starts at four changes, doubles after an unsuccessful attempt,
