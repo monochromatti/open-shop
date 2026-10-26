@@ -568,7 +568,7 @@ function transport_audit(
     terminal=maximum(abs, routed["transit"][:, end]-x.terminal_transit; init = 0.0)
     injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
     residuals=river_arrival_residuals(c,(;cohorts=routed["release_cohorts"],injections))
-    violations=Dict(k=>v for (k,v) in residuals if !isfinite(v) || v>tolerance)
+    violations=Dict(k=>v for (k,v) in river_arrival_report(c,residuals) if !isfinite(v) || v>tolerance)
     operating_valid=isempty(violations)
     Dict(
         "accepted"=>operating_valid && routed["converged"] &&
@@ -579,6 +579,8 @@ function transport_audit(
         "converged"=>routed["converged"],
         "exact"=>routed["exact"],
         "operating_valid"=>operating_valid,
+        "arrival_shortfall"=>[max(residuals.mean_arrival[d],residuals.pointwise_arrival[d])
+            for d in eachindex(c.system.rivers)],
         "violations"=>violations,
         "cumulative_schedule_discrepancy_Mm3"=>discrepancy,
         "terminal_schedule_discrepancy_Mm3"=>terminal,

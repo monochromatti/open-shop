@@ -1,3 +1,16 @@
+# Diagnostic names belong to reports; numerical consumers use the reach arrays.
+function river_arrival_report(c,residuals)
+    report=Dict{String,Float64}()
+    exact=all(r->r.deterministic_delay!==nothing,c.system.rivers)
+    for (d,r) in enumerate(c.system.rivers)
+        is_channel(r) && continue
+        report["environmental_arrival_$(r.name)"]=residuals.mean_arrival[d]
+        report[(exact ? "exact_release_" : "routed_release_")*string(r.name)]=residuals.capacity[d]
+        report[(exact ? "exact_arrival_" : "pointwise_arrival_")*string(r.name)]=residuals.pointwise_arrival[d]
+    end
+    report
+end
+
 """Independently audit equations, operating limits, routing, and chronological replay.
 
 Residuals use physical units except objective (relative error). Terminal minimum
@@ -21,6 +34,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     obligations=Any[]
     switch_obligations=Any[]
     permitted_penalties=SoftConstraintSlack[]
+    unit_power_shortfall=zeros(length(c.system.generators))
+    plant_shortfall=zeros(length(c.system.plants))
+    arrival_shortfall=zeros(length(c.system.rivers))
     finish() = Dict(
         "valid"=>isempty(errors),
         "max_residual"=>maximum(values(residuals); init = 0.0),
@@ -29,18 +45,21 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "terminal_commitment_obligations"=>obligations,
         "terminal_tunnel_switch_obligations"=>switch_obligations,
         "permitted_penalties"=>permitted_penalties,
+        "shortfalls"=>(;unit_power=unit_power_shortfall,plant=plant_shortfall,arrival=arrival_shortfall),
     )
     record(name, x) = begin
         v=maximum(abs, x; init = 0.0)
         residuals[name]=v
         (!isfinite(v) || v>tolerance) &&
             push!(errors, "$name residual $v exceeds $tolerance")
+        v
     end
     bound(name, x) = record(name, max.(x, 0.0))
     s=c.system
     try
         validate_soft_constraints(c)
     catch error
+        error isa ArgumentError || rethrow()
         residuals["soft_input"]=Inf
         push!(errors,"invalid soft constraint data: "*sprint(showerror,error))
         return finish()
@@ -55,6 +74,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         validate_delay_curves(s)
         validate_curve_data(s)
     catch error
+        error isa Union{ArgumentError,DimensionMismatch,DomainError} || rethrow()
         residuals["curve_input"]=Inf
         push!(errors,"invalid curve data: "*sprint(showerror,error))
         return finish()
@@ -67,6 +87,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     try
         validate_river_allocations(s)
     catch error
+        error isa ArgumentError || rethrow()
         residuals["river_allocation"]=Inf
         push!(errors,"invalid river allocation: "*sprint(showerror,error))
         return finish()
@@ -109,6 +130,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             if state.forward_wait>0 || state.backward_wait>0])
         (opening,tunnel_adjustment_cost(c,opening))
     catch e
+        e isa Union{ArgumentError,DimensionMismatch} || rethrow()
         push!(errors,"invalid tunnel_opening: "*sprint(showerror,e))
         return finish()
     end
@@ -123,6 +145,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     reserve_audit=try
         validate_reserves(c,result;tolerance)
     catch error
+        error isa Union{ArgumentError,DimensionMismatch,DomainError} || rethrow()
         Dict("errors"=>["reserve capacity check failed: "*sprint(showerror,error)],
             "residuals"=>Dict{String,Float64}())
     end
@@ -180,7 +203,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                 sum(GQ[j, t] for (j, z) in enumerate(s.generators) if z.plant==g.plant),
             ) for t in 1:T
         ])
-        bound(
+        unit_bounds=bound(
             "unit_bounds_$(g.name)",
             vcat(
                 [opinterval(c, g.name, :qmin, t, g.qmin)*u[i, t]-GQ[i, t] for t in 1:T],
@@ -203,8 +226,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             "unit_head_efficiency_$(g.name)",
             vcat(g.hmin .- hd[on], hd[on] .- g.hmax, g.min_efficiency .- eta, eta .- 1),
         )
+        envelope=0.0
         if g.turbine_table!==nothing
-            bound(
+            envelope=bound(
                 "turbine_envelope_$(g.name)",
                 vcat(
                     [
@@ -223,6 +247,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                 ),
             )
         end
+        unit_power_shortfall[i]=max(unit_bounds,unit_reference_power_slope(g)*envelope)
         state=g.initial_on
         since=c.grid[1]-g.initial_age
         for t in 1:T
@@ -257,7 +282,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("soft_penalty_cost",[(result.soft_penalty_cost-soft.cost)/max(1.0,soft.cost)])
         end
     end
-    for (name,residual) in operating_residuals(c,result)
+    plants=plant_operating_residuals(c,result)
+    plant_shortfall.=max.(plants.capacity,plants.power_ramp)
+    for (name,residual) in operating_residuals(c,result;plants)
         bound(name,[residual])
     end
     for history in _plant_commitment_history(c,u)
@@ -377,7 +404,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     try
         routed=routed_schedule(c,RQ;transport=nd,injections)
-        for (name,residual) in river_arrival_residuals(c,routed)
+        arrivals=river_arrival_residuals(c,routed)
+        arrival_shortfall.=max.(arrivals.mean_arrival,arrivals.pointwise_arrival)
+        for (name,residual) in river_arrival_report(c,arrivals)
             bound(name,[residual])
         end
         record("routing_release", routed.release-RQ)
@@ -425,6 +454,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             [(objective-result.objective)/max(1.0, abs(objective))],
         )
     catch e
+        e isa Union{ArgumentError,DomainError} || rethrow()
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
     end
     try
@@ -447,6 +477,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("replay_$name",actual-expected)
         end
     catch e
+        e isa Union{ArgumentError,DomainError} || rethrow()
         push!(errors, "independent forward replay failed: $(sprint(showerror,e))")
     end
     finish()

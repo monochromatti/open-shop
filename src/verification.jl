@@ -14,7 +14,13 @@ end
 """Accept a schedule only after finer physical replay and an independent transport check.
 Operating data retain physical times; plant ramp limits retain original decision windows.
 """
-function replay_audit(
+replay_audit(c::ScheduleCase, x; kwargs...) = _replay_report(_replay(c, x; kwargs...))
+
+_replay_report(check) = Dict{String,Any}(string(k)=>v for (k,v) in pairs(check))
+
+# Numerical replay returns named quantities. Diagnostic labels never determine
+# a subsequent solve's margins or its physical acceptance.
+function _replay(
     c::ScheduleCase,
     x;
     grid = refined_grid(c.grid),
@@ -26,6 +32,7 @@ function replay_audit(
     began=time()
     errors=String[]
     violations=Dict{String,Float64}()
+    shortfalls=(arrival=0.0,power=0.0)
     nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ?
        _transport_data(c, transport) : nothing
     nd===nothing &&
@@ -40,13 +47,8 @@ function replay_audit(
     length(grid)>length(c.grid) ||
         push!(errors, "acceptance requires a strictly finer replay grid")
     if !isempty(errors)
-        return Dict(
-            "valid"=>false,
-            "errors"=>errors,
-            "violations"=>violations,
-            "original_audit"=>original,
-            "seconds"=>time()-began,
-        )
+        return (; valid=false, errors, violations, original_audit=original,
+            shortfalls, seconds=time()-began)
     end
     x=_schedule_input(x; case=c)
     try
@@ -75,19 +77,14 @@ function replay_audit(
         merge!(violations,Dict("reserve_"*key=>value for (key,value) in reserve_audit["residuals"]))
         append!(errors,reserve_audit["errors"])
         windows=operating_window_values(c,z,grid,indices,x.commitment)
-        for (name,residual) in operating_residuals(c,windows)
+        plants=plant_operating_residuals(c,windows)
+        for (name,residual) in operating_residuals(c,windows;plants)
             violations[name]=max(get(violations,name,0.0),residual)
             residual>tolerance && push!(errors,"$name fails finer replay: $residual")
         end
-        for g in c.system.generators
-            violations["unit_power_$(g.name)"]=max(
-                get(violations, "unit_bounds_$(g.name)", 0.0),
-                unit_reference_power_slope(g)*get(
-                    violations,
-                    "turbine_envelope_$(g.name)",
-                    0.0,
-                ),
-            )
+        fine_shortfalls=audit["shortfalls"]
+        for (i,g) in enumerate(c.system.generators)
+            violations["unit_power_$(g.name)"]=fine_shortfalls.unit_power[i]
         end
         transport_check=transport_audit(
             c,
@@ -101,13 +98,17 @@ function replay_audit(
         for (name,residual) in transport_check["violations"]
             violations[name]=max(get(violations,name,0.0),residual)
         end
-        for r in c.system.rivers
-            violations["environmental_$(r.name)"]=max(
-                get(violations, "environmental_arrival_$(r.name)", 0.0),
-                get(violations, "pointwise_arrival_$(r.name)", 0.0),
-                get(violations, "exact_arrival_$(r.name)", 0.0),
-            )
+        arrival=max.(fine_shortfalls.arrival,transport_check["arrival_shortfall"])
+        for (i,r) in enumerate(c.system.rivers)
+            violations["environmental_$(r.name)"]=arrival[i]
         end
+        shortfalls=(
+            arrival=maximum((arrival[i] for (i,r) in enumerate(c.system.rivers)
+                if r.arrival_policy==:pointwise);init=0.0),
+            power=max(maximum(fine_shortfalls.unit_power;init=0.0),
+                maximum(fine_shortfalls.plant;init=0.0),
+                maximum(plants.capacity;init=0.0),maximum(plants.power_ramp;init=0.0)),
+        )
         transport_check["accepted"] ||
             push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
         physical=isempty(errors)
@@ -123,35 +124,30 @@ function replay_audit(
             errors,
             "finer replay exceeded storage/transit or objective convergence tolerance",
         )
-        Dict(
-            "valid"=>isempty(errors),
-            "physically_valid"=>physical,
-            "numerically_converged"=>numerical,
-            "errors"=>errors,
-            "violations"=>violations,
-            "original_audit"=>original,
-            "transport_audit"=>transport_check,
-            "replay_grid"=>collect(grid),
-            "replay_intervals"=>length(grid)-1,
-            "max_water_residual_Mm3"=>get(violations, "global_water", Inf),
-            "max_storage_difference_Mm3"=>storage_error,
-            "terminal_transit_difference_Mm3"=>transit_error,
-            "replayed_objective"=>replayed_objective,
-            "objective_difference"=>objective_error,
-            "storage_convergence_tolerance_Mm3"=>storage_convergence,
-            "relative_objective_convergence_tolerance"=>objective_convergence,
-            "seconds"=>time()-began,
-            "certificate"=>"numerical finer-grid and transport acceptance only",
+        (;
+            valid=isempty(errors),
+            physically_valid=physical,
+            numerically_converged=numerical,
+            errors, violations, shortfalls,
+            original_audit=original,
+            transport_audit=transport_check,
+            replay_grid=collect(grid),
+            replay_intervals=length(grid)-1,
+            max_water_residual_Mm3=get(violations, "global_water", Inf),
+            max_storage_difference_Mm3=storage_error,
+            terminal_transit_difference_Mm3=transit_error,
+            replayed_objective,
+            objective_difference=objective_error,
+            storage_convergence_tolerance_Mm3=storage_convergence,
+            relative_objective_convergence_tolerance=objective_convergence,
+            seconds=time()-began,
+            certificate="numerical finer-grid and transport acceptance only",
         )
     catch e
+        e isa Union{ArgumentError,DomainError} || rethrow()
         push!(errors, sprint(showerror, e))
-        Dict(
-            "valid"=>false,
-            "errors"=>errors,
-            "violations"=>violations,
-            "original_audit"=>original,
-            "seconds"=>time()-began,
-        )
+        (; valid=false, errors, violations, original_audit=original,
+            shortfalls, seconds=time()-began)
     end
 end
 
@@ -165,7 +161,21 @@ All attempts, margins and actual solution grids are returned.
 `refine_grid=false` retains the decision grid and only reoptimizes with measured
 replay margins. This allows a prepared start to serve the same global model.
 """
-function solve_verified(
+solve_verified(c::ScheduleCase; kwargs...) = _verified_report(_verified_dispatch(c; kwargs...))
+
+function _verified_report(result)
+    Dict{String,Any}(
+        "accepted"=>result.accepted,
+        "case"=>result.case,
+        "solution"=>result.solution,
+        "audit"=>_replay_report(result.audit),
+        "attempts"=>result.attempts,
+        "total_seconds"=>result.total_seconds,
+        "global_optimality_proven"=>false,
+    )
+end
+
+function _verified_dispatch(
     c::ScheduleCase;
     u = ones(Int, length(c.system.generators), length(c.prices)),
     initial = nothing,
@@ -221,7 +231,7 @@ function solve_verified(
     margin=0.0
     power_margin=operational_margin
     x=initial
-    audit=Dict("valid"=>false,"errors"=>["dispatch deadline exhausted"])
+    audit=(valid=false,errors=["dispatch deadline exhausted"],shortfalls=(arrival=0.0,power=0.0))
     for iteration in 0:max_refinements
         remaining=min(time_limit,deadline-time())
         iteration==0 && initial!==nothing || remaining>0 || break
@@ -242,9 +252,9 @@ function solve_verified(
         dispatch=x
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
         audit=x!==nothing && haskey(x,"objective") ?
-              replay_audit(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
-              Dict("valid"=>false, "errors"=>["NLP candidate has no objective"])
-        original=get(audit, "original_audit", Dict{String,Any}())
+              _replay(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
+              (valid=false,errors=["NLP candidate has no objective"],shortfalls=(arrival=0.0,power=0.0))
+        original=get(audit, :original_audit, Dict{String,Any}())
         physical=get(original, "valid", false)
         push!(
             attempts,
@@ -257,7 +267,7 @@ function solve_verified(
                 "objective"=>(x===nothing ? nothing : x["objective"]),
                 "model_valid"=>physical,
                 "model_errors"=>get(original, "errors", String[]),
-                "replay"=>audit,
+                "replay"=>_replay_report(audit),
                 "solve_seconds"=>get(dispatch, "total_seconds", 0.0),
                 "construction_seconds"=>get(dispatch, "construction_seconds", 0.0),
                 "optimization_seconds"=>get(dispatch, "seconds", 0.0),
@@ -269,24 +279,12 @@ function solve_verified(
             ),
         )
         x!==nothing && physical && (x=_schedule_input(x;case=cc))
-        get(audit, "valid", false) && break
+        audit.valid && break
         iteration==max_refinements && break
         physical || break # A failed local solve is not an infeasibility proof.
-        shortfall=maximum(
-            (
-                get(get(audit, "violations", Dict()), "environmental_$(r.name)", 0.0) for
-                r in cc.system.rivers if r.arrival_policy==:pointwise
-            );
-            init = 0.0,
-        )
+        shortfall=audit.shortfalls.arrival
         shortfall>1e-4 && (margin+=shortfall+0.02)
-        power_shortfall=maximum(
-            (
-                value for (name, value) in get(audit, "violations", Dict()) if
-                startswith(name, "plant_") || startswith(name, "unit_power_")
-            );
-            init = 0.0,
-        )
+        power_shortfall=audit.shortfalls.power
         power_shortfall>1e-4 && (power_margin+=1.5power_shortfall+0.002)
         if !refine_grid
             # The measured shortfall is additional to the existing tightening.
@@ -311,17 +309,10 @@ function solve_verified(
         warm=try
             dispatch_from_controls(cc, uu, x.generator_q[:, idx], x.gate[:, idx];
                 tunnel_opening=openings,reserves=_reserve_slice(x.reserves,idx))
-        catch
+        catch error
+            error isa Union{ArgumentError,DomainError} || rethrow()
             nothing
         end
     end
-    Dict(
-        "accepted"=>get(audit, "valid", false),
-        "case"=>cc,
-        "solution"=>x,
-        "audit"=>audit,
-        "attempts"=>attempts,
-        "total_seconds"=>time()-began,
-        "global_optimality_proven"=>false,
-    )
+    (;accepted=audit.valid,case=cc,solution=x,audit,attempts,total_seconds=time()-began)
 end
