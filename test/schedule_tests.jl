@@ -80,6 +80,38 @@ end
     @test replay_audit(c,verified["solution"])["valid"]
 end
 
+@testset "Finer replay measures the power shortfall in physical units" begin
+    lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,v0=2.0,vmin=1.0,vmax=4.0,
+        inflow=80.0,water_value=0.0)
+    # One Mm³ raises head by one metre. Storage and power rise linearly, so
+    # the last half-hour's mean power exceeds the hour's mean by gain*rise/4.
+    # No optimizer is needed to know that discrepancy.
+    q=2.0
+    gain=0.00981*0.9*q
+    rise=0.0036*(lake.inflow-q)
+    capacity=gain*(lake.z0+lake.v0+rise/2)
+    unit=Generator(name=:Unit,plant=:Plant,qmin=0.0,qmax=5.0,pmin=0.0,pmax=capacity,
+        efficiency=0.9,qbest=3.0,qcurvature=0.0,hbest=100.0,hcurvature=0.0,
+        hmin=90.0,hmax=120.0,minup=0.0,mindown=0.0,startup=0.0)
+    system=HydroSystem(reservoirs=[lake],generators=[unit],
+        plants=[Plant(name=:Plant,source=:Lake,target=:Sea,pmax=10.0)],
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    c=ScheduleCase(name="known replay shortfall",system=system,grid=[0.0,1.0],prices=[50.0])
+    x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
+    @test validate(c,x)["valid"]
+    check=replay_audit(c,x)
+    @test !check["valid"]
+    @test check["shortfalls"].power≈gain*rise/4 atol=1e-10
+    @test check["shortfalls"].arrival==0.0
+    @test !replay_audit(c,x;grid=[0.0,0.5,1.5])["valid"]
+    @test_throws MethodError replay_audit(c,x;grid=Any[0.0,"midpoint",1.0])
+    verified=solve_verified(c;u=x.commitment,warm=x,time_limit=10.0,
+        max_refinements=1,refine_grid=false)
+    @test verified["accepted"]
+    @test verified["case"].grid==c.grid
+    @test replay_audit(c,verified["solution"])["valid"]
+end
+
 @testset "Local reconstruction corrects controls and recomputes physical values" begin
     c=warm_dispatch_fixture()
     u=zeros(Int, 2, 2)

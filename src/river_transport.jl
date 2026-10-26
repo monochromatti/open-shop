@@ -109,20 +109,17 @@ function routed_schedule(c,release;transport=nothing,injections=nothing,generato
         cohorts=routed["release_cohorts"],injections)
 end
 
-function lift_routing!(m,c,physical,put)
-    routing=get(m.ext,:distributed_routing,nothing)
-    routing===nothing && return
-    routed=routed_schedule(c,physical.river_release;
-        generator_q=physical.generator_q,tunnel_q=physical.tunnel_q)
-    for i in eachindex(routing.rates),k in eachindex(routing.rates[i])
-        variable=routing.rates[i][k]
-        variable isa VariableRef && put(variable,routed.cohorts[i].release[k])
-    end
-end
+"""Arrival and capacity shortfalls in m³/s, indexed by reach.
 
-"""Operating arrival and release residuals from independently routed cohorts."""
+`mean_arrival` uses the declared observation windows; `pointwise_arrival` uses
+the actual wave. `capacity` also checks confluence peaks before cell averaging.
+Channels have zero entries: their signed hydraulic laws are checked separately.
+"""
 function river_arrival_residuals(c,routed)
-    residuals=Dict{String,Float64}()
+    D=length(c.system.rivers)
+    mean_arrival=zeros(D)
+    capacity=zeros(D)
+    pointwise_arrival=zeros(D)
     exact=all(r->r.deterministic_delay!==nothing,c.system.rivers)
     for (d,r) in enumerate(c.system.rivers)
         is_channel(r) && continue
@@ -130,7 +127,7 @@ function river_arrival_residuals(c,routed)
         windows=isempty(r.arrival_window_grid) ? c.grid : r.arrival_window_grid
         volume=route_volumes(r,windows,cohort.grid,cohort.release)+
             route_volumes(r,windows,r.history_grid,r.history_release)
-        residuals["environmental_arrival_$(r.name)"]=maximum(
+        mean_arrival[d]=maximum(
             opaverage(c,r.name,:min_arrival,windows[k],windows[k+1],r.min_arrival)-
             volume[k]/(0.0036*(windows[k+1]-windows[k]))
             for k in eachindex(volume);init=0.0)
@@ -152,12 +149,11 @@ function river_arrival_residuals(c,routed)
                 end
             end
         end
-        residuals[(exact ? "exact_release_" : "routed_release_")*string(r.name)]=capacity_error
-        pointwise=r.arrival_policy==:pointwise ?
+        capacity[d]=capacity_error
+        pointwise_arrival[d]=r.arrival_policy==:pointwise ?
             arrival_requirement_violation(c,r,cohort.grid,cohort.release) : 0.0
-        residuals[(exact ? "exact_arrival_" : "pointwise_arrival_")*string(r.name)]=pointwise
     end
-    residuals
+    (;mean_arrival,capacity,pointwise_arrival)
 end
 
 river_control_interval(c,time,side)=clamp(side==:left ? searchsortedfirst(c.grid,time)-1 :

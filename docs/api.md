@@ -91,6 +91,15 @@ audit = validate(case, schedule)
 finer = replay_audit(case, schedule)
 ```
 
+Replay reports include `shortfalls.arrival` and `shortfalls.power`, the numerical
+quantities used to tighten a subsequent preparation solve. Arrival shortfall is
+in m³/s. The power shortfall retains the preparation method's maximum of unit
+power/envelope, plant capacity and plant power-ramp residuals; plant capacity
+includes both power and discharge limits. Diagnostic row names do not select
+which constraints affect these retries. Acceptance always checks the original
+limits. Invalid physical candidates are reported as rejected; unexpected
+programming errors in replay or reconstruction are raised to the caller.
+
 Rows follow case object order; interval columns follow `case.grid`.
 `Schedule.storage` has one column per grid vertex in Mm³. `head` is metres,
 `power` is MW, and `generator_q`, `tunnel_q` and `river_release` are m³/s.

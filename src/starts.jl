@@ -1,3 +1,15 @@
+"""Lift physical river cohorts into the model's transport-cell variables."""
+function lift_routing!(m,c,physical,put)
+    routing=get(m.ext,:distributed_routing,nothing)
+    routing===nothing && return
+    routed=routed_schedule(c,physical.river_release;
+        generator_q=physical.generator_q,tunnel_q=physical.tunnel_q)
+    for i in eachindex(routing.rates),k in eachindex(routing.rates[i])
+        variable=routing.rates[i][k]
+        variable isa VariableRef && put(variable,routed.cohorts[i].release[k])
+    end
+end
+
 # Distance to the allowed adjacent support; tiny nonadjacent weights remain
 # visible to the same numerical tolerance used for the other constraints.
 function _sos2_residual(x,weights)

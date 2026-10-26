@@ -203,8 +203,44 @@ function schedule_violation(c,object,p,q)
     violation
 end
 
-"""Numerical residuals for operating rows, evaluated from physical schedule values."""
-function operating_residuals(c,x)
+"""Plant capacity, schedule and ramp residuals, indexed by plant.
+
+These use the supplied observation windows. Capacity is the joint power/discharge
+maximum; power ramps are in MW and discharge ramps in m³/s.
+"""
+function plant_operating_residuals(c,x)
+    u,P,GQ=x.commitment,x.power,x.generator_q
+    n=length(c.system.plants)
+    capacity=zeros(n)
+    schedule=zeros(n)
+    power_ramp=zeros(n)
+    discharge_ramp=zeros(n)
+    su,sd=unit_transitions(c,u)
+    for (i,p) in enumerate(c.system.plants)
+        members=findall(g->g.plant==p.name,c.system.generators)
+        tp=vec(sum(P[members,:];dims=1))
+        tq=vec(sum(GQ[members,:];dims=1))
+        for t in eachindex(c.prices)
+            on=any(u[j,t]==1 for j in members)
+            capacity[i]=max(capacity[i],tp[t]-opinterval(c,p.name,:pmax,t,p.pmax),
+                opinterval(c,p.name,:pmin,t,p.pmin)*on-tp[t],
+                opinterval(c,p.name,:qmin,t,p.qmin)*on-tq[t])
+            maximum_q=optional_operation(c,p.name,:qmax,t;default=p.qmax)
+            maximum_q===nothing || (capacity[i]=max(capacity[i],tq[t]-maximum_q))
+        end
+        schedule[i]=schedule_violation(c,p,tp,tq)
+        initial_p,p_hours=plant_initial_output(c,p,members,:power)
+        initial_q,q_hours=plant_initial_output(c,p,members,:discharge)
+        power_ramp[i]=interval_ramp_violation(c,p,tp,initial_p,
+            p_hours,(:ramp_up,:ramp_down);su,sd,members)
+        discharge_ramp[i]=interval_ramp_violation(c,p,tq,initial_q,
+            q_hours,(:discharge_ramp_up,:discharge_ramp_down))
+    end
+    (;capacity,schedule,power_ramp,discharge_ramp)
+end
+
+"""Diagnostic names for operating rows, evaluated from physical schedule values."""
+function operating_residuals(c,x;plants=plant_operating_residuals(c,x))
     residuals=Dict{String,Float64}()
     u,P,GQ,RQ,V=x.commitment,x.power,x.generator_q,x.river_release,x.storage
     su,sd=unit_transitions(c,u)
@@ -216,27 +252,11 @@ function operating_residuals(c,x)
         residuals["discharge_ramp_$(g.name)"]=interval_ramp_violation(c,g,q,g.initial_discharge,
             g.initial_interval_hours,(:discharge_ramp_up,:discharge_ramp_down))
     end
-    for p in c.system.plants
-        members=findall(g->g.plant==p.name,c.system.generators)
-        tp=vec(sum(P[members,:];dims=1))
-        tq=vec(sum(GQ[members,:];dims=1))
-        capacity=0.0
-        for t in eachindex(c.prices)
-            on=any(u[j,t]==1 for j in members)
-            capacity=max(capacity,tp[t]-opinterval(c,p.name,:pmax,t,p.pmax),
-                opinterval(c,p.name,:pmin,t,p.pmin)*on-tp[t],
-                opinterval(c,p.name,:qmin,t,p.qmin)*on-tq[t])
-            maximum_q=optional_operation(c,p.name,:qmax,t;default=p.qmax)
-            maximum_q===nothing || (capacity=max(capacity,tq[t]-maximum_q))
-        end
-        residuals["plant_capacity_$(p.name)"]=capacity
-        residuals["schedule_$(p.name)"]=schedule_violation(c,p,tp,tq)
-        initial_p,p_hours=plant_initial_output(c,p,members,:power)
-        initial_q,q_hours=plant_initial_output(c,p,members,:discharge)
-        residuals["plant_ramp_$(p.name)"]=interval_ramp_violation(c,p,tp,initial_p,
-            p_hours,(:ramp_up,:ramp_down);su,sd,members)
-        residuals["discharge_ramp_$(p.name)"]=interval_ramp_violation(c,p,tq,initial_q,
-            q_hours,(:discharge_ramp_up,:discharge_ramp_down))
+    for (i,p) in enumerate(c.system.plants)
+        residuals["plant_capacity_$(p.name)"]=plants.capacity[i]
+        residuals["schedule_$(p.name)"]=plants.schedule[i]
+        residuals["plant_ramp_$(p.name)"]=plants.power_ramp[i]
+        residuals["discharge_ramp_$(p.name)"]=plants.discharge_ramp[i]
     end
     for (i,r) in enumerate(c.system.rivers)
         initial,duration=river_initial_output(r)

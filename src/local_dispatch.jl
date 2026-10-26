@@ -431,6 +431,7 @@ function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
             solution=repaired
         end
     catch error
+        error isa Union{ArgumentError,DomainError} || rethrow()
         report["forward_reconstruction_error"]=sprint(showerror,error)
     end
     report["forward_reconstruction_seconds"]=time()-began
