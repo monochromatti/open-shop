@@ -53,8 +53,8 @@ record; reservoir windows bound the complete recorded level range.
 
 Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
 `status`, `accepted`, `solution`, `global_certificate`, `global_bound`,
-`relative_gap`, `absolute_gap` and `total_seconds`; `objective` and
-`feasible_lower_bound` are derived properties. `solution` may be `nothing`.
+`relative_gap`, `absolute_gap`, `feasible_lower_bound` and `total_seconds`;
+`objective` is derived from the returned schedule. `solution` may be `nothing`.
 Detailed work counters and validation reports are in `diagnostics`.
 A time limit may leave an accepted schedule and an unfinished gap calculation.
 If preparation or initial reconstruction exhausts the allowance, `solve` skips
@@ -91,14 +91,31 @@ audit = validate(case, schedule)
 finer = replay_audit(case, schedule)
 ```
 
-Replay reports include `shortfalls.arrival` and `shortfalls.power`, the numerical
-quantities used to tighten a subsequent preparation solve. Arrival shortfall is
-in m³/s. The power shortfall retains the preparation method's maximum of unit
-power/envelope, plant capacity and plant power-ramp residuals; plant capacity
-includes both power and discharge limits. Diagnostic row names do not select
-which constraints affect these retries. Acceptance always checks the original
-limits. Invalid physical candidates are reported as rejected; unexpected
+Replay reports separate arrival and discharge shortfalls (m³/s) from power
+shortfalls (MW). These values describe constraint exceedances; they do not
+set solver margins. After failed replay, `solve_verified` may add finer
+hydraulic equations with the same unit discharges, outlet openings, commitments,
+tunnel positions and reserve allocations. Fixed-speed pump flows remain hydraulic
+states. Schedules and ramps use the original operating windows. The case, returned
+schedule and objective retain the requested grid. `refine_grid` remains accepted
+for compatibility; both values now preserve the control grid.
+
+The retry enforces both discretizations. It can be more restrictive than either
+mesh alone and is not a continuous-time error certificate. `max_refinements`
+bounds this additional work. An explicitly requested `operational_margin` is a
+power inset in MW, capped at half the permitted power range so a fixed-power
+unit remains well-defined. It is not converted into a discharge margin.
+
+`validate` checks supplied arrays against the equations, restrictions and river
+transport directly. It does not repeat the same-grid hydraulic solve.
+`replay_audit` independently integrates on a finer mesh and retains the separate
+transport check. Neither accepts stored validation flags as evidence. Unexpected
 programming errors in replay or reconstruction are raised to the caller.
+
+A physically accepted schedule can be returned even if its stricter global-model
+start check fails. In that case it supplies neither a `feasible_lower_bound` nor
+an optimality gap or certificate. Its physical acceptance and its eligibility
+for a global bound are separate facts.
 
 Rows follow case object order; interval columns follow `case.grid`.
 `Schedule.storage` has one column per grid vertex in Mm³. `head` is metres,

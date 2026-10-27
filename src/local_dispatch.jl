@@ -12,6 +12,10 @@ function _build_dispatch(
     transport = nothing,
     tunnel_opening = nothing,
     river_on = nothing,
+    model = Model(),
+    prefix = "",
+    reserve_case = c,
+    shared_controls = nothing,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -36,55 +40,62 @@ function _build_dispatch(
     generator_plants = s.plants[topology.generator_plant]
     plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
     warm, warm_start=_dispatch_start(c, u, warm)
-    m=Model()
+    m=model
     set_silent(m)
     openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
     gates=_tunnel_gate_states!(m,c;fixed=openings)
     constrain_tunnel_switching!(m,c,gates.open,u)
     ustart=copy(u)
-    @variable(m, v[1:R, 1:(T + 1)])
-    @variable(m, h[1:N, 1:T])
-    @variable(m, q[1:E, 1:T])
-    @variable(m, gq[1:G, 1:T]>=0)
-    @variable(m, p[1:G, 1:T]>=0)
-    @variable(m, rq[1:D, 1:T]>=0)
-    @variable(m, 0<=a[1:D, 1:T]<=1)
-    @variable(m, shortfall_release[1:D, 1:T]>=0)
+    v=@variable(m, [1:R, 1:(T + 1)], base_name=prefix*"v")
+    h=@variable(m, [1:N, 1:T], base_name=prefix*"h")
+    q=@variable(m, [1:E, 1:T], base_name=prefix*"q")
+    gq=Matrix{VariableRef}(undef,G,T)
+    for t in 1:T, (i,g) in enumerate(s.generators)
+        gq[i,t]=shared_controls===nothing || g.characteristic!==nothing ?
+            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]") :
+            shared_controls.discharge[i,shared_controls.index[t]]
+    end
+    p=@variable(m, [1:G, 1:T], lower_bound=0, base_name=prefix*"p")
+    rq=@variable(m, [1:D, 1:T], lower_bound=0, base_name=prefix*"rq")
+    a=shared_controls===nothing ?
+        @variable(m,[1:D,1:T],lower_bound=0,upper_bound=1,base_name=prefix*"a") :
+        shared_controls.gate[:,shared_controls.index]
+    shortfall_release=@variable(m, [1:D, 1:T], lower_bound=0, base_name=prefix*"shortfall_release")
     level_ops=[
         r.level_curve===nothing ? nothing :
-        table_operator(m, r.level_curve; name = Symbol("level_", i)) for
+        table_operator(m, r.level_curve; name = Symbol(prefix,"level_", i)) for
         (i, r) in enumerate(s.reservoirs)
     ]
     mean_level_ops=[r.level_curve===nothing ? nothing :
-        _mean_head_operator(m,r;name=Symbol("mean_level_",i)) for
+        _mean_head_operator(m,r;name=Symbol(prefix,"mean_level_",i)) for
         (i,r) in enumerate(s.reservoirs)]
     turbine_ops=[
         g.turbine_table===nothing ? nothing :
-        turbine_operator(m, g.turbine_table; name = Symbol("turbine_", i)) for
+        turbine_operator(m, g.turbine_table; name = Symbol(prefix,"turbine_", i)) for
         (i, g) in enumerate(s.generators)
     ]
     characteristic_ops=[g.characteristic===nothing ? nothing : (
         JuMP.add_nonlinear_operator(m,1,h->pump_discharge(g.characteristic,h;extrapolation=:linear);
-            name=Symbol("pump_flow_",i)),
+            name=Symbol(prefix,"pump_flow_",i)),
         JuMP.add_nonlinear_operator(m,1,h->pump_efficiency(g.characteristic,h;extrapolation=:linear);
-            name=Symbol("pump_eta_",i))) for (i,g) in enumerate(s.generators)]
+            name=Symbol(prefix,"pump_eta_",i))) for (i,g) in enumerate(s.generators)]
     electrical_ops=[
         g.generator_efficiency_curve===nothing ? nothing :
-        table_operator(m, g.generator_efficiency_curve; name = Symbol("electrical_", i)) for
+        table_operator(m, g.generator_efficiency_curve; name = Symbol(prefix,"electrical_", i)) for
         (i, g) in enumerate(s.generators)
     ]
     tailwater_ops=Dict(
         p.name=>(
             p.tailwater_curve===nothing ? nothing :
-            table_operator(m, p.tailwater_curve; name = Symbol("tailwater_", p.name))
+            table_operator(m, p.tailwater_curve; name = Symbol(prefix,"tailwater_", p.name))
         ) for p in s.plants
     )
     river_ops=[
         r.discharge_curve===nothing ? nothing :
-        table_operator(m, r.discharge_curve; name = Symbol("river_law_", i)) for
+        table_operator(m, r.discharge_curve; name = Symbol(prefix,"river_law_", i)) for
         (i, r) in enumerate(s.rivers)
     ]
-    channel_ops=[is_channel(r) ? level_flow_operator(m,channel_curve(r);name=Symbol("channel_",i)) : nothing
+    channel_ops=[is_channel(r) ? level_flow_operator(m,channel_curve(r);name=Symbol(prefix,"channel_",i)) : nothing
         for (i,r) in enumerate(s.rivers)]
     turbine_flow_ops=[
         if g.turbine_table!==nothing && any(t->u[i, t]!=0, 1:T)
@@ -93,12 +104,12 @@ function _build_dispatch(
                 turbine_flow_operator(
                     m,
                     table, table.qmin;
-                    name = Symbol("qlo_", i),
+                    name = Symbol(prefix,"qlo_", i),
                 ),
                 turbine_flow_operator(
                     m,
                     table, table.qmax;
-                    name = Symbol("qhi_", i),
+                    name = Symbol(prefix,"qhi_", i),
                 ),
             )
         else
@@ -174,7 +185,7 @@ function _build_dispatch(
             table_operator(
                 m,
                 TableCurve([lo, floor, hi], [floor, floor, hi]);
-                name = Symbol("outlet_head_", plant.name),
+                name = Symbol(prefix,"outlet_head_", plant.name),
             )
         end for plant in s.plants
     )
@@ -199,10 +210,16 @@ function _build_dispatch(
             P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
             P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
         begin
-            set_lower_bound(gq[i, t], qmin*u[i, t]/50)
-            set_upper_bound(gq[i, t], qmax*u[i, t]/50)
-            set_lower_bound(p[i, t], (pmin+operational_margin)*u[i, t]/40)
-            set_upper_bound(p[i, t], max(0.0, pmax-operational_margin)*u[i, t]/40)
+            if shared_controls===nothing || g.characteristic!==nothing
+                set_lower_bound(gq[i,t],qmin*u[i,t]/50)
+                set_upper_bound(gq[i,t],qmax*u[i,t]/50)
+            elseif u[i,t]!=0
+                @constraint(m,GQ[i,t]>=qmin)
+                @constraint(m,GQ[i,t]<=qmax)
+            end
+            plo,phi=inset_bounds(pmin,pmax,operational_margin)
+            set_lower_bound(p[i, t], plo*u[i, t]/40)
+            set_upper_bound(p[i, t], phi*u[i, t]/40)
             if u[i, t]==0
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
@@ -215,14 +232,13 @@ function _build_dispatch(
                 @constraint(m, g.min_efficiency<=eta<=1.0)
                 if g.turbine_table!==nothing
                     qlo, qhi=turbine_flow_ops[i]
-                    flow_margin=operational_margin/unit_reference_power_slope(g)
-                    @constraint(m, GQ[i, t]>=qlo(hd)+flow_margin)
-                    @constraint(m, GQ[i, t]<=qhi(hd)-flow_margin)
+                    @constraint(m, GQ[i, t]>=qlo(hd))
+                    @constraint(m, GQ[i, t]<=qhi(hd))
                 end
             end
         end
     end
-    reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
+    reserves=_local_reserve_points!(m,reserve_case,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin)
     outlet_bounds = _dispatch_outlet_bounds(c)
     injections=river_injections(c,RQ,GQ,Q)
@@ -233,8 +249,13 @@ function _build_dispatch(
             cap=outlet_bounds.capacity[i, t]
             set_upper_bound(rq[i, t], cap/100)
             set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/100)
-            set_lower_bound(a[i, t], outlet_bounds.gate_lower[i, t])
-            set_upper_bound(a[i, t], outlet_bounds.gate_upper[i, t])
+            if shared_controls===nothing
+                set_lower_bound(a[i,t],outlet_bounds.gate_lower[i,t])
+                set_upper_bound(a[i,t],outlet_bounds.gate_upper[i,t])
+            else
+                @constraint(m,a[i,t]>=outlet_bounds.gate_lower[i,t])
+                @constraint(m,a[i,t]<=outlet_bounds.gate_upper[i,t])
+            end
             if is_channel(r)
                 fix(a[i,t],0.0;force=true)
                 fix(shortfall_release[i,t],0.0;force=true)
@@ -387,6 +408,7 @@ function _build_dispatch(
         H,
         Q,
         GQ,
+        gq,
         P,
         RQ,
         a,
@@ -403,6 +425,72 @@ function _build_dispatch(
         river_operations,
         flow_integrals,level_windows,
     )
+end
+
+# A second hydraulic mesh shares the requested controls. Its state variables are
+# witnesses of the finer equations, not additional scheduling decisions. The
+# objective and returned schedule still belong to the original model.
+function constrain_replay!(b, grid; warm=nothing, river_on=nothing)
+    c,m=b.case,b.m
+    objective=objective_function(m)
+    refined=with_grid(c,grid)
+    fine=without_interval_controls(refined)
+    indices=[searchsortedlast(c.grid,(grid[k]+grid[k+1])/2) for k in 1:length(grid)-1]
+    opening=Matrix{Float64}(b.gates.opening)[:,indices]
+    reference=if warm===nothing
+        nothing
+    else
+        try
+            dispatch_from_controls(fine,b.u[:,indices],warm.generator_q[:,indices],
+                warm.gate[:,indices];tunnel_opening=opening,
+                reserves=_reserve_slice(warm.reserves,indices),head_reference=warm.head[:,indices])
+        catch error
+            error isa Union{ArgumentError,DomainError} || rethrow()
+            nothing
+        end
+    end
+    # Both meshes use exactly the same equations and physical bound data.
+    f=_build_dispatch(fine;u=b.u[:,indices],model=m,prefix="replay_",warm=reference,
+        tunnel_opening=opening,river_on=river_on===nothing ? nothing : river_on[:,indices],
+        reserve_case=refined,shared_controls=(;discharge=b.gq,gate=b.a,index=indices))
+    if b.reserves!==nothing
+        for (fine_values,values) in ((f.reserves.up,b.reserves.up),(f.reserves.down,b.reserves.down))
+            for i in axes(values,1), j in axes(values,2), k in eachindex(indices)
+                @constraint(m,fine_values[i,j,k]==values[i,j,indices[k]])
+            end
+        end
+    end
+    z=(;power=f.P,generator_q=f.GQ,river_release=f.RQ,storage=f.V,
+        tunnel_q=f.Q,arrival_volume=f.arrivals)
+    windows=operating_window_values(c,z,grid,indices,b.u)
+    constrain_dispatch_operations!(m,c,b.u,windows.power,windows.generator_q,windows.river_release)
+    level_ops=[r.level_curve===nothing ? nothing : table_operator(m,r.level_curve)
+        for r in c.system.reservoirs]
+    mean_ops=[r.level_curve===nothing ? nothing : _mean_head_operator(m,r;name=gensym(:mean))
+        for r in c.system.reservoirs]
+    level=(i,t)->level_ops[i]===nothing ? head(c.system.reservoirs[i],windows.storage[i,t]) :
+        level_ops[i](windows.storage[i,t])
+    constrain_reservoir_ramps!(m,c,windows.storage;level)
+    constrain_gross_heads!(m,c,b.u,(i,t)->begin
+        r=c.system.reservoirs[i]
+        op=mean_ops[i]
+        op===nothing ? mean_head(r,windows.storage[i,t],windows.storage[i,t+1]) :
+            op(windows.storage[i,t],windows.storage[i,t+1])
+    end,level)
+    integrals=constrain_flow_requirements!(m,c,windows.generator_q,windows.river_release,windows.arrival_volume,windows.tunnel_q)
+    operations=constrain_river_operations!(m,c,windows.river_release;fixed=fixed_river_on(c,river_on,warm))
+    if reference!==nothing
+        observations=operating_window_values(c,reference,grid,indices,b.u)
+        for (variable,value) in window_start_values(c,observations,integrals,[])
+            set_start_value(variable,value)
+        end
+        for (variable,value) in river_operation_start_values(operations,c,observations.river_release)
+            set_start_value(variable,value)
+        end
+    end
+    # Restore the requested objective, which the second construction replaced.
+    set_objective_function(m,objective)
+    nothing
 end
 
 function _dispatch_values(b)
@@ -465,7 +553,9 @@ schedule by combining MILP proposals with nonlinear dispatch.
 
 Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
 `nothing` if no candidate exists. `accepted` means the candidate passed the
-original-grid physical and operating checks; use [`solve_verified`](@ref) for
+original-grid physical and operating checks. `replay_grid` optionally adds finer
+hydraulic equations sharing these controls; it does not change the returned
+grid or objective. Use [`solve_verified`](@ref) for
 finer replay. A local optimum is not a global certificate.
 """
 function solve_case(
@@ -481,6 +571,7 @@ function solve_case(
     transport = nothing,
     tunnel_opening = nothing,
     river_on = nothing,
+    replay_grid = nothing,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -498,6 +589,7 @@ function solve_case(
         tunnel_opening,
         river_on,
     )
+    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm)[1],river_on)
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds
     result=Dict{String,Any}(
@@ -536,10 +628,8 @@ function solve_case(
         audit_start=time()
         solution.diagnostics["validation"]=validate(c,solution; transport=b.transport)
         result["validation_seconds"]=time()-audit_start
-        if !solution.diagnostics["validation"]["valid"]
-            solution=_repair_dispatch!(c,solution,result; transport=b.transport)
-        end
-        result["accepted"]=solution.diagnostics["validation"]["valid"]
+        solution=_repair_dispatch!(c,solution,result; transport=b.transport)
+        result["accepted"]=get(result,"forward_reconstructed",false)
     end
     result["total_seconds"]=time()-b.starttime
     SolveResult(result;solution)

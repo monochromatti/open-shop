@@ -172,3 +172,29 @@ end
     @test restricted.solution===nothing && !restricted.accepted
     @test restricted.global_bound===nothing && !restricted.global_certificate
 end
+
+@testset "A rejected global embedding preserves a physically accepted schedule" begin
+    c=zero_minimum_case()
+    u=ones(Int,1,length(c.prices))
+    warm=dispatch_from_controls(c,u,fill(2.0,size(u)),zeros(0,length(c.prices)))
+    unit=only(c.system.generators)
+    # The physical acceptance tolerance is less strict than the native start's
+    # row tolerance. This point is acceptable for use, but not for a certificate.
+    unit=OpenSHOP._river_replace(unit;pmin=minimum(warm.power)+2e-5)
+    c=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;generators=[unit]))
+    @test replay_audit(c,warm)["valid"]
+    calls=Ref(0)
+    clock=()->begin
+        calls[]+=1
+        calls[]>=6 ? 10.0 : 0.0
+    end
+    prepare=(c;kwargs...)->error("supplied start needs no preparation")
+    result=OpenSHOP._solve(c,clock,prepare,0.0;initial=warm,time_limit=5.0,preparation_time_limit=0.0)
+    @test result.accepted
+    @test result.solution!==nothing
+    @test result.solution.power≈warm.power atol=1e-9
+    @test replay_audit(c,result.solution)["valid"]
+    @test result.feasible_lower_bound===nothing
+    @test result.relative_gap===nothing && result.absolute_gap===nothing
+    @test !result.global_certificate
+end

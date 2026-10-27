@@ -69,7 +69,7 @@ end
     @test continued.system.generators[1].initial_on==1
     @test continued.system.generators[1].initial_age==0.5
 
-    local_result=solve_case(c;u,warm=x,time_limit=45.0)
+    local_result=solve_case(c;u,warm=x,replay_grid=OpenSHOP.refined_grid(c.grid),time_limit=45.0)
     @test local_result.accepted
     if local_result.solution!==nothing
         @test local_result.solution.generator_q≈x.generator_q atol=1e-6

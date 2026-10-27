@@ -1,3 +1,10 @@
+# A requested symmetric inset saturates at the midpoint of the interval.
+# In particular, a fixed operating value remains fixed, never contradictory.
+function inset_bounds(lower,upper,margin)
+    inset=min(margin,(upper-lower)/2)
+    lower+inset,upper-inset
+end
+
 # Ordinary operating constraints shared by nonlinear dispatch and its proposal.
 # Optional inputs are resolved during construction; the solver receives algebraic rows.
 
@@ -131,7 +138,8 @@ function constrain_dispatch_operations!(m,c,u,P,GQ,RQ;
         total_p=[sum(P[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
         total_q=[sum(GQ[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
         for t in eachindex(c.prices)
-            @constraint(m,total_p[t]<=max(0.0,opinterval(c,p.name,:pmax,t,p.pmax)-margin))
+            @constraint(m,total_p[t]<=last(inset_bounds(opinterval(c,p.name,:pmin,t,p.pmin),
+                opinterval(c,p.name,:pmax,t,p.pmax),margin)))
             pmin=opinterval(c,p.name,:pmin,t,p.pmin)
             qmin=opinterval(c,p.name,:qmin,t,p.qmin)
             for j in members
@@ -205,13 +213,14 @@ end
 
 """Plant capacity, schedule and ramp residuals, indexed by plant.
 
-These use the supplied observation windows. Capacity is the joint power/discharge
-maximum; power ramps are in MW and discharge ramps in m³/s.
+These use the supplied observation windows. Power capacity and ramps are in MW;
+discharge capacity and ramps are in m³/s.
 """
 function plant_operating_residuals(c,x)
     u,P,GQ=x.commitment,x.power,x.generator_q
     n=length(c.system.plants)
-    capacity=zeros(n)
+    power_capacity=zeros(n)
+    discharge_capacity=zeros(n)
     schedule=zeros(n)
     power_ramp=zeros(n)
     discharge_ramp=zeros(n)
@@ -222,11 +231,11 @@ function plant_operating_residuals(c,x)
         tq=vec(sum(GQ[members,:];dims=1))
         for t in eachindex(c.prices)
             on=any(u[j,t]==1 for j in members)
-            capacity[i]=max(capacity[i],tp[t]-opinterval(c,p.name,:pmax,t,p.pmax),
-                opinterval(c,p.name,:pmin,t,p.pmin)*on-tp[t],
-                opinterval(c,p.name,:qmin,t,p.qmin)*on-tq[t])
+            power_capacity[i]=max(power_capacity[i],tp[t]-opinterval(c,p.name,:pmax,t,p.pmax),
+                opinterval(c,p.name,:pmin,t,p.pmin)*on-tp[t])
+            discharge_capacity[i]=max(discharge_capacity[i],opinterval(c,p.name,:qmin,t,p.qmin)*on-tq[t])
             maximum_q=optional_operation(c,p.name,:qmax,t;default=p.qmax)
-            maximum_q===nothing || (capacity[i]=max(capacity[i],tq[t]-maximum_q))
+            maximum_q===nothing || (discharge_capacity[i]=max(discharge_capacity[i],tq[t]-maximum_q))
         end
         schedule[i]=schedule_violation(c,p,tp,tq)
         initial_p,p_hours=plant_initial_output(c,p,members,:power)
@@ -236,7 +245,7 @@ function plant_operating_residuals(c,x)
         discharge_ramp[i]=interval_ramp_violation(c,p,tq,initial_q,
             q_hours,(:discharge_ramp_up,:discharge_ramp_down))
     end
-    (;capacity,schedule,power_ramp,discharge_ramp)
+    (;power_capacity,discharge_capacity,schedule,power_ramp,discharge_ramp)
 end
 
 """Diagnostic names for operating rows, evaluated from physical schedule values."""
@@ -253,7 +262,8 @@ function operating_residuals(c,x;plants=plant_operating_residuals(c,x))
             g.initial_interval_hours,(:discharge_ramp_up,:discharge_ramp_down))
     end
     for (i,p) in enumerate(c.system.plants)
-        residuals["plant_capacity_$(p.name)"]=plants.capacity[i]
+        residuals["plant_power_capacity_$(p.name)"]=plants.power_capacity[i]
+        residuals["plant_discharge_capacity_$(p.name)"]=plants.discharge_capacity[i]
         residuals["schedule_$(p.name)"]=plants.schedule[i]
         residuals["plant_ramp_$(p.name)"]=plants.power_ramp[i]
         residuals["discharge_ramp_$(p.name)"]=plants.discharge_ramp[i]

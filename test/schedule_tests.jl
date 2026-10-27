@@ -66,7 +66,7 @@ end
     @test_throws ArgumentError solve_verified(c;deadline=NaN)
 end
 
-@testset "Replay margins preserve the requested decision grid" begin
+@testset "Finer hydraulic constraints preserve the requested decision grid" begin
     base=warm_dispatch_fixture(;rivers=false)
     lake=OpenSHOP._river_replace(only(base.system.reservoirs);inflow=80.0)
     units=[OpenSHOP._river_replace(g;pmax=2.0) for g in base.system.generators]
@@ -301,4 +301,64 @@ end
     end
     @test_throws ArgumentError OpenSHOP.propose_commitment(c;radius=1)
     @test_throws ArgumentError OpenSHOP.propose_commitment(c;incumbent=x,radius=-1)
+end
+
+function fixed_power_replay_case()
+    lake=Reservoir(name=:Lake,z0=98.0,slope=1.0,v0=2.0,vmin=1.0,vmax=4.0,
+        inflow=80.0,water_value=10.0)
+    output=0.00981*0.9*200
+    unit=Generator(name=:Unit,plant=:Plant,qmin=0.0,qmax=5.0,pmin=output,pmax=output,
+        efficiency=0.9,qbest=3.0,qcurvature=0.0,hbest=100.0,hcurvature=0.0,
+        hmin=90.0,hmax=120.0,minup=0.0,mindown=0.0,startup=0.0)
+    outlet=River(name=:Outlet,source=:Lake,target=:Sea,law=:controlled,capacity=80.0,
+        deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0)
+    system=HydroSystem(reservoirs=[lake],generators=[unit],rivers=[outlet],
+        plants=[Plant(name=:Plant,source=:Lake,target=:Sea,pmax=10.0)],
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    ScheduleCase(name="fixed power with changing storage",system=system,
+        grid=[0.0,1.0],prices=[50.0])
+end
+
+@testset "Finer equations recover fixed power without contradictory margins" begin
+    c=fixed_power_replay_case()
+    u=ones(Int,1,1)
+    witness=dispatch_from_controls(c,u,fill(2.0,1,1),fill(78/80,1,1))
+    @test replay_audit(c,witness)["valid"]
+    b=100+0.0018*80
+    q=400/(b+sqrt(b^2-4*0.0018*200))
+    coarse=dispatch_from_controls(c,u,fill(q,1,1),zeros(1,1))
+    @test validate(c,coarse)["valid"]
+    @test !replay_audit(c,coarse)["valid"]
+    for refine_grid in (false,true)
+        result=solve_verified(c;u,initial=coarse,max_refinements=1,refine_grid,time_limit=15.0)
+        @test result["accepted"]
+        @test result["case"].grid==c.grid
+        @test result["solution"].grid==c.grid
+        @test result["solution"].generator_q≈fill(2.0,1,1) atol=1e-5
+        @test result["solution"].gate≈fill(78/80,1,1) atol=1e-4
+        @test replay_audit(c,result["solution"])["valid"]
+        # A nonzero explicitly requested inset also preserves a fixed value.
+        inset=solve_case(c;u,warm=witness,operational_margin=0.1,time_limit=10.0)
+        @test inset.accepted
+        @test inset.solution.power≈witness.power atol=1e-5
+    end
+end
+
+@testset "Finer replay keeps discharge and power errors in their own units" begin
+    lower=Reservoir(name=:Lower,z0=0.0,slope=1.0,v0=2.0,vmin=1.0,vmax=4.0,water_value=0.0)
+    upper=Reservoir(name=:Upper,z0=10.0,slope=1.0,v0=2.0,vmin=1.0,vmax=4.0,water_value=0.0)
+    characteristic=PumpCharacteristic([5.0,15.0],[5.0,1.0],[0.9,0.9])
+    unit=Pump(name=:Pump,plant=:Lift,characteristic=characteristic,qmin=0.0,qmax=10.0,
+        pmin=0.0,pmax=10.0,hmin=5.0,hmax=15.0,qbest=3.0,hbest=10.0,
+        minup=0.0,mindown=0.0,startup=0.0)
+    q=3/(1+0.4*0.0036)
+    system=HydroSystem(reservoirs=[lower,upper],generators=[unit],
+        plants=[Plant(name=:Lift,source=:Lower,target=:Upper,pmax=10.0,qmax=q)])
+    c=ScheduleCase(name="discharge error only",system=system,grid=[0.0,1.0],prices=[0.0])
+    x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
+    @test validate(c,x)["valid"]
+    check=replay_audit(c,x)
+    @test !check["valid"]
+    @test check["shortfalls"].power==0.0
+    @test check["shortfalls"].discharge≈0.0021553422261328947 atol=1e-9
 end

@@ -189,14 +189,5 @@ end
         @test !rejected["converged"]
         @test rejected["residual"]>=2.5-1e-6
     end
-    # These shifts change plant power: 20→25 m for independent components,
-    # and 15→20 m when the 210 m outlet floor is active. Replay must retain
-    # the observable difference rather than subtracting it as a gauge shift.
-    heads=reshape([101.0,225.0,205.0,0.0],4,1)
-    for (s,nodes) in ((separate,[2]),(floor,[2,3]))
-        shifted=copy(heads);shifted[nodes,1].+=5.0
-        difference=OpenSHOP._pressure_replay_difference(s,
-            reshape(opening[1:length(s.tunnels)],:,1),fill(5.0,1,1),heads,shifted)
-        @test maximum(abs,difference)>=5.0-1e-9
-    end
+
 end

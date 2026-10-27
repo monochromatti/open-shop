@@ -167,12 +167,12 @@ end
         changed=copy(q); changed[:,1]=replacement
         bad=dispatch_from_controls(c,u,changed,fill(0.25,1,3))
         @test !bad["validation"]["valid"]
-        @test bad["validation"]["residuals"]["plant_capacity_Plant1"]>=expected-1e-8
+        @test bad["validation"]["residuals"]["plant_discharge_capacity_Plant1"]>=expected-1e-8
     end
     lower_power=operating_replace(c;plants=[OpenSHOP._river_replace(plant;pmax=3.0)])
     bad=dispatch_from_controls(lower_power,u,q,fill(0.25,1,3))
     @test !bad["validation"]["valid"]
-    @test bad["validation"]["residuals"]["plant_capacity_Plant1"]>0.5
+    @test bad["validation"]["residuals"]["plant_power_capacity_Plant1"]>0.5
 end
 
 @testset "Nonuniform midpoint ramps integrate piecewise rates in physical hours" begin

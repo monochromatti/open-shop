@@ -63,20 +63,3 @@ function _normalize_pressure_references!(heads,s,groups;reference=nothing)
     end
     heads
 end
-
-# Compare replay heads modulo the same physical nullspace, while the ordinary
-# equation/bound audits still test every supplied head and every head difference.
-function _pressure_replay_difference(s,opening,generator_q,heads,replayed)
-    difference=heads-replayed
-    ix=nodeindex(s)
-    for t in axes(heads,2)
-        groups=_floating_pressure_components(s,view(opening,:,t),view(generator_q,:,t);ix)
-        for group in groups
-            shift=sum(difference[i,t] for i in group)/length(group)
-            for i in group
-                difference[i,t]-=shift
-            end
-        end
-    end
-    difference
-end
