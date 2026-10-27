@@ -118,15 +118,16 @@ function _unresolved_root_certificate(diagnostics, status)
     diagnostics["first_root_lp_upper_bound"]===nothing
 end
 
-function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap)
+function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap; model_feasible=true)
     result["solution"] = candidate
     result["incumbent_source"] = source
     result["validation"] = candidate["validation"]
     result["objective"] = candidate.objective
-    result["feasible_lower_bound"] = candidate.objective
+    result["feasible_lower_bound"] = model_feasible ? candidate.objective : nothing
     result["relative_gap"] = nothing
     result["absolute_gap"] = nothing
     result["global_certificate"] = false
+    model_feasible || return result
     upper, lower = result["global_bound"], candidate.objective
     if upper !== nothing && upper < lower - 1e-6
         result["rejected_global_bound"] = upper
@@ -283,7 +284,7 @@ function _solve(
             "INITIALIZATION_BUDGET_EXHAUSTED"
         if best!==nothing
             source=result["preparation_accepted"] ? "preparation" : "initial"
-            _set_incumbent!(result,best,source,relative_gap,absolute_gap)
+            _set_incumbent!(result,best,source,relative_gap,absolute_gap;model_feasible=false)
             if replay
                 result["replay_audit"]=replay_audit(c,best)
                 result["accepted"]=result["replay_audit"]["valid"]
@@ -293,24 +294,32 @@ function _solve(
         result["budget_overrun_seconds"]=max(0.0,result["total_seconds"]-time_limit)
         return SolveResult(result)
     end
+    if best!==nothing && ((fixed_u!==nothing && best.commitment!=fixed_u) ||
+        (fixed_tunnel_opening!==nothing && best.tunnel_opening!=
+            _physical_tunnel_openings(c,fixed_tunnel_opening)))
+        best=nothing
+        result["initial_rejected_by_fixed_controls"]=true
+    end
     construction_started=clock()
     b = _build_global_dispatch(c; joint = true, warm = best, fixed_u,tunnel_opening=fixed_tunnel_opening)
     result["removed_constant_constraints"] = _remove_constant_constraints!(b.m)
     result["enclosed_equalities"] = _enclose_global_equalities!(b.m)
     result["equality_enclosure_radius"] = _GLOBAL_EQUALITY_RADIUS
+    initial_model_feasible=false
     if best !== nothing
         start_audit = _lift_start!(b, c, best)
         result["start_audit"] = start_audit
+        initial_model_feasible=start_audit["valid"]
         # A partial or invalid lift must not be submitted as a feasible start.
         if !start_audit["valid"]
             for variable in all_variables(b.m)
                 set_start_value(variable, nothing)
             end
-            best = nothing
-            result["initial_rejected_by_model"] = true
+            result["initial_start_rejected"] = true
         end
     end
     validated_initial = best
+    best_model_feasible=initial_model_feasible
     variables=all_variables(b.m)
     binary_names=[name(v) for v in variables if is_binary(v)]
     result["model_profile"]=Dict(
@@ -363,7 +372,7 @@ function _solve(
         result["solve_seconds"] = @elapsed try
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
-            if best!==nothing
+            if best!==nothing && initial_model_feasible
                 result["native_start_audit"]=_complete_scip_start!(b.m)
                 if !result["native_start_audit"]["valid"]
                     _clear_scip_start!(b.m)
@@ -438,6 +447,9 @@ function _solve(
                             "tunnel_opening"=>correction.tunnel_opening)
                     if x["validation"]["valid"] &&
                        (best === nothing || x.objective > best.objective)
+                        model_audit=_lift_start!(b,c,x)
+                        result["solution_model_audit"]=model_audit
+                        best_model_feasible=model_audit["valid"]
                         best = x
                         result["incumbent_source"] = "solver"
                     end
@@ -449,7 +461,8 @@ function _solve(
     end
     if best !== nothing
         source = get(result, "incumbent_source", "initial")
-        _set_incumbent!(result, best, source, relative_gap, absolute_gap)
+        _set_incumbent!(result, best, source, relative_gap, absolute_gap;
+            model_feasible=best_model_feasible)
         if replay
             result["replay_audit"] = replay_audit(c, best; transport = b.transport)
             result["accepted"] = result["replay_audit"]["valid"]
@@ -469,7 +482,7 @@ function _solve(
                         validated_initial,
                         "initial",
                         relative_gap,
-                        absolute_gap,
+                        absolute_gap; model_feasible=initial_model_feasible,
                     )
                     result["replay_audit"] = initial_replay
                     result["accepted"] = true

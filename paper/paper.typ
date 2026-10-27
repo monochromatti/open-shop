@@ -1175,6 +1175,24 @@ $ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
 The comparison estimates the effect of time discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
+If this check fails, a local retry can enforce the finer hydraulic equations
+as well. Write $w$ for the original controls and $y_0, y_h$ for hydraulic states
+on the requested and finer meshes. The retry has the form
+
+$ max_(w,y_0,y_h) cal(V)_0(w,y_0) quad "subject to" quad
+  F_0(w,y_0)=0, quad C_0(w,y_0)<=0, \
+  F_h (w,y_h)=0, quad C_h (w,y_h)<=0. $
+
+Here $F$ contains the conservation and hydraulic equations, while $C$ contains
+the operating restrictions. The same unit discharge and outlet opening are
+held throughout each original control interval. Fixed-speed pump discharge
+is a hydraulic state on each mesh. Schedules and ramps retain their original
+observation windows. The objective and returned trajectory belong to the
+requested mesh. This construction restricts the feasible set to controls
+admissible on both meshes; it does not add control decisions or infer a
+uniform safety margin from a measured residual. A fresh integration still
+checks the resulting controls. The number of retries is bounded.
+
 The discrete-gradient chain rule removes artificial storage-cycle work.
 For direct internal transfers, multiply each node balance by its own interval
 head and sum: the internal edge terms become minus transferred volume times

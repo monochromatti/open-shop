@@ -1,4 +1,4 @@
-"""Refine every control interval without moving a control-change time."""
+"""Subdivide integration intervals while retaining every control-change time."""
 function refined_grid(grid; factor = 2)
     factor isa Integer && factor>=1 ||
         throw(ArgumentError("positive integer refinement required"))
@@ -32,7 +32,7 @@ function _replay(
     began=time()
     errors=String[]
     violations=Dict{String,Float64}()
-    shortfalls=(arrival=0.0,power=0.0)
+    shortfalls=(arrival=0.0,power=0.0,discharge=0.0)
     nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ?
        _transport_data(c, transport) : nothing
     nd===nothing &&
@@ -106,8 +106,11 @@ function _replay(
             arrival=maximum((arrival[i] for (i,r) in enumerate(c.system.rivers)
                 if r.arrival_policy==:pointwise);init=0.0),
             power=max(maximum(fine_shortfalls.unit_power;init=0.0),
-                maximum(fine_shortfalls.plant;init=0.0),
-                maximum(plants.capacity;init=0.0),maximum(plants.power_ramp;init=0.0)),
+                maximum(fine_shortfalls.plant_power;init=0.0),
+                maximum(plants.power_capacity;init=0.0),maximum(plants.power_ramp;init=0.0)),
+            discharge=max(maximum(fine_shortfalls.unit_discharge;init=0.0),
+                maximum(fine_shortfalls.plant_discharge;init=0.0),
+                maximum(plants.discharge_capacity;init=0.0),maximum(plants.discharge_ramp;init=0.0)),
         )
         transport_check["accepted"] ||
             push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
@@ -151,15 +154,15 @@ function _replay(
     end
 end
 
-"""Solve a fixed commitment, refine/reoptimize after failed independent replay.
+"""Solve a fixed commitment and check an independently integrated finer trajectory.
 
-The original physical environmental minimum is unchanged. An explicit arrival
-margin can be introduced after a failed replay to cover the measured numerical
-shortfall. `operational_margin` requests initial power/envelope tightening
-when optimizing a candidate; a supplied `initial` is audited as supplied.
-All attempts, margins and actual solution grids are returned.
-`refine_grid=false` retains the decision grid and only reoptimizes with measured
-replay margins. This allows a prepared start to serve the same global model.
+After a failed replay, add the finer hydraulic equations to the nonlinear model,
+sharing the original unit discharges, outlet openings and reserve allocations.
+Fixed-speed pump discharges remain hydraulic states. Operating schedules and ramps
+retain their original windows. No measured residual becomes a blanket margin.
+The returned case, schedule and objective retain the requested grid.
+`refine_grid` is retained for source compatibility; both values now retain controls.
+`operational_margin` is an explicit optional power inset, never an automatic retry rule.
 """
 solve_verified(c::ScheduleCase; kwargs...) = _verified_report(_verified_dispatch(c; kwargs...))
 
@@ -226,24 +229,21 @@ function _verified_dispatch(
     end
     began=time()
     attempts=Any[]
-    cc=c
-    uu=copy(u)
-    margin=0.0
-    power_margin=operational_margin
+    integration_grid=nothing
     x=initial
-    audit=(valid=false,errors=["dispatch deadline exhausted"],shortfalls=(arrival=0.0,power=0.0))
+    audit=(valid=false,errors=["dispatch deadline exhausted"],shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
     for iteration in 0:max_refinements
         remaining=min(time_limit,deadline-time())
         iteration==0 && initial!==nothing || remaining>0 || break
         x=iteration==0 && initial!==nothing ? initial :
           solve_case(
-            cc;
-            u = uu,
+            c;
+            u,
             solver = solver,
             seed = seed,
             warm = warm,
-            arrival_margin = margin,
-            operational_margin = power_margin,
+            operational_margin,
+            replay_grid=integration_grid,
             time_limit = remaining,
             feasibility_only = feasibility_only,
             tunnel_opening = openings,
@@ -252,17 +252,17 @@ function _verified_dispatch(
         dispatch=x
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
         audit=x!==nothing && haskey(x,"objective") ?
-              _replay(cc, x; grid = refined_grid(cc.grid; factor = replay_factor)) :
-              (valid=false,errors=["NLP candidate has no objective"],shortfalls=(arrival=0.0,power=0.0))
+              _replay(c, x; grid = integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) : integration_grid) :
+              (valid=false,errors=["NLP candidate has no objective"],shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
         original=get(audit, :original_audit, Dict{String,Any}())
         physical=get(original, "valid", false)
         push!(
             attempts,
             Dict(
                 "iteration"=>iteration,
-                "intervals"=>length(cc.prices),
-                "margin_m3s"=>margin,
-                "operational_margin_MW"=>power_margin,
+                "intervals"=>length(c.prices),
+                "integration_intervals"=>integration_grid===nothing ? length(c.prices) : length(integration_grid)-1,
+                "operational_margin_MW"=>operational_margin,
                 "status"=>dispatch["status"],
                 "objective"=>(x===nothing ? nothing : x["objective"]),
                 "model_valid"=>physical,
@@ -278,41 +278,15 @@ function _verified_dispatch(
                 "warm_start"=>get(dispatch, "warm_start", nothing),
             ),
         )
-        x!==nothing && physical && (x=_schedule_input(x;case=cc))
+        x!==nothing && physical && (x=_schedule_input(x;case=c))
         audit.valid && break
         iteration==max_refinements && break
         physical || break # A failed local solve is not an infeasibility proof.
-        shortfall=audit.shortfalls.arrival
-        shortfall>1e-4 && (margin+=shortfall+0.02)
-        power_shortfall=audit.shortfalls.power
-        power_shortfall>1e-4 && (power_margin+=1.5power_shortfall+0.002)
-        if !refine_grid
-            # The measured shortfall is additional to the existing tightening.
-            # Without a new margin, repeating this same discretization has no
-            # numerical justification; storage/transport errors need a new grid.
-            shortfall>1e-4 || power_shortfall>1e-4 || break
-            # Retain the original hydraulic start. The rejected candidate lies
-            # on bounds that this retry tightens and can stall restoration.
-            continue
-        end
-        nextgrid=refined_grid(cc.grid)
-        idx=[
-            min(
-                searchsortedlast(cc.grid, (nextgrid[t]+nextgrid[t + 1])/2),
-                length(cc.prices),
-            ) for t in 1:(length(nextgrid) - 1)
-        ]
-        river_on=river_on===nothing ? river_on_schedule(cc,x.river_release)[:,idx] : river_on[:,idx]
-        uu=uu[:, idx]
-        openings=_physical_tunnel_openings(cc,get(x,"tunnel_opening",nothing))[:,idx]
-        cc=with_grid(cc, nextgrid)
-        warm=try
-            dispatch_from_controls(cc, uu, x.generator_q[:, idx], x.gate[:, idx];
-                tunnel_opening=openings,reserves=_reserve_slice(x.reserves,idx))
-        catch error
-            error isa Union{ArgumentError,DomainError} || rethrow()
-            nothing
-        end
+        # Constrain the mesh that exposed the error. A subsequent failure may
+        # justify a finer state mesh, but never new controls or guessed buffers.
+        integration_grid=integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) :
+            refined_grid(integration_grid;factor=replay_factor)
+        warm===nothing && (warm=x)
     end
-    (;accepted=audit.valid,case=cc,solution=x,audit,attempts,total_seconds=time()-began)
+    (;accepted=audit.valid,case=c,solution=x,audit,attempts,total_seconds=time()-began)
 end

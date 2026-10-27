@@ -407,8 +407,9 @@ function _build_global_dispatch(
             end
             @constraint(m, GQ[i, t]>=qmin*u[i, t])
             @constraint(m, GQ[i, t]<=qmax*u[i, t])
-            @constraint(m, P[i, t]>=(pmin+operational_margin)*u[i, t])
-            @constraint(m, P[i, t]<=max(0.0, pmax-operational_margin)*u[i, t])
+            plo,phi=inset_bounds(pmin,pmax,operational_margin)
+            @constraint(m, P[i, t]>=plo*u[i, t])
+            @constraint(m, P[i, t]<=phi*u[i, t])
             @constraint(m, conversion/40==0)
             ranges=(
                 head_min = hlo,
@@ -428,8 +429,9 @@ function _build_global_dispatch(
         else
             set_lower_bound(gq[i, t], qmin*u[i, t]/50)
             set_upper_bound(gq[i, t], qmax*u[i, t]/50)
-            set_lower_bound(p[i, t], (pmin+operational_margin)*u[i, t]/40)
-            set_upper_bound(p[i, t], max(0.0, pmax-operational_margin)*u[i, t]/40)
+            plo,phi=inset_bounds(pmin,pmax,operational_margin)
+            set_lower_bound(p[i, t], plo*u[i, t]/40)
+            set_upper_bound(p[i, t], phi*u[i, t]/40)
             if u[i, t]==0
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
@@ -450,23 +452,22 @@ function _build_global_dispatch(
                 h->_head_envelope(table,table.qmax,h,:linear),hd,hlo,hhi;
                 name=Symbol("qhi_",i,"_",t))
             qlo,qhi=qlograph.y,qhigraph.y
-            flow_margin=operational_margin/unit_reference_power_slope(g)
             if joint
                 @constraint(
                     m,
-                    GQ[i, t]>=qlo+flow_margin-max(0.0, upper_bound(qlo)+flow_margin)*(
+                    GQ[i, t]>=qlo-max(0.0, upper_bound(qlo))*(
                         1-u[i, t]
                     )
                 )
                 @constraint(
                     m,
-                    GQ[i, t]<=qhi-flow_margin+max(0.0, g.qmax-lower_bound(qhi)+flow_margin)*(
+                    GQ[i, t]<=qhi+max(0.0, g.qmax-lower_bound(qhi))*(
                         1-u[i, t]
                     )
                 )
             elseif u[i, t]!=0
-                @constraint(m, GQ[i, t]>=qlo+flow_margin)
-                @constraint(m, GQ[i, t]<=qhi-flow_margin)
+                @constraint(m, GQ[i, t]>=qlo)
+                @constraint(m, GQ[i, t]<=qhi)
             end
         end
         generator_graphs[i,t]=_GeneratorPowerGraph(plant_heads[key],eta,turbinegraph,qlograph,qhigraph,electricalgraph,characteristic)

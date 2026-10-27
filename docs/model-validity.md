@@ -231,4 +231,7 @@ they are not directed-rounding proofs. `global_certificate` is a numerical gap
 certificate for the declared interval model and any stated fixed decisions.
 It is neither a Lean certificate of a solver result nor a bound on the optimum
 of the continuous physical system. Original-grid validation, finer replay and
-the global gap answer different questions.
+the global gap answer different questions. A schedule that passes physical
+acceptance but fails the stricter global representation check can still be
+returned for use. Its objective is not used as a lower bound for that global
+model, so no optimality gap or certificate is attached to it.

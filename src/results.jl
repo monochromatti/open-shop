@@ -166,6 +166,7 @@ struct SolveResult{S}
     accepted::Bool
     global_certificate::Bool
     solution::S
+    feasible_lower_bound::Union{Nothing,Float64}
     global_bound::Union{Nothing,Float64}
     relative_gap::Union{Nothing,Float64}
     absolute_gap::Union{Nothing,Float64}
@@ -174,39 +175,41 @@ struct SolveResult{S}
 end
 
 const _SOLVE_KEYS = ("status", "accepted", "global_certificate", "solution",
-    "global_bound", "relative_gap", "absolute_gap", "total_seconds")
+    "feasible_lower_bound", "global_bound", "relative_gap", "absolute_gap", "total_seconds")
 function SolveResult(report::AbstractDict; solution=get(report,"solution",nothing))
     schedule = solution === nothing ? nothing : _schedule_input(solution)
     diagnostics = Dict{String,Any}(string(k)=>v for (k,v) in report
-        if !(string(k) in _SOLVE_KEYS) && !(string(k) in ("objective","feasible_lower_bound")) &&
+        if !(string(k) in _SOLVE_KEYS) && string(k)!="objective" &&
             !any(p -> first(p)==string(k),_SCHEDULE_KEYS))
+    lower=get(report,"feasible_lower_bound",nothing)
+    if !haskey(report,"feasible_lower_bound") && schedule!==nothing &&
+       get(get(schedule.diagnostics,"validation",Dict()),"valid",false)
+        lower=schedule.objective
+    end
     SolveResult(string(report["status"]), get(report,"accepted",false),
-        get(report,"global_certificate",false), schedule, get(report,"global_bound",nothing),
+        get(report,"global_certificate",false), schedule, lower, get(report,"global_bound",nothing),
         get(report,"relative_gap",nothing), get(report,"absolute_gap",nothing),
         get(report,"total_seconds",0.0), diagnostics)
 end
 
 function Base.getproperty(x::SolveResult, field::Symbol)
-    if field in (:objective, :feasible_lower_bound)
+    if field==:objective
         solution = getfield(x,:solution)
         solution===nothing && return nothing
-        field==:feasible_lower_bound &&
-            !get(get(solution.diagnostics,"validation",Dict()),"valid",false) && return nothing
         return solution.objective
     end
     getfield(x,field)
 end
-Base.propertynames(x::SolveResult) = (fieldnames(typeof(x))..., :objective, :feasible_lower_bound)
+Base.propertynames(x::SolveResult) = (fieldnames(typeof(x))..., :objective)
 function Base.getindex(x::SolveResult, key::AbstractString)
     key in _SOLVE_KEYS && return getfield(x,Symbol(key))
-    key in ("objective","feasible_lower_bound") && return getproperty(x,Symbol(key))
+    key == "objective" && return x.objective
     haskey(x.diagnostics,key) && return x.diagnostics[key]
     x.solution === nothing && throw(KeyError(key))
     x.solution[key]
 end
 function Base.haskey(x::SolveResult, key::AbstractString)
     key == "objective" && return x.solution !== nothing
-    key == "feasible_lower_bound" && return true
     key in _SOLVE_KEYS || haskey(x.diagnostics,key) ||
         (x.solution !== nothing && haskey(x.solution,key))
 end
@@ -222,7 +225,6 @@ function jsonready(x::SolveResult)
     for key in _SOLVE_KEYS
         report[key] = x[key]
     end
-    report["feasible_lower_bound"]=x.feasible_lower_bound
     x.solution===nothing || (report["objective"]=x.objective)
     jsonready(report)
 end

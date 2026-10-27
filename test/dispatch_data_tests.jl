@@ -63,8 +63,10 @@ end
         OperationalSeries(object = :WarmReach, attribute = :gate_max,
             times = [0.0, 1.0], values = [0.8, 0.6])])
     c=OpenSHOP._river_replace(base; operations)
-    b=OpenSHOP._build_dispatch(c; u = ones(Int, 2, 2))
-    @test upper_bound.(b.m[:rq])≈[0.05 0.03]
-    @test lower_bound.(b.a)≈[0.1 0.2]
-    @test upper_bound.(b.a)≈[0.8 0.6]
+    result=solve_case(c;u=ones(Int,2,2),time_limit=15.0)
+    @test result.accepted
+    if result.solution!==nothing
+        @test all(result.solution.river_release .<= [5.0 3.0] .+ 1e-5)
+        @test all([0.1 0.2] .- 1e-6 .<= result.solution.gate .<= [0.8 0.6] .+ 1e-6)
+    end
 end

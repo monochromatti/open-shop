@@ -107,12 +107,12 @@ function _reserve_variables!(m,c,u,P,Q)
     isempty(c.reserve_groups) && return nothing
     G,K,T=length(c.system.generators),length(c.reserve_groups),length(c.prices)
     members=reserve_members(c)
-    @variable(m,reserve_up[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax)
-    @variable(m,reserve_down[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax)
-    @variable(m,reserve_shortfall_up[1:K,1:T]>=0)
-    @variable(m,reserve_shortfall_down[1:K,1:T]>=0)
-    @variable(m,reserve_q[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].qmax/50)
-    @variable(m,reserve_p[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].pmax/40)
+    reserve_up=@variable(m,[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_up")
+    reserve_down=@variable(m,[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_down")
+    reserve_shortfall_up=@variable(m,[1:K,1:T],lower_bound=0,base_name="reserve_shortfall_up")
+    reserve_shortfall_down=@variable(m,[1:K,1:T],lower_bound=0,base_name="reserve_shortfall_down")
+    reserve_q=@variable(m,[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].qmax/50,base_name="reserve_q")
+    reserve_p=@variable(m,[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].pmax/40,base_name="reserve_p")
     Qpoint=50 .* reserve_q;Ppoint=40 .* reserve_p
     for (k,group) in enumerate(c.reserve_groups),t in 1:T
         ceiling=sum(c.system.generators[i].pmax for i in members[k])

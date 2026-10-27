@@ -150,7 +150,7 @@ end
     # Even a generous soft power band cannot waive a static generator limit.
     excessive=dispatch_from_controls(c,ones(Int,1,1),fill(7.0,1,1),gate)
     @test !validate(c,excessive)["valid"]
-    @test validate(c,excessive)["residuals"]["unit_bounds_Unit"]>1.0
+    @test validate(c,excessive)["residuals"]["unit_discharge_Unit"]>1.0
 end
 
 @testset "Level slacks use the state vertex and preserve exact table calibration" begin

@@ -11,7 +11,10 @@ function river_arrival_report(c,residuals)
     report
 end
 
-"""Independently audit equations, operating limits, routing, and chronological replay.
+"""Audit equations, operating limits and routing directly from the supplied arrays.
+
+This check does not reintegrate the same controls. Use `replay_audit` for an
+independent hydraulic integration on a finer mesh.
 
 Residuals use physical units except objective (relative error). Terminal minimum
 up/down obligations are reported for continuation rather than silently discarded.
@@ -35,7 +38,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     switch_obligations=Any[]
     permitted_penalties=SoftConstraintSlack[]
     unit_power_shortfall=zeros(length(c.system.generators))
-    plant_shortfall=zeros(length(c.system.plants))
+    unit_discharge_shortfall=zeros(length(c.system.generators))
+    plant_power_shortfall=zeros(length(c.system.plants))
+    plant_discharge_shortfall=zeros(length(c.system.plants))
     arrival_shortfall=zeros(length(c.system.rivers))
     finish() = Dict(
         "valid"=>isempty(errors),
@@ -45,7 +50,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "terminal_commitment_obligations"=>obligations,
         "terminal_tunnel_switch_obligations"=>switch_obligations,
         "permitted_penalties"=>permitted_penalties,
-        "shortfalls"=>(;unit_power=unit_power_shortfall,plant=plant_shortfall,arrival=arrival_shortfall),
+        "shortfalls"=>(;unit_power=unit_power_shortfall,unit_discharge=unit_discharge_shortfall,
+            plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,arrival=arrival_shortfall),
     )
     record(name, x) = begin
         v=maximum(abs, x; init = 0.0)
@@ -203,11 +209,16 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                 sum(GQ[j, t] for (j, z) in enumerate(s.generators) if z.plant==g.plant),
             ) for t in 1:T
         ])
-        unit_bounds=bound(
-            "unit_bounds_$(g.name)",
+        unit_discharge_shortfall[i]=bound(
+            "unit_discharge_$(g.name)",
             vcat(
                 [opinterval(c, g.name, :qmin, t, g.qmin)*u[i, t]-GQ[i, t] for t in 1:T],
                 [GQ[i, t]-opinterval(c, g.name, :qmax, t, g.qmax)*u[i, t] for t in 1:T],
+            ),
+        )
+        unit_power_shortfall[i]=bound(
+            "unit_power_$(g.name)",
+            vcat(
                 [opinterval(c, g.name, :pmin, t, g.pmin)*u[i, t]-P[i, t] for t in 1:T],
                 [P[i, t]-opinterval(c, g.name, :pmax, t, g.pmax)*u[i, t] for t in 1:T],
             ),
@@ -247,7 +258,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                 ),
             )
         end
-        unit_power_shortfall[i]=max(unit_bounds,unit_reference_power_slope(g)*envelope)
+        unit_discharge_shortfall[i]=max(unit_discharge_shortfall[i],envelope)
         state=g.initial_on
         since=c.grid[1]-g.initial_age
         for t in 1:T
@@ -283,7 +294,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         end
     end
     plants=plant_operating_residuals(c,result)
-    plant_shortfall.=max.(plants.capacity,plants.power_ramp)
+    plant_power_shortfall.=max.(plants.power_capacity,plants.power_ramp)
+    plant_discharge_shortfall.=max.(plants.discharge_capacity,plants.discharge_ramp)
     for (name,residual) in operating_residuals(c,result;plants)
         bound(name,[residual])
     end
@@ -456,29 +468,6 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     catch e
         e isa Union{ArgumentError,DomainError} || rethrow()
         push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
-    end
-    try
-        replay=simulate(c, GQ, ga; transport = nd,tunnel_opening=TA,commitment=u,head_reference=H)
-        replay.converged || push!(
-            errors,
-            "independent forward replay did not converge in the river-law domain",
-        )
-        record("replay_residual", [replay.residual])
-        record("replay_tunnel_opening",replay.tunnel_opening-TA)
-        record("replay_H",_pressure_replay_difference(s,TA,GQ,H,replay.head))
-        for (name, actual, expected) in (
-            ("V",replay.storage,result.storage),
-            ("tunnel_q",replay.tunnel_q,result.tunnel_q),
-            ("generator_q",replay.generator_q,result.generator_q),
-            ("power",replay.power,result.power),
-            ("river_release",replay.river_release,result.river_release),
-            ("arrival_volume",replay.arrival_volume,result.arrival_volume),
-        )
-            record("replay_$name",actual-expected)
-        end
-    catch e
-        e isa Union{ArgumentError,DomainError} || rethrow()
-        push!(errors, "independent forward replay failed: $(sprint(showerror,e))")
     end
     finish()
 end

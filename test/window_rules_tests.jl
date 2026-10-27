@@ -116,7 +116,7 @@ end
         level_windows=[LevelWindow(start_time=0.0,end_time=4.0,max_change=0.05)])
     warm=window_dispatch(c,ones(4))
     @test validate(c,warm)["valid"]
-    local_result=solve_case(c;u=ones(Int,1,4),warm,time_limit=30.0)
+    local_result=solve_case(c;u=ones(Int,1,4),warm,replay_grid=OpenSHOP.refined_grid(c.grid),time_limit=30.0)
     @test local_result.accepted
     if local_result.solution!==nothing
         x=local_result.solution

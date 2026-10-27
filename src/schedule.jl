@@ -4,7 +4,8 @@
 the MILP/NLP limits also cap individual solves. Final replay may overrun the
 allowance and is included in elapsed time. An accepted result is feasible under
 the declared numerical checks, not a global optimality certificate. `operational_margin` optionally
-tightens candidate power/envelope constraints during preparation. Acceptance
+requests a symmetric power inset during preparation, capped at half each
+permitted range. Acceptance
 always uses the original physical restrictions.
 """
 function schedule_case(
@@ -60,7 +61,7 @@ function schedule_case(
         error isa ArgumentError || rethrow()
         false
     end
-    reference=best!==nothing && best.case.grid==c.grid ? best.solution : initial
+    reference=best===nothing ? initial : best.solution
     proposals=Any[]
     seen=Set{Tuple{String,String,String}}()
     dispatch_options=(;started,deadline,nlp_time_limit,max_refinements,operational_margin,refine_grid)
@@ -133,10 +134,8 @@ function _dispatch_candidate(c,u,opening,river_on,best,reference,attempts,seen;
             ))
             if v.accepted && (best===nothing || v.solution.objective>best.solution.objective)
                 best=v
-                # A refined solution cannot anchor an original-grid proposal.
-                v.case.grid==c.grid && (reference=v.solution)
+                reference=v.solution
             end
-            v.accepted && v.case.grid!=c.grid && break
         catch error
             error isa Union{ArgumentError,DomainError} || rethrow()
             push!(attempts,Dict("accepted"=>false,"error"=>sprint(showerror,error)))
