@@ -137,7 +137,7 @@ function _dispatch_candidate(c,u,opening,river_on,best,reference,attempts,seen;
         time()<deadline || break
         try
             v=_verified_dispatch(c;u,tunnel_opening=opening,river_on,max_refinements,
-                time_limit=feasibility ? nlp_time_limit/4 : nlp_time_limit,
+                time_limit=nlp_time_limit,
                 feasibility_only=feasibility,warm=reference,operational_margin,deadline,refine_grid)
             push!(attempts,Dict(
                 "stage"=>feasibility ? "feasibility" : "dispatch",
