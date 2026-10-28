@@ -82,6 +82,7 @@ include("multireference_routing_tests.jl")
 include("delay_policy_tests.jl")
 include("mixed_source_network_tests.jl")
 include("river_transport_tests.jl")
+include("rolling_horizon_tests.jl")
 include("shared_tailrace_tests.jl")
 include("river_split_tests.jl")
 

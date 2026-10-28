@@ -74,6 +74,9 @@ The [penalty settings API](docs/penalties.md) exposes effective defaults,
 allowances, units and cost equations before optimization.
 The [Tokke–Vinje importer](examples/tokke_vinje/README.md) reconstructs a documented
 case from an external public dataset; upstream data are not bundled.
+The [rolling-horizon example](examples/rolling_horizon.jl) replans a synthetic
+basin with pressure loops, delayed split/merge reaches and a small balancing
+forebay. It carries executed history and reuses numerical starts after forecast updates.
 
 Examples that search without an initial schedule allow 180 seconds, including
 Julia's first-use compilation. Repeated solves in the same process reuse the

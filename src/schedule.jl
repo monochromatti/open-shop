@@ -7,10 +7,14 @@ the declared numerical checks, not a global optimality certificate. `operational
 requests a symmetric power inset during preparation, capped at half each
 permitted range. Acceptance
 always uses the original physical restrictions.
+`initial` is an accepted schedule to retain. `warm` is an unchecked numerical
+starting point after a forecast update; it is never returned without solving
+and independent acceptance. Its arrays must use this case's object order/grid.
 """
 function schedule_case(
     c::ScheduleCase;
     initial = nothing,
+    warm = nothing,
     proposal_time_limit = 10.0,
     nlp_time_limit = 30.0,
     max_refinements = 2,
@@ -61,14 +65,23 @@ function schedule_case(
         error isa ArgumentError || rethrow()
         false
     end
-    reference=best===nothing ? initial : best.solution
+    reference=best===nothing ? warm : best.solution
     proposals=Any[]
     seen=Set{Tuple{String,String,String}}()
     dispatch_options=(;started,deadline,nlp_time_limit,max_refinements,operational_margin,refine_grid)
+    if best===nothing && warm!==nothing
+        size(warm["u"])==size(fallback) && all(x->x==0||x==1,warm["u"]) ||
+            throw(ArgumentError("warm commitment must be binary and unit by interval"))
+        reference,start=_dispatch_start(c,fallback,warm)
+        reference!==nothing || throw(ArgumentError("incompatible warm schedule: "*
+            get(start,"ignored_reason","missing hydraulic arrays")))
+        best,reference=_dispatch_candidate(c,reference.commitment,reference.tunnel_opening,
+            fixed_river_on(c,nothing,reference),best,reference,attempts,seen;dispatch_options...)
+    end
     radius=4
     for scale in (1.0,0.7,1.3)
         time()<deadline || break
-        local_reference=reference
+        local_reference=best===nothing ? nothing : best.solution
         previous=best===nothing ? -Inf : best.solution.objective
         p=propose_commitment(
             c;

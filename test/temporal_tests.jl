@@ -87,6 +87,14 @@ end
     @test point_arrival(rr, g, q, 0.75; side = :right)==20.0
     @test arrival_knots(rr, g)==[0.0, 0.25, 0.75, 1.75, 2.0]
     @test minimum_arrival(rr, g, q)["value"]==4.0
+    # Decimal delays can round (edge+delay)-delay past the original edge.
+    # Both one-sided rates still follow the actual translated cohort endpoints.
+    decimal=atom(0.3)
+    edges=[0.0,0.25,0.5,0.75,1.0]
+    rates=[1.0,2.0,3.0,4.0]
+    at=edges[4]+0.3
+    @test point_arrival(decimal,edges,rates,at;side=:left)==3.0
+    @test point_arrival(decimal,edges,rates,at;side=:right)==4.0
     @test_throws ArgumentError point_coefficients(atom(-1.0), g, 0.0)
 end
 
@@ -162,4 +170,25 @@ end
             t,
         )
     end
+end
+
+@testset "Finite-support point arrivals retain old and irregular cohorts" begin
+    curves=[RiverRouting.DelayCurve(q,[lag,lag+0.2,lag+1.1],[0.3,0.7])
+        for (q,lag) in ((0.0,2.0),(10.0,1.0),(30.0,0.2))]
+    r=River(;name=:support,source=:a,target=:b,capacity=30.0,water_value=0.0,
+        curves,history_grid=[-10.0,-3.0,-0.4,0.0],history_release=[30.0,8.0,12.0])
+    grid=[0.0,0.1,0.6,2.0,5.0,10.0]
+    flows=[0.0,5.0,30.0,12.0,3.0]
+    for time in union(arrival_knots(r,grid),[-5.0,0.35,1.75,7.0,15.0]),side in (:left,:right)
+        expected=0.0
+        for (edges,q) in ((grid,flows),(r.history_grid,r.history_release))
+            K=point_coefficients(r,edges,time;side)
+            for k in eachindex(q),(j,w) in RiverRouting.blend(curves,q[k])
+                expected+=q[k]*w*K[k,j]
+            end
+        end
+        @test point_arrival(r,grid,flows,time;side)≈expected atol=1e-12
+    end
+    # Expired releases remain subject to the declared input domain.
+    @test_throws ArgumentError point_arrival(r,grid,[31.0,5.0,30.0,12.0,3.0],15.0)
 end

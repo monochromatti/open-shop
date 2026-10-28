@@ -66,6 +66,30 @@ end
     @test_throws ArgumentError solve_verified(c;deadline=NaN)
 end
 
+@testset "Forecast updates use numerical starts without retaining stale feasibility" begin
+    c=warm_dispatch_fixture(;rivers=false)
+    x=dispatch_from_controls(c,ones(Int,2,2),[3.0 3.0;2.8 1.8],zeros(0,2))
+    lake=OpenSHOP._river_replace(only(c.system.reservoirs);inflow=12.0)
+    updated=OpenSHOP._river_replace(c;prices=[100.0,20.0],
+        system=OpenSHOP._river_replace(c.system;reservoirs=[lake]))
+    @test !validate(updated,x)["valid"]
+    prepared=schedule_case(updated;warm=x,time_limit=15.0,
+        proposal_time_limit=2.0,nlp_time_limit=5.0,max_refinements=0)
+    @test prepared["accepted"]
+    if prepared["accepted"]
+        y=prepared["solution"]
+        @test validate(updated,y)["valid"]
+        @test replay_audit(updated,y)["valid"]
+        @test objective_components(updated,y).total≈y.objective
+    end
+    expired=schedule_case(updated;warm=x,time_limit=1e-9)
+    @test !expired["accepted"]
+    @test expired["solution"]===nothing
+    wrong_grid=schedule_dict(x)
+    wrong_grid["grid"]=[0.0,0.5,2.0]
+    @test_throws ArgumentError schedule_case(updated;warm=wrong_grid)
+end
+
 @testset "Finer hydraulic constraints preserve the requested decision grid" begin
     base=warm_dispatch_fixture(;rivers=false)
     lake=OpenSHOP._river_replace(only(base.system.reservoirs);inflow=80.0)

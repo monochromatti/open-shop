@@ -1,10 +1,12 @@
 # Instantaneous arrival laws for the same original release cohorts used by
 # RiverRouting. Arrival rates are m³/s; volume conversion does not enter here.
 function delay_cdf(c::RiverRouting.DelayCurve, x::Real)
-    sum(
-        w * clamp((x-a)/(b-a), 0.0, 1.0) for
-        (a, b, w) in zip(c.edges[1:(end - 1)], c.edges[2:end], c.weights)
-    )
+    total=0.0
+    for k in eachindex(c.weights)
+        a,b=c.edges[k],c.edges[k+1]
+        total+=c.weights[k]*clamp((x-a)/(b-a),0.0,1.0)
+    end
+    total
 end
 
 """Instantaneous arrival coefficients, cohort × reference curve.
@@ -31,13 +33,18 @@ function point_coefficients(r::River, release_grid, time::Real; side::Symbol = :
     end
     RiverRouting.check_curves(r.curves)
     K=zeros(n, max(2, length(r.curves)))
-    for k in 1:n, j in eachindex(r.curves)
+    delay_min=minimum(first(c.edges) for c in r.curves)
+    delay_max=maximum(last(c.edges) for c in r.curves)
+    for k in 1:n
         a, b=release_grid[k], release_grid[k + 1]
-        K[k, j]=clamp(
-            delay_cdf(r.curves[j], time-a)-delay_cdf(r.curves[j], time-b),
-            0.0,
-            1.0,
-        )
+        (time-a<delay_min || time-b>delay_max) && continue
+        for j in eachindex(r.curves)
+            K[k, j]=clamp(
+                delay_cdf(r.curves[j], time-a)-delay_cdf(r.curves[j], time-b),
+                0.0,
+                1.0,
+            )
+        end
     end
     length(r.curves)==1 && (K[:, 2].=K[:, 1])
     K
@@ -45,14 +52,36 @@ end
 
 function cohort_point_arrival(r::River, grid, q, time; side = :right)
     _check_river_releases(r,grid,q)
-    K=point_coefficients(r, grid, time; side)
+    isfinite(time) || throw(ArgumentError("arrival query time must be finite"))
+    side in (:left,:right) || throw(ArgumentError("side must be :left or :right"))
+    if r.deterministic_delay===nothing
+        RiverRouting.check_curves(r.curves)
+        # Validate all original releases, including cohorts whose arrivals have
+        # passed. Restrict only the numerical sum to the finite delay support.
+        if length(r.curves)>1
+            all(x->first(r.curves).reference_flow<=x<=last(r.curves).reference_flow,q) ||
+                throw(ArgumentError("release flow outside reference range"))
+        end
+        delay_min=minimum(first(c.edges) for c in r.curves)
+        delay_max=maximum(last(c.edges) for c in r.curves)
+    else
+        delay_min=delay_max=r.deterministic_delay
+        isfinite(delay_min) && delay_min>=0 ||
+            throw(ArgumentError("deterministic delay must be finite and nonnegative"))
+    end
     total=0.0
     for k in eachindex(q)
+        q[k]==0 && continue
+        a,b=grid[k],grid[k+1]
         if r.deterministic_delay!==nothing
-            total+=q[k]*K[k, 1]
+            left,right=a+r.deterministic_delay,b+r.deterministic_delay
+            total+=q[k]*(side==:right ? left<=time<right : left<time<=right)
         else
+            (time-a<delay_min || time-b>delay_max) && continue
             for (j, w) in RiverRouting.blend(r.curves, q[k])
-                total+=q[k]*w*K[k, j]
+                c=r.curves[j]
+                fraction=clamp(delay_cdf(c,time-a)-delay_cdf(c,time-b),0.0,1.0)
+                total+=q[k]*w*fraction
             end
         end
     end
