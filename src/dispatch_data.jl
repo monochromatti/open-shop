@@ -26,7 +26,6 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
     terminal=Vector{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,D)
     rates=Vector{Vector{Any}}(undef,D)
     coordinates=Vector{Vector{Any}}(undef,D)
-    cell_arrivals=nothing
     if exact
         for i in 1:D,t in 1:T
             arrivals[i,t]=AffExpr(nd.arrival_history[i,t])+sum(
@@ -39,7 +38,6 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
     else
         K=length(rd.grid)-1
         fine_arrival=Matrix{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,D,K)
-        cell_arrivals=fine_arrival
         reservoirs=river_source_indices(c.system).reservoirs
         for i in river_order(c)
             r=c.system.rivers[i]
@@ -77,25 +75,16 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
         end
         m.ext[:distributed_routing]=(;mesh=rd,rates)
     end
-    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections,cell_arrivals)
+    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections)
     constrain_river_stream_capacities!(m,c,routing)
     routing
 end
 
 function routing_volume_expression(m,c,routing,i,a,b)
-    b>a || throw(ArgumentError("positive routing volume window required"))
     if routing.exact
         expression=_pulse_expression(routing.nd.arrival_pulses[i],a,b)
         return expression.history+sum(v*routing.injections[d,k]
             for (d,k,v) in expression.terms;init=0.0)
-    end
-    # A window on the existing transport mesh is a sum of its cell volumes.
-    # Reuse those expressions instead of rebuilding response coefficients.
-    firstcell=searchsortedfirst(routing.rd.grid,a)
-    lastcell=searchsortedfirst(routing.rd.grid,b)
-    if firstcell<=length(routing.rd.grid) && lastcell<=length(routing.rd.grid) &&
-        routing.rd.grid[firstcell]==a && routing.rd.grid[lastcell]==b
-        return sum(routing.cell_arrivals[i,k] for k in firstcell:(lastcell-1);init=AffExpr(0.0))
     end
     r=c.system.rivers[i]
     grid=routing.rd.cohort_grid[i]
