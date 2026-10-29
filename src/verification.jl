@@ -286,7 +286,7 @@ function _verified_dispatch(
         # justify a finer state mesh, but never new controls or guessed buffers.
         integration_grid=integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) :
             refined_grid(integration_grid;factor=replay_factor)
-        warm=x
+        warm===nothing && (warm=x)
     end
     (;accepted=audit.valid,case=c,solution=x,audit,attempts,total_seconds=time()-began)
 end
