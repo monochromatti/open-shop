@@ -35,6 +35,13 @@ accepted trajectory. A supplied `initial` must pass independent acceptance for t
 it is not an unchecked guess for changed physical inputs. All proposal and
 dispatch attempts share `time_limit`, with individual limits set by
 `proposal_time_limit` and `nlp_time_limit`.
+For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
+uses an unchecked hydraulic reference and numerical starting point. The ordinary
+proposal search selects discrete states under the updated inputs.
+The start must have compatible arrays and the same grid; it need not satisfy
+the updated physical or operating inputs. It is never retained as a feasible
+schedule without solving and independent acceptance. `initial` takes precedence
+when both are supplied.
 Distributed-delay proposals use the accepted trajectory's entry-cohort flows
 as their reference. Without a trajectory, they use each reach's last recorded
 flow, or zero when no previous flow is known. The proposal freezes only the
@@ -212,6 +219,10 @@ Soft state observations and output assessment windows retain their original
 times. Restart removes completed assessments and rejects a restart inside an
 unfinished output window, whose partial history is not represented by this
 profile. A terminal target is assessed only at its original time.
+The [rolling-horizon example](../examples/rolling_horizon.jl) builds the next
+forecast window from the restarted system and observation histories. It extends
+the horizon, changes prices and inflows, and shifts the previous iterate into
+`warm`. The executed state comes from `restart_case`, not from that guess.
 
 ## Spinning capacity
 

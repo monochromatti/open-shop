@@ -22,8 +22,8 @@ end
 @testset "Strict delay coverage, including zero and below-reference flow" begin
     curves=[RiverRouting.DelayCurve(0.0,[2.0,3.0],[1.0]),
         RiverRouting.DelayCurve(10.0,[0.5,1.5],[1.0])]
-    @test RiverRouting.blend(curves,0.0)==[(1,1.0),(2,0.0)]
-    @test RiverRouting.blend(curves,2.5)==[(1,0.75),(2,0.25)]
+    @test collect(RiverRouting.blend(curves,0.0))==[(1,1.0),(2,0.0)]
+    @test collect(RiverRouting.blend(curves,2.5))==[(1,0.75),(2,0.25)]
     @test RiverRouting.route([0.0,2.0],[0.0,1.0],[0.0],curves)==[0.0]
     @test RiverRouting.remaining_volume(2.0,[0.0,1.0],[0.0],curves)==0.0
     # At two hours the slow bin has not arrived. The fast bin has delivered
@@ -47,7 +47,7 @@ end
     fixed=[first(positive)]
     @test isnothing(RiverRouting.check_curves(fixed;capacity=20.0))
     for q in (0.0,0.5,5.0,20.0)
-        @test RiverRouting.blend(fixed,q)==[(1,1.0)]
+        @test collect(RiverRouting.blend(fixed,q))==[(1,1.0)]
         @test sum(RiverRouting.route([0.0,3.0],[-1.0,0.0],[q],fixed))+
             only(RiverRouting.route([-3.0,0.0],[-1.0,0.0],[q],fixed))≈0.0036*q atol=1e-12
     end

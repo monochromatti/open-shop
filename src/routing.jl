@@ -49,7 +49,8 @@ struct DelayCurve
 end
 
 function check_grid(grid)
-    length(grid) >= 2 && all(isfinite, grid) && all(diff(grid) .> 0) || throw(
+    length(grid) >= 2 && all(isfinite, grid) &&
+    all(i->grid[i]<grid[i+1],firstindex(grid):(lastindex(grid)-1)) || throw(
         ArgumentError("time grids need at least two finite, strictly increasing edges"),
     )
     nothing
@@ -64,7 +65,8 @@ positive reference range, but still rejects releases outside it.
 """
 function check_curves(curves; capacity=nothing)
     !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
-    all(diff([c.reference_flow for c in curves]) .> 0) || throw(ArgumentError("reference flows must be strictly increasing"))
+    all(i->curves[i].reference_flow<curves[i+1].reference_flow,1:(length(curves)-1)) ||
+        throw(ArgumentError("reference flows must be strictly increasing"))
     if capacity!==nothing
         isfinite(capacity) && capacity>=0 ||
             throw(ArgumentError("routing capacity must be finite and nonnegative"))
@@ -157,7 +159,7 @@ end
 function check_releases(release_grid, releases)
     length(releases) == length(release_grid)-1 &&
     all(isfinite, releases) &&
-    all(releases .>= 0) ||
+    all(>=(0), releases) ||
         throw(ArgumentError("one finite nonnegative mean release is required per interval"))
 end
 
@@ -173,13 +175,13 @@ numerical operations and do not enlarge this routing domain.
 function blend(curves, q)
     !isempty(curves) || throw(ArgumentError("at least one delay curve is required"))
     isfinite(q) && q>=0 || throw(ArgumentError("release flow must be finite and nonnegative"))
-    length(curves) == 1 && return [(1, 1.0)]
+    length(curves) == 1 && return ((1, 1.0),)
     first(curves).reference_flow <= q <= last(curves).reference_flow ||
         throw(ArgumentError("release flow outside reference range"))
-    q == last(curves).reference_flow && return [(length(curves), 1.0)]
+    q == last(curves).reference_flow && return ((length(curves), 1.0),)
     j = reference_segment(curves,q; reference=c->c.reference_flow)
     w = (q-curves[j].reference_flow)/(curves[j + 1].reference_flow-curves[j].reference_flow)
-    [(j, 1-w), (j+1, w)]
+    ((j, 1-w), (j+1, w))
 end
 
 function check_transfer_coefficients(curves, values)
