@@ -19,7 +19,7 @@ lake env lean CheckAxioms.lean
 `lean-toolchain` pins Lean 4.24.0. The Lake manifest pins mathlib and its
 transitive dependencies. Neither is needed to install or use the Julia package.
 CI builds these proofs and checks every declaration in the `OpenSHOP` namespace,
-including generated auxiliaries. There are 75 explicitly stated theorems.
+including generated auxiliaries. There are 80 explicitly stated theorems.
 Only Lean's standard logical axioms (`propext`, `Classical.choice`, `Quot.sound`)
 are allowed. Proof placeholders and additional axioms fail that check.
 
@@ -31,6 +31,7 @@ are allowed. Proof placeholders and additional axioms fail that check.
 | `OpenSHOP/Interpolation.lean` | Hermite coefficients; SOS2 cubic correction and product bounds; affine cell reparameterization; signed tensor-product moment; corner partition; degree-four/two Bernstein conversion and basis partitions; coefficient enclosure implication; implicit electrical-power inversion | `curves.jl`, `polynomial_tables.jl`, `tensor_tables.jl`, `power_hull.jl`, `power_bounds.jl` |
 | `OpenSHOP/Commitment.lean` | Exact binary products for signed variables; positive-power head implication and its idle counterexample; binary transition rows; river flow disjunction and rate-change epigraph; conditional gross-head limits; volume-allowance restart; storage interval propagation; signed on-head bounds; conditional objective-gap implication | `algebra.jl`, `joint_states.jl`, `global_bounds.jl`, `power_hull.jl`, `solve.jl`, `head_constraints.jl`, `river_operations.jl`, `flow_requirements.jl` |
 | `OpenSHOP/Routing.lean` | Convex transfer fractions; quadratic released transfers; cohort inventory partition; causal rectangular-cohort arrivals; window additivity; constant-release refinement; transport-cell conservation aggregated over control windows | `routing.jl`, `temporal.jl`, `distributed_routing.jl`, `river_transport.jl` |
+| `OpenSHOP/StoragePaths.lean` | A small reservoir with valid hourly endpoints but negative intermediate volume; impossibility of any constant release; feasibility of following the arriving flow | `hydraulic_topology.jl`, `storage_path_tests.jl` |
 | `OpenSHOP/Integration.lean` | Flow/volume stopping-allowance conversion; polynomial and linear-cell chain rules; reversal and diagonal limits; exact quadratic potential graph; weighted mean-slope bounds; global head-graph projection; telescoping work; weighted network incidence and passive closed-network dissipation | `storage_integration.jl`, `storage_tables.jl`, `hydraulic_residual.jl`, `global_model.jl` |
 
 This mapping is reviewed by humans; there is no automatic equivalence proof

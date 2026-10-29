@@ -347,6 +347,7 @@ function _build_dispatch(
     flow_integrals=constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
     river_operations=constrain_river_operations!(m,c,RQ;fixed=fixed_river_on(c,river_on,warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
+    constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing)
     history_initial=exact ? nd.initial_transit : rd.history_initial
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost,river_cost=river_operations.cost)
