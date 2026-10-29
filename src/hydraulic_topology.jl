@@ -103,3 +103,40 @@ function constrain_water_balance!(model, c, topology, V, Q, GQ, RQ, arrivals)
     end
     nothing
 end
+
+"""Bound cumulative storage at river transport vertices inside a control interval.
+
+The hydraulic quadrature holds tunnel, turbine and outlet rates over the interval.
+Routed arrivals need not be constant. Their integrated volume determines storage
+at each additional transport vertex. These rows guide dispatch; independent
+hydraulic and transport refinement still determine numerical acceptance.
+"""
+function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
+    for (i, reservoir) in enumerate(c.system.reservoirs)
+        incoming = [j for (j, enters, _) in topology.river_incidence[i] if enters]
+        isempty(incoming) && continue
+        times = routing.exact ? sort!(unique!(vcat(
+            c.grid, [routing_arrival_knots(c, routing, j) for j in incoming]...,
+        ))) : routing.rd.grid
+        for time in times
+            time in c.grid && continue
+            t = searchsortedlast(c.grid, time)
+            start = c.grid[t]
+            duration = time - start
+            net = sum(sign * Q[j, t] for (j, sign) in topology.tunnel_incidence[i]; init = 0.0)
+            net += sum(sign * GQ[j, t] for (j, sign) in topology.generator_incidence[i]; init = 0.0)
+            net -= sum(RQ[j, t] for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
+            natural = opaverage(c, reservoir.name, :inflow, start, time, reservoir.inflow)
+            natural += sum(opaverage(c, c.system.rivers[j].name, :inflow,
+                start, time, c.system.rivers[j].inflow)
+                for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
+            arrivals = sum(routing_volume_expression(model, c, routing, j, start, time)
+                for j in incoming; init = 0.0)
+            volume = V[i, t] + 0.0036 * duration * (net + natural) + arrivals
+            lower, upper = soft_storage_bounds(c, reservoir, time)
+            @constraint(model, volume / reservoir.vmax >= lower / reservoir.vmax)
+            @constraint(model, volume / reservoir.vmax <= upper / reservoir.vmax)
+        end
+    end
+    nothing
+end

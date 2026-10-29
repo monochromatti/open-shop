@@ -20,6 +20,7 @@ include("operating_controls_tests.jl")
 include("zero_minimum_tests.jl")
 include("model_consistency_tests.jl")
 include("storage_integration_tests.jl")
+include("storage_path_tests.jl")
 
 @testset "Named object round trip and optimized dispatch" begin
     lake=Reservoir(

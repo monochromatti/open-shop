@@ -226,6 +226,7 @@ function propose_commitment(
             @constraint(m, net==0)
         end
     end
+    constrain_storage_paths!(m,c,HydraulicTopology(s),V,Q,gq,rq,routing)
     if incumbent!==nothing
         point=_schedule_input(incumbent;case=c)
         point.grid==c.grid || throw(ArgumentError("incumbent grid differs from proposal grid"))

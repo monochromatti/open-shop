@@ -1099,6 +1099,20 @@ for the full SCIP search~@scip, which can change the discrete choices.
 
 The proposal also selects enabled river operating states; nonlinear dispatch
 holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
+Both preparation models also bound storage at transport vertices inside a
+hydraulic interval. Let $N_(i t)$ be the interval's net inflow excluding
+routed arrivals. Under the interval quadrature, storage at such a vertex $xi$
+is
+
+$ V_i (xi) = V_(i t) + kappa (xi - tau_t) N_(i t)
+  + sum_r D_(i r) A_r (tau_t, xi). $
+
+Here $A_r (a,b)$ is the volume arriving from reach $r$ during $[a,b]$, evaluated
+with the same response functions as @eq:transfer. Bounding this volume path
+rules out some schedules whose interval endpoints conceal a dry or overflowing
+reservoir. These additional samples use the held interval rates; they do not
+certify continuous-time hydraulics. Independent refinement remains necessary.
+
 Proposals use the same transport mesh and conservation equations. They freeze
 each cohort's delay mixture at the accepted trajectory's flow, or at the last
 recorded reach flow before any trajectory is available. An unspecified previous
