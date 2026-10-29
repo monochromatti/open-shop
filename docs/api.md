@@ -69,7 +69,8 @@ global construction. It retains an independently checked incumbent when one is
 available, subject to the requested fixed controls and replay policy. The result
 reports `budget_exhausted_phase`, `total_seconds` and `budget_overrun_seconds`;
 its global bound and gaps remain unavailable when search did not supply a bound.
-Physical validation and replay can overrun the allowance.
+Time budgets are checked between phases. Model construction, a solver iteration,
+physical validation and replay can overrun the allowance.
 
 An audited initial schedule is retained independently of SCIP. After optimizer
 attachment, `native_start_audit` checks that every native variable has a finite

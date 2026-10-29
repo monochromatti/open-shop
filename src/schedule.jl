@@ -1,8 +1,9 @@
 """Schedule an input case using MILP proposals and audited nonlinear dispatch.
 
-`time_limit` caps total preparation, including construction and refinements;
-the MILP/NLP limits also cap individual solves. Final replay may overrun the
-allowance and is included in elapsed time. An accepted result is feasible under
+`time_limit` is a shared preparation budget, charged for construction and
+refinements. The MILP/NLP limits also bound individual solves. Budgets are
+checked between phases; construction, a solver iteration or final replay can
+overrun the allowance. All work is included in elapsed time. An accepted result is feasible under
 the declared numerical checks, not a global optimality certificate. `operational_margin` optionally
 requests a symmetric power inset during preparation, capped at half each
 permitted range. Acceptance
