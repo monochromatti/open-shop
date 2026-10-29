@@ -122,7 +122,7 @@ function rolling_horizon(;horizon=48,advance=6,replans=2,branches=4,time_limit=1
     results=NamedTuple[]
     for revision in 0:replans
         result=schedule_case(c;warm,time_limit,proposal_time_limit=5.0,
-            nlp_time_limit=min(time_limit,45.0),max_refinements=1)
+            nlp_time_limit=time_limit,max_refinements=1)
         result["accepted"] || error("no accepted schedule for window starting $(first(c.grid))")
         x=result["solution"]
         push!(results,(;case=c,schedule=x,seconds=result["seconds"]))
