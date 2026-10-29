@@ -1,20 +1,26 @@
 name: Tests
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  JULIA_NUM_THREADS: 1
+  JULIA_NUM_PRECOMPILE_TASKS: 2
+  OPENBLAS_NUM_THREADS: 1
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    env:
-      JULIA_NUM_THREADS: 1
-      JULIA_NUM_PRECOMPILE_TASKS: 2
-      OPENBLAS_NUM_THREADS: 1
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: julia-actions/setup-julia@v3.0.2
@@ -29,29 +35,35 @@ jobs:
         run: python3 -m unittest discover -s examples/tokke_vinje -p "test_*.py"
       - name: Test the long-run supervisor
         run: python3 -m unittest discover -s test -p "test_fuzz_runner.py"
-      - name: Run the public example
-        run: julia --pkgimages=no --project=. examples/single_reservoir.jl
-      - name: Run the hydraulic response example
-        run: julia --pkgimages=no --project=. examples/level_channels.jl
-      - name: Run the tunnel gate example
-        run: julia --pkgimages=no --project=. examples/tunnel_gates.jl
-      - name: Run the shared-tailrace example
-        run: julia --pkgimages=no --project=. examples/shared_tailrace.jl
-      - name: Run the single-head turbine example
-        run: julia --pkgimages=no --project=. examples/turbine_tables.jl
-      - name: Run the unequal turbine-grid example
-        run: julia --pkgimages=no --project=. examples/unequal_turbine_grids.jl
-      - name: Run the prescribed river-split example
-        run: julia --pkgimages=no --project=. examples/river_splits.jl
-      - name: Run the directional interlock example
-        run: julia --pkgimages=no --project=. examples/directional_interlocks.jl
-      - name: Run the pumped-storage example
-        run: julia --pkgimages=no --project=. examples/pumped_storage.jl
-      - name: Run the fixed-speed pump example
-        run: julia --pkgimages=no --project=. examples/fixed_speed_pumping.jl
-      - name: Run the soft-limit example
-        run: julia --pkgimages=no --project=. examples/soft_limits.jl
-      - name: Run the spinning-reserve example
-        run: julia --pkgimages=no --project=. examples/spinning_reserves.jl
-      - name: Run the terminal water-value example
-        run: julia --pkgimages=no --project=. examples/terminal_value.jl
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [hydraulics, operations]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: julia-actions/setup-julia@v3.0.2
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v3.4.0
+        with:
+          delete-old-caches: false
+      - name: Instantiate
+        run: julia --pkgimages=no --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Run hydraulic examples
+        if: matrix.group == 'hydraulics'
+        run: >-
+          julia --pkgimages=no --project=. scripts/run_examples.jl
+          examples/single_reservoir.jl examples/level_channels.jl
+          examples/tunnel_gates.jl examples/shared_tailrace.jl
+          examples/river_splits.jl examples/directional_interlocks.jl
+      - name: Run operating examples
+        if: matrix.group == 'operations'
+        run: >-
+          julia --pkgimages=no --project=. scripts/run_examples.jl
+          examples/turbine_tables.jl examples/unequal_turbine_grids.jl
+          examples/pumped_storage.jl examples/fixed_speed_pumping.jl
+          examples/soft_limits.jl examples/spinning_reserves.jl
+          examples/terminal_value.jl
