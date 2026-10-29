@@ -36,8 +36,8 @@ it is not an unchecked guess for changed physical inputs. All proposal and
 dispatch attempts share `time_limit`, with individual limits set by
 `proposal_time_limit` and `nlp_time_limit`.
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
-uses an unchecked numerical starting point. It first dispatches the supplied
-discrete states, then allows the ordinary proposal search to change them.
+uses an unchecked hydraulic reference and numerical starting point. The ordinary
+proposal search selects discrete states under the updated inputs.
 The start must have compatible arrays and the same grid; it need not satisfy
 the updated physical or operating inputs. It is never retained as a feasible
 schedule without solving and independent acceptance. `initial` takes precedence

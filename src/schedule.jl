@@ -75,8 +75,6 @@ function schedule_case(
         reference,start=_dispatch_start(c,fallback,warm)
         reference!==nothing || throw(ArgumentError("incompatible warm schedule: "*
             get(start,"ignored_reason","missing hydraulic arrays")))
-        best,reference=_dispatch_candidate(c,reference.commitment,reference.tunnel_opening,
-            fixed_river_on(c,nothing,reference),best,reference,attempts,seen;dispatch_options...)
     end
     radius=4
     for scale in (1.0,0.7,1.3)

@@ -71,7 +71,9 @@ end
     x=dispatch_from_controls(c,ones(Int,2,2),[3.0 3.0;2.8 1.8],zeros(0,2))
     lake=OpenSHOP._river_replace(only(c.system.reservoirs);inflow=12.0)
     updated=OpenSHOP._river_replace(c;prices=[100.0,20.0],
-        system=OpenSHOP._river_replace(c.system;reservoirs=[lake]))
+        system=OpenSHOP._river_replace(c.system;reservoirs=[lake]),
+        operations=vcat(c.operations,[OperationalSeries(object=:A,attribute=:maintenance,
+            times=[0.0],values=[1.0])]))
     @test !validate(updated,x)["valid"]
     prepared=schedule_case(updated;warm=x,time_limit=15.0,
         proposal_time_limit=2.0,nlp_time_limit=5.0,max_refinements=0)
@@ -81,6 +83,7 @@ end
         @test validate(updated,y)["valid"]
         @test replay_audit(updated,y)["valid"]
         @test objective_components(updated,y).total≈y.objective
+        @test all(iszero,y.commitment[1,:])
     end
     expired=schedule_case(updated;warm=x,time_limit=1e-9)
     @test !expired["accepted"]
