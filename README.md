@@ -83,6 +83,16 @@ Julia's first-use compilation. Repeated solves in the same process reuse the
 compiled code; the library still charges construction and compilation to the
 caller's time allowance.
 
+CI runs the full test suite on Ubuntu and macOS, Lean proofs, and two parallel
+groups of examples on Ubuntu. Each example group shares one Julia process to
+reuse compilation, with a separate namespace for each script. PR updates cancel
+superseded runs; feature pushes do not duplicate the PR checks. Long optimization
+and fuzz campaigns run separately. To batch examples locally:
+
+```sh
+./scripts/julia.sh scripts/run_examples.jl examples/single_reservoir.jl examples/tunnel_gates.jl
+```
+
 ## Scope
 
 Scheduling is deterministic. Head–storage relationships, signed quadratic
