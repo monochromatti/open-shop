@@ -45,6 +45,9 @@ start from the best qualified short solution or generated reference controls.
 `global_reference: true` adds a separate SCIP solve with the reference budget
 and the best qualified schedule as its initial solution. It is optional because
 this campaign primarily investigates scheduling, rather than bound closure.
+`public_budgets: [90]` additionally measures cold calls to the public `solve`
+entry point, using its default time allocation. These rows are identified by
+method so preparation timings are not mistaken for complete solve timings.
 
 Each case runs in its own process. A separate small-case warmup is recorded;
 remaining compilation is included in measured calls and reported separately.

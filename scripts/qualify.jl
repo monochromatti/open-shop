@@ -31,7 +31,8 @@ end
 
 function compare(rows,reference)
     best=reference===nothing ? nothing : reference.objective
-    [Dict("label"=>row["label"],"accepted"=>row["accepted"],
+    [Dict("label"=>row["label"],"method"=>get(row,"method","schedule_case"),
+        "budget"=>get(row,"budget",nothing),"accepted"=>row["accepted"],
         "qualified"=>row["qualified"],"seconds"=>row["seconds"],
         "objective"=>row["objective"],"reference_objective"=>best,
         "value_shortfall"=>!row["qualified"] || best===nothing ? nothing : max(0.,best-row["objective"]),
@@ -110,13 +111,18 @@ function run(request,directory)
             row["recompile_seconds"]=timed.recompile_time
             row["bytes"]=timed.bytes
             row["accepted"]=result["accepted"]
-            attempts=global_search ? get(result.diagnostics,"preparation",Dict()) : result
+            if global_search
+                row["status"]=result.status
+                row["global_bound"]=result.global_bound
+                row["global_certificate"]=result.global_certificate
+            end
+            attempts=global_search ? Dict() : result
             row["attempts"]=[Dict(k=>v for (k,v) in a if k ∉ ("u","tunnel_opening"))
                 for a in get(attempts,"attempts",Any[])]
-            row["first_accepted_seconds"]=nothing
+            row["first_solver_accepted_seconds"]=nothing
             for a in row["attempts"]
                 if get(a,"accepted",false)
-                    row["first_accepted_seconds"]=get(a,"elapsed_seconds",nothing)
+                    row["first_solver_accepted_seconds"]=get(a,"elapsed_seconds",nothing)
                     break
                 end
             end
@@ -128,7 +134,8 @@ function run(request,directory)
                 row["campaign_check_seconds"]=checking.time
                 row["checks"]=checks
                 row["qualified"]=checks["audit"]["valid"] && checks["replay"]["valid"] &&
-                    checks["water_error_Mm3"]<=1e-6
+                    checks["water_error_Mm3"]<=1e-6 &&
+                    !any(f->f["stage"]==label && f["severity"]=="error",report["findings"])
                 row["qualified"] && (x=candidate)
             end
         catch error
@@ -163,7 +170,9 @@ function run(request,directory)
             checks=FuzzWorker.check_schedule!(report,c,witness,"reference_controls",4)
             report["reference_controls"]=checks
             checks["audit"]["valid"] && checks["replay"]["valid"] &&
-                checks["water_error_Mm3"]<=1e-6 || (witness=nothing)
+                checks["water_error_Mm3"]<=1e-6 &&
+                !any(f->f["stage"]=="reference_controls" && f["severity"]=="error",report["findings"]) ||
+                (witness=nothing)
         end
         # Compile both public paths separately from the measured case. Remaining
         # specialization is reported per call, rather than assumed to be zero.
@@ -183,6 +192,12 @@ function run(request,directory)
         # residual compilation effects. No result is passed to another cold run.
         for repetition in 1:repetitions, budget in (isodd(repetition) ? budgets : reverse(budgets))
             row,x=measure(c,"cold-$(budget)-r$repetition",budget)
+            push!(rows,row)
+            best=bestof(best,x)
+        end
+        for budget in Float64.(get(request,"public_budgets",Float64[]))
+            isfinite(budget) && budget>0 || throw(ArgumentError("positive finite public budget required"))
+            row,x=measure(c,"public-$(budget)",budget;global_search=true)
             push!(rows,row)
             best=bestof(best,x)
         end
