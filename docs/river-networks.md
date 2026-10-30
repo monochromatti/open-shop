@@ -164,7 +164,7 @@ uses at most six successive bisections by default, retaining the same available
 resolution per control interval as the horizon grows. An optional
 `max_internal_intervals` caps the total cell count. The check reports
 nonconvergence when either limit stops refinement before the volume tolerance
-is met; loosening that tolerance changes acceptance, not numerical accuracy.
+is met. A larger tolerance permits a larger estimated discretization error.
 
 Inventory is evaluated directly from the survival probabilities of the original
 entry cohorts, independently of arrival-volume conservation. A cohort contributes
