@@ -117,6 +117,9 @@ function run(request,directory)
                 row["status"]=result.status
                 row["global_bound"]=result.global_bound
                 row["global_certificate"]=result.global_certificate
+                row["search"]=Dict(key=>get(result.diagnostics,key,nothing) for key in
+                    ("preparation_seconds","prepared_objective","construction_seconds",
+                     "solve_seconds","incumbent_source","scip_diagnostics"))
             end
             attempts=global_search ? Dict() : result
             row["attempts"]=[Dict(k=>v for (k,v) in a if k ∉ ("u","tunnel_opening"))
@@ -197,8 +200,8 @@ function run(request,directory)
             push!(rows,row)
             best=bestof(best,x)
         end
-        for budget in public_budgets
-            row,x=measure(c,"public-$(budget)",budget;global_search=true)
+        for repetition in 1:repetitions, budget in (isodd(repetition) ? public_budgets : reverse(public_budgets))
+            row,x=measure(c,"public-$(budget)-r$repetition",budget;global_search=true)
             push!(rows,row)
             best=bestof(best,x)
         end

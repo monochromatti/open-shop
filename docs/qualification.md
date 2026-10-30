@@ -48,6 +48,9 @@ this campaign primarily investigates scheduling, rather than bound closure.
 `public_budgets: [90]` additionally measures cold calls to the public `solve`
 entry point, using its default time allocation. These rows are identified by
 method so preparation timings are not mistaken for complete solve timings.
+They use the same repetition count, with no supplied initial schedule. Their
+search statistics record whether the returned schedule came from preparation
+or global search, together with time spent in each phase.
 
 Each case runs in its own process. A separate small-case warmup is recorded;
 remaining compilation is included in measured calls and reported separately.
