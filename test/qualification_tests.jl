@@ -11,6 +11,14 @@ include("../scripts/qualify.jl")
     @test all(x["relative_shortfall"]===nothing for x in Qualification.compare(rows,nothing))
 end
 
+@testset "Qualification rejects ambiguous budget comparisons before running" begin
+    mktempdir() do directory
+        @test_throws ArgumentError Qualification.run(Dict("budgets"=>[30.,30.]),directory)
+        @test_throws ArgumentError Qualification.run(Dict("budgets"=>[30.],
+            "public_budgets"=>[90.],"reference_budget"=>60.),directory)
+    end
+end
+
 @testset "Operating revisions retain the executed hydraulic state and histories" begin
     data=Qualification.input_data(Dict("seed"=>"17","family"=>"integrated",
         "size"=>"medium","hours"=>12,"branches"=>3,"pond_volume"=>0.0002))

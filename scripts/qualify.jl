@@ -77,10 +77,12 @@ end
 function run(request,directory)
     BLAS.set_num_threads(1)
     budgets=Float64.(get(request,"budgets",[30.,90.]))
+    public_budgets=Float64.(get(request,"public_budgets",Float64[]))
     reference_budget=Float64(get(request,"reference_budget",300.))
     repetitions=Int(get(request,"repetitions",2))
-    all(b->isfinite(b) && b>0,budgets) && !isempty(budgets) && length(unique(budgets))==length(budgets) &&
-        isfinite(reference_budget) && reference_budget>=maximum(budgets) && repetitions>0 ||
+    all(b->isfinite(b) && b>0,vcat(budgets,public_budgets)) && !isempty(budgets) &&
+        length(unique(budgets))==length(budgets) && length(unique(public_budgets))==length(public_budgets) &&
+        isfinite(reference_budget) && reference_budget>=maximum(vcat(budgets,public_budgets)) && repetitions>0 ||
         throw(ArgumentError("positive budgets/repetitions and reference_budget >= all short budgets required"))
     report=Dict{String,Any}("family"=>request["family"],"size"=>request["size"],
         "seed"=>request["seed"],"findings"=>Any[],"runs"=>Any[],"recovery"=>Any[],
@@ -195,8 +197,7 @@ function run(request,directory)
             push!(rows,row)
             best=bestof(best,x)
         end
-        for budget in Float64.(get(request,"public_budgets",Float64[]))
-            isfinite(budget) && budget>0 || throw(ArgumentError("positive finite public budget required"))
+        for budget in public_budgets
             row,x=measure(c,"public-$(budget)",budget;global_search=true)
             push!(rows,row)
             best=bestof(best,x)
