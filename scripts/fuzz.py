@@ -107,11 +107,11 @@ def case_request(args, index):
     return request
 
 
-def run_case(args, directory, request):
+def run_case(args, directory, request, worker="fuzz_worker.jl"):
     directory.mkdir(parents=True, exist_ok=True)
     atomic_json(directory / "request.json", request)
     command = [args.julia, "--startup-file=no", "--pkgimages=no", f"--project={ROOT}",
-               str(ROOT / "scripts" / "fuzz_worker.jl"), str(directory / "request.json")]
+               str(ROOT / "scripts" / worker), str(directory / "request.json")]
     environment = {**os.environ, "JULIA_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
     environment.setdefault("JULIA_DEPOT_PATH", str(ROOT / ".depot"))
     started = time.monotonic()

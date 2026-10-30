@@ -9,6 +9,8 @@ Run the test suite before submitting a change:
 For changes to physical equations or numerical solvers, also consider an
 overnight [optimization fuzz campaign](docs/fuzzing.md). It saves exact synthetic
 inputs and solver diagnostics; it is separate from the per-PR suite.
+The [operational qualification campaign](docs/qualification.md) compares short
+budgets with longer searches and tests replanning after operating changes.
 
 Physical changes need an independent conservation or equation check, not only
 a test of the JuMP model that implements them. Solver changes should preserve
