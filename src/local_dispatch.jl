@@ -535,7 +535,7 @@ function _local_optimizer!(m, solver, time_limit)
         set_optimizer_attribute(m, "tol", 1e-8)
         # A forced-zero flow may have no strictly interior feasible point.
         # Relax bounds internally, then restore them before physical checking.
-        set_optimizer_attribute(m, "bound_relax_factor", 1e-8)
+        set_optimizer_attribute(m, "bound_relax_factor", 1e-10)
         set_optimizer_attribute(m, "honor_original_bounds", "yes")
         set_optimizer_attribute(m, "max_iter", 1000)
         set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
