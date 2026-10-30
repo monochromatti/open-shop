@@ -15,6 +15,11 @@ from unittest.mock import patch
 SPEC = importlib.util.spec_from_file_location("fuzz", Path(__file__).parents[1] / "scripts" / "fuzz.py")
 fuzz = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(fuzz)
+QUALIFICATION_SPEC = importlib.util.spec_from_file_location(
+    "qualify", Path(__file__).parents[1] / "scripts" / "qualify.py")
+qualify = importlib.util.module_from_spec(QUALIFICATION_SPEC)
+with patch.dict(sys.modules, fuzz=fuzz):
+    QUALIFICATION_SPEC.loader.exec_module(qualify)
 
 
 class FuzzRunnerTests(unittest.TestCase):
@@ -92,6 +97,29 @@ if mode == "review":
             self.run_campaign("--cases", "1")
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             fuzz.arguments(["--julia", str(self.julia), "--output", str(fuzz.ROOT / "results")])
+
+    def test_qualification_resume_checks_external_input_contents(self):
+        source = self.directory / "case.json"
+        source.write_text('{}')
+        plan = self.directory / "plan.json"
+        plan.write_text(json.dumps([{"input": "case.json"}]))
+        args = [str(plan), "--julia", str(self.julia), "--output", str(self.directory / "run")]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(qualify.main(args), 0)
+            self.assertEqual(qualify.main(args + ["--resume"]), 0)
+        source.write_text('{"changed": true}')
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            qualify.main(args + ["--resume"])
+
+    def test_qualification_crash_does_not_skip_later_inputs(self):
+        plan = self.directory / "plan.json"
+        plan.write_text(json.dumps([{"family": "pressure"}, {"family": "rivers"}]))
+        args = [str(plan), "--julia", str(self.julia), "--output", str(self.directory / "run")]
+        with patch.dict(os.environ, FUZZ_TEST_MODE="crash"), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(qualify.main(args), 1)
+        summary = json.loads((self.directory / "run" / "summary.json").read_text())
+        self.assertEqual(len(summary), 2)
+        self.assertTrue(all(r["findings"][0]["kind"] == "process_exit" for r in summary))
 
 
 if __name__ == "__main__":
