@@ -362,7 +362,7 @@ end
         @test result["case"].grid==c.grid
         @test result["solution"].grid==c.grid
         @test result["solution"].generator_q≈fill(2.0,1,1) atol=1e-5
-        @test result["solution"].gate≈fill(78/80,1,1) atol=1e-4
+        @test result["solution"].power≈witness.power atol=1e-5
         @test replay_audit(c,result["solution"])["valid"]
         # A nonzero explicitly requested inset also preserves a fixed value.
         inset=solve_case(c;u,warm=witness,operational_margin=0.1,time_limit=10.0)
