@@ -160,7 +160,16 @@ declared arrival windows, on the finer routed cohorts.
 
 Transport refinement checks convergence of cumulative arrivals and
 inventory; it is not a continuous-time global certificate. `transport_audit`
-reports exhaustion of its refinement limit explicitly.
+uses at most six successive bisections by default, retaining the same available
+resolution per control interval as the horizon grows. An optional
+`max_internal_intervals` caps the total cell count. The check reports
+nonconvergence when either limit stops refinement before the volume tolerance
+is met; loosening that tolerance changes acceptance, not numerical accuracy.
+
+Inventory is evaluated directly from the survival probabilities of the original
+entry cohorts, independently of arrival-volume conservation. A cohort contributes
+only between its release and its last possible arrival. Fixed-delay volumes use
+interval overlaps without allocating dense matrices during numerical replay.
 
 ## History and replay
 

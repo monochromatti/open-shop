@@ -226,25 +226,29 @@ function routing_data(c::ScheduleCase)
     )
 end
 
-# Interval averages of a source schedule, preserving its original cohort grid.
-function source_averages(grid, original_grid, q)
-    means=zeros(length(grid)-1)
+# Integral of a piecewise-constant source rate over each observation interval,
+# in (m³/s)·hours. Traverse only overlapping intervals of the two ordered grids.
+function source_integrals(grid, original_grid, q; delay=0.0)
+    volumes=zeros(length(grid)-1)
     k=1
-    for t in eachindex(means)
+    for t in eachindex(volumes)
         a,b=grid[t],grid[t+1]
-        while k<=length(q) && original_grid[k+1]<=a
+        while k<=length(q) && original_grid[k+1]+delay<=a
             k+=1
         end
         j=k
         volume=0.0
-        while j<=length(q) && original_grid[j]<b
-            volume+=q[j]*max(0.0,min(b,original_grid[j+1])-max(a,original_grid[j]))
+        while j<=length(q) && original_grid[j]+delay<b
+            volume+=q[j]*max(0.0,min(b,original_grid[j+1]+delay)-max(a,original_grid[j]+delay))
             j+=1
         end
-        means[t]=volume/(b-a)
+        volumes[t]=volume
     end
-    means
+    volumes
 end
+
+# Interval averages preserve the original release cohorts.
+source_averages(grid,original_grid,q)=source_integrals(grid,original_grid,q)./diff(grid)
 
 """Route all reaches in topological order, independently of model coefficients.
 
@@ -316,8 +320,7 @@ function route_volumes(r, arrival_grid, release_grid, q)
         return RiverRouting.route(arrival_grid, release_grid, q, r.curves)
     _check_river_releases(r,release_grid,q)
     RiverRouting.check_grid(arrival_grid)
-    0.0036 .* diff(arrival_grid) .*
-        source_averages(arrival_grid .- r.deterministic_delay,release_grid,q)
+    0.0036 .* source_integrals(arrival_grid,release_grid,q;delay=r.deterministic_delay)
 end
 
 function remaining_volume(r, times::AbstractVector, grid, q)

@@ -34,7 +34,7 @@ end
 @testset "Shifted deterministic releases preserve interval overlaps" begin
     grid=[-2.0,-0.2,0.0,0.1,0.8,2.0]
     q=[2.0,0.0,5.0,12.0,1.0]
-    for delay in (0.0,0.37,3.0), arrivals in
+    for delay in (0.0,0.37,3.0,1e16), arrivals in
         ([-5.0,-4.0],[-3.0,-0.5,0.0,0.3,1.1,4.0,8.0],[8.0,9.0])
         r=River(name=:Reach,source=:Lake,target=:Sea,capacity=20.0,
             water_value=0.0,deterministic_delay=delay,curves=RiverRouting.DelayCurve[])
