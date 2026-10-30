@@ -620,6 +620,10 @@ Equations @eq:transfer and @eq:arrival are exact for the rectangular entry
 cohorts. Averaging within transport cells still approximates continuous timing.
 We assess that error on a finer transport grid by comparing cumulative arrivals
 and water in transit, and checking operating arrival and capacity limits again.
+The check bisects each cell until the requested tolerance is met, with at most
+six bisections by default. Extending the horizon therefore retains the same
+available resolution within each control interval. This comparison estimates
+discretization error; it is not a rigorous error bound.
 A volume balance cannot detect water that arrives at the wrong time.
 
 == Water in transit, history and environmental flows
@@ -639,6 +643,12 @@ $-s$ at the horizon start, so the fraction still in transit is $1-F_k (-s)$:
 
 $ W_r^"hist" = kappa sum_(k in cal(H)_r) R_(r k)
   integral_(s_k)^(e_k) [1 - F_k (-s)] dif s. $ <eq:historyinventory>
+
+The independent transport check evaluates inventory at later times in the
+same way, integrating the survival probability over water already released.
+Only cohorts that can still be in transit contribute. Evaluating this integral
+directly avoids subtracting nearly equal released and arrived volumes when
+little water remains in a reach.
 
 The historical cohorts of reach $r$ form $cal(H)_r$. We assume zero entry
 before the supplied history. A reach's records already include past upstream

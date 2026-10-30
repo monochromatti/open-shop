@@ -2,13 +2,12 @@
 function refined_grid(grid; factor = 2)
     factor isa Integer && factor>=1 ||
         throw(ArgumentError("positive integer refinement required"))
-    vcat(
-        [
-            collect(range(grid[t], grid[t + 1]; length = factor+1))[1:(end - 1)] for
-            t in 1:(length(grid) - 1)
-        ]...,
-        last(grid),
-    )
+    fine=Vector{Float64}(undef,factor*(length(grid)-1)+1)
+    for t in 1:(length(grid)-1), j in 0:(factor-1)
+        fine[factor*(t-1)+j+1]=grid[t]+(grid[t+1]-grid[t])*j/factor
+    end
+    fine[end]=last(grid)
+    fine
 end
 
 """Accept a schedule only after finer physical replay and an independent transport check.

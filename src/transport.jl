@@ -419,16 +419,6 @@ function route_network_exact(
     )
 end
 
-function _transport_subdivide(grid, factor)
-    vcat(
-        [
-            [grid[t]+(grid[t + 1]-grid[t])*j/factor for j in 0:(factor - 1)] for
-            t in 1:(length(grid) - 1)
-        ]...,
-        last(grid),
-    )
-end
-
 function _transport_evaluate_previous(c, previous, newgrid)
     A=zeros(length(c.system.rivers), length(newgrid)-1)
     W=zeros(length(c.system.rivers), length(newgrid))
@@ -441,14 +431,8 @@ function _transport_evaluate_previous(c, previous, newgrid)
             r.history_grid,
             r.history_release,
         )
-        W[d, :]=[
-            remaining_volume(r, t, oldgrid, q)+remaining_volume(
-                r,
-                t,
-                r.history_grid,
-                r.history_release,
-            ) for t in newgrid
-        ]
+        W[d, :]=remaining_volume(r,newgrid,oldgrid,q)+
+                remaining_volume(r,newgrid,r.history_grid,r.history_release)
     end
     A, W
 end
@@ -460,6 +444,9 @@ networks refine junction mixing, retaining original reservoir release cohorts.
 The estimate compares cumulative arrivals and physical transit on successive
 grids; it is a numerical convergence check, not a rigorous continuum bound.
 `converged=false` is explicit when the refinement limit is exhausted.
+The default work limit is `max_refinements` successive bisections, so extending
+the horizon does not reduce the available resolution per control interval.
+An optional `max_internal_intervals` also bounds the total number of cells.
 """
 function route_network_controlled(
     c::ScheduleCase,
@@ -467,7 +454,7 @@ function route_network_controlled(
     grid = c.grid,
     absolute_tolerance = 1e-5,
     max_refinements = 6,
-    max_internal_intervals = 2048,
+    max_internal_intervals = nothing,
     transport = nothing,
     generator_q=nothing,
     tunnel_q=nothing,
@@ -477,8 +464,9 @@ function route_network_controlled(
         throw(ArgumentError("positive transport tolerance required"))
     max_refinements>=1 ||
         throw(ArgumentError("at least one refinement comparison required"))
-    max_internal_intervals>=1 ||
-        throw(ArgumentError("positive internal interval limit required"))
+    max_internal_intervals===nothing ||
+        (max_internal_intervals isa Integer && max_internal_intervals>=1) ||
+        throw(ArgumentError("positive integer internal interval limit required"))
     all(r->r.deterministic_delay!==nothing, c.system.rivers) &&
         return route_network_exact(c, q; grid, transport, injections)
     transport===nothing || throw(
@@ -494,8 +482,9 @@ function route_network_controlled(
     converged=false
     rounds=0
     for iteration in 1:max_refinements
-        2(length(current_grid)-1)>max_internal_intervals && break
-        newgrid=_transport_subdivide(current_grid, 2)
+        max_internal_intervals!==nothing &&
+            2(length(current_grid)-1)>max_internal_intervals && break
+        newgrid=refined_grid(current_grid;factor=2)
         current=route_network(c, q; grid = newgrid,injections)
         oldA, oldW=_transport_evaluate_previous(c, previous, newgrid)
         error=maximum(abs, cumsum(current["arrival_volume"]-oldA; dims = 2); init = 0.0)
@@ -545,7 +534,7 @@ function transport_audit(
     absolute_tolerance = 1e-5,
     max_refinements = 6,
     schedule_tolerance = 2e-3,
-    max_internal_intervals = 2048,
+    max_internal_intervals = nothing,
     transport = nothing,
     tolerance = 1e-4,
 )

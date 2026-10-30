@@ -110,6 +110,20 @@ function integral_cdf(c::DelayCurve, lo::Real, hi::Real)
     total
 end
 
+# Integral of the survival probability, evaluated directly. Subtracting an
+# almost complete arrival volume from a large release loses small inventories.
+function integral_survival(c::DelayCurve, lo, hi)
+    total=0.0
+    for k in eachindex(c.weights)
+        a,b,w=c.edges[k],c.edges[k+1],c.weights[k]
+        prefix=max(0.0,min(hi,a)-lo)
+        l,h=max(lo,a),min(hi,b)
+        ramp=h>l ? (h-l)*((b-l)+(b-h))/(2*(b-a)) : 0.0
+        total+=w*(prefix+ramp)
+    end
+    total
+end
+
 # Exact fraction of one uniform release cohort arriving within [a,b]. Shared by
 # the optimizer's coefficient tensor and streaming numerical replay.
 function cohort_transfer_fraction(c::DelayCurve, a, b, s, e)
@@ -285,11 +299,38 @@ function remaining_volume(time::Real, release_grid, releases, curves)
         a, b = release_grid[k], min(time, release_grid[k + 1])
         b <= a && continue
         for (l, w) in mix
-            arrived_time = integral_cdf(curves[l], time-b, time-a)
-            volume += FLOW_HOUR_TO_MM3*releases[k]*w*max(0.0, (b-a)-arrived_time)
+            volume += FLOW_HOUR_TO_MM3*releases[k]*w*
+                      integral_survival(curves[l],time-b,time-a)
         end
     end
     volume
+end
+
+"""Water in transit at ordered observation times, evaluated from release cohorts.
+
+Each cohort contributes only from its release until its last possible arrival.
+This integrates the survival distribution directly, independently of arrival
+volumes and without accumulating a time-stepping conservation residual.
+"""
+function remaining_volume(times::AbstractVector, release_grid, releases, curves)
+    all(isfinite,times) && issorted(times) ||
+        throw(ArgumentError("observation times must be finite and ordered"))
+    check_grid(release_grid)
+    check_releases(release_grid,releases)
+    check_curves(curves)
+    volumes=zeros(length(times))
+    for k in eachindex(releases), (l,w) in blend(curves,releases[k])
+        scale=FLOW_HOUR_TO_MM3*releases[k]*w
+        scale==0 && continue
+        c=curves[l]
+        s,e=release_grid[k],release_grid[k+1]
+        lo=searchsortedlast(times,s)+1
+        hi=searchsortedfirst(times,e+last(c.edges))-1
+        for t in lo:hi
+            volumes[t]+=scale*integral_survival(c,max(0.0,times[t]-e),times[t]-s)
+        end
+    end
+    volumes
 end
 
 """Convert interval volumes in Mm³ to interval-average flows in m³/s."""
