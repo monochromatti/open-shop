@@ -120,6 +120,19 @@ transport directly. It does not repeat the same-grid hydraulic solve.
 transport check. Neither accepts stored validation flags as evidence. Unexpected
 programming errors in replay or reconstruction are raised to the caller.
 
+Replay compares storage and endpoint level at common grid vertices. By default,
+each storage difference must be below both 2,000 m³ and 0.1% of the reservoir's
+usable volume plus one litre. Each level difference must be below 1 cm.
+The small absolute allowance keeps the volume comparison meaningful for a fixed
+or nearly zero storage range. Set `storage_convergence` (Mm³),
+`storage_relative_convergence` (capacity fraction), and `level_convergence` (m)
+on `replay_audit` or `solve_verified` to request different accuracy. An infinite
+tolerance disables that comparison. The returned per-reservoir storage and level
+differences follow reservoir order. Passing these comparisons estimates mesh
+convergence; it does not bound the error against a continuous-time solution.
+Distributed river mixing is refined even when the case supplies `routing_grid`.
+The nonlinear retry uses this same finer transport mesh.
+
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor
 an optimality gap or certificate. Its physical acceptance and its eligibility

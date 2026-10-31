@@ -545,7 +545,10 @@ $ f_r (s) = f_r^"hist" (s) + sum_k hat(R)_(r k) sum_j theta_(r k j)
   [F_(r j) (s - sigma_(r k)) - F_(r j) (s - sigma_(r,k+1))]. $ <eq:pointarrival>
 
 The historical terms account for releases before $tau_0$. We evaluate the
-integrals exactly for the uniform bins. Since $theta$ depends linearly on
+integrals analytically for the uniform bins. Adding a uniform release time
+to a uniform delay gives a trapezoidal density. Integrating its ramps and
+plateau directly avoids subtracting nearly equal cumulative integrals when
+a release interval is very short. Since $theta$ depends linearly on
 cohort flow within a reference-flow interval, multiplying the arrival fraction by
 released volume gives a quadratic dependence on that flow. Interpolating arrival
 volumes directly would give a different travel response.
@@ -1188,15 +1191,26 @@ We accept a reconstructed schedule only if it satisfies the interval equations
 and operating restrictions. We repeat the integration on a finer grid using
 the same controls. Schedules and ramps are checked over their original
 operating windows. We compare storage at the original vertices, total water,
-cumulative arrivals and terminal inventory. For the specified volume
-tolerance $epsilon_V$ and relative objective tolerance $epsilon_(cal(V))$,
+cumulative arrivals and terminal inventory. A single absolute volume tolerance
+can hide a large error in a small pond. We therefore use the reservoir's usable
+volume to set a component tolerance,
+
+$ epsilon_i = min(epsilon_V, epsilon_0 + epsilon_"rel"
+    (V_i^"max" - V_i^"min")). $
+
+Here $epsilon_0$ is a small absolute allowance for a fixed or nearly zero
+storage range. We also compare endpoint levels, since the same volume error
+can have different hydraulic effects in different reservoirs. With level
+tolerance $epsilon_Z$ and relative objective tolerance $epsilon_(cal(V))$,
 the reconstruction must satisfy
 
-$ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
+$ max_t abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_i quad forall i, \
+  max_(i,t) abs(Z_i(V_i^"fine" (tau_t)) - Z_i(V_(i t))) <= epsilon_Z, \
   max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
   abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
 
-The comparison estimates the effect of time discretization for the chosen
+Distributed river mixing is refined too, including when the user supplies its
+mesh. The comparison estimates the effect of discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
 If this check fails, a local retry can enforce the finer hydraulic equations
@@ -1208,7 +1222,8 @@ $ max_(w,y_0,y_h) cal(V)_0(w,y_0) quad "subject to" quad
   F_h (w,y_h)=0, quad C_h (w,y_h)<=0. $
 
 Here $F$ contains the conservation and hydraulic equations, while $C$ contains
-the operating restrictions. The same unit discharge and outlet opening are
+the operating restrictions. The finer model uses the same hydraulic and river
+meshes as replay. The same unit discharge and outlet opening are
 held throughout each original control interval. Fixed-speed pump discharge
 is a hydraulic state on each mesh. Schedules and ramps retain their original
 observation windows. The objective and returned trajectory belong to the

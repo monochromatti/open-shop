@@ -10,6 +10,7 @@ include("qualification_tests.jl")
 include("mixed_source_forward_tests.jl")
 include("short_delay_tests.jl")
 include("transport_convergence_tests.jl")
+include("cohort_fraction_tests.jl")
 include("temporal_tests.jl")
 include("curve_tests.jl")
 include("outlet_head_tests.jl")
@@ -23,6 +24,7 @@ include("zero_minimum_tests.jl")
 include("model_consistency_tests.jl")
 include("storage_integration_tests.jl")
 include("storage_path_tests.jl")
+include("replay_accuracy_tests.jl")
 
 @testset "Named object round trip and optimized dispatch" begin
     lake=Reservoir(

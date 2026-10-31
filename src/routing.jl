@@ -128,7 +128,25 @@ end
 # the optimizer's coefficient tensor and streaming numerical replay.
 function cohort_transfer_fraction(c::DelayCurve, a, b, s, e)
     (b<=s+first(c.edges) || a>=e+last(c.edges)) && return 0.0
-    x=(integral_cdf(c,b-e,b-s)-integral_cdf(c,a-e,a-s))/(e-s)
+    # Release time and each delay bin are uniform. Their sum has a trapezoidal
+    # density: a rising ramp, a plateau and a falling ramp. Integrate those
+    # nonnegative pieces directly, without subtracting almost equal CDF
+    # integrals and then dividing by a possibly tiny release duration.
+    x=0.0
+    for k in eachindex(c.weights)
+        width=c.edges[k+1]-c.edges[k]
+        short,long=minmax(e-s,width)
+        lo,hi=a-s-c.edges[k],b-s-c.edges[k]
+        l,h=max(0.0,lo),min(short,hi)
+        rising=h>l ? ((h-l)/long)*(l/short+h/short)/2 : 0.0
+        plateau=max(0.0,min(hi,long)-max(lo,short))/long
+        # Measure the falling ramp backwards from the far support endpoint;
+        # forming a CDF near one would lose small late arrivals.
+        lo,hi=e-b+c.edges[k+1],e-a+c.edges[k+1]
+        l,h=max(0.0,lo),min(short,hi)
+        falling=h>l ? ((h-l)/long)*(l/short+h/short)/2 : 0.0
+        x+=c.weights[k]*(rising+plateau+falling)
+    end
     -1e-10<=x<=1+1e-10 || error("invalid transfer fraction: $x")
     clamp(x,0.0,1.0)
 end
