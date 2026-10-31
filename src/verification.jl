@@ -10,6 +10,15 @@ function refined_grid(grid; factor = 2)
     fine
 end
 
+"""Refine hydraulics and distributed river mixing, including a supplied river mesh."""
+function replay_case(c, grid)
+    fine=with_grid(c, grid)
+    all(r->r.deterministic_delay!==nothing,c.system.rivers) && return fine
+    routing_grid=sort!(unique!(vcat(river_routing_grid(fine),
+        refined_grid(river_routing_grid(c)))))
+    _river_replace(fine; routing_grid)
+end
+
 """
     replay_audit(case, schedule; grid=refined_grid(case.grid),
                  storage_convergence=2e-3, storage_relative_convergence=1e-3,
@@ -70,7 +79,7 @@ function _replay(
     end
     x=_schedule_input(x; case=c)
     try
-        cc=with_grid(c, grid)
+        cc=replay_case(c, grid)
         fine=without_interval_controls(cc)
         indices=[
             clamp(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), 1, length(c.prices))

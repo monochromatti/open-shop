@@ -130,6 +130,8 @@ on `replay_audit` or `solve_verified` to request different accuracy. An infinite
 tolerance disables that comparison. The returned per-reservoir storage and level
 differences follow reservoir order. Passing these comparisons estimates mesh
 convergence; it does not bound the error against a continuous-time solution.
+Distributed river mixing is refined even when the case supplies `routing_grid`.
+The nonlinear retry uses this same finer transport mesh.
 
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor

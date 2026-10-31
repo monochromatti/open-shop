@@ -49,15 +49,18 @@ end
             history_grid=[-2.0,0.0],history_release=[0.0])]
     c=ScheduleCase(name="small receiving pond",system=HydroSystem(;reservoirs,rivers),
         grid=[0.0,1.0],prices=[0.0])
-    x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),reshape([1.0,0.0],2,1))
-    audit=replay_audit(c,x)
-    @test validate(c,x)["valid"]
-    # Two independent uniform [0,1] hour responses deliver one sixth
-    # of the first hour's 72 m³ release by the one-hour horizon.
-    @test abs(x.arrival_volume[2,1]-12e-6)>0.1e-6
-    @test audit["physically_valid"]
-    @test audit["max_level_difference_m"]==0.0
-    @test !audit["numerically_converged"]
-    @test !audit["valid"]
-    @test replay_audit(c,x;storage_relative_convergence=Inf)["valid"]
+    for mesh in (Float64[],[0.0,1.0])
+        case=OpenSHOP._river_replace(c;routing_grid=mesh)
+        x=dispatch_from_controls(case,zeros(Int,0,1),zeros(0,1),reshape([1.0,0.0],2,1))
+        audit=replay_audit(case,x)
+        @test validate(case,x)["valid"]
+        # Two independent uniform [0,1] hour responses deliver one sixth
+        # of the first hour's 72 m³ release by the one-hour horizon.
+        @test abs(x.arrival_volume[2,1]-12e-6)>0.1e-6
+        @test audit["physically_valid"]
+        @test audit["max_level_difference_m"]==0.0
+        @test !audit["numerically_converged"]
+        @test !audit["valid"]
+        @test replay_audit(case,x;storage_relative_convergence=Inf)["valid"]
+    end
 end

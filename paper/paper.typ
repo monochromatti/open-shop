@@ -1206,7 +1206,8 @@ $ max_t abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_i quad forall i, \
   max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
   abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
 
-The comparison estimates the effect of time discretization for the chosen
+Distributed river mixing is refined too, including when the user supplies its
+mesh. The comparison estimates the effect of discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
 If this check fails, a local retry can enforce the finer hydraulic equations
@@ -1218,7 +1219,8 @@ $ max_(w,y_0,y_h) cal(V)_0(w,y_0) quad "subject to" quad
   F_h (w,y_h)=0, quad C_h (w,y_h)<=0. $
 
 Here $F$ contains the conservation and hydraulic equations, while $C$ contains
-the operating restrictions. The same unit discharge and outlet opening are
+the operating restrictions. The finer model uses the same hydraulic and river
+meshes as replay. The same unit discharge and outlet opening are
 held throughout each original control interval. Fixed-speed pump discharge
 is a hydraulic state on each mesh. Schedules and ramps retain their original
 observation windows. The objective and returned trajectory belong to the

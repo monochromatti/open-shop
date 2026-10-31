@@ -439,7 +439,7 @@ end
 function constrain_replay!(b, grid; warm=nothing, river_on=nothing)
     c,m=b.case,b.m
     objective=objective_function(m)
-    refined=with_grid(c,grid)
+    refined=replay_case(c,grid)
     fine=without_interval_controls(refined)
     indices=[searchsortedlast(c.grid,(grid[k]+grid[k+1])/2) for k in 1:length(grid)-1]
     opening=Matrix{Float64}(b.gates.opening)[:,indices]
