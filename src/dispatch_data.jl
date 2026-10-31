@@ -26,6 +26,7 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
     terminal=Vector{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,D)
     rates=Vector{Vector{Any}}(undef,D)
     coordinates=Vector{Vector{Any}}(undef,D)
+    starts=Pair{VariableRef,Union{AffExpr,QuadExpr,NonlinearExpr}}[]
     if exact
         for i in 1:D,t in 1:T
             arrivals[i,t]=AffExpr(nd.arrival_history[i,t])+sum(
@@ -51,8 +52,9 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
                     t=rd.control[k]
                     set_upper_bound(q[k],opinterval(c,r.name,:capacity,t,r.capacity))
                     duration=rd.grid[k+1]-rd.grid[k]
-                    @constraint(m,(0.0036duration*(q[k]-injections[i,t])-
-                        r.allocation*sum(fine_arrival[d,k] for d in upstream;init=0.0))/0.3==0)
+                    incoming=r.allocation*sum(fine_arrival[d,k] for d in upstream;init=0.0)
+                    @constraint(m,(0.0036duration*(q[k]-injections[i,t])-incoming)/0.3==0)
+                    push!(starts,q[k]=>injections[i,t]+incoming/(0.0036duration))
                 end
             end
             coordinates[i]=Any[coordinate(r,q,i,k) for (k,q) in enumerate(rates[i])]
@@ -75,7 +77,7 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
         end
         m.ext[:distributed_routing]=(;mesh=rd,rates)
     end
-    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections)
+    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections,starts)
     constrain_river_stream_capacities!(m,c,routing)
     routing
 end

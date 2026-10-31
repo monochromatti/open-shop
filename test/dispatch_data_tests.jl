@@ -70,3 +70,33 @@ end
         @test all([0.1 0.2] .- 1e-6 .<= result.solution.gate .<= [0.8 0.6] .+ 1e-6)
     end
 end
+
+@testset "A warm river network retains its transported water in dispatch" begin
+    grid=[0.0,0.2,0.8,1.5,2.0]
+    base=graph_case(;grid,history=true)
+    curves=[RiverRouting.DelayCurve(0.0,[0.1,0.5,3.0],[0.2,0.8]),
+        RiverRouting.DelayCurve(30.0,[0.1,0.5,3.0],[0.8,0.2])]
+    for delay in (nothing,0.35)
+        rivers=[OpenSHOP._river_replace(r;
+            law=i<=2 ? :controlled : :junction,
+            curves=delay===nothing ? curves : RiverRouting.DelayCurve[],
+            deterministic_delay=delay) for (i,r) in enumerate(base.system.rivers)]
+        c=replace_graph(base;rivers)
+        u=zeros(Int,0,4)
+        gates=[3.0 7.0 2.0 6.0;5.0 1.0 4.0 3.0;0.0 0.0 0.0 0.0]/30
+        warm=dispatch_from_controls(c,u,zeros(0,4),gates)
+        @test validate(c,warm)["valid"]
+        b=OpenSHOP._build_dispatch(c;u,warm)
+        point()=Dict(v=>something(start_value(v),0.0) for v in all_variables(b.m))
+        @test isempty(primal_feasibility_report(b.m,point();atol=1e-8))
+        OpenSHOP.constrain_replay!(b,OpenSHOP.refined_grid(grid);warm)
+        @test isempty(primal_feasibility_report(b.m,point();atol=1e-8))
+        result=solve_case(c;u,warm,time_limit=15.0)
+        @test result.accepted
+        # A numerical starting point may need restoration. Initializing relay
+        # equations must permit trial releases beyond the physical table domain.
+        trial=deepcopy(schedule_dict(warm))
+        trial["river_release"][1,1]=31.0
+        @test solve_case(c;u,warm=trial,time_limit=15.0).accepted
+    end
+end
