@@ -545,7 +545,10 @@ $ f_r (s) = f_r^"hist" (s) + sum_k hat(R)_(r k) sum_j theta_(r k j)
   [F_(r j) (s - sigma_(r k)) - F_(r j) (s - sigma_(r,k+1))]. $ <eq:pointarrival>
 
 The historical terms account for releases before $tau_0$. We evaluate the
-integrals exactly for the uniform bins. Since $theta$ depends linearly on
+integrals analytically for the uniform bins. Adding a uniform release time
+to a uniform delay gives a trapezoidal density. Integrating its ramps and
+plateau directly avoids subtracting nearly equal cumulative integrals when
+a release interval is very short. Since $theta$ depends linearly on
 cohort flow within a reference-flow interval, multiplying the arrival fraction by
 released volume gives a quadratic dependence on that flow. Interpolating arrival
 volumes directly would give a different travel response.

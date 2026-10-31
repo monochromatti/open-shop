@@ -14,8 +14,7 @@ end
 function replay_case(c, grid)
     fine=with_grid(c, grid)
     all(r->r.deterministic_delay!==nothing,c.system.rivers) && return fine
-    routing_grid=sort!(unique!(vcat(river_routing_grid(fine),
-        refined_grid(river_routing_grid(c)))))
+    routing_grid=sort!(unique!(vcat(refined_grid(river_routing_grid(c)),grid)))
     _river_replace(fine; routing_grid)
 end
 
