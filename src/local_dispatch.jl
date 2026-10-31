@@ -395,6 +395,11 @@ function _build_dispatch(
         end
     end
     _start_reserves!(reserves,c,warm)
+    # Relay rates follow upstream arrivals in the same topological order as
+    # their conservation equations, using the assigned control starts.
+    for (variable,rate) in routing.starts
+        set_start_value(variable,JuMP.value(v->something(start_value(v),0.0),rate))
+    end
     if warm!==nothing
         for (variable,value) in window_start_values(c,warm,flow_integrals,level_windows)
             set_start_value(variable,value)
