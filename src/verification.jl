@@ -10,8 +10,22 @@ function refined_grid(grid; factor = 2)
     fine
 end
 
-"""Accept a schedule only after finer physical replay and an independent transport check.
-Operating data retain physical times; plant ramp limits retain original decision windows.
+"""
+    replay_audit(case, schedule; grid=refined_grid(case.grid),
+                 storage_convergence=2e-3, storage_relative_convergence=1e-3,
+                 level_convergence=1e-2, objective_convergence=1e-3)
+
+Check finer physical replay and independent river transport. Operating data
+retain physical times; plant ramp limits retain their original decision windows.
+
+At common vertices, each reservoir's storage difference must be at most
+`min(storage_convergence, 1e-9 + storage_relative_convergence * (vmax-vmin))`
+in Mm³, and its endpoint level difference must be at most `level_convergence`
+in metres. The one-litre absolute allowance keeps the comparison meaningful for
+fixed or very small storage ranges. `storage_convergence` also bounds terminal
+transit differences.
+`objective_convergence` is relative to `max(1, abs(schedule.objective))`.
+These are mesh convergence tests, not bounds on continuous-time error.
 """
 replay_audit(c::ScheduleCase, x; kwargs...) = _replay_report(_replay(c, x; kwargs...))
 
@@ -25,9 +39,14 @@ function _replay(
     grid = refined_grid(c.grid),
     tolerance = 1e-4,
     storage_convergence = 2e-3,
+    storage_relative_convergence = 1e-3,
+    level_convergence = 1e-2,
     objective_convergence = 1e-3,
     transport = nothing,
 )
+    all(x -> x isa Real && !isnan(x) && x >= 0,
+        (storage_convergence, storage_relative_convergence, level_convergence,
+         objective_convergence)) || throw(ArgumentError("nonnegative replay tolerances required"))
     began=time()
     errors=String[]
     violations=Dict{String,Float64}()
@@ -115,16 +134,23 @@ function _replay(
             push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
         physical=isempty(errors)
         edges=[searchsortedfirst(grid, t) for t in c.grid]
-        storage_error=maximum(abs, z.storage[:, edges]-x.storage; init = 0.0)
+        storage_errors=[maximum(abs, z.storage[i, edges]-x.storage[i, :]; init=0.0)
+            for i in eachindex(c.system.reservoirs)]
+        storage_limits=[min(storage_convergence, isinf(storage_relative_convergence) ? Inf :
+            1e-9 + storage_relative_convergence*(r.vmax-r.vmin)) for r in c.system.reservoirs]
+        level_errors=[maximum(abs(head(r,z.storage[i,edges[t]])-head(r,x.storage[i,t]))
+            for t in eachindex(c.grid); init=0.0) for (i,r) in enumerate(c.system.reservoirs)]
+        storage_error=maximum(storage_errors; init=0.0)
+        level_error=maximum(level_errors; init=0.0)
         transit_error=maximum(abs, z.terminal_transit-x.terminal_transit; init = 0.0)
         replayed_objective=z.objective-river_operating_cost(c,windows.river_release).total
         objective_error=replayed_objective-x.objective
-        numerical=storage_error<=storage_convergence &&
+        numerical=all(storage_errors .<= storage_limits) && level_error<=level_convergence &&
                   transit_error<=storage_convergence &&
                   abs(objective_error)<=objective_convergence*max(1.0, abs(x.objective))
         numerical || push!(
             errors,
-            "finer replay exceeded storage/transit or objective convergence tolerance",
+            "finer replay exceeded storage, level, transit or objective convergence tolerance",
         )
         (;
             valid=isempty(errors),
@@ -137,10 +163,16 @@ function _replay(
             replay_intervals=length(grid)-1,
             max_water_residual_Mm3=get(violations, "global_water", Inf),
             max_storage_difference_Mm3=storage_error,
+            storage_differences_Mm3=storage_errors,
+            storage_convergence_tolerances_Mm3=storage_limits,
+            max_level_difference_m=level_error,
+            level_differences_m=level_errors,
             terminal_transit_difference_Mm3=transit_error,
             replayed_objective,
             objective_difference=objective_error,
             storage_convergence_tolerance_Mm3=storage_convergence,
+            relative_storage_convergence_tolerance=storage_relative_convergence,
+            level_convergence_tolerance_m=level_convergence,
             relative_objective_convergence_tolerance=objective_convergence,
             seconds=time()-began,
             certificate="numerical finer-grid and transport acceptance only",
@@ -193,6 +225,10 @@ function _verified_dispatch(
     operational_margin = 0.0,
     deadline = Inf,
     refine_grid = true,
+    storage_convergence = 2e-3,
+    storage_relative_convergence = 1e-3,
+    level_convergence = 1e-2,
+    objective_convergence = 1e-3,
 )
     isfinite(time_limit) && time_limit>0 ||
         throw(ArgumentError("positive finite per-solve time limit required"))
@@ -251,7 +287,8 @@ function _verified_dispatch(
         dispatch=x
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
         audit=x!==nothing && haskey(x,"objective") ?
-              _replay(c, x; grid = integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) : integration_grid) :
+              _replay(c, x; grid = integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) : integration_grid,
+                  storage_convergence, storage_relative_convergence, level_convergence, objective_convergence) :
               (valid=false,errors=["NLP candidate has no objective"],shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
         original=get(audit, :original_audit, Dict{String,Any}())
         physical=get(original, "valid", false)

@@ -1188,11 +1188,21 @@ We accept a reconstructed schedule only if it satisfies the interval equations
 and operating restrictions. We repeat the integration on a finer grid using
 the same controls. Schedules and ramps are checked over their original
 operating windows. We compare storage at the original vertices, total water,
-cumulative arrivals and terminal inventory. For the specified volume
-tolerance $epsilon_V$ and relative objective tolerance $epsilon_(cal(V))$,
+cumulative arrivals and terminal inventory. A single absolute volume tolerance
+can hide a large error in a small pond. We therefore use the reservoir's usable
+volume to set a component tolerance,
+
+$ epsilon_i = min(epsilon_V, epsilon_0 + epsilon_"rel"
+    (V_i^"max" - V_i^"min")). $
+
+Here $epsilon_0$ is a small absolute allowance for a fixed or nearly zero
+storage range. We also compare endpoint levels, since the same volume error
+can have different hydraulic effects in different reservoirs. With level
+tolerance $epsilon_Z$ and relative objective tolerance $epsilon_(cal(V))$,
 the reconstruction must satisfy
 
-$ max_(i,t) abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_V, quad
+$ max_t abs(V_i^"fine" (tau_t) - V_(i t)) <= epsilon_i quad forall i, \
+  max_(i,t) abs(Z_i(V_i^"fine" (tau_t)) - Z_i(V_(i t))) <= epsilon_Z, \
   max_r abs(W_r^"fine" (tau_T) - W_(r T)) <= epsilon_V, \
   abs(cal(V)^"fine" - cal(V)) <= epsilon_(cal(V)) max(1, abs(cal(V))). $ <eq:replaycriteria>
 
