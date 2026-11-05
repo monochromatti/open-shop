@@ -63,21 +63,28 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
             for k in 1:K
                 fine_arrival[i,k]=AffExpr(rd.history_arrival[i,k])+sum(
                     0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
-                        collect(view(B,k,j,1:river_curve_count(r)));coordinate=coordinates[i][j])
-                    for j in eachindex(rates[i]) if any(!iszero,view(B,k,j,:));init=0.0)
+                        fractions;coordinate=coordinates[i][j])
+                    for (j,fractions) in arrival_terms(B,k);init=0.0)
             end
+            intervals=rd.interval_coefficients[i]
             for t in 1:T
-                arrivals[i,t]=sum(fine_arrival[i,k]
-                    for k in rd.vertices[t]:(rd.vertices[t+1]-1);init=AffExpr(0.0))
+                arrivals[i,t]=AffExpr(sum(view(rd.history_arrival,i,
+                    rd.vertices[t]:(rd.vertices[t+1]-1))))+sum(
+                    0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
+                        fractions;coordinate=coordinates[i][j])
+                    for (j,fractions) in arrival_terms(intervals,t);init=0.0)
             end
             terminal[i]=AffExpr(rd.history_terminal[i])+sum(
                 0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
-                    [1-sum(view(B,:,j,l)) for l in 1:river_curve_count(r)];coordinate=coordinates[i][j])
+                    view(B.terminal,:,j);coordinate=coordinates[i][j])
                 for j in eachindex(rates[i]);init=0.0)
         end
         m.ext[:distributed_routing]=(;mesh=rd,rates)
     end
-    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections,starts)
+    volume_rows=Dict{Tuple{Int,Float64,Float64},RiverTransferRow}()
+    point_rows=Dict{Tuple{Int,Float64,Symbol},RiverTransferRow}()
+    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections,starts,
+        volume_rows,point_rows)
     constrain_river_stream_capacities!(m,c,routing)
     routing
 end
@@ -90,11 +97,13 @@ function routing_volume_expression(m,c,routing,i,a,b)
     end
     r=c.system.rivers[i]
     grid=routing.rd.cohort_grid[i]
-    B=transfer_coefficients(r,[a,b],grid)
+    row=get!(routing.volume_rows,(i,Float64(a),Float64(b))) do
+        volume_transfer_row(r,grid,a,b)
+    end
     history=only(route_volumes(r,[a,b],r.history_grid,r.history_release))
     history+sum(0.0036*(grid[k+1]-grid[k])*river_transfer_expression(m,r,routing.rates[i][k],
-        collect(view(B,1,k,1:river_curve_count(r)));coordinate=routing.coordinates[i][k])
-        for k in eachindex(routing.rates[i]) if any(!iszero,view(B,1,k,:));init=0.0)
+        view(row.fractions,:,j);coordinate=routing.coordinates[i][k])
+        for (j,k) in enumerate(row.cohorts);init=0.0)
 end
 
 function routing_point_expression(m,c,routing,i,time;side)
@@ -105,11 +114,13 @@ function routing_point_expression(m,c,routing,i,time;side)
     end
     r=c.system.rivers[i]
     grid=routing.rd.cohort_grid[i]
-    B=point_coefficients(r,grid,time;side)
+    row=get!(routing.point_rows,(i,Float64(time),side)) do
+        point_transfer_row(r,grid,time;side)
+    end
     history=cohort_point_arrival(r,r.history_grid,r.history_release,time;side)
     history+sum(river_transfer_expression(m,r,routing.rates[i][k],
-        collect(view(B,k,1:river_curve_count(r)));coordinate=routing.coordinates[i][k])
-        for k in eachindex(routing.rates[i]) if any(!iszero,view(B,k,:));init=0.0)
+        view(row.fractions,:,j);coordinate=routing.coordinates[i][k])
+        for (j,k) in enumerate(row.cohorts);init=0.0)
 end
 
 function routing_arrival_knots(c,routing,i)

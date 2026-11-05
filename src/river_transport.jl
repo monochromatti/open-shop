@@ -28,7 +28,8 @@ struct DistributedRouting
     vertices::Vector{Int}
     source_cohorts::BitVector
     cohort_grid::Vector{Vector{Float64}}
-    coefficients::Vector{Array{Float64,3}}
+    coefficients::Vector{RiverTransfer}
+    interval_coefficients::Vector{RiverTransfer}
     history_arrival::Matrix{Float64}
     history_initial::Vector{Float64}
     history_terminal::Vector{Float64}
@@ -48,7 +49,9 @@ function DistributedRouting(c;grid=river_routing_grid(c))
     control=[searchsortedlast(c.grid,(grid[k]+grid[k+1])/2) for k in 1:(length(grid)-1)]
     vertices=[searchsortedfirst(grid,t) for t in c.grid]
     cohorts=[source[d] ? copy(c.grid) : copy(grid) for d in eachindex(source)]
-    B=[transfer_coefficients(r,grid,cohorts[d]) for (d,r) in enumerate(c.system.rivers)]
+    B=[RiverTransfer(r,grid,cohorts[d]) for (d,r) in enumerate(c.system.rivers)]
+    intervals=grid==c.grid ? B :
+        [RiverTransfer(r,c.grid,cohorts[d]) for (d,r) in enumerate(c.system.rivers)]
     history=zeros(length(source),length(grid)-1)
     initial=zeros(length(source));terminal=similar(initial)
     for (d,r) in enumerate(c.system.rivers)
@@ -56,14 +59,15 @@ function DistributedRouting(c;grid=river_routing_grid(c))
         initial[d]=remaining_volume(r,first(grid),r.history_grid,r.history_release)
         terminal[d]=remaining_volume(r,last(grid),r.history_grid,r.history_release)
     end
-    DistributedRouting(copy(grid),control,vertices,source,cohorts,B,history,initial,terminal)
+    DistributedRouting(copy(grid),control,vertices,source,cohorts,B,intervals,history,initial,terminal)
 end
 
 """Known arrivals and current-cohort transfer rows for one hydraulic step."""
 struct DistributedRoutingStep
     known_arrival::Matrix{Float64}
-    source_transfer::Vector{Matrix{Float64}}
-    relay_transfer::Vector{Array{Float64,3}}
+    transfer::Vector{RiverTransfer}
+    block::UnitRange{Int}
+    interval::Int
     duration::Vector{Float64}
     source_cohorts::BitVector
 end
@@ -71,11 +75,8 @@ end
 function DistributedRoutingStep(mesh::DistributedRouting,s,t,known)
     block=mesh.vertices[t]:(mesh.vertices[t+1]-1)
     source=mesh.source_cohorts
-    source_transfer=[source[d] ? mesh.coefficients[d][block,t,:] :
-        zeros(length(block),river_curve_count(s.rivers[d])) for d in eachindex(source)]
-    relay_transfer=[source[d] ? zeros(length(block),length(block),river_curve_count(s.rivers[d])) :
-        mesh.coefficients[d][block,block,:] for d in eachindex(source)]
-    DistributedRoutingStep(copy(known[:,block]),source_transfer,relay_transfer,diff(mesh.grid)[block],source)
+    DistributedRoutingStep(copy(known[:,block]),mesh.coefficients,block,t,
+        diff(view(mesh.grid,first(block):(last(block)+1))),source)
 end
 
 # Trial-point continuation agrees with the existing release-time reference law.
