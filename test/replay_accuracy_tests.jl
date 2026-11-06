@@ -64,3 +64,48 @@ end
         @test replay_audit(case,x;storage_relative_convergence=Inf)["valid"]
     end
 end
+
+@testset "Transport refinement solves a prescribed inflow on the original control grid" begin
+    reservoirs=[Reservoir(name=:Source,z0=100.0,slope=0.01,v0=1.0,
+        vmin=0.0,vmax=2.0,water_value=0.0),
+        Reservoir(name=:Pond,z0=50.0,slope=0.1,v0=0.00005,
+            vmin=0.0,vmax=0.0001,water_value=0.0)]
+    curve=[RiverRouting.DelayCurve(0.0,[0.0,1.0],[1.0])]
+    rivers=[River(name=:Tributary,source=:Source,target=:Main,law=:controlled,
+        capacity=0.02,gate_min=1.0,water_value=0.0,curves=curve,
+        history_grid=[-2.0,0.0],history_release=[0.0]),
+        River(name=:Main,source=:auto,target=:Pond,law=:junction,
+            capacity=0.02,water_value=0.0,curves=curve,
+            history_grid=[-2.0,0.0],history_release=[0.0])]
+    c=ScheduleCase(name="prescribed delayed inflow",system=HydroSystem(;reservoirs,rivers),
+        grid=[0.0,1.0],prices=[0.0])
+    result=solve_verified(c;u=zeros(Int,0,1),time_limit=15.0,max_refinements=1,
+        feasibility_only=true)
+    @test result["accepted"]
+    if result["accepted"]
+        actual,x=result["case"],result["solution"]
+        @test x.grid==c.grid
+        @test isempty(c.routing_grid)
+        @test validate(actual,x)["valid"]
+        @test replay_audit(actual,x)["valid"]
+        @test x.arrival_volume[2,1]≈12e-6 atol=0.15e-6
+        # Preparation's finite problem must survive a budget-exhausted public
+        # solve and serialization, rather than reverting to the original mesh.
+        elapsed=Ref(0.0)
+        prepare=(case;kwargs...)->begin
+            elapsed[]=31.0
+            Dict("accepted"=>true,"solution"=>x,"problem"=>actual)
+        end
+        solved=OpenSHOP._solve(c,()->elapsed[],prepare;time_limit=30.0,
+            preparation_time_limit=10.0)
+        @test solved.accepted
+        @test validate(solved.problem,solved.solution)["valid"]
+        restored=SolveResult(OpenSHOP.jsonready(solved))
+        @test validate(restored.problem,restored.solution)["valid"]
+        native=OpenSHOP._solve(c,time,prepare;
+            time_limit=30.0,preparation_time_limit=10.0)
+        @test native.accepted
+        @test validate(native.problem,native.solution)["valid"]
+        @test native.global_certificate
+    end
+end

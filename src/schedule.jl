@@ -109,6 +109,7 @@ function schedule_case(
     end
     Dict(
         "accepted"=>best!==nothing,
+        "problem"=>best===nothing ? c : best.case,
         "case"=>case_dict(best===nothing ? c : best.case),
         "solution"=>best===nothing ? nothing : best.solution,
         "audit"=>best===nothing ? nothing : _replay_report(best.audit),
@@ -135,7 +136,8 @@ function _dispatch_candidate(c,u,opening,river_on,best,reference,attempts,seen;
     for feasibility in (best===nothing ? (true,false) : (false,))
         time()<deadline || break
         try
-            v=_verified_dispatch(c;u,tunnel_opening=opening,river_on,max_refinements,
+            problem=best===nothing ? c : best.case
+            v=_verified_dispatch(problem;u,tunnel_opening=opening,river_on,max_refinements,
                 time_limit=nlp_time_limit,
                 feasibility_only=feasibility,warm=reference,operational_margin,deadline,refine_grid)
             push!(attempts,Dict(

@@ -160,6 +160,8 @@ Optimization status, a physical `solution` (or `nothing`), and optional global
 bounds. `accepted` describes the checks performed by the called solver;
 `global_certificate` additionally requires an enclosing global bound.
 Detailed solver work counters and validation reports are in `diagnostics`.
+`problem` records the case actually solved, including its numerical transport
+mesh. Use `validate(result.problem, result.solution)` to reproduce its checks.
 """
 struct SolveResult{S}
     status::String
@@ -171,11 +173,12 @@ struct SolveResult{S}
     relative_gap::Union{Nothing,Float64}
     absolute_gap::Union{Nothing,Float64}
     total_seconds::Float64
+    problem::Union{Nothing,ScheduleCase}
     diagnostics::Dict{String,Any}
 end
 
 const _SOLVE_KEYS = ("status", "accepted", "global_certificate", "solution",
-    "feasible_lower_bound", "global_bound", "relative_gap", "absolute_gap", "total_seconds")
+    "feasible_lower_bound", "global_bound", "relative_gap", "absolute_gap", "total_seconds", "problem")
 function SolveResult(report::AbstractDict; solution=get(report,"solution",nothing))
     schedule = solution === nothing ? nothing : _schedule_input(solution)
     diagnostics = Dict{String,Any}(string(k)=>v for (k,v) in report
@@ -186,10 +189,12 @@ function SolveResult(report::AbstractDict; solution=get(report,"solution",nothin
        get(get(schedule.diagnostics,"validation",Dict()),"valid",false)
         lower=schedule.objective
     end
+    problem=get(report,"problem",nothing)
+    problem isa AbstractDict && (problem=case_from_dict(problem))
     SolveResult(string(report["status"]), get(report,"accepted",false),
         get(report,"global_certificate",false), schedule, lower, get(report,"global_bound",nothing),
         get(report,"relative_gap",nothing), get(report,"absolute_gap",nothing),
-        get(report,"total_seconds",0.0), diagnostics)
+        get(report,"total_seconds",0.0), problem, diagnostics)
 end
 
 function Base.getproperty(x::SolveResult, field::Symbol)

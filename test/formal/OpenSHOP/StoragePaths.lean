@@ -2,6 +2,7 @@ import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Ring
+import Mathlib.Tactic.FieldSimp
 
 /- A prescribed arrival rate 12 + 24t m³/s, where t is hours in [0,1].
    Its cumulative arrival volume is 43200(t+t²) m³.
@@ -9,6 +10,33 @@ import Mathlib.Tactic.Ring
    These statements concern this explicit mass-balance trajectory, not the
    complete OpenSHOP model, a solver, or any benchmark's infeasibility. -/
 namespace OpenSHOP.StoragePaths
+
+/-- Integrating an affine net rate gives a quadratic storage path. The step
+includes the conversion from flow units to volume units. -/
+noncomputable def affine_volume (initial step rate slope t : ℝ) : ℝ :=
+  initial + step * (rate * t + slope * t ^ 2 / 2)
+
+theorem stationary_net_rate (rate slope : ℝ) (hs : slope ≠ 0) :
+    rate + slope * (-rate / slope) = 0 := by
+  field_simp
+  ring
+
+theorem stationary_volume_difference (initial step rate slope t : ℝ)
+    (hs : slope ≠ 0) :
+    affine_volume initial step rate slope t -
+      affine_volume initial step rate slope (-rate / slope) =
+      step * slope / 2 * (t + rate / slope) ^ 2 := by
+  unfold affine_volume
+  field_simp
+  ring
+
+theorem stationary_volume_minimum (initial step rate slope t : ℝ)
+    (ht : 0 ≤ step) (hs : 0 < slope) :
+    affine_volume initial step rate slope (-rate / slope) ≤
+      affine_volume initial step rate slope t := by
+  apply sub_nonneg.mp
+  rw [stationary_volume_difference initial step rate slope t (ne_of_gt hs)]
+  exact mul_nonneg (div_nonneg (mul_nonneg ht (le_of_lt hs)) (by norm_num)) (sq_nonneg _)
 
 def volume (q t : ℝ) : ℝ :=
   2000 + 43200 * (t + t ^ 2) - 3600 * q * t

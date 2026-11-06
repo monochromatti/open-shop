@@ -93,6 +93,9 @@ function run(request,directory)
     checkpoint()=FuzzWorker.checkpoint(joinpath(directory,"partial.json"),report)
     progress(phase)=FuzzWorker.checkpoint(joinpath(directory,"progress.json"),Dict("phase"=>phase))
     function measure(c,label,budget;initial=nothing,warm=nothing,global_search=false,generous=false)
+        if initial!==nothing
+            c,initial=initial.problem,initial.solution
+        end
         progress(label)
         println("BEGIN $label budget=$budget intervals=$(length(c.prices))");flush(stdout)
         row=Dict{String,Any}("label"=>label,"budget"=>budget,"accepted"=>false,
@@ -134,14 +137,15 @@ function run(request,directory)
             if result["accepted"]
                 candidate=result["solution"]
                 row["objective"]=candidate.objective
-                checking=@timed FuzzWorker.check_schedule!(report,c,candidate,label,4)
+                actual=result["problem"]
+                checking=@timed FuzzWorker.check_schedule!(report,actual,candidate,label,4)
                 checks=checking.value
                 row["campaign_check_seconds"]=checking.time
                 row["checks"]=checks
                 row["qualified"]=checks["audit"]["valid"] && checks["replay"]["valid"] &&
                     checks["water_error_Mm3"]<=1e-6 &&
                     !any(f->f["stage"]==label && f["severity"]=="error",report["findings"])
-                row["qualified"] && (x=candidate)
+                row["qualified"] && (x=(;problem=actual,solution=candidate,objective=candidate.objective))
             end
         catch error
             row["exception"]=sprint(showerror,error,catch_backtrace())
@@ -192,7 +196,7 @@ function run(request,directory)
         report["features"]=FuzzWorker.topology_features(c)
         checkpoint()
         rows=Any[]
-        best=witness
+        best=witness===nothing ? nothing : (;problem=c,solution=witness,objective=witness.objective)
         # Reverse the budget order on alternate repetitions to expose order and
         # residual compilation effects. No result is passed to another cold run.
         for repetition in 1:repetitions, budget in (isodd(repetition) ? budgets : reverse(budgets))
@@ -212,23 +216,28 @@ function run(request,directory)
             best=bestof(best,x)
         end
         report["comparisons"]=compare(rows,best)
-        best!==nothing && writejson(joinpath(directory,"reference.json"),best)
+        if best!==nothing
+            writejson(joinpath(directory,"reference.json"),best.solution)
+            writejson(joinpath(directory,"reference-case.json"),case_dict(best.problem))
+        end
         report["reference_objective"]=best===nothing ? nothing : best.objective
         for (revision,event) in enumerate(get(request,"recovery",String[]))
             if best===nothing || length(c.prices)<4
                 push!(report["recovery"],Dict("event"=>event,"status"=>"no executable source schedule"))
                 break
             end
+            c=best.problem
+            schedule=best.solution
             edge=clamp(searchsortedfirst(c.grid,first(c.grid)+get(request,"advance",6.)),2,length(c.grid)-2)
-            tail=restart_case(c,best,c.grid[edge])
-            continued=dispatch_from_controls(tail,best.commitment[:,edge:end],best.generator_q[:,edge:end],
-                best.gate[:,edge:end];tunnel_opening=best.tunnel_opening[:,edge:end],head_reference=best.head[:,edge:end])
+            tail=restart_case(c,schedule,c.grid[edge])
+            continued=dispatch_from_controls(tail,schedule.commitment[:,edge:end],schedule.generator_q[:,edge:end],
+                schedule.gate[:,edge:end];tunnel_opening=schedule.tunnel_opening[:,edge:end],head_reference=schedule.head[:,edge:end])
             validate(tail,continued)["valid"] &&
-                maximum(abs,continued.storage-best.storage[:,edge:end];init=0.)<=1e-6 ||
+                maximum(abs,continued.storage-schedule.storage[:,edge:end];init=0.)<=1e-6 ||
                 error("unchanged continuation differs from executed schedule")
             next=revise(tail,event)
             writejson(joinpath(directory,"recovery-$revision-input.json"),case_dict(next))
-            guess=shifted_start(best,next.grid)
+            guess=shifted_start(schedule,next.grid)
             budget=maximum(budgets)
             paired=Any[]
             revised_best=nothing

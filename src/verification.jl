@@ -18,6 +18,9 @@ function replay_case(c, grid)
     _river_replace(fine; routing_grid)
 end
 
+storage_convergence_limits(c,absolute,relative) = [min(absolute,isinf(relative) ? Inf :
+    1e-9+relative*(r.vmax-r.vmin)) for r in c.system.reservoirs]
+
 """
     replay_audit(case, schedule; grid=refined_grid(case.grid),
                  storage_convergence=2e-3, storage_relative_convergence=1e-3,
@@ -144,8 +147,7 @@ function _replay(
         edges=[searchsortedfirst(grid, t) for t in c.grid]
         storage_errors=[maximum(abs, z.storage[i, edges]-x.storage[i, :]; init=0.0)
             for i in eachindex(c.system.reservoirs)]
-        storage_limits=[min(storage_convergence, isinf(storage_relative_convergence) ? Inf :
-            1e-9 + storage_relative_convergence*(r.vmax-r.vmin)) for r in c.system.reservoirs]
+        storage_limits=storage_convergence_limits(c,storage_convergence,storage_relative_convergence)
         level_errors=[maximum(abs(head(r,z.storage[i,edges[t]])-head(r,x.storage[i,t]))
             for t in eachindex(c.grid); init=0.0) for (i,r) in enumerate(c.system.reservoirs)]
         storage_error=maximum(storage_errors; init=0.0)
@@ -195,11 +197,13 @@ end
 
 """Solve a fixed commitment and check an independently integrated finer trajectory.
 
-After a failed replay, add the finer hydraulic equations to the nonlinear model,
+After a failed replay, refine distributed transport entry cohorts for the current
+controls. If transport already meets its volume tolerance, add finer hydraulic equations,
 sharing the original unit discharges, outlet openings and reserve allocations.
 Fixed-speed pump discharges remain hydraulic states. Operating schedules and ramps
 retain their original windows. No measured residual becomes a blanket margin.
-The returned case, schedule and objective retain the requested grid.
+The returned case records the transport mesh. The schedule and objective retain
+the requested control grid. The latest physical trajectory starts the next solve.
 `refine_grid` is retained for source compatibility; both values now retain controls.
 `operational_margin` is an explicit optional power inset, never an automatic retry rule.
 """
@@ -208,6 +212,7 @@ solve_verified(c::ScheduleCase; kwargs...) = _verified_report(_verified_dispatch
 function _verified_report(result)
     Dict{String,Any}(
         "accepted"=>result.accepted,
+        "problem"=>result.case,
         "case"=>result.case,
         "solution"=>result.solution,
         "audit"=>_replay_report(result.audit),
@@ -246,6 +251,9 @@ function _verified_dispatch(
     max_refinements isa Integer && max_refinements>=0 ||
         throw(ArgumentError("nonnegative integer refinement budget required"))
     refine_grid isa Bool || throw(ArgumentError("refine_grid must be boolean"))
+    all(x->x isa Real && !isnan(x) && x>=0,
+        (storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)) ||
+        throw(ArgumentError("nonnegative replay tolerances required"))
     initial!==nothing &&
         (!haskey(initial, "u") || initial["u"]!=u) &&
         throw(
@@ -273,6 +281,8 @@ function _verified_dispatch(
     began=time()
     attempts=Any[]
     integration_grid=nothing
+    solution_case=c
+    storage_limits=storage_convergence_limits(c,storage_convergence,storage_relative_convergence)
     x=initial
     audit=(valid=false,errors=["dispatch deadline exhausted"],shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
     for iteration in 0:max_refinements
@@ -293,6 +303,7 @@ function _verified_dispatch(
             river_on,
         )
         dispatch=x
+        solution_case=c
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
         audit=x!==nothing && haskey(x,"objective") ?
               _replay(c, x; grid = integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) : integration_grid,
@@ -306,6 +317,7 @@ function _verified_dispatch(
                 "iteration"=>iteration,
                 "intervals"=>length(c.prices),
                 "integration_intervals"=>integration_grid===nothing ? length(c.prices) : length(integration_grid)-1,
+                "transport_intervals"=>length(river_routing_grid(c))-1,
                 "operational_margin_MW"=>operational_margin,
                 "status"=>dispatch["status"],
                 "objective"=>(x===nothing ? nothing : x["objective"]),
@@ -325,12 +337,24 @@ function _verified_dispatch(
         x!==nothing && physical && (x=_schedule_input(x;case=c))
         audit.valid && break
         iteration==max_refinements && break
-        physical || break # A failed local solve is not an infeasibility proof.
-        # Constrain the mesh that exposed the error. A subsequent failure may
-        # justify a finer state mesh, but never new controls or guessed buffers.
-        integration_grid=integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) :
-            refined_grid(integration_grid;factor=replay_factor)
-        warm===nothing && (warm=x)
+        x===nothing && break
+        time()<deadline || break
+        try
+            start,_=_reconstruct_candidate(c,x)
+            grid=refine_transport_grid(c,start,storage_limits,storage_convergence;deadline)
+            if grid!=river_routing_grid(c)
+                next=_river_replace(c;routing_grid=grid)
+                warm,_=_reconstruct_candidate(next,start)
+                c=next
+            else
+                integration_grid=integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) :
+                    refined_grid(integration_grid;factor=replay_factor)
+                warm=start
+            end
+        catch error
+            error isa Union{ArgumentError,DomainError} || rethrow()
+            break
+        end
     end
-    (;accepted=audit.valid,case=c,solution=x,audit,attempts,total_seconds=time()-began)
+    (;accepted=audit.valid,case=solution_case,solution=x,audit,attempts,total_seconds=time()-began)
 end

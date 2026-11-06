@@ -100,14 +100,90 @@ function routed_schedule(c,release;transport=nothing,injections=nothing,generato
             transit=routed["transit"],cohorts=routed["release_cohorts"],injections)
     end
     grid=river_routing_grid(c)
-    routed=route_network(c,release;grid,injections,generator_q,tunnel_q)
+    routed=_route_network(c,release;grid,injections,generator_q,tunnel_q)
     edges=[searchsortedfirst(grid,t) for t in c.grid]
-    R,A=routed["release"],routed["arrival_volume"]
+    R,A=routed.release,routed.arrival_volume
     mean_release=[sum(R[d,k]*(grid[k+1]-grid[k]) for k in edges[t]:(edges[t+1]-1))/
         (c.grid[t+1]-c.grid[t]) for d in axes(R,1),t in eachindex(c.prices)]
     arrivals=[sum(view(A,d,edges[t]:(edges[t+1]-1))) for d in axes(A,1),t in eachindex(c.prices)]
-    (;release=mean_release,arrival_volume=arrivals,transit=routed["transit"][:,edges],
-        cohorts=routed["release_cohorts"],injections)
+    (;release=mean_release,arrival_volume=arrivals,transit=routed.transit[:,edges],
+        routed.cohorts,injections)
+end
+
+function reference_flux!(values,r,q)
+    fill!(values,0.0)
+    if r.deterministic_delay!==nothing
+        values[1]=q
+    else
+        for (l,w) in RiverRouting.blend(r.curves,q)
+            values[l]=q*w
+        end
+    end
+    values
+end
+
+"""Refine transport cohorts for prescribed controls before the next NLP.
+
+Compare cumulative arrivals on nested meshes in receiving-reservoir volume
+units. Mark entry cells by variation of q*theta(q), the reference flux that is
+projected onto constant cohorts. Bulk marking splits cells covering half of
+that variation. Control times and all original transport vertices are retained.
+This is a numerical error estimate; independent coupled replay remains required.
+"""
+
+function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refinements=16)
+    grid=river_routing_grid(c)
+    all(r->r.deterministic_delay!==nothing,c.system.rivers) && return grid
+    s=c.system
+    sources=river_cohort_sources(s)
+    injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
+    incidence=[Float64(reach.target==r.name) for r in s.reservoirs,reach in s.rivers]
+    current=_route_network(c,injections;grid,injections)
+    for iteration in 1:max_refinements
+        time()<deadline || break
+        probe=sort!(unique!(refined_grid(grid)))
+        fine=_route_network(c,injections;grid=probe,injections)
+        coarse=zeros(size(fine.arrival_volume))
+        for (d,r) in enumerate(s.rivers)
+            cohort=current.cohorts[d]
+            coarse[d,:].=route_volumes(r,probe,cohort.grid,cohort.release)+
+                route_volumes(r,probe,r.history_grid,r.history_release)
+        end
+        cumulative=cumsum(fine.arrival_volume-coarse;dims=2)
+        errors=vec(maximum(abs.(incidence*cumulative);dims=2))
+        all(errors .<=storage_limits) &&
+            maximum(abs,cumulative;init=0.0)<=absolute/10 &&
+            maximum(abs,current.transit[:,end]-fine.transit[:,end];init=0.0)<=absolute && break
+        edges=[searchsortedfirst(probe,t) for t in grid]
+        duration=diff(probe)
+        indicator=zeros(length(grid)-1)
+        for (d,r) in enumerate(s.rivers)
+            sources[d] && continue
+            J=river_curve_count(r)
+            mean_flux=zeros(J);flux=similar(mean_flux)
+            for k in eachindex(indicator)
+                block=edges[k]:(edges[k+1]-1)
+                rates=view(fine.release,d,block)
+                mean=sum(fine.release[d,j]*duration[j] for j in block)/(grid[k+1]-grid[k])
+                mean=clamp(mean,minimum(rates),maximum(rates))
+                reference_flux!(mean_flux,r,mean)
+                for j in block
+                    reference_flux!(flux,r,fine.release[d,j])
+                    indicator[k]+=0.0036duration[j]*sum(abs.(flux-mean_flux))
+                end
+            end
+        end
+        total=sum(indicator)
+        total>0 || break
+        marked=Int[];covered=0.0
+        for k in sortperm(indicator;rev=true)
+            push!(marked,k);covered+=indicator[k]
+            covered>=total/2 && break
+        end
+        grid=sort!(unique!(vcat(grid,[(grid[k]+grid[k+1])/2 for k in marked])))
+        current=_route_network(c,injections;grid,injections)
+    end
+    grid
 end
 
 """Arrival and capacity shortfalls in m³/s, indexed by reach.

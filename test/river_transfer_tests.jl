@@ -1,5 +1,21 @@
 using Random
 
+@testset "Batched arrival observations retain scalar rates and jump ownership" begin
+    grid=[1.5,1.75,2.0]
+    flows=[4.0,7.0]
+    times=sort!(unique!(vcat([0.0,1.5,2.05,2.3,10.0],grid .+0.3)))
+    for delay in (nothing,0.0,0.3),side in (:left,:right)
+        river=River(name=:Reach,source=:Lake,target=:Sea,capacity=10.0,water_value=0.0,
+            deterministic_delay=delay,curves=delay===nothing ?
+                [RiverRouting.DelayCurve(0.0,[0.0,0.2,0.7],[0.4,0.6]),
+                 RiverRouting.DelayCurve(10.0,[0.1,0.3,0.5],[0.7,0.3])] : RiverRouting.DelayCurve[])
+        rates=OpenSHOP.cohort_arrival_rates(river,grid,flows,times;side)
+        expected=[OpenSHOP.cohort_point_arrival(river,grid,flows,t;side) for t in times]
+        @test rates≈expected atol=1e-12
+        @test isempty(OpenSHOP.cohort_arrival_rates(river,grid,flows,Float64[];side))
+    end
+end
+
 @testset "Cohort operators reproduce routed volumes and physical transit" begin
     rng=MersenneTwister(7183)
     for trial in 1:8

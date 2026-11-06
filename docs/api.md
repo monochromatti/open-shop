@@ -60,9 +60,15 @@ record; reservoir windows bound the complete recorded level range.
 
 Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
 `status`, `accepted`, `solution`, `global_certificate`, `global_bound`,
-`relative_gap`, `absolute_gap`, `feasible_lower_bound` and `total_seconds`;
+`relative_gap`, `absolute_gap`, `feasible_lower_bound`, `total_seconds` and `problem`;
 `objective` is derived from the returned schedule. `solution` may be `nothing`.
 Detailed work counters and validation reports are in `diagnostics`.
+`problem` is the case actually solved, including the refined numerical transport
+mesh. Check a returned schedule with `validate(result.problem, result.solution)`.
+The global bound and certificate refer to that finite problem. Serialization
+retains it alongside the schedule.
+`schedule_case` and `solve_verified` expose the same native case through
+`result["problem"]`. Use it for validation and restart after transport refinement.
 A time limit may leave an accepted schedule and an unfinished gap calculation.
 If preparation or initial reconstruction exhausts the allowance, `solve` skips
 global construction. It retains an independently checked incumbent when one is
@@ -119,6 +125,12 @@ transport directly. It does not repeat the same-grid hydraulic solve.
 `replay_audit` independently integrates on a finer mesh and retains the separate
 transport check. Neither accepts stored validation flags as evidence. Unexpected
 programming errors in replay or reconstruction are raised to the caller.
+Storage bounds, initial storage and reservoir balances use the smaller of
+`tolerance` Mm³ and `tolerance` times usable storage. For a 1,000 m³ reservoir,
+the default bound allowance is 0.1 m³. Storage paths are also checked between
+arrival knots: affine net rates give quadratic volumes, whose extrema can be
+evaluated without additional time steps. These checks concern the declared
+held-flow quadrature; finer coupled replay remains necessary.
 
 Replay compares storage and endpoint level at common grid vertices. By default,
 each storage difference must be below both 2,000 m³ and 0.1% of the reservoir's
@@ -131,7 +143,17 @@ tolerance disables that comparison. The returned per-reservoir storage and level
 differences follow reservoir order. Passing these comparisons estimates mesh
 convergence; it does not bound the error against a continuous-time solution.
 Distributed river mixing is refined even when the case supplies `routing_grid`.
-The nonlinear retry uses this same finer transport mesh.
+Before a nonlinear retry, local entry-cohort refinement controls the error in
+cumulative arrivals at receiving reservoirs. It splits cells with the largest
+variation in reference-weighted flow, retaining every original vertex. The
+next solve starts from the latest physical trajectory on the refined mesh.
+If transport already meets its volume tolerance, the retry adds finer hydraulic
+equations sharing the original controls. No additional control decisions are
+introduced. Revenue optimization retains the accepted transport mesh.
+
+Constant-objective feasibility solves can stop once Ipopt's unscaled constraint
+and bound violations meet its primal tolerance. Their native status is then
+`INTERRUPTED`; independent physical validation still determines acceptance.
 
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor

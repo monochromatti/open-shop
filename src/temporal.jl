@@ -94,6 +94,39 @@ function point_arrival(r::River, current_grid, q, time::Real; side::Symbol = :ri
     cohort_point_arrival(r, r.history_grid, r.history_release, time; side)
 end
 
+# Evaluate an ordered set of observations in one pass over release cohorts.
+# The finite delay support limits work; original cohort flows select mixtures.
+function cohort_arrival_rates(r,grid,q,times;side=:right)
+    _check_river_releases(r,grid,q)
+    all(isfinite,times) && issorted(times) ||
+        throw(ArgumentError("arrival observation times must be finite and ordered"))
+    side in (:left,:right) || throw(ArgumentError("side must be left or right"))
+    river_delay_support(r)
+    rates=zeros(length(times))
+    for j in eachindex(q)
+        if r.deterministic_delay!==nothing
+            a,b=grid[j]+r.deterministic_delay,grid[j+1]+r.deterministic_delay
+            lo=side==:right ? searchsortedfirst(times,a) : searchsortedlast(times,a)+1
+            hi=side==:right ? searchsortedfirst(times,b)-1 : searchsortedlast(times,b)
+            for k in lo:hi
+                rates[k]+=q[j]
+            end
+        else
+            for (l,w) in RiverRouting.blend(r.curves,q[j])
+                curve=r.curves[l]
+                lo=searchsortedfirst(times,grid[j]+first(curve.edges))
+                hi=searchsortedlast(times,grid[j+1]+last(curve.edges))
+                for k in lo:hi
+                    fraction=clamp(delay_cdf(curve,times[k]-grid[j])-
+                        delay_cdf(curve,times[k]-grid[j+1]),0.0,1.0)
+                    rates[k]+=q[j]*w*fraction
+                end
+            end
+        end
+    end
+    rates
+end
+
 """All breakpoints of the piecewise-linear instantaneous arrival rate.
 
 Original cohort edges and all delay-bin edges are retained. Thus evaluating

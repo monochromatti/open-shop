@@ -262,6 +262,13 @@ not an exact continuous-time convolution. Transit includes historical cohorts.
 """
 function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c.grid,
     generator_q=nothing, tunnel_q=nothing, injections=nothing)
+    z=_route_network(c,source_release;grid,generator_q,tunnel_q,injections)
+    Dict{String,Any}("grid"=>z.grid,"release"=>z.release,"arrival_volume"=>z.arrival_volume,
+        "transit"=>z.transit,"order"=>z.order,"release_cohorts"=>z.cohorts)
+end
+
+function _route_network(c::ScheduleCase,source_release::AbstractMatrix;grid=c.grid,
+    generator_q=nothing,tunnel_q=nothing,injections=nothing)
     size(source_release)==(length(c.system.rivers),length(c.prices)) ||
         throw(ArgumentError("source release matrix has incorrect dimensions"))
     source_release=injections===nothing ? river_injections(c,source_release,generator_q,tunnel_q) : injections
@@ -304,8 +311,7 @@ function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c
         transit[d, :]=remaining_volume(r,grid,cohort_grid,q)+
                       remaining_volume(r,grid,r.history_grid,r.history_release)
     end
-    Dict{String,Any}("grid"=>Float64.(grid),"release"=>release,"arrival_volume"=>arrival,
-        "transit"=>transit,"order"=>order,"release_cohorts"=>cohorts)
+    (;grid=Float64.(grid),release,arrival_volume=arrival,transit,order,cohorts)
 end
 
 # Fixed atoms and distributed bins share the same conservation interface.

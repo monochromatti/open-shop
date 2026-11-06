@@ -140,3 +140,64 @@ function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
     end
     nothing
 end
+
+"""Storage-bound excess along the held-flow quadrature, including interior extrema.
+
+Between arrival and operating-data knots the net rate is affine, so storage is
+quadratic. Check its endpoints and its stationary point without time stepping.
+Each control boundary restarts from the supplied storage; ordinary balance rows
+separately check agreement with the next supplied vertex. This checks the routed
+cohort representation, not an exact continuous river-network solution.
+"""
+function storage_path_residuals(c,x,routed)
+    s=c.system
+    topology=HydraulicTopology(s)
+    excess=zeros(length(s.reservoirs))
+    for (i,r) in enumerate(s.reservoirs)
+        incoming=[d for (d,enters,_) in topology.river_incidence[i] if enters]
+        outgoing=[d for (d,_,leaves) in topology.river_incidence[i] if leaves]
+        objects=Set([r.name;[s.rivers[d].name for d in outgoing]])
+        changes=[t for z in c.operations if z.object in objects for t in z.times
+            if first(c.grid)<t<last(c.grid)]
+        knots=sort!(unique!(vcat(c.grid,changes,
+            [arrival_knots(s.rivers[d],routed.cohorts[d].grid) for d in incoming]...)))
+        left=zeros(length(knots));right=similar(left);fill!(right,0.0)
+        for d in incoming
+            river,cohort=s.rivers[d],routed.cohorts[d]
+            for (side,rates) in ((:left,left),(:right,right))
+                rates .+= cohort_arrival_rates(river,cohort.grid,cohort.release,knots;side)
+                rates .+= cohort_arrival_rates(river,river.history_grid,river.history_release,knots;side)
+            end
+        end
+        volume=x.storage[i,1]
+        violation(v,t)=begin
+            lower,upper=storage_bounds(c,r,t)
+            max(lower-v,v-upper,0.0)
+        end
+        for k in 1:length(knots)-1
+            a,b=knots[k],knots[k+1]
+            t=searchsortedlast(c.grid,a)
+            a==c.grid[t] && (volume=x.storage[i,t])
+            net=sum(sign*x.tunnel_q[j,t] for (j,sign) in topology.tunnel_incidence[i];init=0.0)
+            net+=sum(sign*x.generator_q[j,t] for (j,sign) in topology.generator_incidence[i];init=0.0)
+            net-=sum(x.river_release[d,t] for d in outgoing;init=0.0)
+            net+=opvalue(c,r.name,:inflow,a,r.inflow)
+            net+=sum(opvalue(c,s.rivers[d].name,:inflow,a,s.rivers[d].inflow)
+                for d in outgoing;init=0.0)
+            before,after=net+right[k],net+left[k+1]
+            duration=b-a
+            finish=volume+0.0036duration*(before+after)/2
+            excess[i]=max(excess[i],violation(volume,a),violation(finish,b))
+            change=after-before
+            if change!=0
+                fraction=-before/change
+                if 0<fraction<1
+                    stationary=volume+0.0036duration*fraction*(before+fraction*change/2)
+                    excess[i]=max(excess[i],violation(stationary,a+duration*fraction))
+                end
+            end
+            volume=finish
+        end
+    end
+    excess
+end
