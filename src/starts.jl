@@ -8,6 +8,10 @@ function lift_routing!(m,c,physical,put)
         variable=routing.rates[i][k]
         variable isa VariableRef && put(variable,routed.cohorts[i].release[k])
     end
+    for (i,data) in enumerate(routing.primitives)
+        data===nothing && continue
+        start_reference_integrals!(data,c.system.rivers[i],routed.cohorts[i].release,put)
+    end
 end
 
 # Distance to the allowed adjacent support; tiny nonadjacent weights remain

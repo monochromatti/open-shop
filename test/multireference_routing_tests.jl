@@ -8,6 +8,24 @@ function multireference_curves()
     )]
 end
 
+@testset "Distributed river integrals retain a complete native global start" begin
+    base=graph_case(;grid=[0.0,0.3,1.0],history=true)
+    curves=[RiverRouting.DelayCurve(q,[0.1,0.5,1.5],w) for (q,w) in
+        ((0.0,[0.2,0.8]),(10.0,[0.5,0.5]),(30.0,[0.8,0.2]))]
+    rivers=[OpenSHOP._river_replace(r;law=i<3 ? :controlled : :junction,curves)
+        for (i,r) in enumerate(base.system.rivers)]
+    c=replace_graph(base;rivers)
+    u=zeros(Int,0,2)
+    warm=dispatch_from_controls(c,u,zeros(0,2),[0.1 0.2;0.2 0.1;0.0 0.0])
+    @test validate(c,warm)["valid"]
+    model=OpenSHOP._build_global_dispatch(c;u)
+    @test OpenSHOP._lift_start!(model,c,warm)["valid"]
+    result=OpenSHOP.solve(c;initial=warm,time_limit=60.0,preparation_time_limit=0.0)
+    @test result.accepted
+    @test result.global_certificate
+    @test validate(result.problem,result.solution)["valid"]
+end
+
 # Independent neighboring-reference interpolation, including knot values.
 function multireference_expected(curves,values,q)
     length(curves)==1 && return q*only(values)

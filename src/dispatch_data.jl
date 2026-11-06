@@ -26,6 +26,7 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
     terminal=Vector{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,D)
     rates=Vector{Vector{Any}}(undef,D)
     coordinates=Vector{Vector{Any}}(undef,D)
+    primitives=Vector{Union{Nothing,ReferenceIntegrals}}(nothing,D)
     starts=Pair{VariableRef,Union{AffExpr,QuadExpr,NonlinearExpr}}[]
     if exact
         for i in 1:D,t in 1:T
@@ -58,32 +59,46 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
                 end
             end
             coordinates[i]=Any[coordinate(r,q,i,k) for (k,q) in enumerate(rates[i])]
+            # Fixed mixtures are linear coefficient maps. Variable mixtures
+            # use anchored integrals to keep fine observation rows short.
+            if !rd.source_cohorts[i] && r.deterministic_delay===nothing
+                varying=any(curve->curve.edges!=first(r.curves).edges ||
+                    curve.weights!=first(r.curves).weights,r.curves)
+                fixed=all(z->z!==nothing && all(w->w isa Real,z.weights),coordinates[i])
+                if varying && !fixed
+                    primitives[i]=reference_integrals!(m,c,r,rates[i],coordinates[i],rd.cohort_grid[i],starts)
+                end
+            end
+            primitive=primitives[i]
             cohort_dt=diff(rd.cohort_grid[i])
             B=rd.coefficients[i]
             for k in 1:K
-                fine_arrival[i,k]=AffExpr(rd.history_arrival[i,k])+sum(
+                fine_arrival[i,k]=AffExpr(rd.history_arrival[i,k])+(primitive!==nothing ?
+                    reference_arrival_volume(primitive,r,rd.grid[k],rd.grid[k+1]) : sum(
                     0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
-                    for (j,fractions) in arrival_terms(B,k);init=0.0)
+                    for (j,fractions) in arrival_terms(B,k);init=0.0))
             end
             intervals=rd.interval_coefficients[i]
             for t in 1:T
                 arrivals[i,t]=AffExpr(sum(view(rd.history_arrival,i,
-                    rd.vertices[t]:(rd.vertices[t+1]-1))))+sum(
+                    rd.vertices[t]:(rd.vertices[t+1]-1))))+(primitive!==nothing ?
+                    reference_arrival_volume(primitive,r,c.grid[t],c.grid[t+1]) : sum(
                     0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
-                    for (j,fractions) in arrival_terms(intervals,t);init=0.0)
+                    for (j,fractions) in arrival_terms(intervals,t);init=0.0))
             end
-            terminal[i]=AffExpr(rd.history_terminal[i])+sum(
+            terminal[i]=AffExpr(rd.history_terminal[i])+(primitive!==nothing ?
+                reference_transit(primitive,r,last(c.grid)) : sum(
                 0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
                     view(B.terminal,:,j);coordinate=coordinates[i][j])
-                for j in eachindex(rates[i]);init=0.0)
+                for j in eachindex(rates[i]);init=0.0))
         end
-        m.ext[:distributed_routing]=(;mesh=rd,rates)
+        m.ext[:distributed_routing]=(;mesh=rd,rates,primitives)
     end
     volume_rows=Dict{Tuple{Int,Float64,Float64},RiverTransferRow}()
     point_rows=Dict{Tuple{Int,Float64,Symbol},RiverTransferRow}()
-    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,injections,starts,
+    routing=(;exact,nd,rd,arrivals,terminal,rates,coordinates,primitives,injections,starts,
         volume_rows,point_rows)
     constrain_river_stream_capacities!(m,c,routing)
     routing
@@ -96,6 +111,11 @@ function routing_volume_expression(m,c,routing,i,a,b)
             for (d,k,v) in expression.terms;init=0.0)
     end
     r=c.system.rivers[i]
+    primitive=routing.primitives[i]
+    if primitive!==nothing
+        history=only(route_volumes(r,[a,b],r.history_grid,r.history_release))
+        return history+reference_arrival_volume(primitive,r,a,b)
+    end
     grid=routing.rd.cohort_grid[i]
     row=get!(routing.volume_rows,(i,Float64(a),Float64(b))) do
         volume_transfer_row(r,grid,a,b)
@@ -113,6 +133,11 @@ function routing_point_expression(m,c,routing,i,time;side)
             for (d,k,v) in expression.terms;init=0.0)
     end
     r=c.system.rivers[i]
+    primitive=routing.primitives[i]
+    if primitive!==nothing
+        history=cohort_point_arrival(r,r.history_grid,r.history_release,time;side)
+        return history+reference_arrival_rate(primitive,r,time)
+    end
     grid=routing.rd.cohort_grid[i]
     row=get!(routing.point_rows,(i,Float64(time),side)) do
         point_transfer_row(r,grid,time;side)

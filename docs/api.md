@@ -185,6 +185,13 @@ bounds and time-discretization checks remain separate.
 containing every control boundary. Distributed confluences otherwise use four
 transport cells per control interval. This mesh adds no controls or reservoir
 states; schedule arrays and operating windows retain `case.grid`.
+For flow-dependent relay waves, the nonlinear and global models evaluate
+transport through volume and first-time-moment integrals anchored at each
+control boundary. These auxiliary variables reproduce the declared constant
+cohorts exactly. Global search uses finite bounds obtained by integrating the
+maximum admissible reference flow. Source cohorts and fixed linear mixtures
+retain direct transfer coefficients. This changes algebraic assembly, not the
+river law or its transport resolution.
 `transport_audit` separately checks timing convergence and operating arrival
 and capacity limits on the independently routed waves, including peaks between
 control boundaries. See [river networks](river-networks.md).

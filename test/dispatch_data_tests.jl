@@ -29,6 +29,9 @@
                 set_start_value.(q[i,:],expected.release[i,:])
             end
         end
+        for (variable,expression) in routing.starts
+            set_start_value(variable,value(start_value,expression))
+        end
         evaluate(x)=value(start_value,x)
         arrivals=evaluate.(routing.arrivals)
         terminal=evaluate.(routing.terminal)
