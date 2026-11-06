@@ -245,9 +245,9 @@ function distributed_river_rates!(work,data)
         if routing.source_cohorts[d]
             work.release[d]=data.sources.reservoirs[d] ? work.release[d] : work.injection[d]
             release[d,:].=work.release[d]
-            for k in 1:cells
-                arrival[d,k]+=0.0036*data.duration*released_fraction(
-                    r,work.release[d],view(routing.source_transfer[d],k,:))
+            for (k,fractions) in release_terms(routing.transfer[d],routing.interval,routing.block)
+                arrival[d,k-first(routing.block)+1]+=0.0036*data.duration*released_fraction(
+                    r,work.release[d],fractions)
             end
         else
             for j in 1:cells
@@ -255,9 +255,11 @@ function distributed_river_rates!(work,data)
                     arrival[i,j] for i in data.topology.river_upstream[d];init=0.0)/
                     (0.0036*routing.duration[j])
             end
-            for k in 1:cells,j in 1:cells
-                arrival[d,k]+=0.0036*routing.duration[j]*released_fraction(
-                    r,release[d,j],view(routing.relay_transfer[d],k,j,:))
+            for (j,cohort) in enumerate(routing.block)
+                for (k,fractions) in release_terms(routing.transfer[d],cohort,routing.block)
+                    arrival[d,k-first(routing.block)+1]+=0.0036*routing.duration[j]*released_fraction(
+                        r,release[d,j],fractions)
+                end
             end
             work.release[d]=sum(release[d,j]*routing.duration[j] for j in 1:cells)/data.duration
         end

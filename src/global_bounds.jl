@@ -47,13 +47,12 @@ function _global_capacity_bounds(c, nd, rd)
         else
             rows=rd.vertices[t]:(rd.vertices[t+1]-1)
             lo=hi=sum(view(rd.history_arrival,i,rows))
-            B=rd.coefficients[i]
+            B=rd.interval_coefficients[i]
             cohort=rd.cohort_grid[i]
             source=rd.source_cohorts[i]
-            for k in 1:(length(cohort)-1)
+            for (k,coefficients) in arrival_terms(B,t)
                 period=source ? k : rd.control[k]
                 cap=release_cap[i,period]
-                coefficients=[sum(view(B,rows,k,l)) for l in 1:river_curve_count(r)]
                 l,h=river_transfer_range(r,coefficients,river_flow_lower(r,cap),cap)
                 l*=0.0036*(cohort[k+1]-cohort[k])
                 h*=0.0036*(cohort[k+1]-cohort[k])

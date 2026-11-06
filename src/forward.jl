@@ -454,15 +454,16 @@ function simulate(
             future=mesh.vertices[t+1]:(length(mesh.grid)-1)
             for (d,r) in enumerate(s.rivers)
                 if mesh.source_cohorts[d]
-                    for k in future
+                    for (k,fractions) in release_terms(mesh.coefficients[d],t,future)
                         routing_arrival[d,k]+=0.0036dt*released_fraction(
-                            r,R[d,t],view(mesh.coefficients[d],k,t,:))
+                            r,R[d,t],fractions)
                     end
                 else
-                    for k in future,(j,cohort) in enumerate(block)
+                    for (j,cohort) in enumerate(block),
+                        (k,fractions) in release_terms(mesh.coefficients[d],cohort,future)
                         duration=mesh.grid[cohort+1]-mesh.grid[cohort]
                         routing_arrival[d,k]+=0.0036duration*released_fraction(
-                            r,work.routing_release[d,j],view(mesh.coefficients[d],k,cohort,:))
+                            r,work.routing_release[d,j],fractions)
                     end
                 end
             end
