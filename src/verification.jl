@@ -338,7 +338,9 @@ function _verified_dispatch(
         audit.valid && break
         iteration==max_refinements && break
         x===nothing && break
-        time()<deadline || break
+        # Reserve the preceding build's measured cost before starting a retry.
+        # Construction can still overrun; deadlines are checked between phases.
+        time()+get(dispatch,"construction_seconds",0.0)<deadline || break
         try
             start,_=_reconstruct_candidate(c,x)
             grid=refine_transport_grid(c,start,storage_limits,storage_convergence;deadline)
