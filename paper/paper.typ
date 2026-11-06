@@ -1105,6 +1105,8 @@ hydraulic laws. We dispatch each proposal before constructing the next one.
 Without an accepted trajectory, a short solve with constant objective first
 seeks a feasible point. Revenue optimization follows, whether or not that
 attempt succeeds. An accepted feasibility point is retained if optimization fails.
+The feasibility solve can stop when its unscaled constraints and bounds meet
+the primal tolerance. A feasible point is already optimal for its constant objective.
 The best accepted trajectory on the proposal grid supplies the reference for the next
 approximation and the starting point for its nonlinear dispatch. All attempts
 share a time budget. Candidates that pass the checks below become starting solutions
@@ -1125,8 +1127,13 @@ with the same response functions as @eq:transfer. Bounding this volume path
 rules out some schedules whose interval endpoints conceal a dry or overflowing
 reservoir. These additional samples use the held interval rates; they do not
 certify continuous-time hydraulics. Independent refinement remains necessary.
+For a supplied trajectory, the net rate is affine between response and operating
+knots. Storage is then quadratic. Validation checks its endpoints and any interior
+stationary point analytically. Storage-bound and balance tolerances are capped
+by the reservoir's usable volume, so small ponds receive correspondingly small
+absolute allowances.
 
-Proposals use the same transport mesh and conservation equations. They freeze
+Proposals use the input transport mesh and the same conservation equations. They freeze
 each cohort's delay mixture at the accepted trajectory's flow, or at the last
 recorded reach flow before any trajectory is available. An unspecified previous
 flow uses zero. The nonlinear dispatch re-evaluates the mixture at its chosen
@@ -1213,7 +1220,22 @@ Distributed river mixing is refined too, including when the user supplies its
 mesh. The comparison estimates the effect of discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
-If this check fails, a local retry can enforce the finer hydraulic equations
+Before a nonlinear retry, refine the transport cohorts for the current controls.
+Compare cumulative arrivals on nested meshes, using $epsilon_i$ at each receiving
+reservoir. To locate projection error, let $psi_l(q)=q theta_l(q)$ be a
+reference-weighted entry flow. In a coarse cell $K$, compare its value at the
+time-weighted mean flow $bar(q)_(r K)$ with the fine-cell values:
+
+$ eta_K = kappa sum_(r,l) sum_(j subset K) Delta tau_j
+    abs(psi_(r l)(q_(r j)) - psi_(r l)(bar(q)_(r K))). $
+
+Mark cells whose indicators account for at least half the total and bisect
+them~@doerfler1996. Reconstruct the current controls on the selected mesh to
+start the next solve. This changes the transport approximation while retaining
+the original control times. The accepted mesh carries into revenue optimization
+and the global model; the returned problem records it.
+
+If transport already meets its volume tolerance, a local retry can enforce finer hydraulic equations
 as well. Write $w$ for the original controls and $y_0, y_h$ for hydraulic states
 on the requested and finer meshes. The retry has the form
 

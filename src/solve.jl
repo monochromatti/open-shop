@@ -248,10 +248,13 @@ function _solve(
         result["preparation_seconds"]=clock()-began
         result["preparation_accepted"]=prepared["accepted"]
         if prepared["accepted"]
+            problem=something(get(prepared,"problem",nothing),c)
+            c=_river_replace(c;routing_grid=problem.routing_grid)
             initial=prepared["solution"]
             result["prepared_objective"]=initial.objective
         end
     end
+    result["problem"]=c
     reconstruction_started=clock()
     best = nothing
     if initial !== nothing

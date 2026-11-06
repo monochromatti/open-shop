@@ -1,3 +1,5 @@
+jsonready(c::ScheduleCase)=jsonready(case_dict(c))
+
 """Read the versioned named-object profile; unsupported attributes are errors."""
 function _input_keys(x, allowed, label)
     unknown=setdiff(Set(string.(keys(x))), Set(string.(allowed)))

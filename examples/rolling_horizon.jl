@@ -125,11 +125,12 @@ function rolling_horizon(;horizon=48,advance=6,replans=2,branches=4,time_limit=1
             nlp_time_limit=time_limit,max_refinements=1)
         result["accepted"] || error("no accepted schedule for window starting $(first(c.grid))")
         x=result["solution"]
-        push!(results,(;case=c,schedule=x,seconds=result["seconds"]))
+        actual=result["problem"]
+        push!(results,(;case=actual,schedule=x,seconds=result["seconds"]))
         println("window $(first(c.grid))–$(last(c.grid)) h: objective=$(x.objective), seconds=$(result["seconds"])")
         revision==replans && break
         start=first(c.grid)+advance
-        continued=restart_case(c,x,start)
+        continued=restart_case(actual,x,start)
         c=window(continued.system,continued.flow_requirements,start,revision+1)
         warm=shifted_start(x,c.grid)
     end

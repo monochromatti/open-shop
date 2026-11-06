@@ -131,6 +131,8 @@ function topology_features(c)
 end
 
 function check_result!(report,c,result,stage,reference,options)
+    c=something(result.problem,c)
+    mesh=OpenSHOP.river_routing_grid(c)
     audit = nothing
     if result.solution!==nothing
         # A rejected iterate may be useful evidence, but is not a promised schedule.
@@ -148,10 +150,18 @@ function check_result!(report,c,result,stage,reference,options)
     elseif result.accepted
         finding!(report,"accepted_without_schedule",stage,result.status)
     end
-    known = reference.objective
+    # A bound belongs to its finite model. Reconstruct a reference on that
+    # mesh before using its value as a lower bound.
+    known=-Inf
+    try
+        projected,_=OpenSHOP._reconstruct_candidate(c,reference)
+        validate(c,projected)["valid"] && (known=projected.objective)
+    catch error
+        error isa Union{ArgumentError,DomainError} || rethrow()
+    end
     for previous in values(get(report,"stages",Dict()))
         checks = previous["checks"]
-        if checks!==nothing && checks["audit"]["valid"]
+        if get(previous,"routing_grid",mesh)==mesh && checks!==nothing && checks["audit"]["valid"]
             known=max(known,previous["objective"])
         end
     end
@@ -172,6 +182,7 @@ function check_result!(report,c,result,stage,reference,options)
     end
     # A later solve may disprove a bound that enclosed all earlier incumbents.
     for (name,previous) in get(report,"stages",Dict())
+        get(previous,"routing_grid",mesh)==mesh || continue
         check_bound(name,previous["global_bound"],"global_bound")
     end
     if stage!="local" && result.status in ("INFEASIBLE","INFEASIBLE_OR_UNBOUNDED")
@@ -198,6 +209,7 @@ function check_result!(report,c,result,stage,reference,options)
             Dict("reference"=>reference.objective,"returned"=>result.objective);severity="warning")
     end
     Dict("status"=>result.status,"accepted"=>result.accepted,"objective"=>result.objective,
+        "routing_grid"=>mesh,
         "global_bound"=>result.global_bound,"relative_gap"=>result.relative_gap,
         "global_certificate"=>result.global_certificate,"total_seconds"=>result.total_seconds,
         "native_incumbent_available"=>get(get(result.diagnostics,"scip_diagnostics",Dict()),

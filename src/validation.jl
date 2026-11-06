@@ -16,7 +16,11 @@ end
 This check does not reintegrate the same controls. Use `replay_audit` for an
 independent hydraulic integration on a finer mesh.
 
-Residuals use physical units except objective (relative error). Terminal minimum
+Residuals use physical units except objective (relative error). Storage bounds,
+initial storage and reservoir balances use the smaller of `tolerance` Mm³ and
+`tolerance` times usable reservoir storage; small reservoirs do not inherit a
+100 m³ default allowance. Storage paths include quadratic extrema between
+arrival knots for the declared held-flow quadrature. Terminal minimum
 up/down obligations are reported for continuation rather than silently discarded.
 """
 function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing)
@@ -53,15 +57,16 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "shortfalls"=>(;unit_power=unit_power_shortfall,unit_discharge=unit_discharge_shortfall,
             plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,arrival=arrival_shortfall),
     )
-    record(name, x) = begin
+    record(name, x; atol=tolerance) = begin
         v=maximum(abs, x; init = 0.0)
         residuals[name]=v
-        (!isfinite(v) || v>tolerance) &&
-            push!(errors, "$name residual $v exceeds $tolerance")
+        (!isfinite(v) || maximum(abs.(x).-atol;init=0.0)>0) &&
+            push!(errors, "$name residual $v exceeds $atol")
         v
     end
-    bound(name, x) = record(name, max.(x, 0.0))
+    bound(name, x; atol=tolerance) = record(name, max.(x, 0.0);atol)
     s=c.system
+    storage_tolerance=[tolerance*min(1.0,r.vmax-r.vmin) for r in s.reservoirs]
     try
         validate_soft_constraints(c)
     catch error
@@ -168,14 +173,14 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     u=result.commitment
     admissible(c, u) ||
         push!(errors, "invalid binary commitment or minimum up/down history")
-    record("initial_storage", V[:, 1]-[r.v0 for r in s.reservoirs])
+    record("initial_storage", V[:, 1]-[r.v0 for r in s.reservoirs];atol=storage_tolerance)
     for (i, r) in enumerate(s.reservoirs)
         bound(
             "storage_$(r.name)",
             vcat(
                 [storage_bounds(c, r, c.grid[t])[1]-V[i, t] for t in 1:(T + 1)],
                 [V[i, t]-storage_bounds(c, r, c.grid[t])[2] for t in 1:(T + 1)],
-            ),
+            );atol=storage_tolerance[i],
         )
         record(
             "head_storage_$(r.name)",
@@ -411,11 +416,15 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                     opinterval(c, s.reservoirs[i].name, :inflow, t, s.reservoirs[i].inflow)
                     for t in 1:T
                 ]
-            ) : net,
+            ) : net;
+            atol=i<=R ? storage_tolerance[i] : tolerance,
         )
     end
     try
         routed=routed_schedule(c,RQ;transport=nd,injections)
+        for (i,residual) in enumerate(storage_path_residuals(c,result,routed))
+            bound("storage_path_$(s.reservoirs[i].name)",[residual];atol=storage_tolerance[i])
+        end
         arrivals=river_arrival_residuals(c,routed)
         arrival_shortfall.=max.(arrivals.mean_arrival,arrivals.pointwise_arrival)
         for (name,residual) in river_arrival_report(c,arrivals)

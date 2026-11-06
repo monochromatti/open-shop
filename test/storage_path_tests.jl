@@ -51,11 +51,40 @@ end
     # 2,000 m³ at the hour boundary but drains it below zero halfway through.
     x = dispatch_from_controls(c, zeros(Int,0,1), zeros(0,1), reshape([1.0,24/64],2,1))
     @test x.storage[2,end] ≈ 0.002 atol=1e-10
+    @test !validate(c,x)["valid"]
     @test !replay_audit(c,x)["valid"]
     # Every constant release fails: the midpoint needs q ≤ 170/9, while
     # the final upper storage bound needs q ≥ 212/9 m³/s.
     proposal = OpenSHOP.propose_commitment(c;time_limit=60.0)
     @test proposal["status"] == "INFEASIBLE"
+end
+
+@testset "Small ponds retain their physical bounds between arrival knots" begin
+    base=storage_path_case([0.0,1.0])
+    pond=OpenSHOP._river_replace(base.system.reservoirs[2];
+        v0=0.0005,vmin=0.000499,vmax=0.001499)
+    inlet=OpenSHOP._river_replace(first(base.system.rivers);capacity=12.0+1/60)
+    system=OpenSHOP._river_replace(base.system;
+        reservoirs=[first(base.system.reservoirs),pond],rivers=[inlet,last(base.system.rivers)])
+    c=OpenSHOP._river_replace(base;system,routing_grid=[0.0,1.0])
+    # Arrival is 12+t/120 m³/s. Its hourly mean release restores both
+    # endpoints to 500 m³, but the quadratic path reaches 496.25 m³.
+    controls=reshape([1.0,(12.0+1/240)/64],2,1)
+    x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),controls)
+    @test x.storage[2,end]≈0.0005 atol=1e-12
+    audit=validate(c,x)
+    @test !audit["valid"]
+    @test audit["residuals"]["storage_path_Pond"]≈2.75e-6 atol=1e-12
+    @test !replay_audit(c,x)["valid"]
+    # The same flow is safe with four extra cubic metres below the initial
+    # level. Detect the excursion analytically, without adding time steps.
+    safe=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(system;
+        reservoirs=[first(system.reservoirs),OpenSHOP._river_replace(pond;vmin=0.000495)]))
+    y=dispatch_from_controls(safe,zeros(Int,0,1),zeros(0,1),controls)
+    @test validate(safe,y)["valid"]
+    changed=deepcopy(y)
+    changed.storage[2,:].+=2e-6
+    @test !validate(safe,changed)["valid"]
 end
 
 @testset "Storage paths retain feasible changing releases" begin
