@@ -1155,6 +1155,44 @@ nonlinear dispatch and global model retain the original observation laws.
 Dispatch with the discrete choices fixed is a piecewise-smooth, nonconvex
 problem. A stationary solution need not be globally optimal.
 
+== Evaluating river transport
+
+A volume or peak-flow constraint at a confluence can depend on many earlier
+transport cells. We represent this dependence with two integrals on each
+control interval. Write $psi_(r j)(q)=q theta_(r j)(q)$ for the flow assigned to
+reference response $j$, and let $q_r(s)$ be the declared constant entry flow
+on each transport cell. For $s in [tau_t,tau_(t+1)]$, define
+
+$ M_(r j t)^0(s) = kappa integral_(tau_t)^s psi_(r j)(q_r(u)) dif u, \
+  M_(r j t)^1(s) = frac(kappa,Delta_t) integral_(tau_t)^s
+    (u-tau_t) psi_(r j)(q_r(u)) dif u. $ <eq:referencemoments>
+
+Both have units of volume and vanish at $tau_t$. Their increments on a cell
+$[sigma_m,sigma_(m+1)]$ of length $epsilon_m$ are
+
+$ Delta M_(r j t)^0 = kappa epsilon_m psi_(r j)(hat(R)_(r m)), quad
+  Delta M_(r j t)^1 = frac((sigma_m+sigma_(m+1))/2-tau_t,Delta_t)
+    Delta M_(r j t)^0. $ <eq:momentincrements>
+
+These recurrences determine every integral value from the entry flows.
+A uniform delay bin gives a rectangular weight over release time for a rate
+observation and a trapezoidal weight for a volume observation. Each piece is
+affine, so differences of the two integrals evaluate it exactly. Partial
+cohorts are integrated analytically. Anchoring each control window keeps the
+accumulated integrals local to that window. Source cohorts and fixed linear
+mixtures retain direct transfer coefficients.
+
+Global search needs finite integral domains. Let $overline(psi)_(r j t)$ be the
+maximum of $psi_(r j)(q)$ over $0<=q<=C_(r t)$. For $e=s-tau_t$, integration
+of this upper bound gives
+
+$ 0<=M_(r j t)^0(s)<=kappa e overline(psi)_(r j t), quad
+  0<=M_(r j t)^1(s)<=frac(kappa e^2,2 Delta_t) overline(psi)_(r j t). $
+
+This formulation is algebraically equivalent to the original cohort
+transfers. The entry-cohort approximation still requires independent
+refinement.
+
 == Reconstructing the water trajectory
 
 An independent integration holds the selected unit discharges and openings
@@ -1224,10 +1262,10 @@ Before a nonlinear retry, refine the transport cohorts for the current controls.
 Compare cumulative arrivals on nested meshes, using $epsilon_i$ at each receiving
 reservoir. To locate projection error, let $psi_l(q)=q theta_l(q)$ be a
 reference-weighted entry flow. In a coarse cell $K$, compare its value at the
-time-weighted mean flow $bar(q)_(r K)$ with the fine-cell values:
+time-weighted mean flow $overline(q)_(r K)$ with the fine-cell values:
 
 $ eta_K = kappa sum_(r,l) sum_(j subset K) Delta tau_j
-    abs(psi_(r l)(q_(r j)) - psi_(r l)(bar(q)_(r K))). $
+    abs(psi_(r l)(q_(r j)) - psi_(r l)(overline(q)_(r K))). $
 
 Mark cells whose indicators account for at least half the total and bisect
 them~@doerfler1996. Reconstruct the current controls on the selected mesh to

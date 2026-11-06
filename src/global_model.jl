@@ -477,6 +477,7 @@ function _build_global_dispatch(
     injections=river_injections(c,RQ,GQ,Q)
     coordinate=(r,q,i,k)->river_reference_coordinate!(m,r,q;name=Symbol("routing_",i,"_",k))
     routing=_dispatch_transport_expressions(m,c,RQ;transport,injections,coordinate,distributed=rd)
+    bound_reference_integrals!(c,routing)
     arrivals,terminal=routing.arrivals,routing.terminal
     for (i, r) in enumerate(s.rivers)
         for t in 1:T

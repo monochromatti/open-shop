@@ -59,6 +59,30 @@ theorem window_partition (primitive : ℕ → ℝ) (n : ℕ) :
   | zero => simp
   | succ n ih => rw [Finset.sum_range_succ,ih]; ring
 
+/-- Anchored integral recurrences uniquely recover the explicit finite sum.
+The increments may be nonlinear reference flows evaluated at any fixed point. -/
+theorem anchored_reference_integral (primitive increment : ℕ → ℝ)
+    (anchor : primitive 0 = 0)
+    (step : ∀ k, primitive (k+1)-primitive k = increment k) (n : ℕ) :
+    primitive n = ∑ k ∈ Finset.range n, increment k := by
+  induction n with
+  | zero => simpa using anchor
+  | succ n ih =>
+      rw [Finset.sum_range_succ, ← ih]
+      linarith [step n]
+
+/-- An affine observation weight on a constant cohort is represented exactly
+by its volume and normalized first time moment. No quadrature approximation
+is introduced by this algebraic change of variables. -/
+theorem affine_reference_moments (conversion rate origin duration a b wa wb : ℝ)
+    (hab : b-a ≠ 0) (hd : duration ≠ 0) :
+    conversion*rate*(b-a)*(wa+wb)/2 =
+      (wa+(origin-a)*(wb-wa)/(b-a))*(conversion*rate*(b-a)) +
+      duration*(wb-wa)/(b-a)*
+        (conversion*rate*((b-origin)^2-(a-origin)^2)/(2*duration)) := by
+  field_simp
+  ring
+
 /-- Conservation on transport cells recovers the original control-window
 balance. No new control decision is introduced by subdividing transport. -/
 theorem transport_cell_aggregation {M : Type*} [Fintype M]
