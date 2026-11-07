@@ -236,13 +236,17 @@ function _verified_dispatch(
         (storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)) ||
         throw(ArgumentError("nonnegative replay tolerances required"))
     initial_schedule=initial===nothing ? nothing : _schedule_input(initial;case=c)
-    initial_windows=initial===nothing ? nothing : operating_window_values(c,initial_schedule)
-    initial!==nothing && initial_windows.commitment!=u &&
-        throw(ArgumentError("initial schedule commitment differs from requested commitment"))
+    initial_mesh=initial===nothing ? nothing : TimeDiscretization(c.grid,initial_schedule.grid)
+    if initial!==nothing
+        size(initial_schedule.commitment)==(length(c.system.generators),length(initial_mesh.dt)) ||
+            throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
+        initial_schedule.commitment[:,first.(initial_mesh.cells)]==u ||
+            throw(ArgumentError("initial schedule commitment differs from requested commitment"))
+    end
     if river_on!==nothing
         river_on=fixed_river_on(c,river_on,nothing)
         if initial!==nothing
-            initial_states=river_on_schedule(c,initial_windows.river_release)
+            initial_states=river_on_schedule(c,interval_means(initial_mesh,initial_schedule.river_release))
             all(r.min_allowed_flow===nothing || initial_states[i,:]==river_on[i,:]
                 for (i,r) in enumerate(c.system.rivers)) ||
                 throw(ArgumentError("initial candidate river states differ from requested states"))
