@@ -170,7 +170,8 @@ function validate_inputs(c)
         if r.law in (:orifice, :weir) && !r.allow_dry && r.discharge_curve===nothing
             src=only(x for x in s.reservoirs if x.name==r.source)
             head(src, src.vmin)>r.crest ||
-                error("Only always-wet outlet laws currently supported")
+                error("$(r.name): the permitted reservoir level reaches the outlet crest; " *
+                    "set allow_dry=true or raise the minimum storage")
         end
     end
     validate_delay_curves(c.system)
