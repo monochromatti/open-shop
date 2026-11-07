@@ -9,8 +9,8 @@ requests a symmetric power inset during preparation, capped at half each
 permitted range. Acceptance
 always uses the original physical restrictions.
 `initial` is an accepted schedule to retain. `warm` is an unchecked numerical
-starting point after a forecast update; it is never returned without solving
-and independent acceptance. Its arrays must use this case's object order and a
+starting point after a forecast update; its controls are independently reconstructed
+and checked before they can be retained. Its arrays must use this case's object order and a
 hydraulic grid retaining the operating boundaries.
 """
 function schedule_case(
@@ -19,7 +19,7 @@ function schedule_case(
     warm = nothing,
     proposal_time_limit = 10.0,
     nlp_time_limit = 30.0,
-    max_refinements = 2,
+    max_refinements = 24,
     operational_margin = 0.0,
     time_limit = Inf,
     proposal_optimizer = _PROPOSAL_OPTIMIZER,
@@ -76,11 +76,14 @@ function schedule_case(
     seen=Set{Tuple{String,String,String}}()
     dispatch_options=(;started,deadline,nlp_time_limit,max_refinements,operational_margin,refine_grid)
     if best===nothing && warm!==nothing
-        size(warm["u"])==size(fallback) && all(x->x==0||x==1,warm["u"]) ||
+        start=_schedule_input(warm;case=c)
+        mesh=TimeDiscretization(c.grid,start.grid)
+        size(start.commitment)==(size(fallback,1),length(mesh.dt)) &&
+            all(x->x==0||x==1,start.commitment) ||
             throw(ArgumentError("warm commitment must be binary and unit by interval"))
-        reference,start=_dispatch_start(c,fallback,warm)
+        reference,reason=_dispatch_start(c,fallback,warm;grid=refine_grid ? start.grid : c.grid)
         reference!==nothing || throw(ArgumentError("incompatible warm schedule: "*
-            get(start,"ignored_reason","missing hydraulic arrays")))
+            get(reason,"ignored_reason","missing hydraulic arrays")))
     end
     radius=4
     for scale in (1.0,0.7,1.3)

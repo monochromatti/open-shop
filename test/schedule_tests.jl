@@ -361,9 +361,9 @@ end
         result=solve_verified(c;u,initial=coarse,max_refinements=1,refine_grid,time_limit=15.0)
         @test result["accepted"]
         @test result["case"].grid==c.grid
-        @test result["solution"].grid==c.grid
-        @test result["solution"].generator_q≈fill(2.0,1,1) atol=1e-5
-        @test result["solution"].gate≈fill(78/80,1,1) atol=1e-4
+        @test all(t in result["solution"].grid for t in c.grid)
+        @test all(isapprox.(result["solution"].generator_q,2.0;atol=1e-5))
+        @test all(isapprox.(result["solution"].gate,78/80;atol=1e-4))
         @test replay_audit(c,result["solution"])["valid"]
         # A nonzero explicitly requested inset also preserves a fixed value.
         inset=solve_case(c;u,warm=witness,operational_margin=0.1,time_limit=10.0)
