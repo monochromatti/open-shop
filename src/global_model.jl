@@ -669,6 +669,8 @@ function _build_global_dispatch(
         reserves,
         m,
         case = c,
+        operating_case=c,
+        mesh=TimeDiscretization(c.grid),
         obj,
         v,
         h,

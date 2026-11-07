@@ -10,7 +10,8 @@ permitted range. Acceptance
 always uses the original physical restrictions.
 `initial` is an accepted schedule to retain. `warm` is an unchecked numerical
 starting point after a forecast update; it is never returned without solving
-and independent acceptance. Its arrays must use this case's object order/grid.
+and independent acceptance. Its arrays must use this case's object order and a
+hydraulic grid retaining the operating boundaries.
 """
 function schedule_case(
     c::ScheduleCase;
@@ -40,12 +41,16 @@ function schedule_case(
     attempts=Any[]
     best=nothing
     if initial!==nothing
-        u=initial["u"]
+        initial_schedule=_schedule_input(initial;case=c)
+        mesh=TimeDiscretization(c.grid,initial_schedule.grid)
+        size(initial_schedule.commitment)==(length(c.system.generators),length(mesh.dt)) ||
+            throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
+        u=initial_schedule.commitment[:,first.(mesh.cells)]
         v=_verified_dispatch(
             c;
             u,
             initial,
-            tunnel_opening=get(initial,"tunnel_opening",tunnel_opening_schedule(c)),
+            tunnel_opening=initial_schedule.tunnel_opening[:,first.(mesh.cells)],
             max_refinements = 0,
             time_limit = nlp_time_limit,
             operational_margin,

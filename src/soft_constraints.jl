@@ -99,7 +99,7 @@ from economic value; positive permitted deviations are not physical failures.
 function soft_constraint_assessment(c,x)
     validate_soft_constraints(c)
     x=_schedule_input(x;case=c)
-    x.grid==c.grid || throw(ArgumentError("soft assessment schedule grid differs from case"))
+    x=operating_window_values(c,x)
     slacks=SoftConstraintSlack[]
     excess=Float64[]
     cost=0.0

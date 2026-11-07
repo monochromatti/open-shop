@@ -38,7 +38,7 @@ dispatch attempts share `time_limit`, with individual limits set by
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.
-The start must have compatible arrays and the same grid; it need not satisfy
+The start must have compatible arrays and retain the operating boundaries; it need not satisfy
 the updated physical or operating inputs. It is never retained as a feasible
 schedule without solving and independent acceptance. `initial` takes precedence
 when both are supplied.
@@ -50,6 +50,34 @@ delay mixture; nonlinear dispatch retains the flow-dependent response.
 `solve_case` fixes river operating states through `river_on[river, interval]`;
 a warm schedule supplies omitted states, otherwise enabled rivers default to on.
 See [river operating costs and head restrictions](operating-rules.md).
+
+### Resolve hydraulics between operating decisions
+
+`case.grid` specifies when decisions may change. For fixed-commitment dispatch,
+`solve_case(case; u, grid=hydraulic_grid)` resolves the physical trajectory on
+a finer grid while retaining those decisions. The hydraulic grid must span the
+same horizon and contain every operating boundary. Its cells may be unequal.
+`dispatch_from_controls(case; commitment, generator_q, gate, grid=hydraulic_grid)`
+uses the same convention for forward reconstruction.
+
+Controls supplied to these functions retain one column per **operating**
+interval. The returned schedule's `grid` records its **hydraulic** vertices;
+its physical arrays use that grid. Adjustable unit discharges, commitment and
+gate positions remain held over their original operating intervals. Fixed-speed
+pump discharge follows the characteristic at each resolved head. Operating
+power schedules and ramps use duration-weighted original-window outputs.
+
+Use `validate(case, schedule)`, `objective_components(case, schedule)` and
+`restart_case(case, schedule, time)` with the original case. Serialization
+retains the actual hydraulic grid. Restart times remain operating boundaries;
+previous-output history uses the preceding operating interval, and river
+transport keeps its executed cohorts. `replay_audit` refines the returned
+physical grid and checks the same held controls.
+
+The default hydraulic grid is still `case.grid`. Mesh selection is currently
+explicit. Global `solve` uses its case grid for the finite optimization problem
+and requires an `initial` schedule on that same grid; a bound for that problem
+cannot certify a schedule from a different hydraulic discretization.
 
 `LevelWindow`, `VolumeWindow`, `RollingRamp`, and `PeriodRamp` specify
 [restrictions over time windows](operating-rules.md#restrictions-over-time-windows).

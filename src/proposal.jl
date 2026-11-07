@@ -228,8 +228,10 @@ function propose_commitment(
     end
     constrain_storage_paths!(m,c,HydraulicTopology(s),V,Q,gq,rq,routing)
     if incumbent!==nothing
-        point=_schedule_input(incumbent;case=c)
-        point.grid==c.grid || throw(ArgumentError("incumbent grid differs from proposal grid"))
+        schedule=_schedule_input(incumbent;case=c)
+        mesh=TimeDiscretization(c.grid,schedule.grid)
+        point=merge(operating_window_values(c,schedule),
+            (;tunnel_opening=schedule.tunnel_opening[:,first.(mesh.cells)]))
         for j in 1:G, t in 1:T
             set_start_value(u[j,t],point.commitment[j,t])
         end

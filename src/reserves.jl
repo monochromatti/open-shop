@@ -76,50 +76,59 @@ function validate_reserve_inputs(c)
     nothing
 end
 
-function reserve_economics(c,r::ReserveAllocation)
+function reserve_economics(c,r::ReserveAllocation;operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     revenue=0.0;cost=0.0
     for (k,group) in enumerate(c.reserve_groups),t in eachindex(c.prices)
         dt=c.grid[t+1]-c.grid[t]
         up=sum(@view r.up[:,k,t]);down=sum(@view r.down[:,k,t])
-        revenue+=dt*(opinterval(c,group.name,:up_price,t,group.up_price)*up+
-            opinterval(c,group.name,:down_price,t,group.down_price)*down)
+        revenue+=dt*(opinterval(operating_case,group.name,:up_price,mesh.interval[t],group.up_price)*up+
+            opinterval(operating_case,group.name,:down_price,mesh.interval[t],group.down_price)*down)
         if group.shortfall_cost!==nothing
-            up_shortfall=max(0.0,opinterval(c,group.name,:up_requirement,t,group.up_requirement)-up)
-            down_shortfall=max(0.0,opinterval(c,group.name,:down_requirement,t,group.down_requirement)-down)
+            up_shortfall=max(0.0,opinterval(operating_case,group.name,:up_requirement,mesh.interval[t],group.up_requirement)-up)
+            down_shortfall=max(0.0,opinterval(operating_case,group.name,:down_requirement,mesh.interval[t],group.down_requirement)-down)
             cost+=dt*group.shortfall_cost*(up_shortfall+down_shortfall)
         end
     end
     (;revenue,cost,value=revenue-cost)
 end
-reserve_economics(c,::Nothing) = (;revenue=0.0,cost=0.0,value=0.0)
+reserve_economics(c,::Nothing;operating_case=c) = (;revenue=0.0,cost=0.0,value=0.0)
 
-function _zero_reserves(c,q)
+function _zero_reserves(c,q;operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     isempty(c.reserve_groups) && return nothing
     G,K,T=length(c.system.generators),length(c.reserve_groups),length(c.prices)
     up=zeros(G,K,T);down=copy(up)
-    su=[opinterval(c,g.name,:up_requirement,t,g.up_requirement) for g in c.reserve_groups,t in 1:T]
-    sd=[opinterval(c,g.name,:down_requirement,t,g.down_requirement) for g in c.reserve_groups,t in 1:T]
+    su=[opinterval(operating_case,g.name,:up_requirement,mesh.interval[t],g.up_requirement) for g in c.reserve_groups,t in 1:T]
+    sd=[opinterval(operating_case,g.name,:down_requirement,mesh.interval[t],g.down_requirement) for g in c.reserve_groups,t in 1:T]
     ReserveAllocation(up,down,copy(q),copy(q),su,sd)
 end
 
 # This operation contains only shared linear allocation, response and budget rows.
-function _reserve_variables!(m,c,u,P,Q)
+function _reserve_variables!(m,c,u,P,Q;operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     isempty(c.reserve_groups) && return nothing
     G,K,T=length(c.system.generators),length(c.reserve_groups),length(c.prices)
     members=reserve_members(c)
-    reserve_up=@variable(m,[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_up")
-    reserve_down=@variable(m,[i=1:G,k=1:K,t=1:T],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_down")
-    reserve_shortfall_up=@variable(m,[1:K,1:T],lower_bound=0,base_name="reserve_shortfall_up")
-    reserve_shortfall_down=@variable(m,[1:K,1:T],lower_bound=0,base_name="reserve_shortfall_down")
+    U=length(operating_case.prices)
+    reserve_up=@variable(m,[i=1:G,k=1:K,t=1:U],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_up")
+    reserve_down=@variable(m,[i=1:G,k=1:K,t=1:U],lower_bound=0,upper_bound=c.system.generators[i].pmax,base_name="reserve_down")
+    reserve_shortfall_up=@variable(m,[1:K,1:U],lower_bound=0,base_name="reserve_shortfall_up")
+    reserve_shortfall_down=@variable(m,[1:K,1:U],lower_bound=0,base_name="reserve_shortfall_down")
+    reserve_up=reserve_up[:,:,mesh.interval]
+    reserve_down=reserve_down[:,:,mesh.interval]
+    reserve_shortfall_up=reserve_shortfall_up[:,mesh.interval]
+    reserve_shortfall_down=reserve_shortfall_down[:,mesh.interval]
     reserve_q=@variable(m,[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].qmax/50,base_name="reserve_q")
     reserve_p=@variable(m,[i=1:G,t=1:T,d=1:2],lower_bound=0,upper_bound=c.system.generators[i].pmax/40,base_name="reserve_p")
     Qpoint=50 .* reserve_q;Ppoint=40 .* reserve_p
-    for (k,group) in enumerate(c.reserve_groups),t in 1:T
+    for (k,group) in enumerate(c.reserve_groups),cells in mesh.cells
+        t=first(cells)
         ceiling=sum(c.system.generators[i].pmax for i in members[k])
         for (direction,R,shortfall) in ((:up,reserve_up,reserve_shortfall_up),
             (:down,reserve_down,reserve_shortfall_down))
-            requirement=opinterval(c,group.name,Symbol(direction,:_requirement),t,getfield(group,Symbol(direction,:_requirement)))
-            cap=optional_operation(c,group.name,Symbol(direction,:_max),t;
+            requirement=opinterval(operating_case,group.name,Symbol(direction,:_requirement),mesh.interval[t],getfield(group,Symbol(direction,:_requirement)))
+            cap=optional_operation(operating_case,group.name,Symbol(direction,:_max),mesh.interval[t];
                 default=getfield(group,Symbol(direction,:_max)))
             cap===nothing && (cap=ceiling)
             set_upper_bound(shortfall[k,t],requirement)
@@ -130,7 +139,7 @@ function _reserve_variables!(m,c,u,P,Q)
                 if !(i in members[k])
                     fix(R[i,k,t],0;force=true)
                 else
-                    available=opinterval(c,g.name,:reserve_available,t,g.reserve_available)
+                    available=opinterval(operating_case,g.name,:reserve_available,mesh.interval[t],g.reserve_available)
                     state=u[i,t] isa Number ? u[i,t] : is_fixed(u[i,t]) ? fix_value(u[i,t]) : nothing
                     if available==0 || state==0
                         fix(R[i,k,t],0;force=true)
@@ -199,8 +208,8 @@ function _reserve_variables!(m,c,u,P,Q)
         end
     end
     value=@expression(m,sum((c.grid[t+1]-c.grid[t])*(
-        opinterval(c,group.name,:up_price,t,group.up_price)*sum(reserve_up[i,k,t] for i in 1:G)+
-        opinterval(c,group.name,:down_price,t,group.down_price)*sum(reserve_down[i,k,t] for i in 1:G)-
+        opinterval(operating_case,group.name,:up_price,mesh.interval[t],group.up_price)*sum(reserve_up[i,k,t] for i in 1:G)+
+        opinterval(operating_case,group.name,:down_price,mesh.interval[t],group.down_price)*sum(reserve_down[i,k,t] for i in 1:G)-
         (group.shortfall_cost===nothing ? 0.0 : group.shortfall_cost)*
             (reserve_shortfall_up[k,t]+reserve_shortfall_down[k,t]))
         for (k,group) in enumerate(c.reserve_groups),t in 1:T))
@@ -209,8 +218,8 @@ function _reserve_variables!(m,c,u,P,Q)
 end
 
 function _local_reserve_points!(m,c,u,H,P,Q,turbine_ops,electrical_ops,tailwater_ops,
-    outlet_ops,turbine_flow_ops)
-    r=_reserve_variables!(m,c,u,P,Q)
+    outlet_ops,turbine_flow_ops;operating_case=c)
+    r=_reserve_variables!(m,c,u,P,Q;operating_case)
     r===nothing && return nothing
     ix=nodeindex(c.system)
     for (i,g) in enumerate(c.system.generators),t in eachindex(c.prices),d in 1:2
@@ -311,12 +320,13 @@ function _global_reserve_points!(m,c,u,H,P,Q,node_bounds,plant_heads)
     (;r...,graphs)
 end
 
-function _reserve_values(c,r)
+function _reserve_values(c,r;operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     r===nothing && return nothing
     up,down=value.(r.up),value.(r.down)
-    su=[max(0.0,opinterval(c,g.name,:up_requirement,t,g.up_requirement)-sum(up[:,k,t]))
+    su=[max(0.0,opinterval(operating_case,g.name,:up_requirement,mesh.interval[t],g.up_requirement)-sum(up[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in eachindex(c.prices)]
-    sd=[max(0.0,opinterval(c,g.name,:down_requirement,t,g.down_requirement)-sum(down[:,k,t]))
+    sd=[max(0.0,opinterval(operating_case,g.name,:down_requirement,mesh.interval[t],g.down_requirement)-sum(down[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in eachindex(c.prices)]
     ReserveAllocation(up,down,value.(r.Qpoint[:,:,1]),value.(r.Qpoint[:,:,2]),su,sd)
 end
@@ -388,7 +398,8 @@ end
 This checks unit/plant operating points at scheduled node heads and qualified
 response/energy limits. It does not certify activated tunnel or river trajectories.
 """
-function validate_reserves(c,x::Schedule;tolerance=1e-4)
+function validate_reserves(c,x::Schedule;tolerance=1e-4,operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     residuals=Dict{String,Float64}();errors=String[]
     record(name,value)=begin
         residuals[name]=max(0.0,value)
@@ -418,12 +429,15 @@ function validate_reserves(c,x::Schedule;tolerance=1e-4)
             push!(errors,"malformed reserve allocation");return finish()
         end
     end
+    for (name,values) in (("up",r.up),("down",r.down))
+        record("held_$name",held_control_difference(mesh,reshape(values,:,size(values,3))))
+    end
     members=reserve_members(c);ix=nodeindex(c.system)
     for (k,group) in enumerate(c.reserve_groups),t in 1:T
         for (direction,R,S) in ((:up,r.up,r.up_shortfall),(:down,r.down,r.down_shortfall))
-            requirement=opinterval(c,group.name,Symbol(direction,:_requirement),t,getfield(group,Symbol(direction,:_requirement)))
+            requirement=opinterval(operating_case,group.name,Symbol(direction,:_requirement),mesh.interval[t],getfield(group,Symbol(direction,:_requirement)))
             total=sum(R[:,k,t]);shortfall=max(0.0,requirement-total)
-            cap=optional_operation(c,group.name,Symbol(direction,:_max),t;
+            cap=optional_operation(operating_case,group.name,Symbol(direction,:_max),mesh.interval[t];
                 default=getfield(group,Symbol(direction,:_max)))
             cap===nothing && (cap=sum(c.system.generators[i].pmax for i in members[k]))
             record("$(group.name)_$(direction)_capacity",total-cap)
@@ -432,7 +446,7 @@ function validate_reserves(c,x::Schedule;tolerance=1e-4)
             record("$(group.name)_$(direction)_slack_bound",max(-S[k,t],S[k,t]-requirement))
             for (i,g) in enumerate(c.system.generators)
                 record("$(g.name)_$(group.name)_$(direction)_nonnegative",-R[i,k,t])
-                available=opinterval(c,g.name,:reserve_available,t,g.reserve_available)
+                available=opinterval(operating_case,g.name,:reserve_available,mesh.interval[t],g.reserve_available)
                 ceiling=i in members[k] ? g.pmax*available*x.commitment[i,t] : 0.0
                 record("$(g.name)_$(group.name)_$(direction)_eligibility",R[i,k,t]-ceiling)
             end
@@ -541,7 +555,8 @@ end
 # Invert the plant power equations with bounded damped Newton. Scalar failures
 # fall back to a sign bracket, without assuming power monotonicity. Bounds only
 # restrict trial guesses; capacity controls are never clipped.
-function reserve_witnesses(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4)
+function reserve_witnesses(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4,operating_case=c)
+    mesh=TimeDiscretization(operating_case.grid,c.grid)
     G,K,T=length(c.system.generators),length(c.reserve_groups),length(c.prices)
     size(r.up)==size(r.down)==(G,K,T) && size(r.up_q)==size(r.down_q)==(G,T) ||
         throw(DimensionMismatch("reserve capacity controls and witness guesses"))
@@ -625,9 +640,9 @@ function reserve_witnesses(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4)
         destination=d==1 ? upq : downq
         destination[active,t]=q
     end
-    su=[max(0.0,opinterval(c,g.name,:up_requirement,t,g.up_requirement)-sum(r.up[:,k,t]))
+    su=[max(0.0,opinterval(operating_case,g.name,:up_requirement,mesh.interval[t],g.up_requirement)-sum(r.up[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in 1:T]
-    sd=[max(0.0,opinterval(c,g.name,:down_requirement,t,g.down_requirement)-sum(r.down[:,k,t]))
+    sd=[max(0.0,opinterval(operating_case,g.name,:down_requirement,mesh.interval[t],g.down_requirement)-sum(r.down[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in 1:T]
     ReserveAllocation(copy(r.up),copy(r.down),upq,downq,su,sd)
 end

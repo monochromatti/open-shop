@@ -33,9 +33,9 @@ function _build_dispatch(
     river_on = nothing,
     model = Model(),
     prefix = "",
-    reserve_case = c,
     shared_controls = nothing,
     integral_grid = c.grid,
+    grid = c.grid,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -46,6 +46,11 @@ function _build_dispatch(
         throw(ArgumentError("time limit must be finite and positive"))
     validate_inputs(c)
     admissible(c, u) || error("Invalid commitment")
+    operating_case=c
+    mesh=TimeDiscretization(c.grid,grid)
+    operating_u=u
+    u=u[:,mesh.interval]
+    c=hydraulic_case(c,mesh.grid)
     s=c.system
     topology = HydraulicTopology(s)
     node_names = topology.node_names
@@ -59,28 +64,38 @@ function _build_dispatch(
     dt=diff(c.grid)
     generator_plants = s.plants[topology.generator_plant]
     plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
-    warm, warm_start=_dispatch_start(c, u, warm)
+    warm,warm_start=_dispatch_start(operating_case,operating_u,warm;grid=mesh.grid)
     m=model
     set_silent(m)
-    openings=tunnel_opening===nothing ? tunnel_opening_schedule(c) : tunnel_opening
-    gates=_tunnel_gate_states!(m,c;fixed=openings)
-    constrain_tunnel_switching!(m,c,gates.open,u)
+    openings=tunnel_opening===nothing ? tunnel_opening_schedule(operating_case) : tunnel_opening
+    gates=_tunnel_gate_states!(m,operating_case;fixed=openings)
+    constrain_tunnel_switching!(m,operating_case,gates.open,operating_u)
     ustart=copy(u)
     v=@variable(m, [1:R, 1:(T + 1)], base_name=prefix*"v")
     h=@variable(m, [1:N, 1:T], base_name=prefix*"h")
     q=@variable(m, [1:E, 1:T], base_name=prefix*"q")
     gq=Matrix{VariableRef}(undef,G,T)
     for t in 1:T, (i,g) in enumerate(s.generators)
-        gq[i,t]=shared_controls===nothing || g.characteristic!==nothing ?
-            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]") :
+        gq[i,t]=if g.characteristic!==nothing
+            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]")
+        elseif shared_controls!==nothing
             shared_controls.discharge[i,shared_controls.index[t]]
+        elseif t==first(mesh.cells[mesh.interval[t]])
+            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]")
+        else
+            gq[i,t-1]
+        end
     end
     p=@variable(m, [1:G, 1:T], lower_bound=0, base_name=prefix*"p")
     rq=@variable(m, [1:D, 1:T], lower_bound=0, base_name=prefix*"rq")
-    a=shared_controls===nothing ?
-        @variable(m,[1:D,1:T],lower_bound=0,upper_bound=1,base_name=prefix*"a") :
+    a=if shared_controls===nothing
+        controls=@variable(m,[1:D,1:length(operating_case.prices)],lower_bound=0,upper_bound=1,
+            base_name=prefix*"a")
+        controls[:,mesh.interval]
+    else
         shared_controls.gate[:,shared_controls.index]
-    shortfall_release=@variable(m, [1:D, 1:T], lower_bound=0, base_name=prefix*"shortfall_release")
+    end
+    shortfall_release=@variable(m,[1:D,1:T],lower_bound=0,base_name=prefix*"shortfall_release")
     level_ops=[
         r.level_curve===nothing ? nothing :
         table_operator(m, r.level_curve; name = Symbol(prefix,"level_", i)) for
@@ -163,10 +178,21 @@ function _build_dispatch(
         volume=V[i,t]
         level_ops[i]===nothing ? r.z0+r.slope*volume+r.curvature*volume^2 : level_ops[i](volume)
     end
-    constrain_reservoir_ramps!(m,c,V; level=level_at_vertex)
+    operating_V=V[:,mesh.vertices]
+    operating_level=(i,t)->level_at_vertex(i,mesh.vertices[t])
+    operating_head=(i,t)->begin
+        r=s.reservoirs[i]
+        op=mean_level_ops[i]
+        op===nothing ? mean_head(r,operating_V[i,t],operating_V[i,t+1]) :
+            op(operating_V[i,t],operating_V[i,t+1])
+    end
+    constrain_reservoir_ramps!(m,operating_case,operating_V;level=operating_level)
     level_windows=constrain_level_windows!(m,c,level_at_vertex)
-    constrain_gross_heads!(m,c,u,(i,t)->H[i,t],level_at_vertex)
-    soft=constrain_soft_constraints!(m,c,V,P,GQ;level=level_at_vertex)
+    constrain_gross_heads!(m,operating_case,operating_u,operating_head,operating_level)
+    operating_P=interval_means(mesh,P)
+    operating_GQ=interval_means(mesh,GQ)
+    soft=constrain_soft_constraints!(m,operating_case,operating_V,operating_P,operating_GQ;
+        level=operating_level)
     for (i, j) in enumerate(s.junctions), t in 1:T
         set_lower_bound(h[R + i, t], j.hmin/250)
         set_upper_bound(h[R + i, t], j.hmax/250)
@@ -177,7 +203,7 @@ function _build_dispatch(
     end
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
-        opening=gates.opening[i,t]
+        opening=gates.opening[i,mesh.interval[t]]
         factor, resistance=tunnel_coefficients(e, opening)
         set_lower_bound(q[i, t], (e.discharge_river===nothing ? -cap : 0.0)/50)
         set_upper_bound(q[i, t], cap/50)
@@ -252,8 +278,7 @@ function _build_dispatch(
             end
         end
     end
-    reserves=_local_reserve_points!(m,reserve_case,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
-    constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin)
+    reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops;operating_case)
     outlet_bounds = _dispatch_outlet_bounds(c)
     injections=river_injections(c,RQ,GQ,Q)
     routing = _dispatch_transport_expressions(m,c, RQ; transport, injections,integral_grid)
@@ -352,13 +377,22 @@ function _build_dispatch(
         end
     end
     constrain_river_sources!(m,c,RQ,arrivals,injections)
-    flow_integrals=constrain_flow_requirements!(m,c,GQ,RQ,arrivals,Q)
-    river_operations=constrain_river_operations!(m,c,RQ;fixed=fixed_river_on(c,river_on,warm))
+    windows=operating_window_values(mesh,(;power=P,generator_q=GQ,river_release=RQ,
+        storage=V,tunnel_q=Q,arrival_volume=arrivals),operating_u)
+    constrain_plant_capacities!(m,c,u,P,GQ;margin=operational_margin)
+    constrain_dispatch_operations!(m,operating_case,operating_u,windows.power,
+        windows.generator_q,windows.river_release;margin=operational_margin,capacities=false)
+    flow_integrals=constrain_flow_requirements!(m,operating_case,windows.generator_q,
+        windows.river_release,windows.arrival_volume,windows.tunnel_q)
+    operating_warm=warm===nothing ? nothing : operating_window_values(operating_case,warm)
+    river_operations=constrain_river_operations!(m,operating_case,windows.river_release;
+        fixed=fixed_river_on(operating_case,river_on,operating_warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing)
     history_initial=exact ? nd.initial_transit : rd.history_initial
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
-        initial_transit=history_initial, gate_cost=gates.cost, soft_cost=soft.cost,river_cost=river_operations.cost)
+        initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
+        operating_case,operating_u)
     reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
     rng=MersenneTwister(seed)
@@ -398,7 +432,7 @@ function _build_dispatch(
             set_start_value(rq[i, t], warm.river_release[i, t]/100)
             set_start_value(a[i, t], warm.gate[i, t])
         end
-        for (variable,value) in river_operation_start_values(river_operations,c,warm.river_release)
+        for (variable,value) in river_operation_start_values(river_operations,operating_case,operating_warm.river_release)
             set_start_value(variable,value)
         end
     end
@@ -409,13 +443,17 @@ function _build_dispatch(
         set_start_value(variable,JuMP.value(v->something(start_value(v),0.0),rate))
     end
     if warm!==nothing
-        for (variable,value) in window_start_values(c,warm,flow_integrals,level_windows)
+        for (variable,value) in window_start_values(operating_case,operating_warm,flow_integrals,[])
+            set_start_value(variable,value)
+        end
+        for (variable,value) in window_start_values(c,warm,[],level_windows)
             set_start_value(variable,value)
         end
     end
     (;
         reserves,
         case=c,
+        operating_case,mesh,operating_u,
         m,
         obj,
         V,
@@ -444,80 +482,38 @@ end
 # A second hydraulic mesh shares the requested controls. Its state variables are
 # witnesses of the finer equations, not additional scheduling decisions. The
 # objective and returned schedule still belong to the original model.
-function constrain_replay!(b, grid; warm=nothing, river_on=nothing)
-    c,m=b.case,b.m
-    objective=objective_function(m)
-    refined=replay_case(c,grid)
-    fine=without_interval_controls(refined)
-    indices=[searchsortedlast(c.grid,(grid[k]+grid[k+1])/2) for k in 1:length(grid)-1]
-    opening=Matrix{Float64}(b.gates.opening)[:,indices]
-    reference=if warm===nothing
-        nothing
-    else
-        try
-            dispatch_from_controls(fine,b.u[:,indices],warm.generator_q[:,indices],
-                warm.gate[:,indices];tunnel_opening=opening,
-                reserves=_reserve_slice(warm.reserves,indices),head_reference=warm.head[:,indices])
-        catch error
-            error isa Union{ArgumentError,DomainError} || rethrow()
-            nothing
-        end
-    end
-    # Both meshes use exactly the same equations and physical bound data.
-    f=_build_dispatch(fine;u=b.u[:,indices],model=m,prefix="replay_",warm=reference,
-        tunnel_opening=opening,river_on=river_on===nothing ? nothing : river_on[:,indices],
-        reserve_case=refined,shared_controls=(;discharge=b.gq,gate=b.a,index=indices),integral_grid=c.grid)
+function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
+    objective=objective_function(b.m)
+    parent=TimeDiscretization(b.case.grid,grid)
+    refined=replay_case(b.case,grid)
+    operating=_river_replace(b.operating_case;routing_grid=refined.routing_grid)
+    f=_build_dispatch(operating;grid,u=b.operating_u,model=b.m,prefix="replay_",
+        warm,tunnel_opening=Matrix{Float64}(b.gates.opening),river_on,
+        shared_controls=(;discharge=b.gq,gate=b.a,index=parent.interval))
     if b.reserves!==nothing
-        for (fine_values,values) in ((f.reserves.up,b.reserves.up),(f.reserves.down,b.reserves.down))
-            for i in axes(values,1), j in axes(values,2), k in eachindex(indices)
-                @constraint(m,fine_values[i,j,k]==values[i,j,indices[k]])
+        base_cells=first.(b.mesh.cells)
+        fine_cells=first.(f.mesh.cells)
+        for (fine,base) in ((f.reserves.up,b.reserves.up),(f.reserves.down,b.reserves.down))
+            for i in axes(base,1),k in axes(base,2),j in eachindex(base_cells)
+                @constraint(b.m,fine[i,k,fine_cells[j]]==base[i,k,base_cells[j]])
             end
         end
     end
-    z=(;power=f.P,generator_q=f.GQ,river_release=f.RQ,storage=f.V,
-        tunnel_q=f.Q,arrival_volume=f.arrivals)
-    windows=operating_window_values(c,z,grid,indices,b.u)
-    constrain_dispatch_operations!(m,c,b.u,windows.power,windows.generator_q,windows.river_release)
-    level_ops=[r.level_curve===nothing ? nothing : table_operator(m,r.level_curve)
-        for r in c.system.reservoirs]
-    mean_ops=[r.level_curve===nothing ? nothing : _mean_head_operator(m,r;name=gensym(:mean))
-        for r in c.system.reservoirs]
-    level=(i,t)->level_ops[i]===nothing ? head(c.system.reservoirs[i],windows.storage[i,t]) :
-        level_ops[i](windows.storage[i,t])
-    constrain_reservoir_ramps!(m,c,windows.storage;level)
-    constrain_gross_heads!(m,c,b.u,(i,t)->begin
-        r=c.system.reservoirs[i]
-        op=mean_ops[i]
-        op===nothing ? mean_head(r,windows.storage[i,t],windows.storage[i,t+1]) :
-            op(windows.storage[i,t],windows.storage[i,t+1])
-    end,level)
-    integrals=constrain_flow_requirements!(m,c,windows.generator_q,windows.river_release,windows.arrival_volume,windows.tunnel_q)
-    operations=constrain_river_operations!(m,c,windows.river_release;fixed=fixed_river_on(c,river_on,warm))
-    if reference!==nothing
-        observations=operating_window_values(c,reference,grid,indices,b.u)
-        for (variable,value) in window_start_values(c,observations,integrals,[])
-            set_start_value(variable,value)
-        end
-        for (variable,value) in river_operation_start_values(operations,c,observations.river_release)
-            set_start_value(variable,value)
-        end
-    end
-    # Restore the requested objective, which the second construction replaced.
-    set_objective_function(m,objective)
+    set_objective_function(b.m,objective)
     nothing
 end
 
 function _dispatch_values(b)
     c=b.case
     release=value.(b.RQ)
-    opening=_tunnel_gate_solution(b.gates)
+    opening=_tunnel_gate_solution(b.gates)[:,b.mesh.interval]
     raw=Schedule(copy(c.grid), round.(Int,value.(b.u)), value.(b.V), value.(b.H),
         value.(b.Q), Matrix{Float64}(opening), value.(b.GQ), value.(b.P), value.(b.a),
         release, Matrix{Float64}(value.(b.arrivals)), Vector{Float64}(value.(b.terminal)), value.(b.shortfall_release),
         value(b.obj), value(b.gates.cost), value(b.penalty_cost),
         Dict{String,Any}("case"=>c.name,
-            "fractional_tunnel_opening"=>value.(b.gates.opening));reserves=_reserve_values(c,b.reserves))
-    with_soft_assessment(c,raw;included_cost=value(b.soft.cost))
+            "fractional_tunnel_opening"=>value.(b.gates.opening)[:,b.mesh.interval]);reserves=_reserve_values(c,b.reserves;operating_case=b.operating_case))
+    with_soft_assessment(b.operating_case,raw;included_cost=value(b.soft.cost))
 end
 
 function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
@@ -582,7 +578,10 @@ schedule by combining MILP proposals with nonlinear dispatch.
 
 Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
 `nothing` if no candidate exists. `accepted` means the candidate passed the
-original-grid physical and operating checks. `replay_grid` optionally adds finer
+physical equations and original operating-window checks. `grid=case.grid`
+optionally supplies a finer primary hydraulic mesh; controls retain their
+original intervals and the returned schedule records the physical grid.
+`replay_grid` optionally adds finer
 hydraulic equations sharing these controls; it does not change the returned
 grid or objective. Use [`solve_verified`](@ref) for
 finer replay. A local optimum is not a global certificate.
@@ -601,6 +600,7 @@ function solve_case(
     tunnel_opening = nothing,
     river_on = nothing,
     replay_grid = nothing,
+    grid = c.grid,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -617,14 +617,15 @@ function solve_case(
         transport,
         tunnel_opening,
         river_on,
+        grid,
     )
-    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm)[1],river_on)
+    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on)
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds
     result=Dict{String,Any}(
         "case"=>c.name,
         "problem"=>c,
-        "grid"=>copy(c.grid),
+        "grid"=>copy(b.mesh.grid),
         "solver"=>solver,
         "seed"=>seed,
         "status"=>"CONSTRUCTION_BUDGET_EXHAUSTED",

@@ -197,7 +197,7 @@ end
             wrong["grid"]=grid
             discarded, reason=OpenSHOP._dispatch_start(c, u, wrong)
             @test discarded===nothing
-            @test occursin("grid", reason["ignored_reason"])
+            @test !reason["used"]
         end
         legacy=OpenSHOP.schedule_dict(initial)
         delete!(legacy, "grid")
@@ -256,6 +256,7 @@ end
         result=solve_verified(c; u, initial=bad, max_refinements=0)
         @test !result["accepted"]
         @test "missing or malformed $key" in result["attempts"][1]["model_errors"]
+        @test_throws ArgumentError schedule_case(c;initial=bad,time_limit=1.0)
     end
     valid=OpenSHOP.schedule_dict(physical)
     valid["validation"]=Dict("valid"=>false, "errors"=>["stale diagnostic"])

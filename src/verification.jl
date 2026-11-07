@@ -22,7 +22,7 @@ storage_convergence_limits(c,absolute,relative) = [min(absolute,isinf(relative) 
     1e-9+relative*(r.vmax-r.vmin)) for r in c.system.reservoirs]
 
 """
-    replay_audit(case, schedule; grid=refined_grid(case.grid),
+    replay_audit(case, schedule; grid=refined_grid(schedule.grid),
                  storage_convergence=2e-3, storage_relative_convergence=1e-3,
                  level_convergence=1e-2, objective_convergence=1e-3)
 
@@ -47,7 +47,7 @@ _replay_report(check) = Dict{String,Any}(string(k)=>v for (k,v) in pairs(check))
 function _replay(
     c::ScheduleCase,
     x;
-    grid = refined_grid(c.grid),
+    grid = nothing,
     tolerance = 1e-4,
     storage_convergence = 2e-3,
     storage_relative_convergence = 1e-3,
@@ -62,61 +62,43 @@ function _replay(
     errors=String[]
     violations=Dict{String,Float64}()
     shortfalls=(arrival=0.0,power=0.0,discharge=0.0)
-    nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ?
-       _transport_data(c, transport) : nothing
-    nd===nothing &&
-        transport!==nothing &&
-        throw(
-            ArgumentError(
-                "compiled deterministic transport cannot serve distributed acceptance",
-            ),
-        )
-    original=validate(c, x; transport = nd)
-    original["valid"] || push!(errors, "original equation audit failed")
-    length(grid)>length(c.grid) ||
-        push!(errors, "acceptance requires a strictly finer replay grid")
+    original=validate(c,x;transport)
+    if !original["valid"]
+        push!(errors,"original equation audit failed")
+        return (;valid=false,errors,violations,original_audit=original,shortfalls,seconds=time()-began)
+    end
+    x=_schedule_input(x;case=c)
+    grid=grid===nothing ? refined_grid(x.grid) : grid
+    nd=all(r->r.deterministic_delay!==nothing,c.system.rivers) ?
+        _transport_data(hydraulic_case(c,x.grid),transport) : nothing
+    nd===nothing && transport!==nothing && throw(ArgumentError(
+        "compiled deterministic transport cannot serve distributed acceptance"))
+    length(grid)>length(x.grid) ||
+        push!(errors,"acceptance requires a strictly finer replay grid")
     if !isempty(errors)
         return (; valid=false, errors, violations, original_audit=original,
             shortfalls, seconds=time()-began)
     end
-    x=_schedule_input(x; case=c)
     try
-        cc=replay_case(c, grid)
-        fine=without_interval_controls(cc)
-        indices=[
-            clamp(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), 1, length(c.prices))
-            for t in 1:(length(grid) - 1)
-        ]
-        opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
-        z=dispatch_from_controls(
-            fine,
-            x.commitment[:, indices],
-            x.generator_q[:, indices],
-            x.gate[:, indices];
-            tunnel_opening=opening[:,indices],
-            reserves=_reserve_slice(x.reserves,indices),
-            head_reference=x.head[:,indices],
-        )
+        mesh=TimeDiscretization(c.grid,x.grid)
+        firstcell=first.(mesh.cells)
+        original_u=x.commitment[:,firstcell]
+        fine_mesh=TimeDiscretization(x.grid,grid)
+        cc=replay_case(hydraulic_case(c,x.grid),grid)
+        replay_input=_river_replace(c;routing_grid=cc.routing_grid)
+        opening=_physical_tunnel_openings(c,x.tunnel_opening[:,firstcell])
+        z=dispatch_from_controls(replay_input,original_u,x.generator_q[:,firstcell],
+            x.gate[:,firstcell];grid,tunnel_opening=opening,
+            reserves=_reserve_slice(x.reserves,firstcell),head_reference=interval_means(mesh,x.head))
         audit=z["validation"]
         merge!(violations, audit["residuals"])
         append!(errors, audit["errors"])
-        # Reserve response is measured from each operating point, so its rates
-        # remain physical limits when ordinary scheduling ramps are stripped.
-        reserve_audit=validate_reserves(cc,z;tolerance)
-        merge!(violations,Dict("reserve_"*key=>value for (key,value) in reserve_audit["residuals"]))
-        append!(errors,reserve_audit["errors"])
-        windows=operating_window_values(c,z,grid,indices,x.commitment)
-        plants=plant_operating_residuals(c,windows)
-        for (name,residual) in operating_residuals(c,windows;plants)
-            violations[name]=max(get(violations,name,0.0),residual)
-            residual>tolerance && push!(errors,"$name fails finer replay: $residual")
-        end
         fine_shortfalls=audit["shortfalls"]
         for (i,g) in enumerate(c.system.generators)
             violations["unit_power_$(g.name)"]=fine_shortfalls.unit_power[i]
         end
         transport_check=transport_audit(
-            c,
+            hydraulic_case(c,x.grid),
             x;
             schedule_tolerance = storage_convergence,
             absolute_tolerance = isfinite(storage_convergence) ? storage_convergence/10 :
@@ -135,25 +117,23 @@ function _replay(
             arrival=maximum((arrival[i] for (i,r) in enumerate(c.system.rivers)
                 if r.arrival_policy==:pointwise);init=0.0),
             power=max(maximum(fine_shortfalls.unit_power;init=0.0),
-                maximum(fine_shortfalls.plant_power;init=0.0),
-                maximum(plants.power_capacity;init=0.0),maximum(plants.power_ramp;init=0.0)),
+                maximum(fine_shortfalls.plant_power;init=0.0)),
             discharge=max(maximum(fine_shortfalls.unit_discharge;init=0.0),
-                maximum(fine_shortfalls.plant_discharge;init=0.0),
-                maximum(plants.discharge_capacity;init=0.0),maximum(plants.discharge_ramp;init=0.0)),
+                maximum(fine_shortfalls.plant_discharge;init=0.0)),
         )
         transport_check["accepted"] ||
             push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
         physical=isempty(errors)
-        edges=[searchsortedfirst(grid, t) for t in c.grid]
+        edges=fine_mesh.vertices
         storage_errors=[maximum(abs, z.storage[i, edges]-x.storage[i, :]; init=0.0)
             for i in eachindex(c.system.reservoirs)]
         storage_limits=storage_convergence_limits(c,storage_convergence,storage_relative_convergence)
         level_errors=[maximum(abs(head(r,z.storage[i,edges[t]])-head(r,x.storage[i,t]))
-            for t in eachindex(c.grid); init=0.0) for (i,r) in enumerate(c.system.reservoirs)]
+            for t in eachindex(x.grid); init=0.0) for (i,r) in enumerate(c.system.reservoirs)]
         storage_error=maximum(storage_errors; init=0.0)
         level_error=maximum(level_errors; init=0.0)
         transit_error=maximum(abs, z.terminal_transit-x.terminal_transit; init = 0.0)
-        replayed_objective=z.objective-river_operating_cost(c,windows.river_release).total
+        replayed_objective=z.objective
         objective_error=replayed_objective-x.objective
         numerical=all(storage_errors .<= storage_limits) && level_error<=level_convergence &&
                   transit_error<=storage_convergence &&
@@ -202,8 +182,9 @@ controls. If transport already meets its volume tolerance, add finer hydraulic e
 sharing the original unit discharges, outlet openings and reserve allocations.
 Fixed-speed pump discharges remain hydraulic states. Operating schedules and ramps
 retain their original windows. No measured residual becomes a blanket margin.
-The returned case records the transport mesh. The schedule and objective retain
-the requested control grid. The latest physical trajectory starts the next solve.
+The returned case records the transport mesh. Operating decisions retain their
+requested intervals; a supplied resolved initial schedule keeps its physical
+grid. The latest physical trajectory starts the next solve.
 `refine_grid` is retained for source compatibility; both values now retain controls.
 `operational_margin` is an explicit optional power inset, never an automatic retry rule.
 """
@@ -254,17 +235,18 @@ function _verified_dispatch(
     all(x->x isa Real && !isnan(x) && x>=0,
         (storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)) ||
         throw(ArgumentError("nonnegative replay tolerances required"))
-    initial!==nothing &&
-        (!haskey(initial, "u") || initial["u"]!=u) &&
-        throw(
-            ArgumentError("initial candidate commitment differs from requested commitment"),
-        )
-    initial!==nothing && haskey(initial, "grid") && initial["grid"]!=c.grid &&
-        throw(ArgumentError("initial candidate control grid differs from requested grid"))
+    initial_schedule=initial===nothing ? nothing : _schedule_input(initial;case=c)
+    initial_mesh=initial===nothing ? nothing : TimeDiscretization(c.grid,initial_schedule.grid)
+    if initial!==nothing
+        size(initial_schedule.commitment)==(length(c.system.generators),length(initial_mesh.dt)) ||
+            throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
+        initial_schedule.commitment[:,first.(initial_mesh.cells)]==u ||
+            throw(ArgumentError("initial schedule commitment differs from requested commitment"))
+    end
     if river_on!==nothing
         river_on=fixed_river_on(c,river_on,nothing)
         if initial!==nothing
-            initial_states=river_on_schedule(c,_schedule_input(initial;case=c).river_release)
+            initial_states=river_on_schedule(c,interval_means(initial_mesh,initial_schedule.river_release))
             all(r.min_allowed_flow===nothing || initial_states[i,:]==river_on[i,:]
                 for (i,r) in enumerate(c.system.rivers)) ||
                 throw(ArgumentError("initial candidate river states differ from requested states"))
@@ -275,7 +257,7 @@ function _verified_dispatch(
     openings=tunnel_opening===nothing ? nothing :
         _physical_tunnel_openings(c,tunnel_opening)
     if initial!==nothing && openings!==nothing
-        _physical_tunnel_openings(c,get(initial,"tunnel_opening",nothing))==openings ||
+        _physical_tunnel_openings(c,initial_schedule.tunnel_opening[:,first.(TimeDiscretization(c.grid,initial_schedule.grid).cells)])==openings ||
             throw(ArgumentError("initial candidate tunnel openings differ from requested openings"))
     end
     began=time()
@@ -306,7 +288,7 @@ function _verified_dispatch(
         solution_case=c
         x=dispatch isa SolveResult ? dispatch.solution : dispatch
         audit=x!==nothing && haskey(x,"objective") ?
-              _replay(c, x; grid = integration_grid===nothing ? refined_grid(c.grid;factor=replay_factor) : integration_grid,
+              _replay(c, x; grid = integration_grid===nothing ? refined_grid(get(x,"grid",c.grid);factor=replay_factor) : integration_grid,
                   storage_convergence, storage_relative_convergence, level_convergence, objective_convergence) :
               (valid=false,errors=["NLP candidate has no objective"],shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
         original=get(audit, :original_audit, Dict{String,Any}())

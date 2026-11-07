@@ -8,11 +8,6 @@ end
 # Ordinary operating constraints shared by nonlinear dispatch and its proposal.
 # Optional inputs are resolved during construction; the solver receives algebraic rows.
 
-const RAMP_ATTRIBUTES = (
-    :ramp_up, :ramp_down, :discharge_ramp_up, :discharge_ramp_down,
-    :volume_ramp_up, :volume_ramp_down, :level_ramp_up, :level_ramp_down,
-)
-
 function ramp_default(object, attribute)
     value=getfield(object, attribute)
     object isa Plant && attribute in (:ramp_up, :ramp_down) && value===nothing ?
@@ -123,16 +118,7 @@ function river_initial_output(r)
     last(r.history_release),r.history_grid[end]-r.history_grid[end-1]
 end
 
-function constrain_dispatch_operations!(m,c,u,P,GQ,RQ;
-    transitions=nothing,margin=0.0,proposal=false)
-    su,sd=unit_transitions(c,u;transitions)
-    for (i,g) in enumerate(c.system.generators)
-        constrain_schedules!(m,c,g,view(P,i,:),view(GQ,i,:);proposal)
-        constrain_interval_ramps!(m,c,g,view(P,i,:),g.initial_power,g.initial_interval_hours,
-            (:ramp_up,:ramp_down);su,sd,members=[i],margin)
-        constrain_interval_ramps!(m,c,g,view(GQ,i,:),g.initial_discharge,g.initial_interval_hours,
-            (:discharge_ramp_up,:discharge_ramp_down))
-    end
+function constrain_plant_capacities!(m,c,u,P,GQ;margin=0.0)
     for p in c.system.plants
         members=findall(g->g.plant==p.name,c.system.generators)
         total_p=[sum(P[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
@@ -149,6 +135,25 @@ function constrain_dispatch_operations!(m,c,u,P,GQ,RQ;
             qmax=optional_operation(c,p.name,:qmax,t;default=p.qmax)
             qmax===nothing || @constraint(m,total_q[t]<=qmax)
         end
+    end
+    nothing
+end
+
+function constrain_dispatch_operations!(m,c,u,P,GQ,RQ;
+    transitions=nothing,margin=0.0,proposal=false,capacities=true)
+    capacities && constrain_plant_capacities!(m,c,u,P,GQ;margin)
+    su,sd=unit_transitions(c,u;transitions)
+    for (i,g) in enumerate(c.system.generators)
+        constrain_schedules!(m,c,g,view(P,i,:),view(GQ,i,:);proposal)
+        constrain_interval_ramps!(m,c,g,view(P,i,:),g.initial_power,g.initial_interval_hours,
+            (:ramp_up,:ramp_down);su,sd,members=[i],margin)
+        constrain_interval_ramps!(m,c,g,view(GQ,i,:),g.initial_discharge,g.initial_interval_hours,
+            (:discharge_ramp_up,:discharge_ramp_down))
+    end
+    for p in c.system.plants
+        members=findall(g->g.plant==p.name,c.system.generators)
+        total_p=[sum(P[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
+        total_q=[sum(GQ[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
         constrain_schedules!(m,c,p,total_p,total_q;proposal)
         initial_p,p_hours=plant_initial_output(c,p,members,:power)
         initial_q,q_hours=plant_initial_output(c,p,members,:discharge)
@@ -211,20 +216,10 @@ function schedule_violation(c,object,p,q)
     violation
 end
 
-"""Plant capacity, schedule and ramp residuals, indexed by plant.
-
-These use the supplied observation windows. Power capacity and ramps are in MW;
-discharge capacity and ramps are in m³/s.
-"""
-function plant_operating_residuals(c,x)
+function plant_capacity_residuals(c,x)
     u,P,GQ=x.commitment,x.power,x.generator_q
-    n=length(c.system.plants)
-    power_capacity=zeros(n)
-    discharge_capacity=zeros(n)
-    schedule=zeros(n)
-    power_ramp=zeros(n)
-    discharge_ramp=zeros(n)
-    su,sd=unit_transitions(c,u)
+    power_capacity=zeros(length(c.system.plants))
+    discharge_capacity=zeros(length(c.system.plants))
     for (i,p) in enumerate(c.system.plants)
         members=findall(g->g.plant==p.name,c.system.generators)
         tp=vec(sum(P[members,:];dims=1))
@@ -237,6 +232,27 @@ function plant_operating_residuals(c,x)
             maximum_q=optional_operation(c,p.name,:qmax,t;default=p.qmax)
             maximum_q===nothing || (discharge_capacity[i]=max(discharge_capacity[i],tq[t]-maximum_q))
         end
+    end
+    (;power_capacity,discharge_capacity)
+end
+
+"""Plant capacity, schedule and ramp residuals, indexed by plant.
+
+These use the supplied observation windows. Power capacity and ramps are in MW;
+discharge capacity and ramps are in m³/s.
+"""
+function plant_operating_residuals(c,x;capacity=plant_capacity_residuals(c,x))
+    u,P,GQ=x.commitment,x.power,x.generator_q
+    n=length(c.system.plants)
+    (;power_capacity,discharge_capacity)=capacity
+    schedule=zeros(n)
+    power_ramp=zeros(n)
+    discharge_ramp=zeros(n)
+    su,sd=unit_transitions(c,u)
+    for (i,p) in enumerate(c.system.plants)
+        members=findall(g->g.plant==p.name,c.system.generators)
+        tp=vec(sum(P[members,:];dims=1))
+        tq=vec(sum(GQ[members,:];dims=1))
         schedule[i]=schedule_violation(c,p,tp,tq)
         initial_p,p_hours=plant_initial_output(c,p,members,:power)
         initial_q,q_hours=plant_initial_output(c,p,members,:discharge)
@@ -249,7 +265,8 @@ function plant_operating_residuals(c,x)
 end
 
 """Diagnostic names for operating rows, evaluated from physical schedule values."""
-function operating_residuals(c,x;plants=plant_operating_residuals(c,x))
+function operating_residuals(c,x;plants=plant_operating_residuals(c,x),
+    level_case=c,level_storage=x.storage)
     residuals=Dict{String,Float64}()
     u,P,GQ,RQ,V=x.commitment,x.power,x.generator_q,x.river_release,x.storage
     su,sd=unit_transitions(c,u)
@@ -290,43 +307,6 @@ function operating_residuals(c,x;plants=plant_operating_residuals(c,x))
         end
     end
     merge!(residuals,gross_head_residuals(c,x),flow_requirement_residuals(c,x),
-        river_operation_residuals(c,RQ),window_residuals(c,x))
+        river_operation_residuals(c,RQ),window_residuals(c,x;level_case,level_storage))
     residuals
-end
-
-"""Finer replay checks interval operating rows on their original windows."""
-function without_interval_controls(c)
-    strip(object)=begin
-        changes=Dict{Symbol,Any}(attribute=>nothing for attribute in RAMP_ATTRIBUTES
-            if attribute in fieldnames(typeof(object)))
-        object isa Plant && (changes[:ramp]=nothing)
-        if object isa River
-            changes[:min_allowed_flow]=nothing
-            for a in RIVER_COST_ATTRIBUTES
-                changes[a]=0.0
-            end
-        end
-        _river_replace(object;changes...)
-    end
-    system=_river_replace(c.system;
-        reservoirs=strip.(c.system.reservoirs),
-        generators=strip.(c.system.generators),
-        plants=strip.(c.system.plants),
-        rivers=strip.(c.system.rivers))
-    operations=[z for z in c.operations if z.attribute ∉ RAMP_ATTRIBUTES &&
-        z.attribute ∉ (:power,:discharge) && z.attribute ∉ RIVER_COST_ATTRIBUTES &&
-        !any(rule->rule.name==z.object,c.flow_requirements)]
-    _river_replace(c;system,operations,flow_requirements=FlowRequirement[])
-end
-
-function operating_window_values(c,z,grid,indices,u)
-    dt=diff(grid)
-    original_dt=diff(c.grid)
-    average(values)=[sum(values[i,k]*dt[k] for k in eachindex(dt) if indices[k]==t)/original_dt[t]
-        for i in axes(values,1), t in eachindex(c.prices)]
-    vertices=[something(findfirst(==(time),grid)) for time in c.grid]
-    (;commitment=u, power=average(z.power), generator_q=average(z.generator_q),
-        river_release=average(z.river_release), storage=z.storage[:,vertices],
-        tunnel_q=average(z.tunnel_q),arrival_volume=average(z.arrival_volume ./ permutedims(0.0036 .*dt)) .*
-            permutedims(0.0036 .*original_dt))
 end

@@ -261,6 +261,8 @@ function _solve(
         initial_audit = validate(c, initial)
         initial_audit["valid"] ||
             throw(ArgumentError("initial schedule fails the equation audit"))
+        _schedule_input(initial;case=c).grid==c.grid || throw(ArgumentError(
+            "global initial schedule must use the global model's hydraulic grid"))
         best, correction = _reconstruct_candidate(c, initial)
         best["validation"]["valid"] ||
             throw(ArgumentError("initial controls fail reconstruction audit"))

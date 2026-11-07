@@ -405,7 +405,8 @@ end
 
 A watercourse and its scheduling horizon. `grid` contains increasing absolute
 hours; `prices[t]` is currency/MWh on `[grid[t], grid[t+1]]`. Prices and controls
-have one column/value per interval. Storage has one column per grid vertex.
+have one column/value per operating interval. Returned storage is recorded at
+the schedule's hydraulic vertices, which may refine these operating times.
 `operations` supplies time-dependent restrictions on named physical objects.
 """
 Base.@kwdef struct ScheduleCase
