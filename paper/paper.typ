@@ -1145,7 +1145,9 @@ flows need not lie in the same interval. With an accepted trajectory, proposals 
 number of changed unit states, river states and gate positions around the
 accepted trajectory. A different gate position counts as one change. The
 neighborhood starts at four changes, doubles after an unsuccessful attempt,
-and resets after a gain.
+and resets after a gain. This Hamming-distance restriction follows the local
+branching idea of Fischetti and Lodi~@localbranching. Here it guides proposals
+from a changing MILP surrogate rather than partitioning the full nonlinear search.
 
 Its level observations use first-order affine approximations at the reference
 storage, or at initial storage when no reference is available. Each approximation
@@ -1175,7 +1177,8 @@ $ Delta M_(r j t)^0 = kappa epsilon_m psi_(r j)(hat(R)_(r m)), quad
     Delta M_(r j t)^0. $ <eq:momentincrements>
 
 These recurrences determine every integral value from the entry flows.
-A uniform delay bin gives a rectangular weight over release time for a rate
+Introducing the integrals as auxiliary variables is an exact lifting~@lifting
+of the cohort equations. A uniform delay bin gives a rectangular weight over release time for a rate
 observation and a trapezoidal weight for a volume observation. Each piece is
 affine, so differences of the two integrals evaluate it exactly. Partial
 cohorts are integrated analytically. Anchoring each control window keeps the
@@ -1199,7 +1202,9 @@ An independent integration holds the selected unit discharges and openings
 fixed and recovers the resulting water trajectory. At each interval, Newton's
 method solves jointly for ending storage, junction heads, tunnel flows and
 active outlet releases. Column-pivoted QR handles rank deficiency in the
-linearized equations, including cycles with zero tunnel flow.
+linearized equations, including cycles with zero tunnel flow. ForwardDiff
+computes the residual Jacobian by forward-mode automatic differentiation~@forwarddiff,
+with dual-number work arrays reused between Newton iterations.
 Nonnegative outlet and pump flow domains are imposed on Newton trial iterates;
 convergence still requires all the original equations. The jointly converged
 flows are retained, since reevaluating separate outlet laws can disturb a
@@ -1267,8 +1272,8 @@ time-weighted mean flow $overline(q)_(r K)$ with the fine-cell values:
 $ eta_K = kappa sum_(r,l) sum_(j subset K) Delta tau_j
     abs(psi_(r l)(q_(r j)) - psi_(r l)(overline(q)_(r K))). $
 
-Mark cells whose indicators account for at least half the total and bisect
-them~@doerfler1996. Reconstruct the current controls on the selected mesh to
+Using Dörfler’s bulk-marking rule~@doerfler1996, mark cells whose indicators
+account for at least half the total and bisect them. Reconstruct the current controls on the selected mesh to
 start the next solve. This changes the transport approximation while retaining
 the original control times. The accepted mesh carries into revenue optimization
 and the global model; the returned problem records it.
@@ -1400,7 +1405,7 @@ approximates. A piecewise-linear curve with knots $(x_i,y_i)$ has the graph
 $ lambda_i >= 0, quad sum_i lambda_i = 1, quad
   x = sum_i x_i lambda_i, quad y = sum_i y_i lambda_i, quad lambda in op("SOS2"). $ <eq:sos>
 
-SOS2 restricts the weights to one segment~@huch. The two neighboring weights
+SOS2 restricts the weights to one segment~@bealetomlin. The two neighboring weights
 sum to one, and the equation for $x$ fixes the interpolation fraction.
 The equation for $y$ then gives the interpolated output. Without adjacency,
 weights on distant knots could produce points away from the curve.
@@ -1437,7 +1442,9 @@ Let $E_(i j)=f_j(q_i)$ be the original curve's value at a partition point.
 Linear interpolation in head combines the
 values $eta_j$ on the neighboring head curves. For head-independent data,
 each head vertex uses the same efficiency column. A shape-preserving cubic in
-discharge~@fritsch is represented by adding corrections to the linear curve:
+discharge uses the weighted harmonic interior slopes of Fritsch and
+Butland~@fritsch and clipped one-sided endpoint slopes~@moler. We represent
+that interpolant by adding corrections to the linear curve:
 
 $ w_i = lambda_i lambda_(i+1), quad r_i = lambda_i w_i, \
   eta_j = sum_i E_(i j) lambda_i
@@ -1495,7 +1502,8 @@ $d_o=o(H_v-H_w)$. If $L<=H_v-H_w<=U$, this binary product is represented by
 $ L o <= d_o <= U o, quad
   H_v - H_w - U(1-o) <= d_o <= H_v - H_w - L(1-o). $ <eq:binaryhull>
 
-When $o=0$, @eq:binaryhull forces $d_o=0$. When $o=1$, it forces
+These are the McCormick product inequalities~@mccormick, exact when one
+factor is binary. When $o=0$, @eq:binaryhull forces $d_o=0$. When $o=1$, it forces
 $d_o=H_v-H_w$. Adding $abs(Q)<=C o$ and $d_o=K(b)S$ gives the open and
 closed gate laws in @eq:tunnel and @eq:closed. The resistance assigned to
 the closed selector may be any finite value, since $S=0$ there. All the
@@ -1532,11 +1540,13 @@ $P=q=0$ and the right side is nonnegative. To establish $c$, we bound the
 residual $p^"ub"-a q-b h$ over every original interpolation cell.
 In a Bernstein representation of a polynomial on a box, the basis weights
 are nonnegative and sum to one, so its value cannot exceed its largest
-coefficient. The coefficient bound covers the whole cell. Fitting a plane at a few
+coefficient~@bernstein. Subdivision tightens this enclosure.
+The coefficient bound covers the whole cell. Fitting a plane at a few
 samples alone could miss a larger residual between them.
 
 A box containing the admissible running values of $q,h,eta$ has up to eight
-corners $(q_c,h_c,eta_c)$. We couple these variables with weights on the
+corners $(q_c,h_c,eta_c)$. The convex hull of a multilinear graph on a box
+is generated by its vertex values~@rikun. We couple these variables with weights on the
 corners. Exact binary-product inequalities, as in
 @eq:binaryhull, define $h_"on"=u h$ and $eta_"on"=u eta$.
 Nonnegative weights $z_c$ on the corners satisfy
