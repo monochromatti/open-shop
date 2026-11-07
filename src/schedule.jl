@@ -40,12 +40,14 @@ function schedule_case(
     attempts=Any[]
     best=nothing
     if initial!==nothing
-        u=initial["u"]
+        initial_schedule=_schedule_input(initial;case=c)
+        mesh=TimeDiscretization(c.grid,initial_schedule.grid)
+        u=operating_window_values(c,initial_schedule).commitment
         v=_verified_dispatch(
             c;
             u,
             initial,
-            tunnel_opening=get(initial,"tunnel_opening",tunnel_opening_schedule(c)),
+            tunnel_opening=initial_schedule.tunnel_opening[:,first.(mesh.cells)],
             max_refinements = 0,
             time_limit = nlp_time_limit,
             operational_margin,

@@ -442,8 +442,7 @@ end
     @test x["river_release"]≈[10.0 0.0;0.0 0.0;5.0 5.0] atol=1e-10
     @test replay_audit(c,x)["valid"]
 
-    fine=OpenSHOP.without_interval_controls(with_grid(c,[0.0,0.5,1.0,1.5,2.0]))
-    fine_x=dispatch_from_controls(fine,zeros(Int,0,4),zeros(0,4),gate[:,[1,1,2,2]])
+    fine_x=dispatch_from_controls(c,u,q,gate;grid=[0.0,0.5,1.0,1.5,2.0])
     @test fine_x["validation"]["valid"]
     @test vec(fine_x["river_release"][3,:])≈[0.0,10.0,10.0,0.0] atol=1e-10
 

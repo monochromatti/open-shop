@@ -44,14 +44,18 @@ function restart_case(c::ScheduleCase, x, time::Real)
         ),
     )
     x=_schedule_input(x; case=c)
+    physical=x
+    mesh=TimeDiscretization(c.grid,physical.grid)
+    x=operating_window_values(mesh,physical,physical.commitment[:,first.(mesh.cells)])
+    physical_edge=mesh.vertices[edge]
     s=c.system
     previous=edge-1
     reservoirs=[begin
         needs_history=!isempty(r.level_windows) || !isempty(r.history_grid)
         first_new=isempty(r.history_grid) ? 1 : 2
-        history_grid=needs_history ? vcat(r.history_grid,c.grid[first_new:edge]) : Float64[]
+        history_grid=needs_history ? vcat(r.history_grid,physical.grid[first_new:physical_edge]) : Float64[]
         history_storage=needs_history ? vcat(r.history_storage,
-            vec(x.storage[i,first_new:edge])) : Float64[]
+            vec(physical.storage[i,first_new:physical_edge])) : Float64[]
         _restart_replace(r;v0=Float64(x.storage[i,edge]),history_grid,history_storage,
             level_windows=[w for w in r.level_windows if w.end_time>time])
     end for (i,r) in enumerate(s.reservoirs)]
@@ -73,7 +77,7 @@ function restart_case(c::ScheduleCase, x, time::Real)
                 initial_interval_hours=Float64(c.grid[edge]-c.grid[edge-1])),
         )
     end
-    opening=_physical_tunnel_openings(c,get(x,"tunnel_opening",nothing))
+    opening=_physical_tunnel_openings(c,physical.tunnel_opening[:,first.(mesh.cells)])
     tunnels=[_restart_replace(e;initial_opening=Float64(opening[i,previous]))
         for (i,e) in enumerate(s.tunnels)]
     switch_history=tunnel_switch_history(c,opening,time)
@@ -96,7 +100,8 @@ function restart_case(c::ScheduleCase, x, time::Real)
             initial_interval_hours = Float64(c.grid[edge]-c.grid[edge - 1]),
         ) for (j,p) in enumerate(s.plants)
     ]
-    routed=routed_schedule(c,x.river_release;generator_q=x.generator_q,tunnel_q=x.tunnel_q)
+    routed=routed_schedule(hydraulic_case(c,physical.grid),physical.river_release;
+        generator_q=physical.generator_q,tunnel_q=physical.tunnel_q)
     rivers=River[]
     for (i, r) in enumerate(s.rivers)
         windows=isempty(r.arrival_window_grid) ? Float64[] :

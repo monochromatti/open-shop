@@ -538,7 +538,9 @@ function transport_audit(
     transport = nothing,
     tolerance = 1e-4,
 )
-    x=_schedule_input(x; case=c)
+    x=_schedule_input(x;case=c)
+    TimeDiscretization(c.grid,x.grid)
+    c=hydraulic_case(c,x.grid)
     routed=route_network_controlled(
         c,
         x.river_release;

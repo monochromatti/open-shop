@@ -295,11 +295,11 @@ function window_start_values(c,x,integrals,bands)
     pairs
 end
 
-function window_residuals(c,x)
+function window_residuals(c,x;level_case=c,level_storage=x.storage)
     result=Dict{String,Float64}()
     for (i,r) in enumerate(c.system.reservoirs), (j,w) in enumerate(r.level_windows)
         window_active(c,w) || continue
-        z=head.(Ref(r),x.storage[i,level_window_vertices(c,w)])
+        z=head.(Ref(r),level_storage[i,level_window_vertices(level_case,w)])
         append!(z,level_window_history(c,r,w))
         result["level_window_$(r.name)_$j"]=max(0.0,maximum(z)-minimum(z)-w.max_change)
     end

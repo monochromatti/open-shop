@@ -164,6 +164,26 @@ Power, discharge and release are averaged back onto those windows, while
 reservoir values are sampled at their original vertices. Restart retains
 previous unit/plant output, durations, state ages and river cohorts.
 
+With an explicit finer hydraulic grid, these are still the intervals in
+`case.grid`. Running gross-head restrictions use the volume-averaged levels
+between those original storage endpoints; startup head uses the starting
+endpoint. Machine head and conversion laws are checked on each hydraulic cell.
+Reservoir level windows include all represented physical vertices inside their
+declared time range. Flow-observation windows retain their original interval
+record and time weights.
+
+`min_release` applies on every physical cell. A positive `release_penalty`
+charges the volume below that minimum on those cells; a later surplus cannot
+cancel an earlier deficit. Refinement can change this quadrature as physical
+flows become better resolved. Explicit average-flow rules and soft targets
+retain their declared windows. Pointwise arrival requirements retain their
+separate event-based meaning.
+
+Reserve allocations stay fixed over operating intervals, while their physical
+witnesses and response-rate limits are checked at each hydraulic operating
+point. A scheduling ramp between interval-average outputs is a different
+restriction from delivering reserve within its response time.
+
 ## Gate handovers and plant shutdowns
 
 `TunnelInterlock` retains its instantaneous `min_open`/`max_open` limits.

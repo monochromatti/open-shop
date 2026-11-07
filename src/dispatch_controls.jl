@@ -57,60 +57,58 @@ or nonconvergent integration throws `ArgumentError`. No bound, gate or state
 is clipped, and the input arrays are not mutated. This function does not optimize.
 """
 function dispatch_from_controls(
-    c,
-    u,
-    q,
-    gate;
+    c, u, q, gate;
     status = "FORWARD_RECONSTRUCTED",
     transport = nothing,
     tunnel_opening = nothing,
     reserves = nothing,
     head_reference = nothing,
+    grid = c.grid,
 )
+    mesh=TimeDiscretization(c.grid,grid)
+    physical=hydraulic_case(c,mesh.grid)
     validate_reserve_inputs(c)
-    admissible(c, u) || throw(ArgumentError("inadmissible commitment"))
+    admissible(c,u) || throw(ArgumentError("inadmissible commitment"))
     opening=_physical_tunnel_openings(c,tunnel_opening)
     validate_tunnel_openings(c,opening,u)
-    nd=all(r->r.deterministic_delay!==nothing, c.system.rivers) ? _transport_data(c, transport) :
-       nothing
-    nd===nothing &&
-        transport!==nothing &&
-        throw(
-            ArgumentError(
-                "compiled deterministic transport cannot serve distributed reconstruction",
-            ),
-        )
-    z=simulate(c, q, gate; transport = nd, tunnel_opening=opening,commitment=u,head_reference)
+    nd=all(r->r.deterministic_delay!==nothing,c.system.rivers) ?
+        _transport_data(physical,transport) : nothing
+    nd===nothing && transport!==nothing && throw(ArgumentError(
+        "compiled deterministic transport cannot serve distributed reconstruction"))
+    z=simulate(c,q,gate;grid=mesh.grid,transport=nd,tunnel_opening=opening,commitment=u,head_reference)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
-    s=c.system
-    dt=diff(c.grid)
-    T=length(dt)
-    req=release_requirements(c, z.river_release)
-    operating_cost=transition_costs(c, u)
-    adjustment_cost=tunnel_adjustment_cost(c, z.tunnel_opening)
-    reserves=reserves===nothing ? _zero_reserves(c,z.generator_q) :
-        reserve_witnesses(c,_reserve_input(reserves,T),u,z)
-    objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*z.power[j,t]
-        for j in eachindex(s.generators), t in 1:T; init=0.0) -
-        operating_cost-req.cost-adjustment_cost-river_operating_cost(c,z.river_release).total +
+    held_u=u[:,mesh.interval]
+    windows=operating_window_values(mesh,z,u)
+    req=release_requirements(physical,z.river_release)
+    adjustment_cost=tunnel_adjustment_cost(c,opening)
+    reserves=reserves===nothing ? _zero_reserves(physical,z.generator_q;operating_case=c) :
+        reserve_witnesses(physical,_reserve_slice(_reserve_input(reserves,length(c.prices)),mesh.interval),held_u,z;operating_case=c)
+    objective=sum(physical.prices[k]*mesh.dt[k]*unit_power_sign(g)*z.power[j,k]
+        for (j,g) in enumerate(c.system.generators),k in eachindex(mesh.dt);init=0.0) -
+        transition_costs(c,u)-req.cost-adjustment_cost-river_operating_cost(c,windows.river_release).total +
         sum(r.water_value*(z.storage[i,end]-r.v0)
-            for (i,r) in enumerate(s.reservoirs); init=0.0) +
+            for (i,r) in enumerate(c.system.reservoirs);init=0.0) +
         sum(r.water_value*(z.transit[i,end]-z.transit[i,1])
-            for (i,r) in enumerate(s.rivers); init=0.0) + reserve_economics(c,reserves).value
-    x=Schedule(copy(c.grid), copy(u), z.storage, z.head, z.tunnel_q,
-        z.tunnel_opening, z.generator_q, z.power, Matrix{Float64}(gate),
-        z.river_release, z.arrival_volume, z.transit[:,end], req.shortfall,
-        objective, adjustment_cost, req.cost,
+            for (i,r) in enumerate(c.system.rivers);init=0.0) + reserve_economics(physical,reserves;operating_case=c).value
+    x=Schedule(copy(mesh.grid),copy(held_u),z.storage,z.head,z.tunnel_q,
+        z.tunnel_opening,z.generator_q,z.power,Matrix{Float64}(gate[:,mesh.interval]),
+        z.river_release,z.arrival_volume,z.transit[:,end],req.shortfall,
+        objective,adjustment_cost,req.cost,
         Dict{String,Any}("case"=>c.name,"status"=>status,"solver"=>"independent_forward");reserves)
     x=with_soft_assessment(c,x)
-    x.diagnostics["validation"]=validate(c, x; transport=nd)
+    x.diagnostics["validation"]=validate(c,x;transport=nd)
     x
 end
 
 """Correct bounded solver roundoff, then independently rebuild all physical values."""
 function _reconstruct_candidate(c, raw; transport = nothing)
     raw=_schedule_input(raw; case=c)
-    admissible(c, raw.commitment) || throw(ArgumentError("inadmissible commitment"))
+    mesh=TimeDiscretization(c.grid,raw.grid)
+    firstcell=first.(mesh.cells)
+    maximum(values(held_control_residuals(c,raw,mesh));init=0.0)<=1e-6 ||
+        throw(ArgumentError("controls change inside an operating interval"))
+    u=raw.commitment[:,firstcell]
+    admissible(c,u) || throw(ArgumentError("inadmissible commitment"))
     q, gate = copy(raw.generator_q), copy(raw.gate)
     all(isfinite, q) && all(isfinite, gate) || throw(ArgumentError("nonfinite controls"))
     all(x -> x >= -1e-6, q) || throw(ArgumentError("negative discharge"))
@@ -122,29 +120,49 @@ function _reconstruct_candidate(c, raw; transport = nothing)
     end
     q = max.(q, 0.0)
     gate = clamp.(gate, 0.0, 1.0)
-    raw_opening=_tunnel_opening_input(c, raw.tunnel_opening)
+    raw_opening=_tunnel_opening_input(c,raw.tunnel_opening[:,firstcell])
     ta=_physical_tunnel_openings(c, raw_opening)
     correction = (
         flow = maximum(abs, q .- raw.generator_q; init = 0.0),
         gate = maximum(abs, gate .- raw.gate; init = 0.0),
         tunnel_opening = maximum(
             abs,
-            ta .- get(raw, "fractional_tunnel_opening", raw_opening);
+            ta .- get(raw,"fractional_tunnel_opening",raw.tunnel_opening)[:,firstcell];
             init = 0.0,
         ),
     )
-    x = dispatch_from_controls(c, raw.commitment, q, gate; transport, tunnel_opening = ta,
-        reserves=raw.reserves,head_reference=raw.head)
+    x=dispatch_from_controls(c,u,q[:,firstcell],gate[:,firstcell];grid=mesh.grid,
+        transport,tunnel_opening=ta,reserves=_reserve_slice(raw.reserves,firstcell),
+        head_reference=interval_means(mesh,raw.head))
     x, correction
 end
 
-"""Use a warm start only when its hydraulic arrays match the requested grid."""
-function _dispatch_start(c, u, warm)
+"""Reuse a matching warm trajectory; reintegrate its controls on a new mesh."""
+function _dispatch_start(c,u,warm;grid=c.grid)
     diagnostics=Dict{String, Any}("used"=>false)
     warm===nothing && return nothing, diagnostics
-    if haskey(warm, "grid") && warm["grid"]!=c.grid
-        diagnostics["ignored_reason"]="warm control grid differs from case"
-        return nothing, diagnostics
+    if grid!=c.grid || haskey(warm,"grid") && warm["grid"]!=c.grid
+        try
+            source=_schedule_input(warm;case=c)
+            old=TimeDiscretization(c.grid,source.grid)
+            source,reason=_dispatch_start(hydraulic_case(c,source.grid),u[:,old.interval],source)
+            source===nothing && return nothing,reason
+            if source.grid==grid
+                return source,reason
+            end
+            cells=first.(old.cells)
+            q=copy(source.generator_q[:,cells])
+            q[u.==0].=0.0
+            rebuilt=dispatch_from_controls(c,u,q,source.gate[:,cells];
+                grid,tunnel_opening=source.tunnel_opening[:,cells],
+                reserves=_reserve_slice(source.reserves,cells),head_reference=interval_means(old,source.head))
+            diagnostics["used"]=true
+            return rebuilt,diagnostics
+        catch error
+            error isa Union{ArgumentError,DimensionMismatch,DomainError,KeyError} || rethrow()
+            diagnostics["ignored_reason"]="warm trajectory: "*sprint(showerror,error)
+            return nothing,diagnostics
+        end
     end
     haskey(warm, "V") || return nothing, diagnostics
     T=length(c.prices)
@@ -188,7 +206,8 @@ function dispatch_from_controls(
     tunnel_opening = nothing,
     reserves = nothing,
     head_reference = nothing,
+    grid = c.grid,
 )
     dispatch_from_controls(c, commitment, generator_q, gate; status, transport,
-        tunnel_opening,reserves,head_reference)
+        tunnel_opening,reserves,head_reference,grid)
 end

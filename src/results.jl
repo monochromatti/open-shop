@@ -30,6 +30,8 @@ Storage and river inventory are Mm³, discharge is m³/s, head is metres and
 power is a nonnegative production/consumption magnitude in MW. All unit arrays
 follow the common `HydroSystem.generators` order; [`net_power`](@ref) supplies
 signed electrical exchange. `diagnostics` contains reporting data, not equations.
+`grid` may refine the case's operating grid. Adjustable controls remain held
+over each original operating interval; physical states use the recorded grid.
 """
 struct Schedule{U<:AbstractMatrix}
     grid::Vector{Float64}
@@ -137,7 +139,7 @@ function _schedule_input(x::AbstractDict; case=nothing)
     release = matrix("river_release")
     opening = haskey(x, "tunnel_opening") ? matrix("tunnel_opening") :
         case === nothing ? throw(ArgumentError("schedule needs tunnel_opening")) :
-        _tunnel_opening_input(case,nothing)
+        _tunnel_opening_input(case,nothing)[:,TimeDiscretization(case.grid,grid).interval]
     diagnostics = Dict{String,Any}(string(k)=>v for (k,v) in x
         if !any(p -> first(p) == string(k), _SCHEDULE_KEYS))
     Schedule(grid, commitment, matrix("V"), matrix("H"), matrix("tunnel_q"),

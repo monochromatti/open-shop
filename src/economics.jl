@@ -5,10 +5,11 @@ in-transit water value, less unit transitions, named penalties and gate motion.
 Physical replay evaluates these quantities independently.
 """
 function dispatch_objective(model, c, P, V, terminal, u, shortfall;
-    initial_transit, gate_cost, transitions=nothing, soft_cost=0.0,river_cost=0.0)
+    initial_transit,gate_cost,transitions=nothing,soft_cost=0.0,river_cost=0.0,
+    operating_case=c,operating_u=u)
     dt=diff(c.grid)
     s=c.system
-    operating_cost=transition_costs(c,u;transitions)
+    operating_cost=transition_costs(operating_case,operating_u;transitions)
     penalty=@expression(model,
         sum(opinterval(c,r.name,:release_penalty,t,0.0)*shortfall[i,t]
             for (i,r) in enumerate(s.rivers), t in eachindex(dt)))

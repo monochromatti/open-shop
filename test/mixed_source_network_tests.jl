@@ -156,19 +156,18 @@ end
             grid=OpenSHOP.refined_grid(c.grid;factor=8)
             indices=[searchsortedlast(c.grid,(grid[t]+grid[t+1])/2)
                 for t in 1:length(grid)-1]
-            physical_case=OpenSHOP.without_interval_controls(with_grid(c,grid))
-            physical=dispatch_from_controls(physical_case,fixture.u[:,indices],
-                fixture.q[:,indices],fixture.gates[:,indices])
+            physical=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates;grid)
             @test physical["validation"]["valid"]
             windows=OpenSHOP.operating_window_values(c,physical,grid,indices,fixture.u)
             @test maximum(values(OpenSHOP.operating_residuals(c,windows)))<=1e-4
-            fine_replay=replay_audit(physical_case,physical)
+            fine_replay=replay_audit(c,physical)
             @test fine_replay["valid"]
-            refined_restart=restart_case(physical_case,physical,2.0)
+            refined_restart=restart_case(c,physical,2.0)
             edge=findfirst(==(2.0),grid)
+            control_edge=findfirst(==(2.0),c.grid)
             refined_remainder=dispatch_from_controls(refined_restart,
-                physical["u"][:,edge:end],physical["generator_q"][:,edge:end],
-                physical["gate"][:,edge:end])
+                fixture.u[:,control_edge:end],fixture.q[:,control_edge:end],
+                fixture.gates[:,control_edge:end];grid=grid[edge:end])
             @test refined_remainder["validation"]["valid"]
             @test refined_remainder["V"]≈physical["V"][:,edge:end] atol=1e-8
             @test refined_remainder["terminal_transit"]≈physical["terminal_transit"] atol=1e-8

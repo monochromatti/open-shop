@@ -40,22 +40,24 @@ Use `validate` separately to establish schedule feasibility.
 """
 function objective_components(c::ScheduleCase,x)
     x=_schedule_input(x;case=c)
-    x.grid==c.grid || throw(ArgumentError("objective accounting requires the case control grid"))
-    s=c.system;dt=diff(c.grid)
+    mesh=TimeDiscretization(c.grid,x.grid)
+    physical=hydraulic_case(c,x.grid)
+    windows=operating_window_values(c,x)
+    s=c.system;dt=mesh.dt
     initial=[remaining_volume(r,first(c.grid),r.history_grid,r.history_release)
         for r in s.rivers]
     exchange=net_power(c,x)
-    energy_revenue=sum(c.prices[t]*dt[t]*exchange[t] for t in eachindex(dt);init=0.0)
+    energy_revenue=sum(physical.prices[t]*dt[t]*exchange[t] for t in eachindex(dt);init=0.0)
     reservoir_value=sum(r.water_value*(x.storage[i,end]-r.v0)
         for (i,r) in enumerate(s.reservoirs);init=0.0)
     transit_value=sum(r.water_value*(x.terminal_transit[i]-initial[i])
         for (i,r) in enumerate(s.rivers);init=0.0)
-    transition_cost=transition_costs(c,x.commitment)
-    gate_cost=tunnel_adjustment_cost(c,x.tunnel_opening)
-    river_cost=river_operating_cost(c,x.river_release)
-    release_penalty=release_requirements(c,x.river_release).cost
+    transition_cost=transition_costs(c,windows.commitment)
+    gate_cost=tunnel_adjustment_cost(c,x.tunnel_opening[:,first.(mesh.cells)])
+    river_cost=river_operating_cost(c,windows.river_release)
+    release_penalty=release_requirements(physical,x.river_release).cost
     soft_penalty=soft_constraint_assessment(c,x).cost
-    reserve=reserve_economics(c,x.reserves)
+    reserve=reserve_economics(physical,x.reserves;operating_case=c)
     river_change_cost,river_start_cost,river_stop_cost=river_cost.change,river_cost.start,river_cost.stop
     reserve_revenue,reserve_penalty=reserve.revenue,reserve.cost
     total=energy_revenue+reservoir_value+transit_value+reserve_revenue-

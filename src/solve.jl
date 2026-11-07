@@ -258,6 +258,8 @@ function _solve(
     reconstruction_started=clock()
     best = nothing
     if initial !== nothing
+        _schedule_input(initial;case=c).grid==c.grid || throw(ArgumentError(
+            "global initial schedule must use the global model's hydraulic grid"))
         initial_audit = validate(c, initial)
         initial_audit["valid"] ||
             throw(ArgumentError("initial schedule fails the equation audit"))

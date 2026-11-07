@@ -6,6 +6,11 @@
 function _proposal_reference(c, point)
     if point isa Schedule || point isa SolveResult
         point=_schedule_input(point;case=c)
+        if point.grid!=c.grid
+            u=operating_window_values(c,point).commitment
+            point=first(_dispatch_start(c,u,point))
+        end
+        point===nothing && return _proposal_reference(c,nothing)
         cohorts=all(r->r.deterministic_delay!==nothing,c.system.rivers) ? nothing :
             routed_schedule(c,point.river_release;generator_q=point.generator_q,tunnel_q=point.tunnel_q).cohorts
         return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release,cohorts)

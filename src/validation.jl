@@ -90,11 +90,16 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         push!(errors,"invalid curve data: "*sprint(showerror,error))
         return finish()
     end
-    T=length(c.prices)
-    if result.grid!=c.grid
-        push!(errors,"schedule grid differs from case")
+    operating=c
+    mesh=try
+        TimeDiscretization(c.grid,result.grid)
+    catch error
+        error isa ArgumentError || rethrow()
+        push!(errors,sprint(showerror,error))
         return finish()
     end
+    c=hydraulic_case(operating,mesh.grid)
+    T=length(mesh.dt)
     try
         validate_river_allocations(s)
     catch error
@@ -112,6 +117,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         ("V",result.storage,(R,T+1)),
         ("H",result.head,(length(nodes(s)),T)),
         ("tunnel_q",result.tunnel_q,(length(s.tunnels),T)),
+        ("tunnel_opening",result.tunnel_opening,(length(s.tunnels),T)),
         ("generator_q",result.generator_q,(G,T)),
         ("power",result.power,(G,T)),
         ("river_release",result.river_release,(D,T)),
@@ -134,12 +140,19 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         push!(errors, "missing or nonfinite objective")
         return finish()
     end
+    firstcell=first.(mesh.cells)
+    operating_u=result.commitment[:,firstcell]
+    windows=operating_window_values(mesh,result,operating_u)
+    for (name,residual) in pairs(held_control_residuals(operating,result,mesh))
+        bound("held_$(name)",[residual];atol=min(tolerance,1e-6))
+    end
     TA,adjustment_cost=try
         opening=_tunnel_opening_input(c,get(result,"tunnel_opening",nothing))
-        validate_tunnel_openings(c,opening,result.commitment;tolerance=min(tolerance,1e-6))
-        append!(switch_obligations,[state for state in tunnel_switch_history(c,opening)
+        original_opening=opening[:,firstcell]
+        validate_tunnel_openings(operating,original_opening,operating_u;tolerance=min(tolerance,1e-6))
+        append!(switch_obligations,[state for state in tunnel_switch_history(operating,original_opening)
             if state.forward_wait>0 || state.backward_wait>0])
-        (opening,tunnel_adjustment_cost(c,opening))
+        (opening,tunnel_adjustment_cost(operating,original_opening))
     catch e
         e isa Union{ArgumentError,DimensionMismatch} || rethrow()
         push!(errors,"invalid tunnel_opening: "*sprint(showerror,e))
@@ -154,7 +167,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         record("gate_adjustment_cost_relative",[(cost-adjustment_cost)/max(1.0,abs(adjustment_cost))])
     end
     reserve_audit=try
-        validate_reserves(c,result;tolerance)
+        validate_reserves(c,result;tolerance,operating_case=operating)
     catch error
         error isa Union{ArgumentError,DimensionMismatch,DomainError} || rethrow()
         Dict("errors"=>["reserve capacity check failed: "*sprint(showerror,error)],
@@ -171,7 +184,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     A=result.arrival_volume
     ga=result.gate
     u=result.commitment
-    admissible(c, u) ||
+    admissible(operating, operating_u) ||
         push!(errors, "invalid binary commitment or minimum up/down history")
     record("initial_storage", V[:, 1]-[r.v0 for r in s.reservoirs];atol=storage_tolerance)
     for (i, r) in enumerate(s.reservoirs)
@@ -278,7 +291,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             Dict("generator"=>string(g.name), "state"=>state, "remaining_hours"=>left),
         )
     end
-    soft=soft_constraint_assessment(c,result)
+    soft=soft_constraint_assessment(operating,result)
     append!(permitted_penalties,[r for (r,excess) in zip(soft.slacks,soft.excess)
         if excess<=tolerance && (r.lower>0 || r.upper>0)])
     for (rule,excess) in zip(c.soft_constraints,soft.excess)
@@ -298,13 +311,13 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("soft_penalty_cost",[(result.soft_penalty_cost-soft.cost)/max(1.0,soft.cost)])
         end
     end
-    plants=plant_operating_residuals(c,result)
+    plants=plant_operating_residuals(operating,windows;capacity=plant_capacity_residuals(c,result))
     plant_power_shortfall.=max.(plants.power_capacity,plants.power_ramp)
     plant_discharge_shortfall.=max.(plants.discharge_capacity,plants.discharge_ramp)
-    for (name,residual) in operating_residuals(c,result;plants)
+    for (name,residual) in operating_residuals(operating,windows;plants,level_case=c,level_storage=V)
         bound(name,[residual])
     end
-    for history in _plant_commitment_history(c,u)
+    for history in _plant_commitment_history(operating,operating_u)
         history.residual>0 && push!(obligations,Dict(
             "plant"=>string(history.plant),"state"=>history.state,
             "remaining_hours"=>history.residual))
@@ -363,9 +376,9 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("junction_gate_$(r.name)", ga[d, :])
         end
     end
-    requirements=release_requirements(c, RQ)
+    requirements=release_requirements(c,RQ)
     bound("hard_release_requirements", requirements.hard)
-    if any(opinterval(c, r.name, :release_penalty, t, 0.0)>0 for r in s.rivers, t in 1:T)
+    if any(opinterval(c,r.name,:release_penalty,t,0.0)>0 for r in s.rivers,t in 1:T)
         if !haskey(result, "shortfall_release") ||
            size(result.shortfall_release)!=(D, T) ||
            !haskey(result, "release_penalty_cost")
@@ -457,7 +470,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         inventory=vec(sum(V; dims = 1)) .+ vec(sum(W; dims = 1))
         exchange=cumsum(dt .* (external .- inflow))
         record("global_water", (@view inventory[2:end]) .- initial .+ 0.0036 .* exchange)
-        operating_cost=transition_costs(c,u)
+        operating_cost=transition_costs(operating,operating_u)
         objective=sum(c.prices[t]*dt[t]*unit_power_sign(s.generators[i])*P[i, t]
             for i in 1:G, t in 1:T; init = 0.0)-operating_cost-adjustment_cost +
                   sum(
@@ -468,8 +481,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                       r.water_value*(W[d, end]-W[d, 1]) for (d, r) in enumerate(s.rivers);
                       init = 0.0,
                   )
-        objective-=requirements.cost+soft.cost+river_operating_cost(c,RQ).total
-        objective+=reserve_economics(c,result.reserves).value
+        objective-=requirements.cost+soft.cost+river_operating_cost(operating,windows.river_release).total
+        objective+=reserve_economics(c,result.reserves;operating_case=operating).value
         record(
             "objective_relative",
             [(objective-result.objective)/max(1.0, abs(objective))],

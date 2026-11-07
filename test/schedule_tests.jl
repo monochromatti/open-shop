@@ -197,7 +197,7 @@ end
             wrong["grid"]=grid
             discarded, reason=OpenSHOP._dispatch_start(c, u, wrong)
             @test discarded===nothing
-            @test occursin("grid", reason["ignored_reason"])
+            @test !reason["used"]
         end
         legacy=OpenSHOP.schedule_dict(initial)
         delete!(legacy, "grid")
