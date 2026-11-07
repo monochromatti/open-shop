@@ -1,4 +1,4 @@
-"""Two reference-flow integrals, anchored at each control-window start.
+"""Two reference-flow integrals, anchored at each supplied window start.
 
 `C[l,1,k]` is κ∫ψ_l(q) ds through cohort k, and `C[l,2,k]` is
 κ∫((s-start)/duration)ψ_l(q) ds, both in Mm³. Constant cohorts give exact
@@ -13,15 +13,18 @@ struct ReferenceIntegrals
     control::Vector{Float64}
 end
 
-function reference_integrals!(m,c,r,rates,coordinates,grid,starts)
+function reference_integrals!(m,control,r,rates,coordinates,grid,starts)
+    RiverRouting.check_grid(control)
+    first(control)==first(grid) && last(control)==last(grid) && all(in(grid),control) ||
+        throw(ArgumentError("integral windows must partition the cohort grid"))
     J,K=river_curve_count(r),length(grid)-1
-    edges=[searchsortedfirst(grid,t) for t in c.grid]
+    edges=[searchsortedfirst(grid,t) for t in control]
     z=@variable(m,[1:J,1:2,1:K],base_name="reference_integral_$(r.name)")
     C=0.3.*z
     basis=Matrix{Float64}(I,J,J)
-    for t in eachindex(c.prices),k in edges[t]:edges[t+1]-1
+    for t in 1:length(control)-1,k in edges[t]:edges[t+1]-1
         dt=grid[k+1]-grid[k]
-        centre=(grid[k]-c.grid[t]+dt/2)/(c.grid[t+1]-c.grid[t])
+        centre=(grid[k]-control[t]+dt/2)/(control[t+1]-control[t])
         flux=Vector{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,J)
         for l in 1:J-1
             flux[l]=river_transfer_expression(m,r,rates[k],view(basis,:,l);
@@ -37,7 +40,7 @@ function reference_integrals!(m,c,r,rates,coordinates,grid,starts)
             push!(starts,z[l,2,k]=>(prior1+centre*(C[l,1,k]-prior0))/0.3)
         end
     end
-    ReferenceIntegrals(C,z,grid,edges,c.grid)
+    ReferenceIntegrals(C,z,grid,edges,control)
 end
 
 function reference_primitive(data,l,n,t,time)
@@ -140,8 +143,15 @@ function bound_reference_integrals!(c,routing)
         r=c.system.rivers[i]
         J=size(data.variables,1)
         for t in 1:length(data.control)-1
-            cap=opinterval(c,r.name,:capacity,t,r.capacity)
-            H=data.control[t+1]-data.control[t]
+            left,right=data.control[t],data.control[t+1]
+            cap=opvalue(c,r.name,:capacity,left,r.capacity)
+            for series in c.operations
+                series.object==r.name && series.attribute==:capacity || continue
+                for (time,capacity) in zip(series.times,series.values)
+                    left<time<right && (cap=max(cap,capacity))
+                end
+            end
+            H=right-left
             for l in 1:J
                 unit=zeros(J);unit[l]=1.0
                 _,maximum_flux=river_transfer_range(r,unit,0.0,cap)

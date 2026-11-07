@@ -1,4 +1,23 @@
 admissible(c, u) = _commitment_admissible(c, u)
+
+"""Intersect a variable domain with its physical bounds, including shared cells."""
+function intersect_bounds!(variable, lower, upper)
+    if is_fixed(variable)
+        lower<=fix_value(variable)<=upper || throw(ArgumentError("incompatible variable bounds"))
+        return
+    end
+    lo=has_lower_bound(variable) ? max(lower,lower_bound(variable)) : lower
+    hi=has_upper_bound(variable) ? min(upper,upper_bound(variable)) : upper
+    lo<=hi || throw(ArgumentError("incompatible variable bounds"))
+    if lo==hi
+        fix(variable,lo;force=true)
+    else
+        set_lower_bound(variable,lo)
+        set_upper_bound(variable,hi)
+    end
+    nothing
+end
+
 function _build_dispatch(
     c;
     u = ones(Int, length(c.system.generators), length(c.prices)),
@@ -16,6 +35,7 @@ function _build_dispatch(
     prefix = "",
     reserve_case = c,
     shared_controls = nothing,
+    integral_grid = c.grid,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -210,13 +230,7 @@ function _build_dispatch(
             P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
             P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
         begin
-            if shared_controls===nothing || g.characteristic!==nothing
-                set_lower_bound(gq[i,t],qmin*u[i,t]/50)
-                set_upper_bound(gq[i,t],qmax*u[i,t]/50)
-            elseif u[i,t]!=0
-                @constraint(m,GQ[i,t]>=qmin)
-                @constraint(m,GQ[i,t]<=qmax)
-            end
+            intersect_bounds!(gq[i,t],qmin*u[i,t]/50,qmax*u[i,t]/50)
             plo,phi=inset_bounds(pmin,pmax,operational_margin)
             set_lower_bound(p[i, t], plo*u[i, t]/40)
             set_upper_bound(p[i, t], phi*u[i, t]/40)
@@ -242,20 +256,14 @@ function _build_dispatch(
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin)
     outlet_bounds = _dispatch_outlet_bounds(c)
     injections=river_injections(c,RQ,GQ,Q)
-    routing = _dispatch_transport_expressions(m,c, RQ; transport, injections)
+    routing = _dispatch_transport_expressions(m,c, RQ; transport, injections,integral_grid)
     (; exact, nd, rd, arrivals, terminal) = routing
     for (i, r) in enumerate(s.rivers)
         for t in 1:T
             cap=outlet_bounds.capacity[i, t]
             set_upper_bound(rq[i, t], cap/100)
             set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/100)
-            if shared_controls===nothing
-                set_lower_bound(a[i,t],outlet_bounds.gate_lower[i,t])
-                set_upper_bound(a[i,t],outlet_bounds.gate_upper[i,t])
-            else
-                @constraint(m,a[i,t]>=outlet_bounds.gate_lower[i,t])
-                @constraint(m,a[i,t]<=outlet_bounds.gate_upper[i,t])
-            end
+            intersect_bounds!(a[i,t],outlet_bounds.gate_lower[i,t],outlet_bounds.gate_upper[i,t])
             if is_channel(r)
                 fix(a[i,t],0.0;force=true)
                 fix(shortfall_release[i,t],0.0;force=true)
@@ -458,7 +466,7 @@ function constrain_replay!(b, grid; warm=nothing, river_on=nothing)
     # Both meshes use exactly the same equations and physical bound data.
     f=_build_dispatch(fine;u=b.u[:,indices],model=m,prefix="replay_",warm=reference,
         tunnel_opening=opening,river_on=river_on===nothing ? nothing : river_on[:,indices],
-        reserve_case=refined,shared_controls=(;discharge=b.gq,gate=b.a,index=indices))
+        reserve_case=refined,shared_controls=(;discharge=b.gq,gate=b.a,index=indices),integral_grid=c.grid)
     if b.reserves!==nothing
         for (fine_values,values) in ((f.reserves.up,b.reserves.up),(f.reserves.down,b.reserves.down))
             for i in axes(values,1), j in axes(values,2), k in eachindex(indices)

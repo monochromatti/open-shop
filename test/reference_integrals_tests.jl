@@ -5,23 +5,27 @@
     responses=[RiverRouting.DelayCurve(q,[0.1,0.5,3.0],w) for (q,w) in
         ((0.0,[0.2,0.8]),(10.0,[0.5,0.5]),(30.0,[0.8,0.2]))]
     for curves in (responses[1:1],responses[[1,3]],responses),
-        mode in (:distributed,:mixed,:atomic)
+        mode in (:distributed,:mixed,:atomic),
+        integral_grid in (grid,[0.0,2.0],OpenSHOP.refined_grid(grid))
         rivers=[begin
             atomic=mode==:atomic || mode==:mixed && i==1
             OpenSHOP._river_replace(r;
                 curves=atomic ? RiverRouting.DelayCurve[] : curves,
                 deterministic_delay=atomic ? 0.35 : nothing)
         end for (i,r) in enumerate(base.system.rivers)]
-        c=replace_graph(base;rivers)
+        c=OpenSHOP._river_replace(replace_graph(base;rivers);
+            operations=[OperationalSeries(object=:MC,attribute=:capacity,
+                times=[0.0,0.2],values=[10.0,30.0])])
         model=Model()
         @variable(model,q[1:3,1:4])
         set_start_value.(q,controls)
-        routing=OpenSHOP._dispatch_transport_expressions(model,c,q)
+        routing=OpenSHOP._dispatch_transport_expressions(model,c,q;integral_grid)
         expected=OpenSHOP.routed_schedule(c,controls)
         set_start_value.(q,expected.release)
         for (variable,expression) in routing.starts
             set_start_value(variable,value(start_value,expression))
         end
+        OpenSHOP.bound_reference_integrals!(c,routing)
         @test value.(start_value,routing.arrivals)≈expected.arrival_volume atol=1e-12
         @test value.(start_value,routing.terminal)≈expected.transit[:,end] atol=1e-12
         for (i,r) in enumerate(rivers)
