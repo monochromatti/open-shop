@@ -11,6 +11,8 @@ end
 witnesses [unit, interval] in m³/s. Shortfall [group, interval] is MW.
 Witnesses are operating points at scheduled hydraulic node heads, not activated
 water trajectories. Keyword construction and reconstruction copy their inputs.
+Input allocations use operating intervals. Returned schedules repeat their
+capacity controls on hydraulic cells, with physical witnesses on those cells.
 """
 struct ReserveAllocation
     up::Array{Float64,3}
@@ -162,8 +164,9 @@ Optimization status, a physical `solution` (or `nothing`), and optional global
 bounds. `accepted` describes the checks performed by the called solver;
 `global_certificate` additionally requires an enclosing global bound.
 Detailed solver work counters and validation reports are in `diagnostics`.
-`problem` records the case actually solved, including its numerical transport
-mesh. Use `validate(result.problem, result.solution)` to reproduce its checks.
+`problem` records the operating case, including its numerical transport mesh;
+`solution.grid` records the hydraulic mesh. Use
+`validate(result.problem, result.solution)` to reproduce its checks.
 """
 struct SolveResult{S}
     status::String

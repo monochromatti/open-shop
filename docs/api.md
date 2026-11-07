@@ -38,7 +38,7 @@ dispatch attempts share `time_limit`, with individual limits set by
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.
-The start must have compatible arrays and the same grid; it need not satisfy
+The start must have compatible arrays and retain the operating boundaries; it need not satisfy
 the updated physical or operating inputs. It is never retained as a feasible
 schedule without solving and independent acceptance. `initial` takes precedence
 when both are supplied.

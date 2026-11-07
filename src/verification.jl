@@ -22,7 +22,7 @@ storage_convergence_limits(c,absolute,relative) = [min(absolute,isinf(relative) 
     1e-9+relative*(r.vmax-r.vmin)) for r in c.system.reservoirs]
 
 """
-    replay_audit(case, schedule; grid=refined_grid(case.grid),
+    replay_audit(case, schedule; grid=refined_grid(schedule.grid),
                  storage_convergence=2e-3, storage_relative_convergence=1e-3,
                  level_convergence=1e-2, objective_convergence=1e-3)
 
@@ -182,8 +182,9 @@ controls. If transport already meets its volume tolerance, add finer hydraulic e
 sharing the original unit discharges, outlet openings and reserve allocations.
 Fixed-speed pump discharges remain hydraulic states. Operating schedules and ramps
 retain their original windows. No measured residual becomes a blanket margin.
-The returned case records the transport mesh. The schedule and objective retain
-the requested control grid. The latest physical trajectory starts the next solve.
+The returned case records the transport mesh. Operating decisions retain their
+requested intervals; a supplied resolved initial schedule keeps its physical
+grid. The latest physical trajectory starts the next solve.
 `refine_grid` is retained for source compatibility; both values now retain controls.
 `operational_margin` is an explicit optional power inset, never an automatic retry rule.
 """

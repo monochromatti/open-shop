@@ -55,6 +55,8 @@ Returns a [`Schedule`](@ref) with physical arrays, `commitment` and `objective`.
 Inspect `schedule.diagnostics["validation"]["valid"]` before using it. Invalid commitment
 or nonconvergent integration throws `ArgumentError`. No bound, gate or state
 is clipped, and the input arrays are not mutated. This function does not optimize.
+Optional `grid=case.grid` supplies hydraulic vertices while input controls retain
+the original operating intervals. The returned arrays use the hydraulic grid.
 """
 function dispatch_from_controls(
     c, u, q, gate;

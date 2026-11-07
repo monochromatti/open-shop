@@ -10,7 +10,8 @@ permitted range. Acceptance
 always uses the original physical restrictions.
 `initial` is an accepted schedule to retain. `warm` is an unchecked numerical
 starting point after a forecast update; it is never returned without solving
-and independent acceptance. Its arrays must use this case's object order/grid.
+and independent acceptance. Its arrays must use this case's object order and a
+hydraulic grid retaining the operating boundaries.
 """
 function schedule_case(
     c::ScheduleCase;
