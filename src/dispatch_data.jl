@@ -15,7 +15,8 @@ function _dispatch_outlet_bounds(c)
 end
 
 function _dispatch_transport_expressions(m,c,release;transport=nothing,
-    injections=river_injections(c,release),coordinate=(r,q,i,k)->nothing,distributed=nothing)
+    injections=river_injections(c,release),coordinate=(r,q,i,k)->nothing,distributed=nothing,
+    integral_grid=c.grid)
     exact=all(r->r.deterministic_delay!==nothing,c.system.rivers)
     !exact && transport!==nothing && throw(ArgumentError(
         "compiled deterministic transport cannot serve distributed dispatch"))
@@ -66,7 +67,7 @@ function _dispatch_transport_expressions(m,c,release;transport=nothing,
                     curve.weights!=first(r.curves).weights,r.curves)
                 fixed=all(z->z!==nothing && all(w->w isa Real,z.weights),coordinates[i])
                 if varying && !fixed
-                    primitives[i]=reference_integrals!(m,c,r,rates[i],coordinates[i],rd.cohort_grid[i],starts)
+                    primitives[i]=reference_integrals!(m,integral_grid,r,rates[i],coordinates[i],rd.cohort_grid[i],starts)
                 end
             end
             primitive=primitives[i]

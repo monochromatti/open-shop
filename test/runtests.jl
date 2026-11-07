@@ -109,6 +109,7 @@ include("terminal_value_tests.jl")
 include("numerical_api_tests.jl")
 
 include("replay_refactor_tests.jl")
+include("shared_controls_tests.jl")
 include("model_reference_tests.jl")
 
 include("result_api_tests.jl")

@@ -63,6 +63,7 @@ function opaverage(c, object, attribute, a, b, default)
     total=0.0
     previous=a
     k+=1
+    (k>length(z.times) || z.times[k]>=b) && return value
     while k<=length(z.times) && z.times[k]<b
         time=z.times[k]
         total+=(time-previous)*value
