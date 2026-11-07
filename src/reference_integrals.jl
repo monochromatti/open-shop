@@ -27,7 +27,7 @@ function reference_integrals!(m,c,r,rates,coordinates,grid,starts)
             flux[l]=river_transfer_expression(m,r,rates[k],view(basis,:,l);
                 coordinate=coordinates[k])
         end
-        flux[J]=1.0*rates[k]-sum(view(flux,1:J-1);init=AffExpr(0.0))
+        flux[J]=1.0*rates[k]-sum((flux[l] for l in 1:J-1);init=AffExpr(0.0))
         for l in 1:J
             prior0=k==edges[t] ? AffExpr(0.0) : C[l,1,k-1]
             prior1=k==edges[t] ? AffExpr(0.0) : C[l,2,k-1]
