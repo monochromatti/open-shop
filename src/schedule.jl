@@ -43,7 +43,9 @@ function schedule_case(
     if initial!==nothing
         initial_schedule=_schedule_input(initial;case=c)
         mesh=TimeDiscretization(c.grid,initial_schedule.grid)
-        u=operating_window_values(c,initial_schedule).commitment
+        size(initial_schedule.commitment)==(length(c.system.generators),length(mesh.dt)) ||
+            throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
+        u=initial_schedule.commitment[:,first.(mesh.cells)]
         v=_verified_dispatch(
             c;
             u,
