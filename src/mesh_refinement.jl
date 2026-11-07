@@ -15,7 +15,7 @@ function bulk_refined_grid(grid, indicator)
     sort!(unique!(vcat(grid,[(grid[k]+grid[k+1])/2 for k in marked])))
 end
 
-"""Two half steps from each represented state, with its executed river cohorts.
+"""Compare two half steps with each represented cell, retaining executed cohorts.
 
 These local defects locate integration error without propagating an earlier
 state error through every later cell. They choose a mesh; coupled whole-horizon
@@ -53,16 +53,15 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
         u=x.commitment[:,k:k]
         opening=x.tunnel_opening[:,k:k]
         reference=x.head[:,k:k]
-        coarse=_simulate_hydraulics(cell,q,gate,u,opening,reference,[a,b];structure...)
         fine=_simulate_hydraulics(cell,q,gate,u,opening,reference,[a,middle,b];structure...)
-        if !coarse.converged || !fine.converged
+        if !fine.converged
             indicator[k]=Inf
             continue
         end
         for (i,r) in enumerate(s.reservoirs)
             indicator[k]=max(indicator[k],
-                scaled_defect(abs(fine.storage[i,end]-coarse.storage[i,end]),storage_limits[i]),
-                scaled_defect(abs(head(r,fine.storage[i,end])-head(r,coarse.storage[i,end])),level_limit))
+                scaled_defect(abs(fine.storage[i,end]-x.storage[i,k+1]),storage_limits[i]),
+                scaled_defect(abs(head(r,fine.storage[i,end])-head(r,x.storage[i,k+1])),level_limit))
         end
         for (d,r) in enumerate(s.rivers)
             is_channel(r) && continue
@@ -70,7 +69,7 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
             flux=zeros(J)
             left=similar(flux)
             right=similar(flux)
-            reference_flux!(flux,r,coarse.river_release[d,1])
+            reference_flux!(flux,r,x.river_release[d,k])
             reference_flux!(left,r,fine.river_release[d,1])
             reference_flux!(right,r,fine.river_release[d,2])
             variation=0.0036*(b-a)/2*(sum(abs,left-flux)+sum(abs,right-flux))

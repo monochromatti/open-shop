@@ -55,6 +55,7 @@ function _replay(
     objective_convergence = 1e-3,
     transport = nothing,
     error_factor = 1.0,
+    require_original = true,
 )
     all(x -> x isa Real && !isnan(x) && x >= 0,
         (storage_convergence, storage_relative_convergence, level_convergence,
@@ -68,7 +69,8 @@ function _replay(
     original=validate(c,x;transport)
     if !original["valid"]
         push!(errors,"original equation audit failed")
-        return (;valid=false,errors,violations,original_audit=original,shortfalls,seconds=time()-began)
+        require_original && return (;valid=false,errors,violations,original_audit=original,
+            shortfalls,seconds=time()-began)
     end
     x=_schedule_input(x;case=c)
     grid=grid===nothing ? refined_grid(x.grid) : grid
@@ -126,7 +128,7 @@ function _replay(
         )
         transport_check["accepted"] ||
             push!(errors, "transport convergence, operating limits or schedule discrepancy fail acceptance")
-        physical=isempty(errors)
+        physical=audit["valid"] && transport_check["operating_valid"]
         edges=fine_mesh.vertices
         storage_errors=[maximum(abs, z.storage[i, edges]-x.storage[i, :]; init=0.0)
             for i in eachindex(c.system.reservoirs)]
@@ -142,6 +144,11 @@ function _replay(
                   error_factor*level_error<=level_convergence &&
                   error_factor*transit_error<=storage_convergence &&
                   error_factor*abs(objective_error)<=objective_convergence*max(1.0,abs(x.objective))
+        transport_error=max(transport_check["cumulative_schedule_discrepancy_Mm3"],
+            transport_check["terminal_schedule_discrepancy_Mm3"])+
+            max(transport_check["estimated_cumulative_error_Mm3"],
+                transport_check["estimated_transit_error_Mm3"])
+        numerical &= transport_check["converged"] && transport_error<=storage_convergence
         numerical || push!(
             errors,
             "finer replay exceeded storage, level, transit or objective convergence tolerance",
@@ -212,33 +219,42 @@ function _verified_report(result)
 end
 
 """Resolve fixed controls; return a physical failure for the next NLP to repair."""
-function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_factor,storage_limits,
+function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_factor,storage_limits,reconstructed,
     storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)
     steps=Any[]
     refinements=0
     while true
         audit=_replay(c,x;grid=refined_grid(x.grid;factor=replay_factor),storage_convergence,
             storage_relative_convergence,level_convergence,objective_convergence,
-            error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0)
+            error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0,
+            require_original=!reconstructed)
         push!(steps,(;intervals=length(x.grid)-1,objective=x.objective,accepted=audit.valid))
-        if audit.valid || !get(get(audit,:original_audit,Dict()),"valid",false) ||
+        original_valid=get(get(audit,:original_audit,Dict()),"valid",false)
+        if audit.valid || !reconstructed && !original_valid ||
            refinements==max_refinements || time()>=deadline
             return (;case=c,solution=x,audit,refinements,steps)
         end
         physical=hydraulic_case(c,x.grid)
-        routing_grid=refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
-        next=_river_replace(c;routing_grid)
-        grid=x.grid
-        if routing_grid==river_routing_grid(physical)
-            refine_grid || return (;case=c,solution=x,audit,refinements,steps)
-            indicator=hydraulic_defects(c,x;storage_limits,level_limit=level_convergence,
-                transport_limit=isfinite(storage_convergence) ? storage_convergence/10 : 2e-4,deadline)
-            indicator===nothing && return (;case=c,solution=x,audit,refinements,steps)
-            grid=bulk_refined_grid(x.grid,indicator)
-            # A global discrepancy can come from transported history even when
-            # local hydraulic defects vanish. The nested replay is the remaining
-            # numerical comparison in that case.
-            grid==x.grid && (grid=refined_grid(x.grid))
+        if get(audit,:numerically_converged,false)
+            if !refine_grid || !original_valid && !get(audit,:physically_valid,false)
+                return (;case=c,solution=x,audit,refinements,steps)
+            end
+            # The represented path is accurate, but finer physical restrictions
+            # require a control repair. Use that finer model for the next NLP.
+            grid=refined_grid(x.grid;factor=replay_factor)
+            next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
+        else
+            routing_grid=refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
+            next=_river_replace(c;routing_grid)
+            grid=x.grid
+            if routing_grid==river_routing_grid(physical)
+                refine_grid || return (;case=c,solution=x,audit,refinements,steps)
+                indicator=hydraulic_defects(c,x;storage_limits,level_limit=level_convergence,
+                    transport_limit=isfinite(storage_convergence) ? storage_convergence/10 : 2e-4,deadline)
+                indicator===nothing && return (;case=c,solution=x,audit,refinements,steps)
+                grid=bulk_refined_grid(x.grid,indicator)
+                grid==x.grid && (grid=refined_grid(x.grid))
+            end
         end
         time()<deadline || return (;case=c,solution=x,audit,refinements,steps)
         try
@@ -249,11 +265,15 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         end
         c=next
         refinements+=1
+        reconstructed=true
+
     end
 end
 
+_verified_dispatch(c::ScheduleCase;kwargs...) = _verified_dispatch(c,solve_case;kwargs...)
+
 function _verified_dispatch(
-    c::ScheduleCase;
+    c::ScheduleCase, dispatch_solver;
     u = ones(Int, length(c.system.generators), length(c.prices)),
     initial = nothing,
     max_refinements = 24,
@@ -284,6 +304,8 @@ function _verified_dispatch(
     all(x->x isa Real && !isnan(x) && x>=0,
         (storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)) ||
         throw(ArgumentError("nonnegative replay tolerances required"))
+    validate_inputs(c)
+    admissible(c,u) || throw(ArgumentError("inadmissible commitment"))
     initial_schedule=initial===nothing ? nothing : _schedule_input(initial;case=c)
     initial_mesh=initial===nothing ? nothing : TimeDiscretization(c.grid,initial_schedule.grid)
     if initial!==nothing
@@ -330,7 +352,8 @@ function _verified_dispatch(
         start,_=_dispatch_start(c,u,warm;grid=warm_grid)
         if start!==nothing
             try
-                latest=controlled_trajectory(c,start;u,opening=openings,grid=warm_grid)
+                requested_opening=openings===nothing ? tunnel_opening_schedule(c) : openings
+                latest=controlled_trajectory(c,start;u,opening=requested_opening,grid=warm_grid)
                 grid=copy(latest.grid)
                 if river_on!==nothing
                     states=river_on_schedule(c,operating_window_values(c,latest).river_release)
@@ -348,13 +371,21 @@ function _verified_dispatch(
         if latest===nothing
             remaining=min(time_limit,deadline-time())
             remaining>0 || break
-            dispatch=solve_case(c;u,solver,seed,warm,operational_margin,grid,replay_grid,
+            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,
                 time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
             latest=dispatch.solution
             latest===nothing && break
+            if !dispatch.accepted
+                try
+                    latest,_=_reconstruct_candidate(c,latest)
+                catch error
+                    error isa Union{ArgumentError,DomainError} || rethrow()
+                    break
+                end
+            end
         end
         resolution=resolve_trajectory(c,latest;max_refinements=max_refinements-refinements,
-            deadline,refine_grid,replay_factor,storage_limits,tolerances...)
+            deadline,refine_grid,replay_factor,storage_limits,reconstructed=initial===nothing,tolerances...)
         c=resolution.case
         latest=resolution.solution
         latest_audit=resolution.audit

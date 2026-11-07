@@ -1276,26 +1276,65 @@ Using Dörfler’s bulk-marking rule~@doerfler1996, mark cells whose indicators
 account for at least half the total and bisect them. Reconstruct the current controls on the selected mesh to
 start the next solve. This changes the transport approximation while retaining
 the original control times. The accepted mesh carries into revenue optimization
-and the global model; the returned problem records it.
+and, when the hydraulic mesh is fixed, the global model; the returned problem records it.
 
-If transport already meets its volume tolerance, a local retry can enforce finer hydraulic equations
-as well. Write $w$ for the original controls and $y_0, y_h$ for hydraulic states
-on the requested and finer meshes. The retry has the form
+Hydraulic refinement also preserves the operator's decision times. Let
+$T_0 < dots < T_J$ be those times, and let the hydraulic vertices
+$tau_0 < dots < tau_N$ include every $T_j$. If cell $k$ lies in operating
+interval $j(k)$, its commitment, adjustable discharge and gate positions use
+that interval's controls. Storage, pressure, passive flows, pump-characteristic
+flows and power are resolved on the hydraulic cells. This distinction between
+control discretization and state approximation is standard in direct optimal
+control~@sassmitsos. It lets a small forebay have a well-resolved trajectory
+without giving its operator more opportunities to act.
 
-$ max_(w,y_0,y_h) cal(V)_0(w,y_0) quad "subject to" quad
-  F_0(w,y_0)=0, quad C_0(w,y_0)<=0, \
-  F_h (w,y_h)=0, quad C_h (w,y_h)<=0. $
+The equations above use one hydraulic cell per operating interval. On a finer
+mesh, apply the physical equations to each cell and evaluate operating rules
+on their declared windows. For example, with $cal(K)_j$ the cells of interval $j$,
 
-Here $F$ contains the conservation and hydraulic equations, while $C$ contains
-the operating restrictions. The finer model uses the same hydraulic and river
-meshes as replay. The same unit discharge and outlet opening are
-held throughout each original control interval. Fixed-speed pump discharge
-is a hydraulic state on each mesh. Schedules and ramps retain their original
-observation windows. The objective and returned trajectory belong to the
-requested mesh. This construction restricts the feasible set to controls
-admissible on both meshes; it does not add control decisions or infer a
-uniform safety margin from a measured residual. A fresh integration still
-checks the resulting controls. The number of retries is bounded.
+$ overline(P)_(g j) = frac(sum_(k in cal(K)_j) Delta tau_k P_(g k), T_(j+1)-T_j),
+  quad A_(r j) = sum_(k in cal(K)_j) A_(r k). $
+
+Power schedules and scheduling ramps use these interval means. Physical
+capacities apply to every hydraulic cell, and level-range restrictions include
+interior vertices. Transition and gate-motion costs are counted on operating
+decisions. River cohorts retain their release times rather than being formed
+from averaged releases.
+
+Before revenue optimization, reconstruct and resolve the starting controls.
+For each represented cell, integrate two half steps from its starting storage
+and executed river history. Add the first half-step's new cohorts before taking
+the second. Compare their endpoint with the represented full-cell endpoint.
+Scale storage and level defects by $epsilon_i$ and $epsilon_Z$; also include
+variation of the reference-weighted release flows $psi_l(q)$. Bisect cells
+accounting for half the sum of squared indicators, using the same bulk-marking
+principle~@doerfler1996. The local indicators locate error. Acceptance still
+requires a coupled replay of the whole horizon.
+
+For a smooth second-order approximation, uniformly halving a fixed mesh gives
+the leading-order relation
+
+$ y_h - y approx frac(4,3)(y_h-y_(h/2)). $
+
+We use this Richardson estimate~@hairerode for the retained trajectory when
+comparing storage, level, terminal inventory and objective. We do not extrapolate
+the physical states. Every returned trajectory satisfies its own conservation
+equations. At curve knots or changes in the active physical regime, the
+second-order expansion may fail; the estimate is not a rigorous error bound.
+
+Refinement replaces the primary hydraulic mesh. Once integration accuracy is
+sufficient, repair controls that violate an operating restriction by solving
+the nonlinear problem on that mesh. Recheck
+accuracy after controls change, and retain the best independently accepted
+schedule if a later solve fails or exhausts its budget. The mesh stays fixed
+during each nonlinear solve.
+
+Global search retains its declared finite hydraulic model. Its preparation may
+add finer witness equations sharing the same controls, but the objective and
+returned trajectory then belong to the original mesh. This requires feasibility
+on both meshes. A global bound for that model does not certify a schedule on a
+different hydraulic discretization. Transport refinement can carry into the
+global model because the returned problem records that transport mesh explicitly.
 
 The discrete-gradient chain rule removes artificial storage-cycle work.
 For direct internal transfers, multiply each node balance by its own interval

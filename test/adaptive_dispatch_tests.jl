@@ -16,6 +16,22 @@
     end
 end
 
+@testset "Coarse overshoot does not reject an admissible passive trajectory" begin
+    base=passive_replay_case(1.0)
+    reservoir=OpenSHOP._river_replace(only(base.system.reservoirs);vmin=0.000199)
+    c=OpenSHOP._river_replace(base;system=OpenSHOP._river_replace(base.system;reservoirs=[reservoir]))
+    coarse=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
+    @test !validate(c,coarse)["valid"]
+    result=solve_verified(c;u=zeros(Int,0,1),warm=coarse,feasibility_only=true,
+        max_refinements=24,time_limit=1e-9)
+    @test result["accepted"]
+    if result["accepted"]
+        @test validate(result["problem"],result["solution"])["valid"]
+        @test minimum(result["solution"].storage)>=reservoir.vmin-1e-8
+        @test result["solution"].storage[1,end]≈0.0002 atol=0.1e-6
+    end
+end
+
 @testset "Local refinement respects an executed gate schedule" begin
     base=passive_replay_case(1.0)
     tunnel=OpenSHOP._river_replace(only(base.system.tunnels);gate_positions=[0.5,1.0],
@@ -37,6 +53,15 @@ end
         @test objective_components(c,x).gate_cost ≈ 3.5
         @test replay_audit(result["problem"],x)["valid"]
     end
+    # An unchecked selected position does not replace the case's prescribed
+    # default when dispatch did not request that position.
+    default=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;
+        tunnels=[OpenSHOP._river_replace(tunnel;opening=1.0)]))
+    if result["accepted"]
+        resumed=solve_verified(default;u=zeros(Int,0,2),warm=result["solution"],
+            time_limit=1e-9,max_refinements=0)
+        @test !resumed["accepted"] || all(resumed["solution"].tunnel_opening.==1.0)
+    end
 end
 
 @testset "A numerical start survives an exhausted optimization budget only after reconstruction" begin
@@ -51,6 +76,14 @@ end
         @test validate(result["problem"],result["solution"])["valid"]
     end
     @test warm.objective==expected
+    worse=dispatch_from_controls(c,u,[1.0 1.0;2.5 1.5],zeros(0,2))
+    @test validate(c,worse)["valid"]
+    @test worse.objective<warm.objective
+    interrupted=(case;kwargs...)->SolveResult(Dict("status"=>"TIME_LIMIT");solution=worse)
+    retained=OpenSHOP._verified_dispatch(c,interrupted;u,warm,max_refinements=0)
+    @test retained.accepted
+    @test retained.solution.objective>=expected-1e-8
+    @test validate(retained.case,retained.solution)["valid"]
     lake=OpenSHOP._river_replace(only(c.system.reservoirs);inflow=12.0)
     changed=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;reservoirs=[lake]),
         prices=[100.0,20.0])
