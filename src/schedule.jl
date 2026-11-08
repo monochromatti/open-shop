@@ -19,7 +19,7 @@ function schedule_case(
     warm = nothing,
     proposal_time_limit = 10.0,
     nlp_time_limit = 30.0,
-    max_refinements = 24,
+    max_refinements = 48,
     operational_margin = 0.0,
     time_limit = Inf,
     proposal_optimizer = _PROPOSAL_OPTIMIZER,

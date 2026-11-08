@@ -205,7 +205,7 @@ resolved controls violate operating restrictions. The best independently
 accepted schedule survives later solve failures or budget exhaustion.
 
 `initial` is checked as supplied and retains the audit-only contract; `warm`
-is reconstructed under current inputs. `max_refinements=24` bounds mesh updates.
+is reconstructed under current inputs. `max_refinements=48` bounds mesh updates.
 `time_limit` bounds each NLP; `deadline` bounds shared work between phases.
 With `refine_grid=false`, keep the original hydraulic model and optionally add
 finer witness constraints. Global preparation uses that finite-model scope.
@@ -258,6 +258,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
                 refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
             catch error
                 error isa Union{ArgumentError,DomainError} || rethrow()
+                refine_grid || return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
                 # A physical-domain failure of the finer probe is not a valid
                 # trajectory. Build that finer problem and repair its controls.
                 grid=probe
@@ -296,7 +297,7 @@ function _verified_dispatch(
     c::ScheduleCase, dispatch_solver;
     u = ones(Int, length(c.system.generators), length(c.prices)),
     initial = nothing,
-    max_refinements = 24,
+    max_refinements = 48,
     solver = "Ipopt",
     seed = 1,
     replay_factor = 2,
@@ -329,6 +330,8 @@ function _verified_dispatch(
     initial_schedule=initial===nothing ? nothing : _schedule_input(initial;case=c)
     initial_mesh=initial===nothing ? nothing : TimeDiscretization(c.grid,initial_schedule.grid)
     if initial!==nothing
+        refine_grid || initial_schedule.grid==c.grid || throw(ArgumentError(
+            "fixed-grid initial schedule must use the case's hydraulic grid"))
         size(initial_schedule.commitment)==(length(c.system.generators),length(initial_mesh.dt)) ||
             throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
         initial_schedule.commitment[:,first.(initial_mesh.cells)]==u ||

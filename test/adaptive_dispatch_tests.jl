@@ -40,6 +40,13 @@ end
         @test maximum(result["solution"].gate)<=0.5+1e-6
         @test replay_audit(result["problem"],result["solution"])["valid"]
     end
+    fixed=solve_verified(c;u=zeros(Int,0,1),warm,feasibility_only=true,refine_grid=false,
+        time_limit=20.0,max_refinements=4)
+    @test fixed["accepted"]
+    if fixed["accepted"]
+        @test fixed["solution"].grid==c.grid
+        @test validate(fixed["problem"],fixed["solution"])["valid"]
+    end
 end
 
 @testset "Coarse overshoot does not reject an admissible passive trajectory" begin
@@ -101,6 +108,8 @@ end
         @test result["solution"].objective>=expected-1e-8
         @test validate(result["problem"],result["solution"])["valid"]
     end
+    fine=dispatch_from_controls(c,u,[3.0 3.0;2.8 1.8],zeros(0,2);grid=OpenSHOP.refined_grid(c.grid))
+    @test_throws ArgumentError solve_verified(c;u,initial=fine,refine_grid=false,max_refinements=0)
     @test warm.objective==expected
     worse=dispatch_from_controls(c,u,[1.0 1.0;2.5 1.5],zeros(0,2))
     @test validate(c,worse)["valid"]

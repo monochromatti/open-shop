@@ -156,7 +156,7 @@ solve times out or returns a worse point. `initial` requests checking and, when
 permitted, resolving the supplied schedule; `warm` supplies unchecked controls
 that are reconstructed under the current forecast before retention.
 
-`max_refinements=24` bounds mesh updates. `time_limit` in `solve_verified` bounds
+`max_refinements=48` bounds mesh updates. `time_limit` in `solve_verified` bounds
 each NLP; `deadline` bounds shared work between phases. `schedule_case` uses its
 shared `time_limit` for the entire search. Integration, construction or final
 checking can overrun a deadline; all work is included in elapsed time.
