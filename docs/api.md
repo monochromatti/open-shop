@@ -143,6 +143,11 @@ local step-doubling defects and bulk marking. Refinement replaces the primary
 hydraulic mesh. It adds no control opportunities. Operating restrictions that
 fail on the resolved path require another nonlinear solve on that mesh.
 
+Generated vertices reuse existing mesh vertices within floating-point
+interpolation roundoff. All supplied event times are retained exactly.
+Sharing generated vertices avoids artificial intervals in the combined
+hydraulic and transport mesh.
+
 The second-order coarse-path error estimate is 4/3 of the coarse/fine difference
 for doubled replay resolution. It is an asymptotic estimate, not a continuous
 error bound at nonsmooth events. Coupled replay and physical checks determine

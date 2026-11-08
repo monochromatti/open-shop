@@ -16,6 +16,25 @@
     @test_throws ArgumentError OpenSHOP.TimeDiscretization([0.0,1.0],[0.0,2.0])
 end
 
+@testset "Generated meshes share vertices without merging input events" begin
+    operating=[0.0,0.4,1.2,2.0,3.3,4.2,6.0]
+    transport=OpenSHOP.refined_grid(operating;factor=4)
+    physical=OpenSHOP.refined_grid(operating;existing=transport)
+    for level in 1:6
+        transport=OpenSHOP.refined_grid(transport;existing=physical)
+        physical=OpenSHOP.bulk_refined_grid(physical,ones(length(physical)-1);existing=transport)
+        @test all(t in transport for t in physical)
+        @test all(t in physical for t in operating)
+        @test minimum(diff(transport))≈0.4/(4*2^level) rtol=1e-10
+    end
+    input=[0.0,0.6,nextfloat(0.6),1.0]
+    refined=OpenSHOP.refined_grid(input)
+    @test all(t in refined for t in input)
+    @test all(diff(refined).>0)
+    shared=OpenSHOP.refined_grid([0.4,0.8];existing=[0.4,0.6,0.8])
+    @test minimum(diff(sort!(unique!(vcat(shared,[0.6])))))≈0.2
+end
+
 @testset "Reconstruction retains operating controls on unequal hydraulic cells" begin
     c=fixed_pump_case()
     grid=[0.0,0.1,0.5,0.8,1.25,1.3,2.0]

@@ -1,20 +1,28 @@
 """Subdivide integration intervals while retaining every control-change time."""
-function refined_grid(grid; factor = 2)
+function refined_grid(grid; factor = 2, existing = grid)
     factor isa Integer && factor>=1 ||
         throw(ArgumentError("positive integer refinement required"))
-    fine=Vector{Float64}(undef,factor*(length(grid)-1)+1)
-    for t in 1:(length(grid)-1), j in 0:(factor-1)
-        fine[factor*(t-1)+j+1]=grid[t]+(grid[t+1]-grid[t])*j/factor
+    RiverRouting.check_grid(grid)
+    fine=Float64[]
+    sizehint!(fine,factor*(length(grid)-1)+1)
+    for t in 1:(length(grid)-1)
+        a,b=grid[t],grid[t+1]
+        push!(fine,a)
+        for j in 1:(factor-1)
+            vertex=refinement_vertex(a,b,j/factor,existing)
+            a<vertex<b && push!(fine,vertex)
+        end
     end
-    fine[end]=last(grid)
-    fine
+    push!(fine,last(grid))
+    sort!(unique!(fine))
 end
 
 """Refine hydraulics and distributed river mixing, including a supplied river mesh."""
 function replay_case(c, grid)
     fine=with_grid(c, grid)
     all(r->r.deterministic_delay!==nothing,c.system.rivers) && return fine
-    routing_grid=sort!(unique!(vcat(refined_grid(river_routing_grid(c)),grid)))
+    existing=sort!(unique!(vcat(river_routing_grid(c),grid)))
+    routing_grid=sort!(unique!(vcat(refined_grid(river_routing_grid(c);existing),grid)))
     _river_replace(fine; routing_grid)
 end
 
@@ -73,7 +81,7 @@ function _replay(
             shortfalls,seconds=time()-began)
     end
     x=_schedule_input(x;case=c)
-    grid=grid===nothing ? refined_grid(x.grid) : grid
+    grid=grid===nothing ? refined_grid(x.grid;existing=river_routing_grid(c;physical_grid=x.grid)) : grid
     nd=all(r->r.deterministic_delay!==nothing,c.system.rivers) ?
         _transport_data(hydraulic_case(c,x.grid),transport) : nothing
     nd===nothing && transport!==nothing && throw(ArgumentError(
@@ -224,7 +232,9 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
     steps=Any[]
     refinements=0
     while true
-        audit=_replay(c,x;grid=refined_grid(x.grid;factor=replay_factor),storage_convergence,
+        existing=river_routing_grid(c;physical_grid=x.grid)
+        probe=refined_grid(x.grid;factor=replay_factor,existing)
+        audit=_replay(c,x;grid=probe,storage_convergence,
             storage_relative_convergence,level_convergence,objective_convergence,
             error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0,
             require_original=!reconstructed)
@@ -241,7 +251,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
             end
             # The represented path is accurate, but finer physical restrictions
             # require a control repair. Use that finer model for the next NLP.
-            grid=refined_grid(x.grid;factor=replay_factor)
+            grid=probe
             next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
         else
             routing_grid=try
@@ -250,7 +260,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
                 error isa Union{ArgumentError,DomainError} || rethrow()
                 # A physical-domain failure of the finer probe is not a valid
                 # trajectory. Build that finer problem and repair its controls.
-                grid=refined_grid(x.grid;factor=replay_factor)
+                grid=probe
                 next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
                 return (;case=next,solution=x,audit,grid,refinements=refinements+1,steps)
             end
@@ -261,10 +271,12 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
                 indicator=hydraulic_defects(c,x;storage_limits,level_limit=level_convergence,
                     transport_limit=isfinite(storage_convergence) ? storage_convergence/10 : 2e-4,deadline)
                 indicator===nothing && return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
-                grid=bulk_refined_grid(x.grid,indicator)
-                grid==x.grid && (grid=refined_grid(x.grid))
+                grid=bulk_refined_grid(x.grid,indicator;existing)
+                grid==x.grid && (grid=probe)
             end
         end
+        grid==x.grid && next.routing_grid==c.routing_grid &&
+            return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         time()<deadline || return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         try
             x=controlled_trajectory(next,x;grid)

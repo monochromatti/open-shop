@@ -9,7 +9,7 @@ function river_routing_grid(c;physical_grid=c.grid)
     grid=if !isempty(c.routing_grid)
         c.routing_grid
     elseif any(!,river_cohort_sources(c.system)) && any(r->r.deterministic_delay===nothing,c.system.rivers)
-        refined_grid(c.grid;factor=4)
+        refined_grid(c.grid;factor=4,existing=physical_grid)
     else
         c.grid
     end
@@ -180,7 +180,8 @@ function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refi
             push!(marked,k);covered+=indicator[k]
             covered>=total/2 && break
         end
-        grid=sort!(unique!(vcat(grid,[(grid[k]+grid[k+1])/2 for k in marked])))
+        vertices=[refinement_vertex(grid[k],grid[k+1],0.5,probe) for k in marked]
+        grid=sort!(unique!(vcat(grid,vertices)))
         current=_route_network(c,injections;grid,injections)
     end
     grid

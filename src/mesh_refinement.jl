@@ -1,7 +1,7 @@
 scaled_defect(error,limit) = iszero(error) ? 0.0 : error/limit
 
 """Bisect cells accounting for half the squared local defect indicators."""
-function bulk_refined_grid(grid, indicator)
+function bulk_refined_grid(grid, indicator;existing=grid)
     length(indicator)==length(grid)-1 || throw(DimensionMismatch("cell indicators"))
     total=sum(abs2,indicator)
     total>0 || return grid
@@ -12,7 +12,8 @@ function bulk_refined_grid(grid, indicator)
         covered+=indicator[k]^2
         covered>=total/2 && break
     end
-    sort!(unique!(vcat(grid,[(grid[k]+grid[k+1])/2 for k in marked])))
+    vertices=[refinement_vertex(grid[k],grid[k+1],0.5,existing) for k in marked]
+    sort!(unique!(vcat(grid,vertices)))
 end
 
 """Compare two half steps with each represented cell, retaining executed cohorts.
@@ -33,7 +34,8 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
     for k in eachindex(indicator)
         time()<deadline || return nothing
         a,b=x.grid[k],x.grid[k+1]
-        middle=(a+b)/2
+        middle=refinement_vertex(a,b,0.5,transport_grid)
+        a<middle<b || return nothing
         reservoirs=[_river_replace(r;v0=x.storage[i,k]) for (i,r) in enumerate(s.reservoirs)]
         rivers=[begin
             if is_channel(r)

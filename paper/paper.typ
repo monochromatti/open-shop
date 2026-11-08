@@ -1288,6 +1288,10 @@ control discretization and state approximation is standard in direct optimal
 control~@sassmitsos. It lets a small forebay have a well-resolved trajectory
 without giving its operator more opportunities to act.
 
+Generated refinements reuse existing vertices within interpolation roundoff.
+Supplied event times remain unchanged. This prevents artificial intervals when
+the hydraulic and transport meshes are combined.
+
 The equations above use one hydraulic cell per operating interval. On a finer
 mesh, apply the physical equations to each cell and evaluate operating rules
 on their declared windows. For example, with $cal(K)_j$ the cells of interval $j$,
