@@ -232,41 +232,49 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         original_valid=get(get(audit,:original_audit,Dict()),"valid",false)
         if audit.valid || !reconstructed && !original_valid ||
            refinements==max_refinements || time()>=deadline
-            return (;case=c,solution=x,audit,refinements,steps)
+            return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         end
         physical=hydraulic_case(c,x.grid)
         if get(audit,:numerically_converged,false)
             if !refine_grid || !original_valid && !get(audit,:physically_valid,false)
-                return (;case=c,solution=x,audit,refinements,steps)
+                return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
             end
             # The represented path is accurate, but finer physical restrictions
             # require a control repair. Use that finer model for the next NLP.
             grid=refined_grid(x.grid;factor=replay_factor)
             next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
         else
-            routing_grid=refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
+            routing_grid=try
+                refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
+            catch error
+                error isa Union{ArgumentError,DomainError} || rethrow()
+                # A physical-domain failure of the finer probe is not a valid
+                # trajectory. Build that finer problem and repair its controls.
+                grid=refined_grid(x.grid;factor=replay_factor)
+                next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
+                return (;case=next,solution=x,audit,grid,refinements=refinements+1,steps)
+            end
             next=_river_replace(c;routing_grid)
             grid=x.grid
             if routing_grid==river_routing_grid(physical)
-                refine_grid || return (;case=c,solution=x,audit,refinements,steps)
+                refine_grid || return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
                 indicator=hydraulic_defects(c,x;storage_limits,level_limit=level_convergence,
                     transport_limit=isfinite(storage_convergence) ? storage_convergence/10 : 2e-4,deadline)
-                indicator===nothing && return (;case=c,solution=x,audit,refinements,steps)
+                indicator===nothing && return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
                 grid=bulk_refined_grid(x.grid,indicator)
                 grid==x.grid && (grid=refined_grid(x.grid))
             end
         end
-        time()<deadline || return (;case=c,solution=x,audit,refinements,steps)
+        time()<deadline || return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         try
             x=controlled_trajectory(next,x;grid)
         catch error
             error isa Union{ArgumentError,DomainError} || rethrow()
-            return (;case=c,solution=x,audit,refinements,steps)
+            return (;case=next,solution=x,audit,grid,refinements=refinements+1,steps)
         end
         c=next
         refinements+=1
         reconstructed=true
-
     end
 end
 
@@ -371,6 +379,7 @@ function _verified_dispatch(
         if latest===nothing
             remaining=min(time_limit,deadline-time())
             remaining>0 || break
+            dispatch!==nothing && remaining<=get(dispatch,"construction_seconds",0.0) && break
             dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,
                 time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
             latest=dispatch.solution
@@ -390,11 +399,11 @@ function _verified_dispatch(
         latest=resolution.solution
         latest_audit=resolution.audit
         refinements+=resolution.refinements
-        grid=copy(latest.grid)
+        grid=copy(resolution.grid)
         original=get(latest_audit,:original_audit,Dict{String,Any}())
         push!(attempts,Dict(
             "iteration"=>length(attempts),"intervals"=>length(c.prices),
-            "integration_intervals"=>length(grid)-1,
+            "integration_intervals"=>length(latest.grid)-1,
             "transport_intervals"=>length(river_routing_grid(c;physical_grid=grid))-1,
             "operational_margin_MW"=>operational_margin,
             "status"=>dispatch===nothing ? get(latest,"status","FORWARD_RECONSTRUCTED") : dispatch.status,
@@ -417,6 +426,8 @@ function _verified_dispatch(
             feasibility_only && break
             dispatch!==nothing && !feasibility && break
             feasibility=false
+        elseif grid!=latest.grid
+            feasibility=best===nothing
         elseif !get(original,"valid",false)
             dispatch!==nothing && resolution.refinements==0 && break
             feasibility=best===nothing

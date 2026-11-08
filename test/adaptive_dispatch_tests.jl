@@ -16,6 +16,32 @@
     end
 end
 
+@testset "A finer routing-domain failure requires control repair" begin
+    reservoirs=[Reservoir(name=name,z0=height,slope=0.01,v0=1.0,vmin=0.0,vmax=2.0,
+        water_value=0.0) for (name,height) in ((:Source,100.0),(:Pond,50.0))]
+    curves(cap)=[RiverRouting.DelayCurve(q,[0.0,1.0],[1.0]) for q in (0.0,cap)]
+    rivers=[River(name=:Tributary,source=:Source,target=:Main,law=:controlled,
+        capacity=0.012,water_value=0.0,curves=curves(0.012),
+        history_grid=[-2.0,0.0],history_release=[0.0]),
+        River(name=:Main,source=:auto,target=:Pond,law=:junction,
+            capacity=0.008,water_value=0.0,curves=curves(0.008),
+            history_grid=[-2.0,0.0],history_release=[0.0])]
+    c=ScheduleCase(name="routing-domain repair",system=HydroSystem(;reservoirs,rivers),
+        grid=[0.0,1.0],prices=[0.0],routing_grid=[0.0,1.0],
+        operations=[OperationalSeries(object=:Tributary,attribute=:gate_max,
+            times=[0.0],values=[0.5])])
+    warm=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),reshape([1.0,0.0],2,1))
+    @test !validate(c,warm)["valid"]
+    result=solve_verified(c;u=zeros(Int,0,1),warm,feasibility_only=true,
+        time_limit=20.0,max_refinements=4)
+    @test result["accepted"]
+    if result["accepted"]
+        @test validate(result["problem"],result["solution"])["valid"]
+        @test maximum(result["solution"].gate)<=0.5+1e-6
+        @test replay_audit(result["problem"],result["solution"])["valid"]
+    end
+end
+
 @testset "Coarse overshoot does not reject an admissible passive trajectory" begin
     base=passive_replay_case(1.0)
     reservoir=OpenSHOP._river_replace(only(base.system.reservoirs);vmin=0.000199)

@@ -158,6 +158,7 @@ function _dispatch_candidate(c,u,opening,river_on,best,reference,attempts,seen;
                 best=v
                 reference=v.solution
             end
+            feasibility && !v.accepted && break
         catch error
             error isa Union{ArgumentError,DomainError} || rethrow()
             push!(attempts,Dict("accepted"=>false,"error"=>sprint(showerror,error)))

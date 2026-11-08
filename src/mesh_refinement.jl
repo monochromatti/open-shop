@@ -28,10 +28,11 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
     transport_grid=river_routing_grid(physical)
     structure=(;topology=HydraulicTopology(s),sources=river_source_indices(s),
         active_rivers=findall(r->r.law!=:junction,s.rivers),river_order=_forward_river_order(s))
+    flux_work=[ntuple(_->zeros(river_curve_count(r)),3) for r in s.rivers]
     indicator=zeros(length(x.grid)-1)
     for k in eachindex(indicator)
         time()<deadline || return nothing
-        a,b=x.grid[k:k+1]
+        a,b=x.grid[k],x.grid[k+1]
         middle=(a+b)/2
         reservoirs=[_river_replace(r;v0=x.storage[i,k]) for (i,r) in enumerate(s.reservoirs)]
         rivers=[begin
@@ -48,11 +49,11 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
         routing_grid=transport_grid[searchsortedfirst(transport_grid,a):searchsortedlast(transport_grid,b)]
         cell=ScheduleCase(;name="local hydraulic step",system,grid=[a,b],prices=[0.0],
             operations=c.operations,routing_grid)
-        q=x.generator_q[:,k:k]
-        gate=x.gate[:,k:k]
-        u=x.commitment[:,k:k]
-        opening=x.tunnel_opening[:,k:k]
-        reference=x.head[:,k:k]
+        q=view(x.generator_q,:,k:k)
+        gate=view(x.gate,:,k:k)
+        u=view(x.commitment,:,k:k)
+        opening=view(x.tunnel_opening,:,k:k)
+        reference=view(x.head,:,k:k)
         fine=_simulate_hydraulics(cell,q,gate,u,opening,reference,[a,middle,b];structure...)
         if !fine.converged
             indicator[k]=Inf
@@ -65,14 +66,12 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
         end
         for (d,r) in enumerate(s.rivers)
             is_channel(r) && continue
-            J=river_curve_count(r)
-            flux=zeros(J)
-            left=similar(flux)
-            right=similar(flux)
+            flux,left,right=flux_work[d]
             reference_flux!(flux,r,x.river_release[d,k])
             reference_flux!(left,r,fine.river_release[d,1])
             reference_flux!(right,r,fine.river_release[d,2])
-            variation=0.0036*(b-a)/2*(sum(abs,left-flux)+sum(abs,right-flux))
+            variation=0.0036*(b-a)/2*sum(abs(left[l]-flux[l])+abs(right[l]-flux[l])
+                for l in eachindex(flux))
             indicator[k]=max(indicator[k],scaled_defect(variation,transport_limit))
         end
     end
