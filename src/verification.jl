@@ -449,8 +449,9 @@ function _verified_dispatch(
         else
             refinements<max_refinements || break
             if !refine_grid
-                replay_grid=replay_grid===nothing ? refined_grid(grid;factor=replay_factor) :
-                    refined_grid(replay_grid;factor=replay_factor)
+                parent=replay_grid===nothing ? grid : replay_grid
+                replay_grid=refined_grid(parent;factor=replay_factor,
+                    existing=river_routing_grid(c;physical_grid=parent))
                 refinements+=1
             else
                 break
