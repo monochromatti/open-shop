@@ -1103,8 +1103,8 @@ to propose unit states and gate positions. We fix those choices and use
 Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
 hydraulic laws. We dispatch each proposal before constructing the next one.
 Without an accepted trajectory, a short solve with constant objective first
-seeks a feasible point. Revenue optimization follows, whether or not that
-attempt succeeds. An accepted feasibility point is retained if optimization fails.
+seeks a feasible point. Revenue optimization follows after independent
+acceptance. The feasible point is retained if optimization fails.
 The feasibility solve can stop when its unscaled constraints and bounds meet
 the primal tolerance. A feasible point is already optimal for its constant objective.
 The best accepted trajectory on the proposal grid supplies the reference for the next
@@ -1326,8 +1326,9 @@ the physical states. Every returned trajectory satisfies its own conservation
 equations. At curve knots or changes in the active physical regime, the
 second-order expansion may fail; the estimate is not a rigorous error bound.
 
-Refinement replaces the primary hydraulic mesh. Once integration accuracy is
-sufficient, repair controls that violate an operating restriction by solving
+Refinement replaces the primary hydraulic mesh. An operating violation does not
+prevent measuring integration accuracy. Once accuracy is sufficient, repair
+controls that violate an operating restriction by solving
 the nonlinear problem on that mesh. Recheck
 accuracy after controls change, and retain the best independently accepted
 schedule if a later solve fails or exhausts its budget. The mesh stays fixed

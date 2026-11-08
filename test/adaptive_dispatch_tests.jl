@@ -65,6 +65,28 @@ end
     end
 end
 
+@testset "An accurate trajectory can require an operating repair" begin
+    base=resolved_operating_case()
+    u=ones(Int,1,2)
+    warm=dispatch_from_controls(base,u,[1.0 2.0],zeros(0,2))
+    restriction=OperationalSeries(object=:Unit,attribute=:pmax,times=[0.0],values=[0.5])
+    c=OpenSHOP._river_replace(base;operations=[restriction])
+    @test !validate(c,warm)["valid"]
+    # Operating infeasibility must not prevent an accuracy estimate. Refining
+    # this already accurate path cannot satisfy the changed power restriction.
+    replay=OpenSHOP._replay(c,warm;require_original=false)
+    @test replay.numerically_converged
+    @test !replay.physically_valid
+    @test !replay.valid
+    result=solve_verified(c;u,warm,feasibility_only=true,time_limit=10.0,max_refinements=2)
+    @test result["accepted"]
+    if result["accepted"]
+        @test validate(result["problem"],result["solution"])["valid"]
+        @test maximum(result["solution"].power)<=0.5+1e-4
+        @test replay_audit(result["problem"],result["solution"])["valid"]
+    end
+end
+
 @testset "Local refinement respects an executed gate schedule" begin
     base=passive_replay_case(1.0)
     tunnel=OpenSHOP._river_replace(only(base.system.tunnels);gate_positions=[0.5,1.0],

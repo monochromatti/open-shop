@@ -86,9 +86,8 @@ function _replay(
         _transport_data(hydraulic_case(c,x.grid),transport) : nothing
     nd===nothing && transport!==nothing && throw(ArgumentError(
         "compiled deterministic transport cannot serve distributed acceptance"))
-    length(grid)>length(x.grid) ||
+    if length(grid)<=length(x.grid)
         push!(errors,"acceptance requires a strictly finer replay grid")
-    if !isempty(errors)
         return (; valid=false, errors, violations, original_audit=original,
             shortfalls, seconds=time()-began)
     end
