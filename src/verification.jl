@@ -199,8 +199,9 @@ end
 Reconstruct and resolve starting controls before optimizing revenue. Local
 step-doubling defects select hydraulic cells to bisect; coupled replay checks
 the complete trajectory after every control change. Controls and operating
-observations keep their original intervals. A nonlinear repair is needed when
-resolved controls violate operating restrictions. The best independently
+observations keep their original intervals. Finer witness equations enforce
+restrictions that fail replay even after integration accuracy is resolved.
+The best independently
 accepted schedule survives later solve failures or budget exhaustion.
 
 `initial` is checked as supplied and retains the audit-only contract; `warm`
@@ -245,13 +246,10 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         end
         physical=hydraulic_case(c,x.grid)
         if get(audit,:numerically_converged,false)
-            if !refine_grid || !original_valid && !get(audit,:physically_valid,false)
-                return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
-            end
-            # The represented path is accurate, but finer physical restrictions
-            # require a control repair. Use that finer model for the next NLP.
-            grid=probe
-            next=_river_replace(c;routing_grid=replay_case(physical,grid).routing_grid)
+            # Accuracy is resolved. A binding restriction must be enforced on
+            # the checked mesh; moving the primary mesh alone can land on the
+            # new bound and fail its next replay in exactly the same way.
+            return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         else
             routing_grid=try
                 refine_transport_grid(physical,x,storage_limits,storage_convergence;deadline)
@@ -414,6 +412,7 @@ function _verified_dispatch(
         latest_audit=resolution.audit
         refinements+=resolution.refinements
         grid=copy(resolution.grid)
+        replay_grid===nothing || (replay_grid=sort!(unique!(vcat(replay_grid,grid))))
         original=get(latest_audit,:original_audit,Dict{String,Any}())
         push!(attempts,Dict(
             "iteration"=>length(attempts),"intervals"=>length(c.prices),
@@ -447,7 +446,7 @@ function _verified_dispatch(
             feasibility=best===nothing
         else
             refinements<max_refinements || break
-            if !refine_grid
+            if !refine_grid || get(latest_audit,:numerically_converged,false)
                 parent=replay_grid===nothing ? grid : replay_grid
                 replay_grid=refined_grid(parent;factor=replay_factor,
                     existing=river_routing_grid(c;physical_grid=parent))

@@ -1326,10 +1326,11 @@ the physical states. Every returned trajectory satisfies its own conservation
 equations. At curve knots or changes in the active physical regime, the
 second-order expansion may fail; the estimate is not a rigorous error bound.
 
-Refinement replaces the primary hydraulic mesh. An operating violation does not
-prevent measuring integration accuracy. Once accuracy is sufficient, repair
-controls that violate an operating restriction by solving
-the nonlinear problem on that mesh. Recheck
+Refinement changes the primary hydraulic mesh for accuracy. An operating
+violation does not prevent measuring accuracy. To repair a physical restriction
+violated in finer replay, add that replay's equations to the next nonlinear solve
+with the same controls. Refinement alone can move a binding capacity to another
+mesh without resolving its violation. Recheck
 accuracy after controls change, and retain the best independently accepted
 schedule if a later solve fails or exhausts its budget. The mesh stays fixed
 during each nonlinear solve.

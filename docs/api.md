@@ -140,8 +140,11 @@ set solver margins. `solve_verified` resolves fixed controls before revenue
 optimization and repeats the accuracy check after controls change. It first
 refines distributed transport when needed, then bisects hydraulic cells using
 local step-doubling defects and bulk marking. Refinement replaces the primary
-hydraulic mesh. It adds no control opportunities. Operating restrictions that
-fail on the resolved path require another nonlinear solve on that mesh.
+hydraulic mesh. It adds no control opportunities. When integration accuracy is
+resolved but finer replay violates a physical restriction, the next nonlinear
+solve includes that replay's equations with shared controls. This enforces the
+restriction where it is checked, instead of repeatedly moving a binding limit
+to a finer primary mesh.
 
 Generated vertices reuse existing mesh vertices within floating-point
 interpolation roundoff. All supplied event times are retained exactly.

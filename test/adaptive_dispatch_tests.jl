@@ -87,6 +87,21 @@ end
     end
 end
 
+@testset "A binding physical capacity remains admissible under finer replay" begin
+    base=resolved_operating_case()
+    lake=OpenSHOP._river_replace(only(base.system.reservoirs);z0=50.0,slope=10.0)
+    unit=OpenSHOP._river_replace(only(base.system.generators);pmax=5.0)
+    c=OpenSHOP._river_replace(base;system=OpenSHOP._river_replace(base.system;
+        reservoirs=[lake],generators=[unit]))
+    result=solve_verified(c;u=ones(Int,1,2),time_limit=10.0,max_refinements=2)
+    @test result["accepted"]
+    if result["accepted"]
+        @test result["solution"].objective>500.0
+        @test validate(result["problem"],result["solution"])["valid"]
+        @test replay_audit(result["problem"],result["solution"])["valid"]
+    end
+end
+
 @testset "Local refinement respects an executed gate schedule" begin
     base=passive_replay_case(1.0)
     tunnel=OpenSHOP._river_replace(only(base.system.tunnels);gate_positions=[0.5,1.0],
