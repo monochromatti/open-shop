@@ -6,19 +6,16 @@ const _PROPOSAL_OPTIMIZER = optimizer_with_attributes(
 
 """A linear surrogate proposes commitments; its objective/bound is NOT a bound
 for the nonlinear scheduling problem. Every proposed commitment needs an NLP.
-An `incumbent` schedule supplies joint discrete starts; `radius` limits changed
-unit states, enabled river states and categorical tunnel positions together.
+An `incumbent` schedule supplies joint discrete starts without restricting the
+permitted unit states, river states or tunnel positions.
 """
 function propose_commitment(
     c;
-    water_scale = 1.0,
     reference = nothing,
     time_limit = 20.0,
     incumbent = nothing,
-    radius = nothing,
     deadline = Inf,
     transport = nothing,
-    optimizer = _PROPOSAL_OPTIMIZER,
 )
     started=time()
     validate_inputs(c)
@@ -44,7 +41,7 @@ function propose_commitment(
                 "compiled deterministic transport cannot serve distributed proposal",
             ),
         )
-    m=Model(optimizer)
+    m=Model(_PROPOSAL_OPTIMIZER)
     set_silent(m)
     set_attribute(m, MOI.RelativeGapTolerance(), 0.002)
     states=_joint_states!(m,c)
@@ -236,13 +233,10 @@ function propose_commitment(
             set_start_value(u[j,t],point.commitment[j,t])
         end
         river_states=river_on_schedule(c,point.river_release)
-        distance=sum(point.commitment[j,t]==1 ? 1-u[j,t] : u[j,t]
-            for j in 1:G,t in 1:T;init=AffExpr(0.0))
         for d in 1:D,t in 1:T
             state=river_operations.on[d,t]
             state isa VariableRef || continue
             set_start_value(state,river_states[d,t])
-            distance+=river_states[d,t]==1 ? 1-state : state
         end
         for ((e,t),weights) in gates.weights
             positions=tunnel_allowed_positions(c,s.tunnels[e],t)
@@ -251,15 +245,7 @@ function propose_commitment(
             for j in eachindex(weights)
                 weights[j] isa VariableRef && set_start_value(weights[j],Float64(j==k))
             end
-            # A categorical gate change counts once, regardless of its encoding.
-            distance+=1-weights[k]
         end
-        if radius!==nothing
-            radius isa Integer && radius>=0 || throw(ArgumentError("nonnegative integer neighborhood radius required"))
-            @constraint(m,distance<=radius)
-        end
-    elseif radius!==nothing
-        throw(ArgumentError("a neighborhood radius requires an incumbent schedule"))
     end
     valuechange=sum(
         r.water_value*(V[i, T + 1]-r.v0) for (i, r) in enumerate(s.reservoirs);
@@ -283,7 +269,7 @@ function propose_commitment(
         Max,
         sum(
             c.prices[t]*dt[t]*unit_power_sign(s.generators[j])*P[j, t] for j in 1:G, t in 1:T
-        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost-river_operations.cost+water_scale*valuechange+
+        )-transition_costs(c,u; transitions=states)-gates.cost-soft.cost-river_operations.cost+valuechange+
         (reserves===nothing ? 0.0 : reserves.value)-sum(
             0.0036*dt[t]*opvalue(c, r.name, :release_penalty, c.grid[t], 0.0)*release_shortfall[
                 d,
@@ -299,8 +285,6 @@ function propose_commitment(
         "seconds"=>0.0,
         "construction_seconds"=>construction,
         "total_seconds"=>time()-started,
-        "water_scale"=>water_scale,
-        "neighborhood_radius"=>radius,
         "nonlinear_bound"=>false,
     )
     set_time_limit_sec(m, remaining)
@@ -309,8 +293,6 @@ function propose_commitment(
         "status"=>string(termination_status(m)),
         "seconds"=>elapsed,
         "construction_seconds"=>construction,
-        "water_scale"=>water_scale,
-        "neighborhood_radius"=>radius,
         "nonlinear_bound"=>false,
     )
     if has_values(m)

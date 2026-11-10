@@ -307,7 +307,7 @@ end
     end
 end
 
-@testset "A joint neighborhood counts switches and categorical gates once" begin
+@testset "Accepted references preserve joint operating choices" begin
     base=warm_dispatch_fixture()
     tunnel=OpenSHOP._river_replace(only(base.system.tunnels);gate_positions=[0.0,0.5,1.0])
     river=OpenSHOP._river_replace(only(base.system.rivers);law=:controlled,min_allowed_flow=1.0)
@@ -316,19 +316,18 @@ end
     x=dispatch_from_controls(c,ones(Int,2,2),fill(2.0,2,2),fill(0.5,1,2);
         tunnel_opening=ones(1,2))
     @test replay_audit(c,x)["valid"]
-    for radius in (0,1,3)
-        p=OpenSHOP.propose_commitment(c;reference=x,incumbent=x,radius,time_limit=5.0)
-        @test haskey(p,"u")
-        if haskey(p,"u")
-            changes=sum(p["u"].!=x.commitment)+sum(p["tunnel_opening"].!=x.tunnel_opening)+
-                sum(p["river_on"].!=OpenSHOP.river_on_schedule(c,x.river_release))
-            @test changes<=radius
-            @test admissible(c,p["u"])
-            @test validate_tunnel_openings(c,p["tunnel_opening"],p["u"])
-        end
+    p=OpenSHOP.propose_commitment(c;reference=x,incumbent=x,time_limit=5.0)
+    @test haskey(p,"u")
+    if haskey(p,"u")
+        @test admissible(c,p["u"])
+        @test validate_tunnel_openings(c,p["tunnel_opening"],p["u"])
     end
-    @test_throws ArgumentError OpenSHOP.propose_commitment(c;radius=1)
-    @test_throws ArgumentError OpenSHOP.propose_commitment(c;incumbent=x,radius=-1)
+    result=schedule_case(c;initial=x,time_limit=15.0,proposal_time_limit=3.0,
+        nlp_time_limit=5.0,max_refinements=0,refine_grid=false)
+    @test result["accepted"]
+    @test result["solution"].objective>=x.objective
+    @test validate(c,result["solution"])["valid"]
+    @test replay_audit(c,result["solution"])["valid"]
 end
 
 function fixed_power_replay_case()

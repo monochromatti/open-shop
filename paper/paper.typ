@@ -1098,19 +1098,24 @@ leaves the optimal decisions unchanged.
 
 == Finding feasible controls
 
-We build the models in JuMP~@jump. SCIP first solves a MILP approximation
-to propose unit states and gate positions. We fix those choices and use
-Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
-hydraulic laws. We dispatch each proposal before constructing the next one.
-Without an accepted trajectory, a short solve with constant objective first
-seeks a feasible point. Revenue optimization follows after independent
-acceptance. The feasible point is retained if optimization fails.
-The feasibility solve can stop when its unscaled constraints and bounds meet
-the primal tolerance. A feasible point is already optimal for its constant objective.
-The best accepted trajectory on the proposal grid supplies the reference for the next
-approximation and the starting point for its nonlinear dispatch. All attempts
-share a time budget. Candidates that pass the checks below become starting solutions
-for the full SCIP search~@scip, which can change the discrete choices.
+We build the models in JuMP~@jump. SCIP solves a MILP approximation
+of the scheduling problem to propose unit states and gate positions. Ipopt~@ipopt
+then solves the nonlinear dispatch with those discrete choices fixed.
+On a cold start, dispatch first seeks feasibility with a constant objective.
+Once independent checks accept the trajectory, revenue optimization follows.
+The feasible trajectory is retained if this improvement fails. The feasibility
+solve can stop when its unscaled constraints and bounds meet the primal
+tolerance: a feasible point is already optimal for a constant objective.
+
+An accepted improvement supplies the hydraulic reference and starting point
+for the next proposal. Each proposal can change any permitted discrete choice;
+we impose no neighborhood restriction and use the stated water values throughout.
+Preparation stops when a set of discrete choices repeats, dispatch fails to
+improve the accepted objective, or the shared time budget expires. Repeated
+choices do not trigger another nonlinear solve. This stopping rule is economical,
+but it does not establish local or global optimality of the mixed-integer problem.
+The best accepted trajectory supplies a starting solution for the full SCIP
+search~@scip, which remains free to change the discrete choices.
 
 The proposal also selects enabled river operating states; nonlinear dispatch
 holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
@@ -1141,13 +1146,7 @@ flow; the frozen mixture supplies neither a physical certificate nor a bound.
 When the proposal omits tunnel pressure equations, the permitted head ranges
 and gate positions supply necessary flow bounds. We do not intersect these
 exact-law bounds with a secant pressure approximation, whose approximate
-flows need not lie in the same interval. With an accepted trajectory, proposals limit the total
-number of changed unit states, river states and gate positions around the
-accepted trajectory. A different gate position counts as one change. The
-neighborhood starts at four changes, doubles after an unsuccessful attempt,
-and resets after a gain. This Hamming-distance restriction follows the local
-branching idea of Fischetti and Lodi~@localbranching. Here it guides proposals
-from a changing MILP surrogate rather than partitioning the full nonlinear search.
+flows need not lie in the same interval.
 
 Its level observations use first-order affine approximations at the reference
 storage, or at initial storage when no reference is available. Each approximation

@@ -110,7 +110,10 @@ and transient pressure dynamics are outside the current model.
 [Curve policies](docs/curves.md) explains single-head turbine data, explicit
 extrapolation and zero-flow river-delay coverage, with hand-calculated examples.
 
-Feasible-start preparation uses SCIP MILP proposals and Ipopt nonlinear dispatch.
+Feasible-start preparation alternates SCIP MILP proposals with Ipopt nonlinear
+dispatch. Accepted hydraulic trajectories update the proposals; repeated discrete
+choices end preparation without another dispatch solve. Preparation uses the
+stated water values and retains the best independently accepted schedule.
 SCIP bounds a numerical outer problem with explicit equality bands; schedules
 are reconstructed against the original nonlinear equations. JuMP provides
 the common algebraic interface; Julia also hosts physical reconstruction and
