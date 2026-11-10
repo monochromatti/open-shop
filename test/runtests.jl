@@ -28,6 +28,7 @@ include("model_consistency_tests.jl")
 include("storage_integration_tests.jl")
 include("storage_path_tests.jl")
 include("replay_accuracy_tests.jl")
+include("adaptive_dispatch_tests.jl")
 
 @testset "Named object round trip and optimized dispatch" begin
     lake=Reservoir(

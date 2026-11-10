@@ -12,6 +12,32 @@ struct TimeDiscretization
     duration::Vector{Float64}
 end
 
+"""Place a generated vertex, reusing an existing vertex within arithmetic roundoff.
+
+The allowance is the five-operation interpolation bound, with
+`|a|+|b| ≤ 2max(|a|,|b|)`. It has no physical time scale. Existing vertices,
+including distinct adjacent floating-point inputs, are never removed.
+"""
+function refinement_vertex(a,b,weight,existing)
+    a,b=Float64(a),Float64(b)
+    value=(1-weight)*a+weight*b
+    u=eps(Float64)/2
+    roundoff=(10u/(1-5u))*max(abs(a),abs(b))
+    k=searchsortedfirst(existing,value)
+    nearest=value
+    distance=Inf
+    for j in (k-1,k)
+        1<=j<=length(existing) || continue
+        vertex=existing[j]
+        error=abs(vertex-value)
+        if a<vertex<b && error<=roundoff && error<distance
+            nearest=vertex
+            distance=error
+        end
+    end
+    nearest
+end
+
 function TimeDiscretization(operating, hydraulic=operating)
     RiverRouting.check_grid(operating)
     grid=Float64.(hydraulic)

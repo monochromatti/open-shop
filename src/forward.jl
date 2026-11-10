@@ -346,20 +346,30 @@ function simulate(
         throw(ArgumentError("replay grid must span original horizon"))
     all(t->any(isapprox(t, x; atol = 1e-12) for x in grid), c.grid) ||
         throw(ArgumentError("replay grid must contain original control change times"))
+    opening=_physical_tunnel_openings(c,tunnel_opening)
+    validate_tunnel_openings(c,opening,state)
+    _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport)
+end
+
+# Physical integration kernel. The public wrapper checks controls and temporal
+# operating rules. Local error estimates call this kernel from already checked
+# controls, restarting only the physical state and executed river history.
+function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
+    transport=nothing,topology=HydraulicTopology(c.system),
+    sources=river_source_indices(c.system),
+    active_rivers=findall(r->r.law!=:junction,c.system.rivers),
+    river_order=_forward_river_order(c.system))
+    s=c.system
+    ng,nd=length(s.generators),length(s.rivers)
+    T=length(grid)-1
     indices=[min(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), length(c.grid)-1) for t in 1:T]
     gq=Float64.(generator_q[:, indices])
     all(isfinite,gq) && all(iszero(generator_q[i,indices[t]])==iszero(gq[i,t])
         for i in 1:ng,t in 1:T) || throw(ArgumentError(
             "unit flows must remain finite in Float64 without changing zero states"))
     ga=gate[:, indices]
-    opening=_physical_tunnel_openings(c,tunnel_opening)
-    validate_tunnel_openings(c,opening,state)
     ta=opening[:,indices]
     nr=length(s.reservoirs)
-    topology=HydraulicTopology(s)
-    sources=river_source_indices(s)
-    active_rivers=findall(r -> r.law != :junction, s.rivers)
-    river_order=_forward_river_order(s)
     V=zeros(nr, T+1)
     V[:, 1].=[r.v0 for r in s.reservoirs]
     H=zeros(length(topology.node_names), T)

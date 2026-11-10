@@ -39,8 +39,8 @@ For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.
 The start must have compatible arrays and retain the operating boundaries; it need not satisfy
-the updated physical or operating inputs. It is never retained as a feasible
-schedule without solving and independent acceptance. `initial` takes precedence
+the updated physical or operating inputs. Its controls are reconstructed under
+the current inputs and independently checked before retention. `initial` takes precedence
 when both are supplied.
 Distributed-delay proposals use the accepted trajectory's entry-cohort flows
 as their reference. Without a trajectory, they use each reach's last recorded
@@ -74,8 +74,9 @@ previous-output history uses the preceding operating interval, and river
 transport keeps its executed cohorts. `replay_audit` refines the returned
 physical grid and checks the same held controls.
 
-The default hydraulic grid is still `case.grid`. Mesh selection is currently
-explicit. Global `solve` uses its case grid for the finite optimization problem
+The default hydraulic grid in `solve_case` is `case.grid`. `solve_verified` and
+`schedule_case` select a finer mesh when accuracy requires it, while keeping
+the original operating decisions. Global `solve` uses its case grid for the finite optimization problem
 and requires an `initial` schedule on that same grid; a bound for that problem
 cannot certify a schedule from a different hydraulic discretization.
 
@@ -135,16 +136,38 @@ finer = replay_audit(case, schedule)
 
 Replay reports separate arrival and discharge shortfalls (m³/s) from power
 shortfalls (MW). These values describe constraint exceedances; they do not
-set solver margins. After failed replay, `solve_verified` may add finer
-hydraulic equations with the same unit discharges, outlet openings, commitments,
-tunnel positions and reserve allocations. Fixed-speed pump flows remain hydraulic
-states. Schedules and ramps use the original operating windows. The case, returned
-schedule and objective retain the requested grid. `refine_grid` remains accepted
-for compatibility; both values now preserve the control grid.
+set solver margins. `solve_verified` resolves fixed controls before revenue
+optimization and repeats the accuracy check after controls change. It first
+refines distributed transport when needed, then bisects hydraulic cells using
+local step-doubling defects and bulk marking. Refinement replaces the primary
+hydraulic mesh. It adds no control opportunities. When integration accuracy is
+resolved but finer replay violates a physical restriction, the next nonlinear
+solve includes that replay's equations with shared controls. This enforces the
+restriction where it is checked, instead of repeatedly moving a binding limit
+to a finer primary mesh.
 
-The retry enforces both discretizations. It can be more restrictive than either
-mesh alone and is not a continuous-time error certificate. `max_refinements`
-bounds this additional work. An explicitly requested `operational_margin` is a
+Generated vertices reuse existing mesh vertices within floating-point
+interpolation roundoff. All supplied event times are retained exactly.
+Sharing generated vertices avoids artificial intervals in the combined
+hydraulic and transport mesh.
+
+The second-order coarse-path error estimate is 4/3 of the coarse/fine difference
+for doubled replay resolution. It is an asymptotic estimate, not a continuous
+error bound at nonsmooth events. Coupled replay and physical checks determine
+acceptance. The best accepted schedule is retained even if a later revenue
+solve times out or returns a worse point. `initial` requests checking and, when
+permitted, resolving the supplied schedule; `warm` supplies unchecked controls
+that are reconstructed under the current forecast before retention.
+
+`max_refinements=48` bounds mesh updates. `time_limit` in `solve_verified` bounds
+each NLP; `deadline` bounds shared work between phases. `schedule_case` uses its
+shared `time_limit` for the entire search. Integration, construction or final
+checking can overrun a deadline; all work is included in elapsed time.
+
+With `refine_grid=false`, dispatch retains the original hydraulic model and may
+add finer witness equations sharing its controls. Global preparation uses this
+mode so its incumbent belongs to the finite model being bounded. Neither mode
+proves continuous-time accuracy. An explicitly requested `operational_margin` is a
 power inset in MW, capped at half the permitted power range so a fixed-power
 unit remains well-defined. It is not converted into a discharge margin.
 
