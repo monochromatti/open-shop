@@ -57,9 +57,14 @@ function _global_tensor_nodes(grid,lo,hi)
     unique(vcat(Float64(lo),filter(v->lo<v<hi,grid),Float64(hi)))
 end
 
-function _global_tensor_coordinate_weights(nodes,x)
-    isfinite(x) && first(nodes)<=x<=last(nodes) ||
-        throw(DomainError(x,"tensor coordinate outside its graph domain"))
+# Solver-start weights may project to an endpoint within the permitted row
+# residual. Physical interpolation keeps the strict default domain.
+function _global_tensor_coordinate_weights(nodes,x;atol=0.0)
+    isfinite(atol) && atol>=0 || throw(ArgumentError("nonnegative finite coordinate tolerance required"))
+    isfinite(x) || throw(DomainError(x,"nonfinite tensor coordinate"))
+    projected=clamp(x,first(nodes),last(nodes))
+    abs(x-projected)<=atol || throw(DomainError(x,"tensor coordinate outside its graph domain"))
+    x=projected
     n=length(nodes)
     n==1 && return [1.0]
     i=clamp(searchsortedlast(nodes,x),1,n-1)
@@ -145,9 +150,9 @@ _global_tensor_turbine!(args...;kwargs...) = _global_tensor_turbine_graph!(args.
 
 # Values for every turbine-specific auxiliary. Shared coordinate weights are
 # included so callers can merge these dictionaries with the physical start.
-function _global_tensor_turbine_values(data,q,h)
-    qweights=_global_tensor_coordinate_weights(data.qcoordinate.nodes,q)
-    hweights=_global_tensor_coordinate_weights(data.hcoordinate.nodes,h)
+function _global_tensor_turbine_values(data,q,h;atol=0.0)
+    qweights=_global_tensor_coordinate_weights(data.qcoordinate.nodes,q;atol)
+    hweights=_global_tensor_coordinate_weights(data.hcoordinate.nodes,h;atol)
     values=Dict{VariableRef,Float64}()
     for (coord,weights) in ((data.qcoordinate,qweights),(data.hcoordinate,hweights))
         for (v,x) in zip(coord.weights,weights)

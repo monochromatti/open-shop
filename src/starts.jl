@@ -29,7 +29,8 @@ The slack equals the actual JuMP objective evaluated at its start, including
 constants and scaling. MOI's stock slack-start attribute requires constraint
 primal starts, which SCIP does not support. Only primal variable starts are
 needed here. Physical feasibility is established by `_lift_start!`, separately
-from this check of the native representation's completeness.
+from this check of the native representation. SCIP checks the completed point
+using its own constraint handlers and relative feasibility tolerances.
 """
 function _complete_scip_start!(model)
     optimizer=backend(model).optimizer
@@ -49,10 +50,25 @@ function _complete_scip_start!(model)
     variables=MOI.get(native,MOI.ListOfVariableIndices())
     starts=[MOI.get(native,MOI.VariablePrimalStart(),v) for v in variables]
     missing=[v.value for (v,x) in zip(variables,starts) if x===nothing || !isfinite(x)]
-    Dict("valid"=>isempty(missing),"variables"=>length(variables),
+    feasible=false
+    if isempty(missing)
+        solution=Ref{Ptr{SCIP.SCIP_SOL}}(C_NULL)
+        SCIP.@SCIP_CALL SCIP.SCIPcreateOrigSol(native,solution,C_NULL)
+        try
+            for (variable,value) in zip(variables,starts)
+                SCIP.@SCIP_CALL SCIP.SCIPsetSolVal(native,solution[],SCIP.var(native,variable),value)
+            end
+            checked=Ref{SCIP.SCIP_Bool}(0)
+            SCIP.@SCIP_CALL SCIP.SCIPcheckSolOrig(native,solution[],checked,0,1)
+            feasible=checked[]!=0
+        finally
+            SCIP.@SCIP_CALL SCIP.SCIPfreeSol(native,solution)
+        end
+    end
+    Dict("valid"=>isempty(missing)&&feasible,"variables"=>length(variables),
         "assigned"=>length(variables)-length(missing),"missing"=>missing,
         "objective_slacks"=>objective_slacks,"scaled_objective"=>objective,
-        "scope"=>"native primal-start completeness; physical feasibility checked separately")
+        "scope"=>"native primal-start completeness and feasibility; physical feasibility checked separately")
 end
 
 function _clear_scip_start!(model)
@@ -86,7 +102,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
     table(graph, ::Nothing, x) = nothing
     function table(graph, evaluate, x)
         graph===nothing && return
-        weights=_global_tensor_coordinate_weights(graph.coordinate.nodes,x)
+        weights=_global_tensor_coordinate_weights(graph.coordinate.nodes,x;atol=tolerance)
         for (variable,value) in zip(graph.coordinate.weights,weights)
             variable isa VariableRef && put(variable,value)
         end
@@ -165,7 +181,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             if graph.turbine===nothing
                 put(graph.efficiency,efficiency(g,q,h))
             else
-                for (variable,value) in _global_tensor_turbine_values(graph.turbine,q,h)
+                for (variable,value) in _global_tensor_turbine_values(graph.turbine,q,h;atol=tolerance)
                     put(variable,value)
                 end
                 put(graph.efficiency,turbine_efficiency(g.turbine_table,q,h;extrapolation=:linear))
@@ -208,7 +224,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 delta=upstream-downstream
                 put(graph.delta,delta)
                 for (variable,value) in _global_level_flow_values(graph.channel,delta,
-                    channel_reference(r,upstream,downstream))
+                    channel_reference(r,upstream,downstream);atol=tolerance)
                     put(variable,value)
                 end
             elseif r.law!=:junction
@@ -220,12 +236,12 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
                 put(graph.branch,h>=r.crest ? 1.0 : 0.0)
             end
         end
-        _lift_reserves!(b,c,physical,put,table)
+        _lift_reserves!(b,c,physical,put,table;atol=tolerance)
         for (variable,value) in window_start_values(c,physical,b.flow_integrals,b.level_windows)
             put(variable,value)
         end
         lift_routing!(b.m,c,physical,put)
-        _lift_distributed_references!(b.m, assigned)
+        _lift_distributed_references!(b.m, assigned;atol=tolerance)
         _lift_power_hulls!(b.m, assigned)
         _lift_table_power_bounds!(b.m, assigned)
         for (variable, val) in assigned

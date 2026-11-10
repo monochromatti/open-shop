@@ -29,10 +29,10 @@ function distributed_reference_coordinate!(m, curves, q; name=gensym(:delay_refe
 end
 
 """Populate exact SOS2 reference weights from an assigned physical release."""
-function _lift_distributed_references!(m, assigned)
+function _lift_distributed_references!(m, assigned;atol=0.0)
     for coordinate in values(get(m.ext,:distributed_reference_coordinates,Dict()))
         q=JuMP.value(v->assigned[v],coordinate.x)
-        weights=_global_tensor_coordinate_weights(coordinate.nodes,q)
+        weights=_global_tensor_coordinate_weights(coordinate.nodes,q;atol)
         for (variable,value) in zip(coordinate.weights,weights)
             variable isa VariableRef && (assigned[variable]=value)
         end

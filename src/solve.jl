@@ -95,6 +95,7 @@ end
 # Explicit bands keep roundoff in coupled graph equalities from making the
 # bounding problem empty. Every exact equality solution remains in its band.
 const _GLOBAL_EQUALITY_RADIUS=1e-9
+const _GLOBAL_FEASIBILITY_TOLERANCE=1e-10
 
 function _enclose_global_equalities!(model)
     count=0
@@ -324,7 +325,7 @@ function _solve(
         end
     end
     validated_initial = best
-    best_model_feasible=initial_model_feasible
+    best_model_feasible=false
     variables=all_variables(b.m)
     binary_names=[name(v) for v in variables if is_binary(v)]
     result["model_profile"]=Dict(
@@ -365,7 +366,7 @@ function _solve(
                 "limits/time" => remaining,
                 "limits/gap" => relative_gap,
                 "limits/absgap" => absolute_gap / 10000,
-                "numerics/feastol" => 1e-10,
+                "numerics/feastol" => _GLOBAL_FEASIBILITY_TOLERANCE,
                 "numerics/epsilon" => 1e-12,
                 "numerics/sumepsilon" => 1e-12,
                 "parallel/maxnthreads" => 1,
@@ -381,6 +382,9 @@ function _solve(
                 result["native_start_audit"]=_complete_scip_start!(b.m)
                 if !result["native_start_audit"]["valid"]
                     _clear_scip_start!(b.m)
+                    initial_model_feasible=false
+                else
+                    best_model_feasible=true
                 end
             end
             if !isempty(get(b.m.ext,:global_table_power_supports,_TablePowerSupportCoordinate[]))
@@ -454,7 +458,9 @@ function _solve(
                        (best === nothing || x.objective > best.objective)
                         model_audit=_lift_start!(b,c,x)
                         result["solution_model_audit"]=model_audit
-                        best_model_feasible=model_audit["valid"]
+                        native_audit=model_audit["valid"] ? _complete_scip_start!(b.m) : nothing
+                        result["native_solution_audit"]=native_audit
+                        best_model_feasible=native_audit!==nothing && native_audit["valid"]
                         best = x
                         result["incumbent_source"] = "solver"
                     end
