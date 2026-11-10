@@ -8,7 +8,7 @@ feasible trajectory. Unsuccessful assignments are excluded from subsequent
 MILP proposals, so another discrete choice can be tried. These exclusions
 never restrict a later global search.
 
-`time_limit` is a shared preparation budget, charged for construction and
+`time_limit` defaults to 60 seconds and is shared by construction, solves and
 refinements. The MILP/NLP limits also bound individual solves. Budgets are
 checked between phases; construction, a solver iteration or final replay can
 overrun the allowance. All work is included in elapsed time. An accepted result is feasible under
@@ -29,7 +29,7 @@ function schedule_case(
     nlp_time_limit = 30.0,
     max_refinements = 48,
     operational_margin = 0.0,
-    time_limit = Inf,
+    time_limit = 60.0,
     refine_grid = true,
 )
     time_limit>0 && !isnan(time_limit) ||
