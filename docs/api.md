@@ -26,15 +26,24 @@ skips it and supplies a checked start without fixing decisions.
 supplied decisions.
 
 `schedule_case` runs preparation on its own. It dispatches each MILP proposal
-immediately and uses the best accepted trajectory on the proposal grid to update the next proposal
-and nonlinear starting point. Rejected candidates do not replace the accepted
-schedule. Without an accepted trajectory, a short feasibility-only dispatch
-precedes revenue optimization. Proposals with an accepted reference search joint neighborhoods of
-unit states, river states and categorical gate positions around the best
-accepted trajectory. A supplied `initial` must pass independent acceptance for this case;
-it is not an unchecked guess for changed physical inputs. All proposal and
-dispatch attempts share `time_limit`, with individual limits set by
-`proposal_time_limit` and `nlp_time_limit`.
+and uses an accepted nonlinear improvement to update the next proposal's
+hydraulic reference and starting point. Every proposal can change any permitted
+unit state, river state or categorical gate position. The stated water values
+are used throughout. If nonlinear dispatch fails acceptance, a linear exclusion
+prevents that assignment from being proposed again. This only guides preparation;
+a local failure does not prove infeasibility, and the full SCIP model remains
+unrestricted. Repeated accepted choices, an accepted dispatch without a gain,
+or an exhausted shared budget end preparation. Rejected results do not replace
+the best accepted schedule.
+
+On a cold start, the nonlinear routine first restores feasibility, then optimizes
+revenue. Its feasible trajectory is retained if revenue optimization fails.
+A supplied `initial` must pass independent acceptance for this case; it is not
+an unchecked guess for changed inputs. All work shares `time_limit`, with
+individual solve limits set by `proposal_time_limit` and `nlp_time_limit`.
+The shared preparation budget defaults to 60 seconds; individual solve limits
+alone do not bound a sequence of distinct assignments.
+Unused time remains available to the full nonlinear integer search.
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.

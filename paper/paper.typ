@@ -1099,21 +1099,32 @@ leaves the optimal decisions unchanged.
 == Finding feasible controls
 
 We build the models in JuMP~@jump. SCIP first solves a MILP approximation
-to propose unit states and gate positions. We fix those choices and use
-Ipopt~@ipopt to solve for the continuous decisions under the nonlinear
-hydraulic laws. We dispatch each proposal before constructing the next one.
-Without an accepted trajectory, a short solve with constant objective first
-seeks a feasible point. Revenue optimization follows after independent
-acceptance. The feasible point is retained if optimization fails.
-The feasibility solve can stop when its unscaled constraints and bounds meet
-the primal tolerance. A feasible point is already optimal for its constant objective.
-The best accepted trajectory on the proposal grid supplies the reference for the next
-approximation and the starting point for its nonlinear dispatch. All attempts
-share a time budget. Candidates that pass the checks below become starting solutions
-for the full SCIP search~@scip, which can change the discrete choices.
+for unit states, river states and gate positions. Ipopt~@ipopt then optimizes
+dispatch with these choices fixed. On a cold start it first solves a
+constant-objective feasibility problem, stopping when unscaled constraints
+and bounds meet the primal tolerance. Revenue optimization follows independent
+acceptance; the feasible trajectory is retained if this improvement fails.
 
-The proposal also selects enabled river operating states; nonlinear dispatch
-holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
+An accepted improvement updates the hydraulic reference and starting point of
+the next unrestricted proposal. The stated water values remain unchanged.
+If dispatch fails acceptance, the next proposal excludes its discrete assignment.
+Let $z$ collect unit and river states and $w_(e t k)$ be the one-hot gate selections.
+Write $(overline(z),overline(k))$ for the unsuccessful states and gate indices.
+The exclusion is
+
+$ sum_(j: overline(z)_j=1) (1-z_j) + sum_(j: overline(z)_j=0) z_j
+  + sum_(e,t) (1-w_(e t overline(k)_(e t))) >= 1. $
+
+Prescribed gate positions contribute zero. This row excludes exactly one
+assignment from the proposal model. A local failure does not prove infeasibility;
+the full nonlinear model retains every permitted assignment. Preparation ends
+when accepted choices repeat, an accepted dispatch makes no gain, or the time
+budget expires. Repeated choices do not trigger another dispatch solve. This
+heuristic stopping rule gives no optimality guarantee. The best accepted
+trajectory supplies a start for the full SCIP search~@scip, which can change
+all discrete choices. The MILP objective approximates @eq:objective and supplies
+no enclosing bound.
+
 Both preparation models also bound storage at transport vertices inside a
 hydraulic interval. Let $N_(i t)$ be the interval's net inflow excluding
 routed arrivals. Under the interval quadrature, storage at such a vertex $xi$
@@ -1141,13 +1152,7 @@ flow; the frozen mixture supplies neither a physical certificate nor a bound.
 When the proposal omits tunnel pressure equations, the permitted head ranges
 and gate positions supply necessary flow bounds. We do not intersect these
 exact-law bounds with a secant pressure approximation, whose approximate
-flows need not lie in the same interval. With an accepted trajectory, proposals limit the total
-number of changed unit states, river states and gate positions around the
-accepted trajectory. A different gate position counts as one change. The
-neighborhood starts at four changes, doubles after an unsuccessful attempt,
-and resets after a gain. This Hamming-distance restriction follows the local
-branching idea of Fischetti and Lodi~@localbranching. Here it guides proposals
-from a changing MILP surrogate rather than partitioning the full nonlinear search.
+flows need not lie in the same interval.
 
 Its level observations use first-order affine approximations at the reference
 storage, or at initial storage when no reference is available. Each approximation
