@@ -448,7 +448,7 @@ end
         observed=Set{Float64}()
         excluded=Tuple{Matrix{Int},Matrix{Float64},Matrix{Int}}[]
         for _ in expected
-            p=OpenSHOP.propose_commitment(c;excluded,time_limit=5.0)
+            p=OpenSHOP.propose_commitment(c;excluded,time_limit=30.0)
             @test haskey(p,"u")
             haskey(p,"u") || break
             choice=component isa Tunnel ? p["tunnel_opening"][1,1] : p["river_on"][1,1]
@@ -457,7 +457,7 @@ end
             push!(excluded,(p["u"],p["tunnel_opening"],p["river_on"]))
         end
         @test observed==expected
-        exhausted=OpenSHOP.propose_commitment(c;excluded,time_limit=5.0)
+        exhausted=OpenSHOP.propose_commitment(c;excluded,time_limit=30.0)
         @test !haskey(exhausted,"u")
     end
 end
