@@ -46,6 +46,19 @@ end
         for v in JuMP.MOI.get(unsafe_backend(m),JuMP.MOI.ListOfVariableIndices()))
 end
 
+@testset "Native feasibility includes the nonlinear constraints" begin
+    m=Model();set_silent(m)
+    @variable(m,0<=x<=1)
+    @constraint(m,x^2<=0.1)
+    @objective(m,Max,x)
+    set_optimizer(m,optimizer_with_attributes(SCIP.Optimizer,"numerics/feastol"=>1e-10))
+    JuMP.MOI.Utilities.attach_optimizer(backend(m))
+    set_start_value(x,0.5)
+    @test !OpenSHOP._complete_scip_start!(m)["valid"]
+    set_start_value(x,0.1)
+    @test OpenSHOP._complete_scip_start!(m)["valid"]
+end
+
 function river_value_start_case()
     c=zero_minimum_case()
     g=only(c.system.generators)
@@ -57,6 +70,32 @@ function river_value_start_case()
     system=OpenSHOP._river_replace(c.system;
         generators=[OpenSHOP._river_replace(g;turbine_table=table)],rivers=[river])
     OpenSHOP._river_replace(c;system)
+end
+
+@testset "A numerical endpoint start is lifted without changing physical controls" begin
+    base=zero_minimum_case(;qmax=0.3)
+    table=TurbineTable([90.0,110.0],[0.0,0.1,0.3],fill(0.9,3,2),
+        [0.0,0.0],[0.3,0.3])
+    unit=OpenSHOP._river_replace(only(base.system.generators);qbest=0.2,turbine_table=table)
+    c=OpenSHOP._river_replace(base;system=OpenSHOP._river_replace(base.system;
+        generators=[unit]))
+    tolerance=OpenSHOP._GLOBAL_FEASIBILITY_TOLERANCE
+    q=fill(0.3+tolerance/2,1,2)
+    warm=dispatch_from_controls(c,ones(Int,1,2),q,zeros(0,2))
+    @test validate(c,warm)["valid"]
+    @test_throws DomainError OpenSHOP._global_tensor_coordinate_weights([0.0,0.3],q[1])
+    model=OpenSHOP._build_global_dispatch(c;joint=true)
+    OpenSHOP._enclose_global_equalities!(model.m)
+    @test OpenSHOP._lift_start!(model,c,warm;tolerance)["valid"]
+    result=solve(c;initial=warm,time_limit=45.0)
+    @test result.accepted
+    @test result["start_audit"]["valid"]
+    @test result["native_start_audit"]["valid"]
+    @test result["scip_diagnostics"]["native_incumbent_available"]
+    @test result.solution.objective>=warm.objective-1e-5
+    @test warm.generator_q==q
+    outside=dispatch_from_controls(c,ones(Int,1,2),fill(0.3+100tolerance,1,2),zeros(0,2))
+    @test !OpenSHOP._lift_start!(model,c,outside;tolerance)["valid"]
 end
 
 @testset "Nonlinear river inventory objective retains its native start with power cuts" begin

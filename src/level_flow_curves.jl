@@ -141,11 +141,11 @@ end
 _global_level_flow!(args...;kwargs...) = _global_level_flow_graph!(args...;kwargs...).flow
 
 """Values of the lifted graph variables for a physical delta/reference point."""
-function _global_level_flow_values(data,delta,reference)
-    dw=_global_tensor_coordinate_weights(data.dcoordinate.nodes,delta)
+function _global_level_flow_values(data,delta,reference;atol=0.0)
+    dw=_global_tensor_coordinate_weights(data.dcoordinate.nodes,delta;atol)
     isfinite(reference) || throw(DomainError(reference,"reference level must be finite"))
     rw=data.rcoordinate===nothing ? [1.0] :
-        _global_tensor_coordinate_weights(data.rcoordinate.nodes,reference)
+        _global_tensor_coordinate_weights(data.rcoordinate.nodes,reference;atol)
     values=Dict{VariableRef,Float64}()
     for (coord,weights) in ((data.dcoordinate,dw),(data.rcoordinate,rw))
         coord===nothing && continue

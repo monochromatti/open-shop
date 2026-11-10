@@ -354,7 +354,7 @@ function _start_reserves!(r,c,warm)
     end
 end
 
-function _lift_reserves!(b,c,physical,put,table)
+function _lift_reserves!(b,c,physical,put,table;atol=0.0)
     r=b.reserves
     r===nothing && return
     allocation=physical.reserves
@@ -382,7 +382,7 @@ function _lift_reserves!(b,c,physical,put,table)
         if graph.turbine===nothing
             put(graph.efficiency,efficiency(g,q,h))
         else
-            for (variable,val) in _global_tensor_turbine_values(graph.turbine,q,h)
+            for (variable,val) in _global_tensor_turbine_values(graph.turbine,q,h;atol)
                 put(variable,val)
             end
             put(graph.efficiency,turbine_efficiency(g.turbine_table,q,h;extrapolation=:linear))
