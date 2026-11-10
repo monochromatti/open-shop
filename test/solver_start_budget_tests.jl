@@ -1,3 +1,5 @@
+import Ipopt
+
 @testset "Objective bridge starts include constants, sense and scaling" begin
     for scale in (1.0,10000.0), nonlinear in (false,true), sense in (JuMP.MOI.MIN_SENSE,JuMP.MOI.MAX_SENSE)
         m=Model();set_silent(m)
@@ -236,4 +238,31 @@ end
     @test result.feasible_lower_bound===nothing
     @test result.relative_gap===nothing && result.absolute_gap===nothing
     @test !result.global_certificate
+end
+
+@testset "A primal warm start retains its balance near active bounds" begin
+    m=Model()
+    @variable(m,0<=stored<=10000)
+    @variable(m,0<=released<=2)
+    @constraint(m,stored+released==10000)
+    @objective(m,Max,released)
+    set_start_value(stored,10000.0)
+    set_start_value(released,0.0)
+    OpenSHOP._local_optimizer!(m,"Ipopt",10.0;warm_start=true)
+    first_violation=Ref(Inf)
+    callback=function(mode,args...)
+        mode==0 || return true
+        native=unsafe_backend(m).inner
+        lower=zeros(native.n);upper=zeros(native.n);residual=zeros(native.m)
+        Ipopt.GetIpoptCurrentViolations(native,false,native.n,lower,upper,
+            C_NULL,C_NULL,C_NULL,native.m,residual,C_NULL)
+        first_violation[]=max(maximum(lower;init=0.0),maximum(upper;init=0.0),
+            maximum(residual;init=0.0))
+        false
+    end
+    JuMP.MOI.set(m,Ipopt.CallbackFunction(),callback)
+    optimize!(m)
+    # A balanced corner must not move tens of volume units into the interior
+    # before the first step. Check what Ipopt receives, rather than its options.
+    @test first_violation[]<=1e-3
 end

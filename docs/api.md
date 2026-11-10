@@ -49,7 +49,9 @@ uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.
 The start must have compatible arrays and retain the operating boundaries; it need not satisfy
 the updated physical or operating inputs. Its controls are reconstructed under
-the current inputs and independently checked before retention. `initial` takes precedence
+the current inputs and independently checked before retention. The nonlinear initializer
+limits movement into the interior near active bounds, keeping the supplied
+primal values close to the reconstructed trajectory. `initial` takes precedence
 when both are supplied.
 Distributed-delay proposals use the accepted trajectory's entry-cohort flows
 as their reference. Without a trajectory, they use each reach's last recorded

@@ -472,6 +472,7 @@ function _build_dispatch(
         penalty_cost,
         soft,
         transport = nd,
+        has_primal_start = warm!==nothing,
         warm_start,
         gates,
         river_operations,
@@ -536,31 +537,36 @@ function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
     solution
 end
 
-function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
+function _local_optimizer!(m, solver, time_limit;feasibility_only=false,warm_start=false)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
     set_optimizer(m, Ipopt.Optimizer)
     set_silent(m)
-    if solver=="Ipopt"
-        set_optimizer_attribute(m, "tol", 1e-8)
-        set_optimizer_attribute(m, "bound_relax_factor", 0.0)
-        set_optimizer_attribute(m, "max_iter", 1000)
-        set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
-        set_optimizer_attribute(m, "max_wall_time", max(0.001, time_limit))
-        if feasibility_only
-            # With constant objective, any feasible point is optimal. Do not
-            # wait for barrier multipliers; check unscaled rows and bounds.
-            lower=Float64[];upper=Float64[];violation=Float64[]
-            callback=function(mode,iteration,objective,primal,args...)
-                mode==0 && primal<=1e-8 || return true
-                native=unsafe_backend(m).inner
-                resize!(lower,native.n);resize!(upper,native.n);resize!(violation,native.m)
-                Ipopt.GetIpoptCurrentViolations(native,false,native.n,lower,upper,
-                    C_NULL,C_NULL,C_NULL,native.m,violation,C_NULL)
-                max(maximum(lower;init=0.0),maximum(upper;init=0.0),
-                    maximum(violation;init=0.0))>1e-8
-            end
-            MOI.set(m,Ipopt.CallbackFunction(),callback)
+    set_optimizer_attribute(m, "tol", 1e-8)
+    set_optimizer_attribute(m, "bound_relax_factor", 0.0)
+    set_optimizer_attribute(m, "max_iter", 1000)
+    set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
+    set_optimizer_attribute(m, "max_wall_time", max(0.001, time_limit))
+    if warm_start
+        # Preserve the supplied hydraulic trajectory near active bounds. The
+        # default interior displacement can undo its water/pressure balances.
+        for option in ("bound_push","bound_frac","slack_bound_push","slack_bound_frac")
+            set_optimizer_attribute(m,option,1e-8)
         end
+    end
+    if feasibility_only
+        # With constant objective, any feasible point is optimal. Do not
+        # wait for barrier multipliers; check unscaled rows and bounds.
+        lower=Float64[];upper=Float64[];violation=Float64[]
+        callback=function(mode,iteration,objective,primal,args...)
+            mode==0 && primal<=1e-8 || return true
+            native=unsafe_backend(m).inner
+            resize!(lower,native.n);resize!(upper,native.n);resize!(violation,native.m)
+            Ipopt.GetIpoptCurrentViolations(native,false,native.n,lower,upper,
+                C_NULL,C_NULL,C_NULL,native.m,violation,C_NULL)
+            max(maximum(lower;init=0.0),maximum(upper;init=0.0),
+                maximum(violation;init=0.0))>1e-8
+        end
+        MOI.set(m,Ipopt.CallbackFunction(),callback)
     end
 end
 
@@ -642,7 +648,7 @@ function solve_case(
         result["total_seconds"]=time()-b.starttime
         return SolveResult(result)
     end
-    _local_optimizer!(b.m, solver, remaining;feasibility_only)
+    _local_optimizer!(b.m, solver, remaining;feasibility_only,warm_start=b.has_primal_start)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
     if time_limit-construction_seconds<=0
