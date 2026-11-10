@@ -458,9 +458,7 @@ function _solve(
                        (best === nothing || x.objective > best.objective)
                         model_audit=_lift_start!(b,c,x)
                         result["solution_model_audit"]=model_audit
-                        native_audit=model_audit["valid"] ? _complete_scip_start!(b.m) : nothing
-                        result["native_solution_audit"]=native_audit
-                        best_model_feasible=native_audit!==nothing && native_audit["valid"]
+                        best_model_feasible=model_audit["valid"]
                         best = x
                         result["incumbent_source"] = "solver"
                     end
