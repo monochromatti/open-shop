@@ -29,9 +29,12 @@ supplied decisions.
 and uses an accepted nonlinear improvement to update the next proposal's
 hydraulic reference and starting point. Every proposal can change any permitted
 unit state, river state or categorical gate position. The stated water values
-are used throughout. Repeated discrete choices, a failed improvement, or an
-exhausted shared budget end preparation. Rejected results do not replace the
-best accepted schedule.
+are used throughout. If nonlinear dispatch fails acceptance, a linear exclusion
+prevents that assignment from being proposed again. This only guides preparation;
+a local failure does not prove infeasibility, and the full SCIP model remains
+unrestricted. Repeated accepted choices, an accepted dispatch without a gain,
+or an exhausted shared budget end preparation. Rejected results do not replace
+the best accepted schedule.
 
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.

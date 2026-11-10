@@ -1098,27 +1098,33 @@ leaves the optimal decisions unchanged.
 
 == Finding feasible controls
 
-We build the models in JuMP~@jump. SCIP solves a MILP approximation
-of the scheduling problem to propose unit states and gate positions. Ipopt~@ipopt
-then solves the nonlinear dispatch with those discrete choices fixed.
-On a cold start, dispatch first seeks feasibility with a constant objective.
-Once independent checks accept the trajectory, revenue optimization follows.
-The feasible trajectory is retained if this improvement fails. The feasibility
-solve can stop when its unscaled constraints and bounds meet the primal
-tolerance: a feasible point is already optimal for a constant objective.
+We build the models in JuMP~@jump. SCIP first solves a MILP approximation
+for unit states, river states and gate positions. Ipopt~@ipopt then optimizes
+dispatch with these choices fixed. On a cold start it first solves a
+constant-objective feasibility problem, stopping when unscaled constraints
+and bounds meet the primal tolerance. Revenue optimization follows independent
+acceptance; the feasible trajectory is retained if this improvement fails.
 
-An accepted improvement supplies the hydraulic reference and starting point
-for the next proposal. Each proposal can change any permitted discrete choice;
-we impose no neighborhood restriction and use the stated water values throughout.
-Preparation stops when a set of discrete choices repeats, dispatch fails to
-improve the accepted objective, or the shared time budget expires. Repeated
-choices do not trigger another nonlinear solve. This stopping rule is economical,
-but it does not establish local or global optimality of the mixed-integer problem.
-The best accepted trajectory supplies a starting solution for the full SCIP
-search~@scip, which remains free to change the discrete choices.
+An accepted improvement updates the hydraulic reference and starting point of
+the next unrestricted proposal. The stated water values remain unchanged.
+If dispatch fails acceptance, the next proposal excludes its discrete assignment.
+Let $z$ collect unit and river states and $w_(e t k)$ be the one-hot gate selections.
+Write $(overline(z),overline(k))$ for the unsuccessful states and gate indices.
+The exclusion is
 
-The proposal also selects enabled river operating states; nonlinear dispatch
-holds those states fixed. The MILP objective approximates @eq:objective and gives no enclosing bound.
+$ sum_(j: overline(z)_j=1) (1-z_j) + sum_(j: overline(z)_j=0) z_j
+  + sum_(e,t) (1-w_(e t overline(k)_(e t))) >= 1. $
+
+Prescribed gate positions contribute zero. This row excludes exactly one
+assignment from the proposal model. A local failure does not prove infeasibility;
+the full nonlinear model retains every permitted assignment. Preparation ends
+when accepted choices repeat, an accepted dispatch makes no gain, or the time
+budget expires. Repeated choices do not trigger another dispatch solve. This
+heuristic stopping rule gives no optimality guarantee. The best accepted
+trajectory supplies a start for the full SCIP search~@scip, which can change
+all discrete choices. The MILP objective approximates @eq:objective and supplies
+no enclosing bound.
+
 Both preparation models also bound storage at transport vertices inside a
 hydraulic interval. Let $N_(i t)$ be the interval's net inflow excluding
 routed arrivals. Under the interval quadrature, storage at such a vertex $xi$

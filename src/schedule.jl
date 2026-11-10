@@ -1,10 +1,12 @@
 """Schedule an input case using successive MILP proposals and nonlinear dispatch.
 
 Each accepted nonlinear improvement supplies the next proposal's hydraulic
-reference. Stop when discrete controls repeat, dispatch fails to improve the
-accepted schedule, or the shared deadline expires. Cold dispatch restores
+reference. Stop when discrete controls repeat, an accepted dispatch fails to
+improve the best schedule, or the shared deadline expires. Cold dispatch restores
 feasibility before optimizing revenue; a failed improvement retains that
-feasible trajectory. These proposals never restrict a later global search.
+feasible trajectory. Unsuccessful assignments are excluded from subsequent
+MILP proposals, so another discrete choice can be tried. These exclusions
+never restrict a later global search.
 
 `time_limit` is a shared preparation budget, charged for construction and
 refinements. The MILP/NLP limits also bound individual solves. Budgets are
@@ -78,7 +80,9 @@ function schedule_case(
     end
     reference=best===nothing ? warm : best.solution
     proposals=Any[]
-    dispatched=Set{Tuple{Matrix{Int},Matrix{Float64},Matrix{Int}}}()
+    control_type=Tuple{Matrix{Int},Matrix{Float64},Matrix{Int}}
+    dispatched=Set{control_type}()
+    excluded=control_type[]
     if best===nothing && warm!==nothing
         start=_schedule_input(warm;case=c)
         mesh=TimeDiscretization(c.grid,start.grid)
@@ -90,7 +94,7 @@ function schedule_case(
             get(reason,"ignored_reason","missing hydraulic arrays")))
     end
     while time()<deadline
-        p=propose_commitment(c;time_limit=proposal_time_limit,reference,
+        p=propose_commitment(c;excluded,time_limit=proposal_time_limit,reference,
             incumbent=best===nothing ? nothing : best.solution,deadline)
         push!(proposals,p)
         !haskey(p,"u") && best!==nothing && break
@@ -114,7 +118,11 @@ function schedule_case(
                 "seconds"=>v.total_seconds,"steps"=>v.attempts,"u"=>copy(u),
                 "tunnel_opening"=>copy(opening),"elapsed_seconds"=>time()-started,
                 "warm_start_objective"=>reference===nothing ? nothing : reference["objective"]))
-            if v.accepted && (best===nothing || v.solution.objective>best.solution.objective)
+            if !v.accepted
+                push!(excluded,controls)
+                continue
+            end
+            if best===nothing || v.solution.objective>best.solution.objective
                 best=v
                 reference=v.solution
             else

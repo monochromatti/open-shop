@@ -7,11 +7,14 @@ const _PROPOSAL_OPTIMIZER = optimizer_with_attributes(
 """A linear surrogate proposes commitments; its objective/bound is NOT a bound
 for the nonlinear scheduling problem. Every proposed commitment needs an NLP.
 An `incumbent` schedule supplies joint discrete starts without restricting the
-permitted unit states, river states or tunnel positions.
+permitted unit states, river states or tunnel positions. `excluded` contains
+previously unsuccessful assignments to skip in this proposal model only;
+a failed local dispatch does not prove such an assignment infeasible.
 """
 function propose_commitment(
     c;
     reference = nothing,
+    excluded = (),
     time_limit = 20.0,
     incumbent = nothing,
     deadline = Inf,
@@ -224,6 +227,7 @@ function propose_commitment(
         end
     end
     constrain_storage_paths!(m,c,HydraulicTopology(s),V,Q,gq,rq,routing)
+    _exclude_proposals!(m,c,u,gates,river_operations,excluded)
     if incumbent!==nothing
         schedule=_schedule_input(incumbent;case=c)
         mesh=TimeDiscretization(c.grid,schedule.grid)
@@ -306,4 +310,24 @@ function propose_commitment(
     end
     result["total_seconds"]=time()-started
     result
+end
+
+# Linear no-good rows belong only to the proposal model. A failed local NLP
+# never excludes a commitment from the original nonlinear/global problem.
+function _exclude_proposals!(m,c,u,gates,river_operations,points)
+    for (units,opening,river) in points
+        distance=sum(units[j,t]==1 ? 1-u[j,t] : u[j,t]
+            for j in axes(u,1),t in axes(u,2);init=AffExpr(0.0))
+        for i in axes(river,1),t in axes(river,2)
+            state=river_operations.on[i,t]
+            state isa VariableRef || continue
+            distance+=river[i,t]==1 ? 1-state : state
+        end
+        for ((e,t),weights) in gates.weights
+            positions=tunnel_allowed_positions(c,c.system.tunnels[e],t)
+            k=only(k for k in eachindex(positions) if positions[k]==opening[e,t])
+            distance+=1-weights[k]
+        end
+        @constraint(m,distance>=1)
+    end
 end

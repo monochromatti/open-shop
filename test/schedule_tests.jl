@@ -389,3 +389,75 @@ end
     @test check["shortfalls"].power==0.0
     @test check["shortfalls"].discharge≈0.0021553422261328947 atol=1e-9
 end
+
+@testset "A failed nonlinear commitment leaves other discrete choices available" begin
+    lake=Reservoir(name=:Lake,z0=99.0,v0=1.0,vmin=0.5,vmax=2.0,
+        slope=1.0,water_value=12000.0)
+    units=[Generator(name=:HighHead,plant=:Plant,qmin=4.0,qmax=5.0,
+            pmin=0.0,pmax=10.0,hmin=95.0,hmax=110.0,hbest=100.0,qbest=4.5,
+            efficiency=0.9,qcurvature=0.0,hcurvature=0.0,
+            minup=0.0,mindown=0.0,startup=1.0),
+        Generator(name=:LowHead,plant=:Plant,qmin=0.0,qmax=2.0,
+            pmin=0.0,pmax=10.0,hmin=60.0,hmax=110.0,hbest=80.0,qbest=1.0,
+            efficiency=0.9,qcurvature=0.0,hcurvature=0.0,
+            minup=0.0,mindown=0.0,startup=1.0)]
+    system=HydroSystem(reservoirs=[lake],junctions=[Junction(name=:Intake)],
+        boundaries=[Boundary(name=:Sea,head=0.0)],
+        tunnels=[Tunnel(name=:Penstock,source=:Lake,target=:Intake,
+            resistance=1.0,capacity=20.0)],
+        plants=[Plant(name=:Plant,source=:Intake,target=:Sea,pmax=20.0)],
+        generators=units)
+    c=ScheduleCase(name="pressure-limited commitment",system=system,
+        grid=[0.0,1.0],prices=[50.0])
+    # At least four m³/s would lose sixteen metres. Reservoir head is at
+    # most 101 m, so this unit cannot obtain its required 95 m at the intake.
+    # Nominal-head power nevertheless makes it attractive to the first MILP.
+    result=schedule_case(c;time_limit=15.0,proposal_time_limit=3.0,
+        nlp_time_limit=3.0,max_refinements=0,refine_grid=false)
+    @test result["accepted"]
+    if result["accepted"]
+        x=result["solution"]
+        @test all(iszero,x.commitment[1,:])
+        @test x.objective>0.5
+        @test validate(c,x)["valid"]
+        @test replay_audit(c,x)["valid"]
+    end
+    forced=OpenSHOP._river_replace(c;operations=[OperationalSeries(
+        object=:HighHead,attribute=:forced_on,times=[0.0],values=[1.0])])
+    failed=schedule_case(forced;time_limit=15.0,proposal_time_limit=3.0,
+        nlp_time_limit=3.0,max_refinements=0,refine_grid=false)
+    @test !failed["accepted"]
+    @test failed["solution"]===nothing
+end
+
+@testset "Proposal exclusions retain alternative gates and river states" begin
+    reservoirs=[Reservoir(name=name,z0=z,v0=10.0,vmin=9.0,vmax=11.0,
+        slope=0.1,water_value=name==:Lower ? 10.0 : 0.0)
+        for (name,z) in ((:Upper,100.0),(:Lower,90.0))]
+    tunnel=Tunnel(name=:Link,source=:Upper,target=:Lower,resistance=1.0,
+        capacity=10.0,gate_positions=[0.0,0.5,1.0])
+    river=River(name=:Link,source=:Upper,target=:Lower,law=:controlled,
+        capacity=2.0,min_allowed_flow=1.0,deterministic_delay=0.0,
+        curves=RiverRouting.DelayCurve[],water_value=0.0)
+    for component in (tunnel,river)
+        system=component isa Tunnel ? HydroSystem(;reservoirs,tunnels=[component]) :
+            HydroSystem(;reservoirs,rivers=[component])
+        c=ScheduleCase(name="discrete alternatives",system=system,
+            grid=[0.0,1.0],prices=[0.0])
+        expected=component isa Tunnel ? Set([0.0,0.5,1.0]) : Set([0.0,1.0])
+        observed=Set{Float64}()
+        excluded=Tuple{Matrix{Int},Matrix{Float64},Matrix{Int}}[]
+        for _ in expected
+            p=OpenSHOP.propose_commitment(c;excluded,time_limit=5.0)
+            @test haskey(p,"u")
+            haskey(p,"u") || break
+            choice=component isa Tunnel ? p["tunnel_opening"][1,1] : p["river_on"][1,1]
+            @test choice ∉ observed
+            push!(observed,choice)
+            push!(excluded,(p["u"],p["tunnel_opening"],p["river_on"]))
+        end
+        @test observed==expected
+        exhausted=OpenSHOP.propose_commitment(c;excluded,time_limit=5.0)
+        @test !haskey(exhausted,"u")
+    end
+end
