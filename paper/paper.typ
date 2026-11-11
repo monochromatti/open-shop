@@ -1331,14 +1331,32 @@ the physical states. Every returned trajectory satisfies its own conservation
 equations. At curve knots or changes in the active physical regime, the
 second-order expansion may fail; the estimate is not a rigorous error bound.
 
+Transport refinement uses the same convention. It retains the coarse transport
+mesh, so its two-mesh differences in cumulative arrivals and terminal inventory
+are also multiplied by $4/3$ before comparison with their tolerances. Otherwise
+transport can stop just short of the requested accuracy while hydraulic
+refinement continues without reducing the remaining transport error.
+
 Refinement changes the primary hydraulic mesh for accuracy. An operating
 violation does not prevent measuring accuracy. To repair a physical restriction
 violated in finer replay, add that replay's equations to the next nonlinear solve
-with the same controls. Refinement alone can move a binding capacity to another
-mesh without resolving its violation. Recheck
-accuracy after controls change, and retain the best independently accepted
-schedule if a later solve fails or exhausts its budget. The mesh stays fixed
-during each nonlinear solve.
+with the same control intervals. Between arrival knots, a held-flow storage path
+is quadratic. Its minimum or maximum may lie between mesh vertices. Locate these
+extrema analytically and include the time of each reservoir's largest bound
+violation in the next replay mesh. After the controls change, locate the extrema
+again. This constraint-generation step draws on the treatment of path constraints
+in semi-infinite optimal control~@potschka. It does not introduce additional
+control decisions.
+
+When refinement requires a nonlinear repair, first solve the constrained model
+with a constant objective to restore feasibility. Resume revenue optimization
+from an independently accepted trajectory. Coordinating
+feasibility restoration and mesh refinement is also central to the optimal-control
+method of Banihashemi and Kaya~@banihashemi; here both phases use the same local
+nonlinear solver. We do not claim their convergence results for this nonconvex
+model. Recheck accuracy after controls change, and retain the best independently
+accepted schedule if a later solve fails or exhausts its budget. The mesh stays
+fixed during each nonlinear solve.
 
 Global search retains its declared finite hydraulic model. Its preparation may
 add finer witness equations sharing the same controls, but the objective and

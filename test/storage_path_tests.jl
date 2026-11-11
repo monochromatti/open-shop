@@ -75,6 +75,7 @@ end
     audit=validate(c,x)
     @test !audit["valid"]
     @test audit["residuals"]["storage_path_Pond"]≈2.75e-6 atol=1e-12
+    @test any(t->isapprox(t,0.5;atol=1e-10),audit["shortfalls"].storage_path_times)
     @test !replay_audit(c,x)["valid"]
     # The same flow is safe with four extra cubic metres below the initial
     # level. Detect the excursion analytically, without adding time steps.
@@ -82,6 +83,7 @@ end
         reservoirs=[first(system.reservoirs),OpenSHOP._river_replace(pond;vmin=0.000495)]))
     y=dispatch_from_controls(safe,zeros(Int,0,1),zeros(0,1),controls)
     @test validate(safe,y)["valid"]
+    @test isempty(validate(safe,y)["shortfalls"].storage_path_times)
     changed=deepcopy(y)
     changed.storage[2,:].+=2e-6
     @test !validate(safe,changed)["valid"]
@@ -96,5 +98,39 @@ end
         @test vec(x.river_release[2,:]) ≈ [15.0,21.0,27.0,33.0] atol=1e-5
         @test x.storage[2,:] ≈ fill(0.002,5) atol=1e-9
         @test replay_audit(c,x)["valid"]
+    end
+end
+
+@testset "Dispatch repairs an interior storage minimum before optimizing revenue" begin
+    for origin in (0.0,1000.0)
+        reservoirs=[Reservoir(name=:Upper,z0=100.0,slope=1.0,v0=1.0,
+            vmin=0.0,vmax=2.0,water_value=0.0),
+            Reservoir(name=:Pond,z0=50.0,slope=1.0,v0=0.002,
+                vmin=0.0004,vmax=0.04,water_value=0.0)]
+        inlet=River(name=:Inlet,source=:Upper,target=:Pond,law=:controlled,
+            capacity=36.0,gate_min=1.0,water_value=0.0,
+            curves=[RiverRouting.DelayCurve(0.0,[0.0,1.0],[1.0])],
+            history_grid=[origin-2.0,origin],history_release=[12.0])
+        unit=Generator(name=:Unit,plant=:Station,qmin=0.0,qmax=40.0,
+            pmin=0.0,pmax=40.0,hmin=40.0,hmax=60.0,qbest=20.0,hbest=50.0,
+            efficiency=0.9,qcurvature=0.0,hcurvature=0.0,
+            minup=0.0,mindown=0.0,startup=0.0)
+        system=HydroSystem(;reservoirs,rivers=[inlet],generators=[unit],
+            plants=[Plant(name=:Station,source=:Pond,target=:Sea,pmax=40.0)],
+            boundaries=[Boundary(name=:Sea,head=0.0)])
+        c=ScheduleCase(;name="interior storage minimum",system,
+            grid=[origin,origin+1.0],prices=[100.0],routing_grid=[origin,origin+1.0])
+        # Arrival is 12+24t m³/s. The minimum of
+        # V(t)=2000+3600*((12-q)*t+12t²) m³ limits constant discharge to
+        # q=12+sqrt(2*24*1600/3600), although endpoint bounds permit more.
+        optimal_flow=12+sqrt(2*24*1600/3600)
+        result=solve_verified(c;u=ones(Int,1,1),time_limit=20.0,max_refinements=12)
+        @test result["accepted"]
+        if result["accepted"]
+            x=result["solution"]
+            @test validate(result["problem"],x)["valid"]
+            @test replay_audit(result["problem"],x;grid=OpenSHOP.refined_grid(x.grid;factor=4))["valid"]
+            @test maximum(abs,x.generator_q.-optimal_flow)<=0.02
+        end
     end
 end

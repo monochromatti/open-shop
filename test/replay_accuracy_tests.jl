@@ -109,3 +109,37 @@ end
         @test native.global_certificate
     end
 end
+
+@testset "Transport refinement meets receiving-storage accuracy" begin
+    for scale in (0.01,1.0,100.0), tributaries in (1,2)
+        reservoirs=[Reservoir(name=:Source,z0=100.0,v0=scale,vmin=0.0,vmax=2scale,
+            water_value=0.0),
+            Reservoir(name=:Pond,z0=50.0,v0=0.00005scale,vmin=0.0,vmax=0.0001scale,
+                water_value=0.0)]
+        curve=[RiverRouting.DelayCurve(0.0,[0.0,1.0],[1.0])]
+        flow=0.02scale
+        rivers=[River(name=Symbol(:Tributary,i),source=:Source,target=:Main,
+            law=:controlled,capacity=flow,water_value=0.0,curves=curve,
+            history_grid=[-2.0,0.0],history_release=[0.0]) for i in 1:tributaries]
+        push!(rivers,River(name=:Main,source=:auto,target=:Pond,law=:junction,
+            capacity=tributaries*flow,water_value=0.0,curves=curve,
+            history_grid=[-2.0,0.0],history_release=[0.0]))
+        c=ScheduleCase(name="receiving-volume accuracy",system=HydroSystem(;reservoirs,rivers),
+            grid=[0.0,1.0],prices=[0.0],routing_grid=[0.0,1.0])
+        u=zeros(Int,0,1)
+        q=zeros(0,1)
+        gate=ones(length(rivers),1)
+        gate[end,1]=0.0
+        x=dispatch_from_controls(c,u,q,gate)
+        released=0.0036tributaries*flow
+        # Two uniform delays deliver one sixth of the release by hour one.
+        # On the initial mesh the error is 1/12 of the release, but the raw
+        # coarse/fine difference is only 1/16. A 7% tolerance separates them.
+        tolerance=0.07released
+        grid=OpenSHOP.refine_transport_grid(c,x,[Inf,tolerance],1.0)
+        resolved=OpenSHOP._river_replace(c;routing_grid=grid)
+        y=dispatch_from_controls(resolved,u,q,gate)
+        @test abs(y.arrival_volume[end,1]-released/6)<=tolerance
+        @test validate(resolved,y)["valid"]
+    end
+end

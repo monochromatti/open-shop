@@ -141,7 +141,7 @@ function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
     nothing
 end
 
-"""Storage-bound excess along the held-flow quadrature, including interior extrema.
+"""Worst storage-bound excess and its time for each reservoir.
 
 Between arrival and operating-data knots the net rate is affine, so storage is
 quadratic. Check its endpoints and its stationary point without time stepping.
@@ -153,6 +153,7 @@ function storage_path_residuals(c,x,routed)
     s=c.system
     topology=HydraulicTopology(s)
     excess=zeros(length(s.reservoirs))
+    times=fill(first(c.grid),length(s.reservoirs))
     for (i,r) in enumerate(s.reservoirs)
         incoming=[d for (d,enters,_) in topology.river_incidence[i] if enters]
         outgoing=[d for (d,_,leaves) in topology.river_incidence[i] if leaves]
@@ -174,6 +175,13 @@ function storage_path_residuals(c,x,routed)
             lower,upper=storage_bounds(c,r,t)
             max(lower-v,v-upper,0.0)
         end
+        update_maximum!(value,time)=begin
+            residual=violation(value,time)
+            if residual>excess[i] || isnan(residual)
+                excess[i]=residual
+                times[i]=time
+            end
+        end
         for k in 1:length(knots)-1
             a,b=knots[k],knots[k+1]
             t=searchsortedlast(c.grid,a)
@@ -187,17 +195,18 @@ function storage_path_residuals(c,x,routed)
             before,after=net+right[k],net+left[k+1]
             duration=b-a
             finish=volume+0.0036duration*(before+after)/2
-            excess[i]=max(excess[i],violation(volume,a),violation(finish,b))
+            update_maximum!(volume,a)
+            update_maximum!(finish,b)
             change=after-before
             if change!=0
                 fraction=-before/change
                 if 0<fraction<1
                     stationary=volume+0.0036duration*fraction*(before+fraction*change/2)
-                    excess[i]=max(excess[i],violation(stationary,a+duration*fraction))
+                    update_maximum!(stationary,a+duration*fraction)
                 end
             end
             volume=finish
         end
     end
-    excess
+    (;excess,times)
 end

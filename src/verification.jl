@@ -168,6 +168,7 @@ function _replay(
             original_audit=original,
             transport_audit=transport_check,
             replay_grid=collect(grid),
+            constraint_times=fine_shortfalls.storage_path_times,
             replay_intervals=length(grid)-1,
             max_water_residual_Mm3=get(violations, "global_water", Inf),
             max_storage_difference_Mm3=storage_error,
@@ -200,8 +201,9 @@ Reconstruct and resolve starting controls before optimizing revenue. Local
 step-doubling defects select hydraulic cells to bisect; coupled replay checks
 the complete trajectory after every control change. Controls and operating
 observations keep their original intervals. Finer witness equations enforce
-restrictions that fail replay even after integration accuracy is resolved.
-The best independently
+restrictions that fail replay even after integration accuracy is resolved,
+including analytically located storage extrema. After a mesh or constraint
+change, restore feasibility before optimizing revenue. The best independently
 accepted schedule survives later solve failures or budget exhaustion.
 
 `initial` is checked as supplied and retains the audit-only contract; `warm`
@@ -440,17 +442,22 @@ function _verified_dispatch(
             dispatch!==nothing && !feasibility && break
             feasibility=false
         elseif grid!=latest.grid
-            feasibility=best===nothing
-        elseif !get(original,"valid",false)
+            feasibility=true
+        elseif !get(original,"valid",false) && !get(latest_audit,:numerically_converged,false)
             dispatch!==nothing && resolution.refinements==0 && break
-            feasibility=best===nothing
+            feasibility=true
         else
             refinements<max_refinements || break
             if !refine_grid || get(latest_audit,:numerically_converged,false)
                 parent=replay_grid===nothing ? grid : replay_grid
                 replay_grid=refined_grid(parent;factor=replay_factor,
                     existing=river_routing_grid(c;physical_grid=parent))
+                # A quadratic storage path can violate a bound between mesh
+                # vertices. Enforce its observed extremum in the next solve.
+                replay_grid=sort!(unique!(vcat(replay_grid,
+                    get(latest_audit,:constraint_times,Float64[]))))
                 refinements+=1
+                feasibility=true
             else
                 break
             end
