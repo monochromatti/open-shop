@@ -2,6 +2,21 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- The leading second-order errors give the coarse-grid Richardson factor.
+The expansion is a hypothesis, not a bound on a computed trajectory. -/
+theorem second_order_coarse_error (coarse fine reference coefficient step : ℝ)
+    (hc : coarse = reference + coefficient * step^2)
+    (hf : fine = reference + coefficient * (step/2)^2) :
+    coarse - reference = (4/3 : ℝ) * (coarse - fine) := by
+  rw [hc, hf]
+  ring
+
+/-- A child error budget must include the correction used for its retained mesh. -/
+theorem corrected_error_budget (raw tolerance factor : ℝ) (positive : 0 < factor)
+    (child : raw ≤ tolerance / factor) : factor * raw ≤ tolerance := by
+  have h := (le_div_iff₀ positive).mp child
+  simpa only [mul_comm] using h
+
 /-- A flow-unit stopping allowance is exactly a volume-unit balance allowance.
 This is a real-arithmetic unit conversion, not a floating-point error bound. -/
 theorem storage_balance_rounding_units (before after rate step tolerance rounding : ℝ)

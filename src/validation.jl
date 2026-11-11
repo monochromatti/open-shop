@@ -46,6 +46,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     plant_power_shortfall=zeros(length(c.system.plants))
     plant_discharge_shortfall=zeros(length(c.system.plants))
     arrival_shortfall=zeros(length(c.system.rivers))
+    storage_path_times=Float64[]
     finish() = Dict(
         "valid"=>isempty(errors),
         "max_residual"=>maximum(values(residuals); init = 0.0),
@@ -55,7 +56,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "terminal_tunnel_switch_obligations"=>switch_obligations,
         "permitted_penalties"=>permitted_penalties,
         "shortfalls"=>(;unit_power=unit_power_shortfall,unit_discharge=unit_discharge_shortfall,
-            plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,arrival=arrival_shortfall),
+            plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,
+            arrival=arrival_shortfall,storage_path_times),
     )
     record(name, x; atol=tolerance) = begin
         v=maximum(abs, x; init = 0.0)
@@ -435,9 +437,11 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     end
     try
         routed=routed_schedule(c,RQ;transport=nd,injections)
-        for (i,residual) in enumerate(storage_path_residuals(c,result,routed))
+        paths=storage_path_residuals(c,result,routed)
+        for (i,residual) in enumerate(paths.excess)
             bound("storage_path_$(s.reservoirs[i].name)",[residual];atol=storage_tolerance[i])
         end
+        append!(storage_path_times,paths.times[paths.excess .>storage_tolerance])
         arrivals=river_arrival_residuals(c,routed)
         arrival_shortfall.=max.(arrivals.mean_arrival,arrivals.pointwise_arrival)
         for (name,residual) in river_arrival_report(c,arrivals)

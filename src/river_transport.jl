@@ -125,7 +125,9 @@ end
 """Refine transport cohorts for prescribed controls before the next NLP.
 
 Compare cumulative arrivals on nested meshes in receiving-reservoir volume
-units. Mark entry cells by variation of q*theta(q), the reference flux that is
+units. The returned mesh is the coarse one, so use the second-order 4/3
+correction for its estimated error, as in coupled hydraulic replay.
+Mark entry cells by variation of q*theta(q), the reference flux that is
 projected onto constant cohorts. Bulk marking splits cells covering half of
 that variation. Control times and all original transport vertices are retained.
 This is a numerical error estimate; independent coupled replay remains required.
@@ -134,6 +136,7 @@ This is a numerical error estimate; independent coupled replay remains required.
 function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refinements=16)
     grid=river_routing_grid(c)
     all(r->r.deterministic_delay!==nothing,c.system.rivers) && return grid
+    error_factor=4/3
     s=c.system
     sources=river_cohort_sources(s)
     injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
@@ -151,9 +154,9 @@ function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refi
         end
         cumulative=cumsum(fine.arrival_volume-coarse;dims=2)
         errors=vec(maximum(abs.(incidence*cumulative);dims=2))
-        all(errors .<=storage_limits) &&
-            maximum(abs,cumulative;init=0.0)<=absolute/10 &&
-            maximum(abs,current.transit[:,end]-fine.transit[:,end];init=0.0)<=absolute && break
+        all(error_factor .*errors .<=storage_limits) &&
+            error_factor*maximum(abs,cumulative;init=0.0)<=absolute/10 &&
+            error_factor*maximum(abs,current.transit[:,end]-fine.transit[:,end];init=0.0)<=absolute && break
         edges=[searchsortedfirst(probe,t) for t in grid]
         duration=diff(probe)
         indicator=zeros(length(grid)-1)
