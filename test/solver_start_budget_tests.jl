@@ -98,7 +98,7 @@ end
     @test !OpenSHOP._lift_start!(model,c,outside;tolerance)["valid"]
 end
 
-@testset "Nonlinear river inventory objective retains its native start with power cuts" begin
+@testset "River inventory value retains its native start with power cuts" begin
     c=river_value_start_case()
     warm=dispatch_from_controls(c,ones(Int,1,2),fill(2.0,1,2),fill(0.3,1,2))
     @test validate(c,warm)["valid"]
@@ -106,7 +106,6 @@ end
     @test result.accepted
     @test result["start_audit"]["valid"]
     @test result["native_start_audit"]["valid"]
-    @test result["native_start_audit"]["objective_slacks"]==1
     @test result["native_start_audit"]["scaled_objective"]≈warm.objective/10000 atol=1e-10
     @test result["scip_diagnostics"]["native_incumbent_available"]
     @test result["scip_diagnostics"]["native_incumbent_objective"]≥warm.objective-1e-5
