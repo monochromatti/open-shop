@@ -115,3 +115,39 @@ end
             OpenSHOP.remaining_volume(r,last(c.grid),r.history_grid,r.history_release) atol=1e-12
     end
 end
+
+@testset "Narrow travel responses retain small late-window volumes" begin
+    flow=17.0
+    for origin in (0.0,1000.0), hours in (6.0,168.0), width in (1e-3,1e-6)
+        grid=collect(range(origin,origin+hours;length=65))
+        river=River(name=:Reach,source=:Lake,target=:Sea,capacity=60.0,
+            water_value=0.0,history_grid=[origin-8.0,origin],history_release=[0.0],
+            curves=[RiverRouting.DelayCurve(q,[lag,lag+width],[1.0])
+                for (q,lag) in zip((0.0,30.0,60.0),(0.1,0.3,0.5))])
+        system=HydroSystem(reservoirs=[Reservoir(name=:Lake,v0=50.0,
+            vmin=0.0,vmax=100.0,water_value=0.0)],rivers=[river],
+            boundaries=[Boundary(name=:Sea,head=0.0)])
+        c=ScheduleCase(;name="steady delayed flow",system,grid,prices=zeros(64))
+        model=Model()
+        @variable(model,0.0<=release[1:1,1:64]<=60.0)
+        set_start_value.(release,flow)
+        routing=OpenSHOP._dispatch_transport_expressions(model,c,release)
+        for (variable,expression) in routing.starts
+            set_start_value(variable,value(start_value,expression))
+        end
+        # A constant entry stream has reached steady flow long before these
+        # observations. The expected volume needs no routing calculation.
+        a=origin+0.9hours
+        for duration in (0.25,1e-4,1e-8)
+            b=a+duration
+            expression=OpenSHOP.routing_volume_expression(model,c,routing,1,a,b)
+            @test value(start_value,expression)≈0.0036flow*(b-a) atol=1e-13
+        end
+        for side in (:left,:right)
+            expression=OpenSHOP.routing_point_expression(model,c,routing,1,a;side)
+            @test value(start_value,expression)≈flow atol=1e-5
+        end
+        mean_delay=(13/30)*(0.1+width/2)+(17/30)*(0.3+width/2)
+        @test value(start_value,only(routing.terminal))≈0.0036flow*mean_delay atol=1e-12
+    end
+end
