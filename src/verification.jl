@@ -443,7 +443,10 @@ function _verified_dispatch(
             feasibility=false
         elseif grid!=latest.grid
             feasibility=true
-        elseif !get(original,"valid",false) && !get(latest_audit,:numerically_converged,false)
+        elseif !get(original,"valid",false) &&
+               (!get(latest_audit,:numerically_converged,false) || refinements==max_refinements)
+            # Exhausting the mesh budget still permits repair of restrictions
+            # already represented by the primary model.
             dispatch!==nothing && resolution.refinements==0 && break
             feasibility=true
         else
