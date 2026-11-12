@@ -1268,8 +1268,8 @@ Distributed river mixing is refined too, including when the user supplies its
 mesh. The comparison estimates the effect of discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
-Before a nonlinear retry, refine the transport cohorts for the current controls.
-Compare cumulative arrivals on nested meshes, using $epsilon_i$ at each receiving
+To refine the transport cohorts for the current controls, compare cumulative
+arrivals on nested meshes, using $epsilon_i$ at each receiving
 reservoir. To locate projection error, let $psi_l(q)=q theta_l(q)$ be a
 reference-weighted entry flow. In a coarse cell $K$, compare its value at the
 time-weighted mean flow $overline(q)_(r K)$ with the fine-cell values:
