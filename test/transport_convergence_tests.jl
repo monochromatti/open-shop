@@ -57,6 +57,27 @@ function transport_pulse_case(hours)
         grid=collect(0.0:hours),prices=zeros(hours))
 end
 
+@testset "Transport accuracy is fully checked after feasibility is restored" begin
+    base=transport_pulse_case(8)
+    c=OpenSHOP._river_replace(base;routing_grid=collect(0.0:0.125:8.0))
+    gates=zeros(2,8)
+    gates[1,1:3].=96.0/200.0
+    x=dispatch_from_controls(c,zeros(Int,0,8),zeros(0,8),gates)
+    infeasible=deepcopy(x)
+    infeasible.storage[1,end]+=0.1
+    probe=OpenSHOP._replay(c,infeasible;require_original=false)
+    @test !probe.valid
+    @test !probe.original_valid
+    @test probe.transport_audit!==nothing
+    if probe.transport_audit!==nothing
+        # The preliminary error estimate is unresolved. It must not be
+        # presented as transport convergence for this infeasible iterate.
+        @test !probe.transport_audit["converged"]
+        @test !probe.numerically_converged
+    end
+    @test replay_audit(c,x)["valid"]
+end
+
 @testset "Transport accuracy is retained when the horizon grows" begin
     for hours in (24,72,168)
         c=transport_pulse_case(hours)

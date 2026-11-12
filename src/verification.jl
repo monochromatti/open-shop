@@ -160,6 +160,9 @@ function _replay(
         for (i,g) in enumerate(c.system.generators)
             violations["unit_power_$(g.name)"]=fine_shortfalls.unit_power[i]
         end
+        # Estimate transport error first when controls are infeasible.
+        # Further convergence work follows feasibility restoration.
+        transport_work=original["valid"] ? (;) : (;max_refinements=1)
         transport_check=transport_audit(
             hydraulic_case(c,x.grid),
             x;
@@ -168,6 +171,7 @@ function _replay(
                                  2e-4,
             transport = nd,
             tolerance,
+            transport_work...,
         )
         for (name,residual) in transport_check["violations"]
             violations[name]=max(get(violations,name,0.0),residual)
@@ -247,6 +251,9 @@ restrictions that fail replay even after integration accuracy is resolved,
 including analytically located storage extrema. After a mesh or constraint
 change, restore feasibility before optimizing revenue. The best independently
 accepted schedule survives later solve failures or budget exhaustion.
+For an infeasible iterate, an unresolved first transport error estimate returns
+to feasibility restoration before further transport refinement. Feasible points
+receive the full transport convergence check.
 
 `initial` is checked as supplied and retains the audit-only contract; `warm`
 is reconstructed under current inputs. `max_refinements=48` bounds mesh updates.
@@ -292,6 +299,8 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         push!(steps,(;intervals=length(x.grid)-1,objective=x.objective,accepted=audit.valid))
         original_valid=audit.original_valid
         if audit.valid || !reconstructed && !original_valid ||
+           (!original_valid && audit.transport_audit!==nothing &&
+            !audit.transport_audit["converged"]) ||
            refinements==max_refinements || time()>=deadline
             return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         end
