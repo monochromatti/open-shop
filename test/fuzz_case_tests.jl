@@ -12,6 +12,23 @@ include("../scripts/fuzz_worker.jl")
         @test z.converged
         @test FuzzWorker.water_error(with_grid(c,grid),z)<1e-8
     end
+    grid=OpenSHOP.refined_grid(c.grid;factor=2)
+    refined=dispatch_from_controls(c,data.u,data.q,data.gate;grid,tunnel_opening=data.opening)
+    report=Dict{String,Any}("findings"=>Any[])
+    checks=FuzzWorker.check_schedule!(report,c,refined,"refined",4)
+    @test checks["audit"]["valid"]
+    @test checks["replay"]["valid"]
+    @test checks["water_error_Mm3"]<1e-8
+    @test isempty(report["findings"])
+    trajectory=simulate(c,data.q,data.gate;grid,commitment=data.u,tunnel_opening=data.opening)
+    trajectory.storage[1,end]+=0.001
+    @test FuzzWorker.water_error(c,trajectory;grid)>0.0009
+
+    at=c.grid[2]
+    tail,continued=FuzzWorker.reconstruct_continuation(c,refined,at)
+    @test validate(tail,continued)["valid"]
+    vertex=searchsortedfirst(refined.grid,at)
+    @test continued.storage≈refined.storage[:,vertex:end] atol=1e-8
 end
 
 @testset "Synthetic campaign inputs have reconstructible feasible references" begin

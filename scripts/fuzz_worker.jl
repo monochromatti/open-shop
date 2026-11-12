@@ -58,16 +58,18 @@ end
 
 # This ledger uses the returned physical boundary exchange and public input
 # series, rather than the optimization constraints or validation residuals.
-function water_error(c, trajectory)
+function water_error(c, trajectory; grid=c.grid)
     inventory = vec(sum(trajectory.storage;dims=1)+sum(trajectory.transit;dims=1))
+    length(inventory)==length(grid) && length(trajectory.boundary_outflow)==length(grid)-1 ||
+        throw(DimensionMismatch("water ledger grid and trajectory differ"))
     expected = first(inventory)
     error = 0.0
-    for t in eachindex(c.prices)
+    for t in 1:length(grid)-1
         natural = 0.0
         for r in Iterators.flatten((c.system.reservoirs,c.system.rivers))
-            natural += input_integral(c,r.name,:inflow,c.grid[t],c.grid[t+1],r.inflow)
+            natural += input_integral(c,r.name,:inflow,grid[t],grid[t+1],r.inflow)
         end
-        expected += 0.0036*(natural-(c.grid[t+1]-c.grid[t])*trajectory.boundary_outflow[t])
+        expected += 0.0036*(natural-(grid[t+1]-grid[t])*trajectory.boundary_outflow[t])
         error = max(error,abs(inventory[t+1]-expected))
     end
     error
@@ -81,13 +83,17 @@ function check_schedule!(report,c,x,stage,replay_factor)
     abs(components.total-x.objective)<=tolerance ||
         finding!(report,"objective_accounting",stage,Dict(
             "reported"=>x.objective,"recomputed"=>components.total))
-    trajectory = simulate(c,x.generator_q,x.gate;commitment=x.commitment,
-        tunnel_opening=x.tunnel_opening,head_reference=x.head)
+    mesh=OpenSHOP.TimeDiscretization(c.grid,x.grid)
+    firstcell=first.(mesh.cells)
+    controls=OpenSHOP.operating_window_values(c,x)
+    trajectory = simulate(c,controls.generator_q,x.gate[:,firstcell];grid=x.grid,
+        commitment=controls.commitment,tunnel_opening=x.tunnel_opening[:,firstcell],
+        head_reference=OpenSHOP.interval_means(mesh,x.head))
     trajectory.converged || finding!(report,"hydraulic_nonconvergence",stage,
         Dict("raw_residual"=>trajectory.residual))
-    ledger = water_error(c,trajectory)
+    ledger = water_error(c,trajectory;grid=x.grid)
     ledger<=1e-6 || finding!(report,"water_conservation",stage,ledger)
-    fine = replay_audit(c,x;grid=OpenSHOP.refined_grid(c.grid;factor=replay_factor))
+    fine = replay_audit(c,x;grid=OpenSHOP.refined_grid(x.grid;factor=replay_factor))
     if !fine["valid"]
         finding!(report,"replay_sensitivity",stage,fine;severity="warning")
     end
@@ -95,17 +101,31 @@ function check_schedule!(report,c,x,stage,replay_factor)
         string(k)=>v for (k,v) in pairs(components)),"replay"=>fine)
 end
 
+function reconstruct_continuation(c,x,at)
+    tail=restart_case(c,x,at)
+    interval=searchsortedfirst(c.grid,at)
+    c.grid[interval]==at || throw(ArgumentError("continuation must start at an operating boundary"))
+    mesh=OpenSHOP.TimeDiscretization(c.grid,x.grid)
+    firstcell=first.(mesh.cells)[interval:end]
+    controls=OpenSHOP.operating_window_values(c,x)
+    vertex=searchsortedfirst(x.grid,at)
+    y=dispatch_from_controls(tail,controls.commitment[:,interval:end],
+        controls.generator_q[:,interval:end],x.gate[:,firstcell];grid=x.grid[vertex:end],
+        tunnel_opening=x.tunnel_opening[:,firstcell],
+        reserves=x.reserves===nothing ? nothing : OpenSHOP._reserve_slice(x.reserves,firstcell),
+        head_reference=OpenSHOP.interval_means(mesh,x.head)[:,interval:end])
+    tail,y
+end
+
 function continuation_check!(report,c,x)
     # The first complete interval is executed; the remainder retains its cohorts,
     # gate positions, output history and outstanding commitment obligations.
     k = max(2,cld(length(c.grid),2))
     try
-        tail = restart_case(c,x,c.grid[k])
-        y = dispatch_from_controls(tail,x.commitment[:,k:end],x.generator_q[:,k:end],
-            x.gate[:,k:end];tunnel_opening=x.tunnel_opening[:,k:end],
-            head_reference=x.head[:,k:end])
+        tail,y = reconstruct_continuation(c,x,c.grid[k])
         audit = validate(tail,y)
-        difference = maximum(abs,y.storage-x.storage[:,k:end];init=0.0)
+        vertex=searchsortedfirst(x.grid,c.grid[k])
+        difference = maximum(abs,y.storage-x.storage[:,vertex:end];init=0.0)
         audit["valid"] && difference<=1e-6 || finding!(report,"restart_difference",
             "reference",Dict("audit"=>audit,"storage_difference_Mm3"=>difference))
     catch error

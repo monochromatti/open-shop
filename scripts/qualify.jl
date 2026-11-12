@@ -107,7 +107,7 @@ function run(request,directory)
                 solve(c;initial,time_limit=budget,diagnostics_path=joinpath(directory,label*".scip.log"))
             else
                 schedule_case(c;initial,warm,time_limit=budget,proposal_time_limit=min(5.,budget),
-                    nlp_time_limit=generous ? budget : min(45.,budget),max_refinements=1)
+                    nlp_time_limit=generous ? budget : min(45.,budget))
             end
             result=timed.value
             writejson(joinpath(directory,label*".json"),result)
@@ -189,7 +189,7 @@ function run(request,directory)
         warmdata=FuzzWorker.FuzzCases.generate_case(1,"cascade","small")
         warmref=FuzzWorker.reconstruct(warmdata)
         compilation=@elapsed begin
-            schedule_case(warmdata.case;time_limit=60.,nlp_time_limit=20.,max_refinements=1)
+            schedule_case(warmdata.case;time_limit=60.,nlp_time_limit=20.)
             solve(warmdata.case;initial=warmref,time_limit=5.)
         end
         report["warmup_seconds"]=compilation
@@ -229,11 +229,10 @@ function run(request,directory)
             c=best.problem
             schedule=best.solution
             edge=clamp(searchsortedfirst(c.grid,first(c.grid)+get(request,"advance",6.)),2,length(c.grid)-2)
-            tail=restart_case(c,schedule,c.grid[edge])
-            continued=dispatch_from_controls(tail,schedule.commitment[:,edge:end],schedule.generator_q[:,edge:end],
-                schedule.gate[:,edge:end];tunnel_opening=schedule.tunnel_opening[:,edge:end],head_reference=schedule.head[:,edge:end])
+            tail,continued=FuzzWorker.reconstruct_continuation(c,schedule,c.grid[edge])
+            vertex=searchsortedfirst(schedule.grid,c.grid[edge])
             validate(tail,continued)["valid"] &&
-                maximum(abs,continued.storage-schedule.storage[:,edge:end];init=0.)<=1e-6 ||
+                maximum(abs,continued.storage-schedule.storage[:,vertex:end];init=0.)<=1e-6 ||
                 error("unchanged continuation differs from executed schedule")
             next=revise(tail,event)
             writejson(joinpath(directory,"recovery-$revision-input.json"),case_dict(next))
