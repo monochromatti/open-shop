@@ -458,7 +458,6 @@ function route_network_controlled(
     transport = nothing,
     generator_q=nothing,
     tunnel_q=nothing,
-    deadline=Inf,
 )
     injections=river_injections(c,q,generator_q,tunnel_q)
     isfinite(absolute_tolerance) && absolute_tolerance>0 ||
@@ -483,7 +482,6 @@ function route_network_controlled(
     converged=false
     rounds=0
     for iteration in 1:max_refinements
-        time()<deadline || break
         max_internal_intervals!==nothing &&
             2(length(current_grid)-1)>max_internal_intervals && break
         newgrid=refined_grid(current_grid;factor=2)
@@ -524,7 +522,6 @@ function route_network_controlled(
         "estimated_cumulative_error_Mm3"=>error,
         "estimated_transit_error_Mm3"=>transiterror,
         "termination"=>converged ? "tolerance" :
-                       time()>=deadline ? "time_limit" :
                        rounds==max_refinements ? "refinement_limit" : "interval_limit",
         "release_cohorts"=>previous["release_cohorts"],
     )
@@ -540,7 +537,6 @@ function transport_audit(
     max_internal_intervals = nothing,
     transport = nothing,
     tolerance = 1e-4,
-    deadline=Inf,
 )
     x=_schedule_input(x;case=c)
     TimeDiscretization(c.grid,x.grid)
@@ -553,7 +549,7 @@ function transport_audit(
         absolute_tolerance,
         max_refinements,
         max_internal_intervals,
-        transport,deadline,
+        transport,
     )
     discrepancy=maximum(
         abs,

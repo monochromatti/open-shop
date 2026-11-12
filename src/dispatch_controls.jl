@@ -66,7 +66,6 @@ function dispatch_from_controls(
     reserves = nothing,
     head_reference = nothing,
     grid = c.grid,
-    deadline = Inf,
 )
     mesh=TimeDiscretization(c.grid,grid)
     physical=hydraulic_case(c,mesh.grid)
@@ -78,7 +77,7 @@ function dispatch_from_controls(
         _transport_data(physical,transport) : nothing
     nd===nothing && transport!==nothing && throw(ArgumentError(
         "compiled deterministic transport cannot serve distributed reconstruction"))
-    z=simulate(c,q,gate;grid=mesh.grid,transport=nd,tunnel_opening=opening,commitment=u,head_reference,deadline)
+    z=simulate(c,q,gate;grid=mesh.grid,transport=nd,tunnel_opening=opening,commitment=u,head_reference)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     held_u=u[:,mesh.interval]
     windows=operating_window_values(mesh,z,u)
@@ -104,7 +103,7 @@ function dispatch_from_controls(
 end
 
 """Correct bounded solver roundoff, then independently rebuild all physical values."""
-function _reconstruct_candidate(c, raw; transport = nothing, deadline=Inf)
+function _reconstruct_candidate(c, raw; transport = nothing)
     raw=_schedule_input(raw; case=c)
     mesh=TimeDiscretization(c.grid,raw.grid)
     firstcell=first.(mesh.cells)
@@ -136,11 +135,11 @@ function _reconstruct_candidate(c, raw; transport = nothing, deadline=Inf)
     )
     x=dispatch_from_controls(c,u,q[:,firstcell],gate[:,firstcell];grid=mesh.grid,
         transport,tunnel_opening=ta,reserves=_reserve_slice(raw.reserves,firstcell),
-        head_reference=interval_means(mesh,raw.head),deadline)
+        head_reference=interval_means(mesh,raw.head))
     x, correction
 end
 
-"""Normalize numerical starting values, interpolating them when the mesh changes."""
+"""Reuse a matching warm trajectory; reintegrate its controls on a new mesh."""
 function _dispatch_start(c,u,warm;grid=c.grid)
     diagnostics=Dict{String, Any}("used"=>false)
     warm===nothing && return nothing, diagnostics
@@ -153,7 +152,12 @@ function _dispatch_start(c,u,warm;grid=c.grid)
             if source.grid==grid
                 return source,reason
             end
-            rebuilt=interpolate_dispatch_start(c,u,source,grid)
+            cells=first.(old.cells)
+            q=copy(source.generator_q[:,cells])
+            q[u.==0].=0.0
+            rebuilt=dispatch_from_controls(c,u,q,source.gate[:,cells];
+                grid,tunnel_opening=source.tunnel_opening[:,cells],
+                reserves=_reserve_slice(source.reserves,cells),head_reference=interval_means(old,source.head))
             diagnostics["used"]=true
             return rebuilt,diagnostics
         catch error
@@ -205,8 +209,7 @@ function dispatch_from_controls(
     reserves = nothing,
     head_reference = nothing,
     grid = c.grid,
-    deadline = Inf,
 )
     dispatch_from_controls(c, commitment, generator_q, gate; status, transport,
-        tunnel_opening,reserves,head_reference,grid,deadline)
+        tunnel_opening,reserves,head_reference,grid)
 end

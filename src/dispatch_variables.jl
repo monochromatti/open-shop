@@ -64,38 +64,6 @@ function DispatchVariables(m,s,mesh;prefix="",shared_controls=nothing,control_in
         DISPATCH_POWER_SCALE.*p,DISPATCH_RELEASE_SCALE.*rq,scale)
 end
 
-"""Project an unchecked iterate onto a new mesh without solving hydraulics.
-
-States interpolate linearly; rates average over overlapping cells. Extensive
-arrival volumes are obtained by integrating their projected rates. Held controls
-retain the original operating windows. The result is an NLP guess, not a schedule
-that has passed physical acceptance.
-"""
-function interpolate_dispatch_start(c,u,x,grid)
-    joint=sort!(unique!(vcat(x.grid,grid)))
-    source=searchsortedlast.(Ref(x.grid),joint[1:end-1])
-    target=TimeDiscretization(grid,joint)
-    rate(A)=interval_means(target,A[:,source])
-    V=zeros(size(x.storage,1),length(grid))
-    for (k,t) in enumerate(grid)
-        j=min(searchsortedlast(x.grid,t),length(x.grid)-1)
-        weight=(t-x.grid[j])/(x.grid[j+1]-x.grid[j])
-        V[:,k].=(1-weight).*x.storage[:,j].+weight.*x.storage[:,j+1]
-    end
-    old=TimeDiscretization(c.grid,x.grid)
-    new=TimeDiscretization(c.grid,grid)
-    controls=first.(old.cells)[new.interval]
-    cells=searchsortedlast.(Ref(x.grid),grid[1:end-1])
-    arrivals=rate(x.arrival_volume./permutedims(diff(x.grid))).*permutedims(diff(grid))
-    Schedule(copy(grid),u[:,new.interval],V,rate(x.head),rate(x.tunnel_q),
-        x.tunnel_opening[:,controls],rate(x.generator_q),rate(x.power),x.gate[:,controls],
-        rate(x.river_release),arrivals,copy(x.terminal_transit),
-        x.shortfall_release===nothing ? nothing : rate(x.shortfall_release),
-        x.objective,x.gate_adjustment_cost,x.release_penalty_cost,Dict{String,Any}();
-        soft_slacks=x.soft_slacks,soft_penalty_cost=x.soft_penalty_cost,
-        reserves=_reserve_slice(x.reserves,cells))
-end
-
 """Assign the solver coordinates of a physical schedule, without altering it.
 
 `put(variable,value)` also permits an audited global lift to collect assignments

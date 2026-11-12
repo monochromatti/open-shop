@@ -110,7 +110,6 @@ function _replay(
     transport = nothing,
     error_factor = 1.0,
     require_original = true,
-    deadline = Inf,
 )
     all(x -> x isa Real && !isnan(x) && x >= 0,
         (storage_convergence, storage_relative_convergence, level_convergence,
@@ -126,9 +125,6 @@ function _replay(
         level_convergence_tolerance_m=level_convergence,
         relative_objective_convergence_tolerance=objective_convergence,
         estimated_error_factor=error_factor)
-    if time()>=deadline
-        return ReplayResult(;errors=["replay deadline exhausted"],seconds=time()-began,limits...)
-    end
     original=validate(c,x;transport)
     if !original["valid"]
         push!(errors,"original equation audit failed")
@@ -156,7 +152,7 @@ function _replay(
         opening=_physical_tunnel_openings(c,x.tunnel_opening[:,firstcell])
         z=dispatch_from_controls(replay_input,original_u,x.generator_q[:,firstcell],
             x.gate[:,firstcell];grid,tunnel_opening=opening,
-            reserves=_reserve_slice(x.reserves,firstcell),head_reference=interval_means(mesh,x.head),deadline)
+            reserves=_reserve_slice(x.reserves,firstcell),head_reference=interval_means(mesh,x.head))
         audit=z["validation"]
         merge!(violations, audit["residuals"])
         append!(errors, audit["errors"])
@@ -171,7 +167,7 @@ function _replay(
             absolute_tolerance = isfinite(storage_convergence) ? storage_convergence/10 :
                                  2e-4,
             transport = nd,
-            tolerance,deadline,
+            tolerance,
         )
         for (name,residual) in transport_check["violations"]
             violations[name]=max(get(violations,name,0.0),residual)
@@ -243,8 +239,7 @@ end
 
 """Solve a fixed commitment with adaptive physical integration and finer replay.
 
-Restore infeasible numerical starts with a bounded NLP before propagating their
-controls. Reconstruct feasible starts before optimizing revenue. Local
+Reconstruct and resolve starting controls before optimizing revenue. Local
 step-doubling defects select hydraulic cells to bisect; coupled replay checks
 the complete trajectory after every control change. Controls and operating
 observations keep their original intervals. Finer witness equations enforce
@@ -254,11 +249,8 @@ change, restore feasibility before optimizing revenue. The best independently
 accepted schedule survives later solve failures or budget exhaustion.
 
 `initial` is checked as supplied and retains the audit-only contract; `warm`
-initializes feasibility restoration unless it already satisfies the current
-inputs. Feasible starts are reconstructed before retention. `max_refinements=48`
-bounds mesh updates.
-`time_limit` bounds each NLP; `deadline` is checked between integration steps,
-transport refinements and optimization phases.
+is reconstructed under current inputs. `max_refinements=48` bounds mesh updates.
+`time_limit` bounds each NLP; `deadline` bounds shared work between phases.
 With `refine_grid=false`, keep the original hydraulic model and optionally add
 finer witness constraints. Global preparation uses that finite-model scope.
 `operational_margin` is an explicit power inset, never an automatic retry rule.
@@ -296,7 +288,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         audit=_replay(c,x;grid=probe,storage_convergence,
             storage_relative_convergence,level_convergence,objective_convergence,
             error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0,
-            require_original=!reconstructed,deadline=reconstructed ? deadline : Inf)
+            require_original=!reconstructed)
         push!(steps,(;intervals=length(x.grid)-1,objective=x.objective,accepted=audit.valid))
         original_valid=audit.original_valid
         if audit.valid || !reconstructed && !original_valid ||
@@ -336,7 +328,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
             return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         time()<deadline || return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         try
-            x=controlled_trajectory(next,x;grid,deadline)
+            x=controlled_trajectory(next,x;grid)
         catch error
             error isa Union{ArgumentError,DomainError} || rethrow()
             return (;case=next,solution=x,audit,grid,refinements=refinements+1,steps)
@@ -420,27 +412,23 @@ function _verified_dispatch(
     grid=copy(c.grid)
     replay_grid=nothing
     refinements=0
-    # Accepted initial schedules are checked as written. Numerical guesses
-    # initialize the bounded NLP before their controls are propagated.
+    # A supplied initial is checked as written. An unchecked start is first
+    # reintegrated under the requested controls and current forecast.
     if initial!==nothing
         latest=initial_schedule
         grid=copy(latest.grid)
     elseif warm!==nothing && time()<deadline
-        grid=refine_grid ? Float64.(get(warm,"grid",c.grid)) : copy(c.grid)
-        start,_=_dispatch_start(c,u,warm;grid)
+        warm_grid=refine_grid ? get(warm,"grid",c.grid) : c.grid
+        start,_=_dispatch_start(c,u,warm;grid=warm_grid)
         if start!==nothing
-            mesh=TimeDiscretization(c.grid,grid)
-            requested=openings===nothing ? tunnel_opening_schedule(c) : openings
-            same_controls=start.commitment==u[:,mesh.interval] &&
-                start.tunnel_opening==requested[:,mesh.interval]
             try
-                if same_controls && validate(c,start)["valid"]
-                    latest=controlled_trajectory(c,start;u,opening=requested,grid,deadline)
-                    if river_on!==nothing
-                        states=river_on_schedule(c,operating_window_values(c,latest).river_release)
-                        all(r.min_allowed_flow===nothing || states[i,:]==river_on[i,:]
-                            for (i,r) in enumerate(c.system.rivers)) || (latest=nothing)
-                    end
+                requested_opening=openings===nothing ? tunnel_opening_schedule(c) : openings
+                latest=controlled_trajectory(c,start;u,opening=requested_opening,grid=warm_grid)
+                grid=copy(latest.grid)
+                if river_on!==nothing
+                    states=river_on_schedule(c,operating_window_values(c,latest).river_release)
+                    all(r.min_allowed_flow===nothing || states[i,:]==river_on[i,:]
+                        for (i,r) in enumerate(c.system.rivers)) || (latest=nothing)
                 end
             catch error
                 error isa Union{ArgumentError,DomainError} || rethrow()
@@ -455,12 +443,12 @@ function _verified_dispatch(
             remaining>0 || break
             dispatch!==nothing && remaining<=get(dispatch,"construction_seconds",0.0) && break
             dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,
-                time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on,deadline)
+                time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
             latest=dispatch.solution
             latest===nothing && break
             if !dispatch.accepted
                 try
-                    latest,_=_reconstruct_candidate(c,latest;deadline)
+                    latest,_=_reconstruct_candidate(c,latest)
                 catch error
                     error isa Union{ArgumentError,DomainError} || rethrow()
                     break

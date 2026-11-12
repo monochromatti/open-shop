@@ -37,7 +37,6 @@ function forward_step(
     max_iterations = 100,
     commitment = nothing,
     head_reference = nothing,
-    deadline = Inf,
 )
     validate_unit_modes(s)
     validate_delay_curves(s)
@@ -305,6 +304,10 @@ local injection's pulses through confluences. Distributed junction mixing
 conserves volume on an independent transport mesh. It uses four transport cells
 per control interval by default, or the case's `routing_grid`. Refinement changes
 neither the held controls nor their operating windows. Each cohort contributes once.
+If a step fails to converge or leaves a hydraulic law's domain, integration
+stops. The returned trajectory has `converged=false`; its `steps` retain the
+attempted prefix, and its remaining array columns have not been computed.
+Such a trajectory cannot be reconstructed as a complete schedule.
 """
 function simulate(
     c::ScheduleCase,
@@ -315,7 +318,6 @@ function simulate(
     tunnel_opening = nothing,
     commitment = nothing,
     head_reference = nothing,
-    deadline = Inf,
 )
     s=c.system
     validate_unit_modes(s)
@@ -350,14 +352,14 @@ function simulate(
         throw(ArgumentError("replay grid must contain original control change times"))
     opening=_physical_tunnel_openings(c,tunnel_opening)
     validate_tunnel_openings(c,opening,state)
-    _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport,deadline)
+    _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport)
 end
 
 # Physical integration kernel. The public wrapper checks controls and temporal
 # operating rules. Local error estimates call this kernel from already checked
 # controls, restarting only the physical state and executed river history.
 function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
-    transport=nothing,deadline=Inf,topology=HydraulicTopology(c.system),
+    transport=nothing,topology=HydraulicTopology(c.system),
     sources=river_source_indices(c.system),
     active_rivers=findall(r->r.law!=:junction,c.system.rivers),
     river_order=_forward_river_order(c.system))
@@ -400,7 +402,6 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     sizehint!(steps,T)
     W[:,1].=exact ? ndat.initial_transit : mesh.history_initial
     for t in 1:T
-        time()<deadline || break
         dt=grid[t + 1]-grid[t]
         if exact
             fill!(network, 0.0)
@@ -453,6 +454,9 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
             head_reference = reference===nothing ? nothing : view(reference,:,indices[t]),
         )
         push!(steps, z)
+        # A later step cannot repair a failed equation or an invalid law
+        # domain at this time. Do not propagate the failed state as a forecast.
+        z.converged && z.law_domain_valid || break
         V[:, t + 1].=z.storage
         H[:, t].=z.head
         Q[:, t].=z.tunnel_q
@@ -502,7 +506,6 @@ function simulate(
     tunnel_opening = nothing,
     commitment = nothing,
     head_reference = nothing,
-    deadline = Inf,
 )
-    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment,head_reference,deadline)
+    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment,head_reference)
 end

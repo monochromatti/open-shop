@@ -1,4 +1,27 @@
 using Test
+@testset "An invalid hydraulic step ends chronological reconstruction" begin
+    lake=Reservoir(name=:Lake,z0=25.0,slope=0.0,v0=2.0,vmin=0.0,vmax=4.0,water_value=0.0)
+    river=River(name=:Outlet,source=:Lake,target=:Sea,law=:orifice,
+        coefficient=5.0,crest=0.0,capacity=20.0,deterministic_delay=0.0,
+        curves=RiverRouting.DelayCurve[],water_value=0.0)
+    system=HydroSystem(reservoirs=[lake],rivers=[river],
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    c=ScheduleCase(;name="outlet domain",system,grid=collect(0.0:1.0:8.0),prices=zeros(8))
+    q=zeros(0,8)
+    # The fully open outlet requires 25 m³/s, outside its 20 m³/s domain.
+    failed=simulate(c,q,ones(1,8))
+    @test !failed.converged
+    @test length(failed.steps)<length(c.prices)
+    @test !last(failed.steps).converged
+    @test all(step->step.converged && step.law_domain_valid,failed.steps[1:end-1])
+    @test_throws ArgumentError dispatch_from_controls(c,zeros(Int,0,8),q,ones(1,8))
+    # The same input case integrates normally with an admissible opening.
+    complete=simulate(c,q,fill(0.5,1,8))
+    @test complete.converged
+    @test vec(complete.storage)≈2.0 .- 0.0036*12.5.*collect(0:8) atol=1e-10
+    @test vec(complete.river_release)≈fill(12.5,8) atol=1e-10
+end
+
 @testset "Independent cascade integration" begin
     sys(;
         reservoirs = Reservoir[],

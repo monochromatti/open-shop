@@ -1310,12 +1310,7 @@ interior vertices. Transition and gate-motion costs are counted on operating
 decisions. River cohorts retain their release times rather than being formed
 from averaged releases.
 
-A previous schedule may be infeasible after a forecast or operating restriction
-changes. We interpolate its states and controls onto the new mesh as numerical
-starting values, then solve the bounded feasibility problem before propagating
-those controls. A schedule that already satisfies the current equations and
-requested discrete decisions can be reconstructed immediately. Only a point that
-passes reconstruction and replay can be retained for revenue optimization.
+Before revenue optimization, reconstruct and resolve the starting controls.
 For each represented cell, integrate two half steps from its starting storage
 and executed river history. Add the first half-step's new cohorts before taking
 the second. Compare their endpoint with the represented full-cell endpoint.
