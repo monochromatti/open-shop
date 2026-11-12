@@ -1320,6 +1320,10 @@ accounting for half the sum of squared indicators, using the same bulk-marking
 principle~@doerfler1996. The local indicators locate error. Acceptance still
 requires a coupled replay of the whole horizon.
 
+For an infeasible iterate, first compare transport on two successive grids.
+If that comparison fails the accuracy test, restore feasibility before refining
+transport further. Feasible iterates receive the full convergence check.
+
 For a smooth second-order approximation, uniformly halving a fixed mesh gives
 the leading-order relation
 

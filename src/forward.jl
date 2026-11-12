@@ -304,10 +304,6 @@ local injection's pulses through confluences. Distributed junction mixing
 conserves volume on an independent transport mesh. It uses four transport cells
 per control interval by default, or the case's `routing_grid`. Refinement changes
 neither the held controls nor their operating windows. Each cohort contributes once.
-If a step fails to converge or leaves a hydraulic law's domain, integration
-stops. The returned trajectory has `converged=false`; its `steps` retain the
-attempted prefix, and its remaining array columns have not been computed.
-Such a trajectory cannot be reconstructed as a complete schedule.
 """
 function simulate(
     c::ScheduleCase,
@@ -454,9 +450,6 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
             head_reference = reference===nothing ? nothing : view(reference,:,indices[t]),
         )
         push!(steps, z)
-        # A later step cannot repair a failed equation or an invalid law
-        # domain at this time. Do not propagate the failed state as a forecast.
-        z.converged && z.law_domain_valid || break
         V[:, t + 1].=z.storage
         H[:, t].=z.head
         Q[:, t].=z.tunnel_q
@@ -491,8 +484,8 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     end
     HydraulicTrajectory(
         collect(grid), V, H, Q, ta, gq, ga, P, R, L, A, W, out,
-        length(steps)==T && all(z.converged && z.law_domain_valid for z in steps),
-        length(steps)==T ? maximum((z.residual for z in steps); init = 0.0) : Inf, steps,
+        all(z.converged && z.law_domain_valid for z in steps),
+        maximum((z.residual for z in steps); init = 0.0), steps,
     )
 end
 
