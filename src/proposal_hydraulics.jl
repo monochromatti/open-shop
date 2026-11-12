@@ -31,22 +31,6 @@ function _proposal_reference(c, point)
 end
 
 """Freeze delay mixtures at physical reference cohorts or the last recorded flow."""
-function _proposal_delay_references(c,reference,mesh)
-    flows=Vector{Vector{Float64}}(undef,length(c.system.rivers))
-    for (i,r) in enumerate(c.system.rivers)
-        if reference.cohorts!==nothing
-            flows[i]=copy(reference.cohorts[i].release)
-        elseif reference.river_release!==nothing
-            periods=mesh.source_cohorts[i] ? eachindex(c.prices) : mesh.control
-            flows[i]=Float64[reference.river_release[i,t] for t in periods]
-        else
-            initial,_=river_initial_output(r)
-            flows[i]=fill(something(initial,0.0),length(mesh.cohort_grid[i])-1)
-        end
-    end
-    flows
-end
-
 function _proposal_delay_coordinate(r,flow)
     r.deterministic_delay!==nothing && return nothing
     weights=zeros(length(r.curves))

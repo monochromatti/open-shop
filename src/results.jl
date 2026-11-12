@@ -160,8 +160,8 @@ end
 """
     SolveResult
 
-Optimization status, a physical `solution` (or `nothing`), and optional global
-bounds. `accepted` describes the checks performed by the called solver;
+All optimization entry points return this type, with a physical `solution`
+(or `nothing`), optimization status and optional global bounds. `accepted` describes the checks performed by the called solver;
 `global_certificate` additionally requires an enclosing global bound.
 Detailed solver work counters and validation reports are in `diagnostics`.
 `problem` records the operating case, including its numerical transport mesh;
@@ -187,7 +187,7 @@ const _SOLVE_KEYS = ("status", "accepted", "global_certificate", "solution",
 function SolveResult(report::AbstractDict; solution=get(report,"solution",nothing))
     schedule = solution === nothing ? nothing : _schedule_input(solution)
     diagnostics = Dict{String,Any}(string(k)=>v for (k,v) in report
-        if !(string(k) in _SOLVE_KEYS) && string(k)!="objective" &&
+        if !(string(k) in _SOLVE_KEYS) && string(k) ∉ ("objective","case") &&
             !any(p -> first(p)==string(k),_SCHEDULE_KEYS))
     lower=get(report,"feasible_lower_bound",nothing)
     if !haskey(report,"feasible_lower_bound") && schedule!==nothing &&
@@ -212,6 +212,7 @@ function Base.getproperty(x::SolveResult, field::Symbol)
 end
 Base.propertynames(x::SolveResult) = (fieldnames(typeof(x))..., :objective)
 function Base.getindex(x::SolveResult, key::AbstractString)
+    key == "case" && return x.problem
     key in _SOLVE_KEYS && return getfield(x,Symbol(key))
     key == "objective" && return x.objective
     haskey(x.diagnostics,key) && return x.diagnostics[key]
@@ -219,6 +220,7 @@ function Base.getindex(x::SolveResult, key::AbstractString)
     x.solution[key]
 end
 function Base.haskey(x::SolveResult, key::AbstractString)
+    key == "case" && return x.problem !== nothing
     key == "objective" && return x.solution !== nothing
     key in _SOLVE_KEYS || haskey(x.diagnostics,key) ||
         (x.solution !== nothing && haskey(x.solution,key))

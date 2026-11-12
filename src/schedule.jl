@@ -115,7 +115,7 @@ function schedule_case(
                 warm=reference,max_refinements,time_limit=nlp_time_limit,
                 operational_margin,deadline,refine_grid)
             push!(attempts,Dict("stage"=>"dispatch","accepted"=>v.accepted,
-                "seconds"=>v.total_seconds,"steps"=>v.attempts,"u"=>copy(u),
+                "seconds"=>v.total_seconds,"steps"=>_dispatch_reports(v.attempts),"u"=>copy(u),
                 "tunnel_opening"=>copy(opening),"elapsed_seconds"=>time()-started,
                 "warm_start_objective"=>reference===nothing ? nothing : reference["objective"]))
             if !v.accepted
@@ -134,16 +134,20 @@ function schedule_case(
             break
         end
     end
-    Dict(
+    elapsed=time()-started
+    SolveResult(Dict(
+        "status"=>best===nothing ? "NO_ACCEPTED_SOLUTION" : "FEASIBLE",
         "accepted"=>best!==nothing,
         "problem"=>best===nothing ? c : best.case,
-        "case"=>case_dict(best===nothing ? c : best.case),
         "solution"=>best===nothing ? nothing : best.solution,
         "audit"=>best===nothing ? nothing : _replay_report(best.audit),
         "proposals"=>proposals,
         "attempts"=>attempts,
-        "seconds"=>time()-started,
+        "seconds"=>elapsed,
+        "total_seconds"=>elapsed,
+        "feasible_lower_bound"=>best===nothing ? nothing : best.solution.objective,
+        "acceptance_scope"=>"physical equations, operating limits and finer replay",
         "global_optimality_proven"=>false,
         "requested_operational_margin_MW"=>operational_margin,
-    )
+    ))
 end

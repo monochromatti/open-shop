@@ -96,7 +96,8 @@ Their absolute times, history and physical time weights survive restart and
 refinement. Rolling/period flow limits compare averages of the observation
 record; reservoir windows bound the complete recorded level range.
 
-Both `solve` and `solve_case` return `SolveResult`. Its stable fields are
+`solve`, `solve_case`, `solve_verified` and `schedule_case` return `SolveResult`.
+Its stable fields are
 `status`, `accepted`, `solution`, `global_certificate`, `global_bound`,
 `relative_gap`, `absolute_gap`, `feasible_lower_bound`, `total_seconds` and `problem`;
 `objective` is derived from the returned schedule. `solution` may be `nothing`.
@@ -105,8 +106,12 @@ Detailed work counters and validation reports are in `diagnostics`.
 mesh. Check a returned schedule with `validate(result.problem, result.solution)`.
 The global bound and certificate refer to that finite problem. Serialization
 retains it alongside the schedule.
-`schedule_case` and `solve_verified` expose the same native case through
-`result["problem"]`. Use it for validation and restart after transport refinement.
+Use `result.problem` for validation and restart after transport refinement.
+String-key access remains available; `result["case"]` and `result["problem"]`
+both refer to this native case. Serialized results use `"problem"` for its
+named-object profile. The entry points retain their documented acceptance scopes:
+local dispatch checks its physical model, while adaptive preparation and verified
+dispatch also require finer replay. Global certificates remain exclusive to `solve`.
 A time limit may leave an accepted schedule and an unfinished gap calculation.
 If preparation or initial reconstruction exhausts the allowance, `solve` skips
 global construction. It retains an independently checked incumbent when one is

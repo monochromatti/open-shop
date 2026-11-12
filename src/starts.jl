@@ -1,19 +1,3 @@
-"""Lift physical river cohorts into the model's transport-cell variables."""
-function lift_routing!(m,c,physical,put)
-    routing=get(m.ext,:distributed_routing,nothing)
-    routing===nothing && return
-    routed=routed_schedule(c,physical.river_release;
-        generator_q=physical.generator_q,tunnel_q=physical.tunnel_q)
-    for i in eachindex(routing.rates),k in eachindex(routing.rates[i])
-        variable=routing.rates[i][k]
-        variable isa VariableRef && put(variable,routed.cohorts[i].release[k])
-    end
-    for (i,data) in enumerate(routing.primitives)
-        data===nothing && continue
-        start_reference_integrals!(data,c.system.rivers[i],routed.cohorts[i].release,put)
-    end
-end
-
 # Distance to the allowed adjacent support; tiny nonadjacent weights remain
 # visible to the same numerical tolerance used for the other constraints.
 function _sos2_residual(x,weights)
@@ -125,19 +109,15 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         for variable in variables
             is_fixed(variable) && put(variable,fix_value(variable))
         end
+        set_dispatch_start!(b.variables,physical,put)
         for (i,r) in enumerate(s.reservoirs), t in 1:(T+1)
-            put(b.v[i,t],physical.storage[i,t]/r.vmax)
             table(b.graphs.reservoir_vertices[i,t],r.level_curve,physical.storage[i,t])
             potential=b.graphs.reservoir_potentials[i,t]
             potential===nothing || put(potential.y,_level_potential(r.level_curve,
                 potential.reference_volume,potential.reference_head,physical.storage[i,t])/potential.scale)
         end
-        for i in axes(physical.head,1), t in 1:T
-            put(b.h[i,t],physical.head[i,t]/250)
-        end
         for (i,e) in enumerate(s.tunnels), t in 1:T
             q=physical.tunnel_q[i,t]
-            put(b.q[i,t],q/50)
             graph=b.graphs.tunnel_losses[i,t]
             graph===nothing && continue
             put(graph.positive,max(q,0.0))
@@ -153,8 +133,6 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         end
         for (i,g) in enumerate(s.generators), t in 1:T
             q,p,u=physical.generator_q[i,t],physical.power[i,t],physical.commitment[i,t]
-            put(b.gq[i,t],q/50)
-            put(b.p[i,t],p/40)
             if b.transitions!==nothing
                 put(b.transitions.u[i,t],u)
                 prior=t==1 ? g.initial_on : physical.commitment[i,t-1]
@@ -215,8 +193,6 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         end
         shortfall=release_requirements(c,physical.river_release).shortfall
         for (i,r) in enumerate(s.rivers), t in 1:T
-            put(b.rq[i,t],physical.river_release[i,t]/100)
-            put(b.a[i,t],physical.gate[i,t])
             put(b.shortfall_release[i,t],shortfall[i,t])
             graph=b.graphs.river_graphs[i,t]
             if is_channel(r)
@@ -240,7 +216,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         for (variable,value) in window_start_values(c,physical,b.flow_integrals,b.level_windows)
             put(variable,value)
         end
-        lift_routing!(b.m,c,physical,put)
+        start_transport!(b.routing,c,physical,put)
         _lift_distributed_references!(b.m, assigned;atol=tolerance)
         _lift_power_hulls!(b.m, assigned)
         _lift_table_power_bounds!(b.m, assigned)

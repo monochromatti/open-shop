@@ -19,23 +19,15 @@
         m=Model()
         @variable(m, q[1:3, 1:4])
         set_start_value.(q, rates)
-        routing=OpenSHOP._dispatch_transport_expressions(m,c, q)
+        routing=OpenSHOP.RiverTransport(m,c, q)
         if !exact
             expected=OpenSHOP.routed_schedule(c,rates)
-            source=OpenSHOP.river_source_indices(c.system).reservoirs
-            for i in eachindex(source)
-                source[i] && continue
-                set_start_value.(routing.rates[i],expected.cohorts[i].release)
-                set_start_value.(q[i,:],expected.release[i,:])
-            end
+            set_start_value.(q,expected.release)
         end
-        for (variable,expression) in routing.starts
-            set_start_value(variable,value(start_value,expression))
-        end
+        OpenSHOP.start_transport!(routing)
         evaluate(x)=value(start_value,x)
         arrivals=evaluate.(routing.arrivals)
         terminal=evaluate.(routing.terminal)
-        @test routing.exact==exact
         expected=OpenSHOP.routed_schedule(c,rates)
         @test arrivals≈expected.arrival_volume atol=1e-13
         @test terminal≈expected.transit[:,end] atol=1e-13
@@ -45,13 +37,13 @@
                 initial+0.0036sum(diff(grid).*expected.release[i,:]) atol=1e-13
         end
         if exact
-            cached=OpenSHOP._dispatch_transport_expressions(m,c,q;transport=routing.nd)
+            cached=OpenSHOP.RiverTransport(m,c,q;transport=deterministic_network_data(c))
             @test evaluate.(cached.arrivals)≈arrivals atol=1e-13
             @test evaluate.(cached.terminal)≈terminal atol=1e-13
         end
     end
     empty_case=warm_dispatch_fixture(; rivers = false)
-    empty_routing=OpenSHOP._dispatch_transport_expressions(Model(),empty_case, zeros(0, 2))
+    empty_routing=OpenSHOP.RiverTransport(Model(),empty_case, zeros(0, 2))
     @test size(empty_routing.arrivals)==(0, 2)
     @test isempty(empty_routing.terminal)
 end

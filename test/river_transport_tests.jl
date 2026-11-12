@@ -11,7 +11,7 @@
         @test x.generator_q==fixture.q
         @test x.diagnostics["validation"]["valid"]
         mixed_source_conservation(c,simulate(c,fixture.q,fixture.gates))
-        domains=OpenSHOP._global_capacity_bounds(c,nothing,OpenSHOP.DistributedRouting(c))
+        domains=OpenSHOP._global_capacity_bounds(c,OpenSHOP.transport_discretization(c))
         @test all(x.arrival_volume.>=domains.arrival_lower.-1e-10)
         @test all(x.arrival_volume.<=domains.arrival_upper.+1e-10)
         @test all(x.storage.>=domains.lower.-1e-10)

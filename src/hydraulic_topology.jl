@@ -115,9 +115,7 @@ function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
     for (i, reservoir) in enumerate(c.system.reservoirs)
         incoming = [j for (j, enters, _) in topology.river_incidence[i] if enters]
         isempty(incoming) && continue
-        times = routing.exact ? sort!(unique!(vcat(
-            c.grid, [routing_arrival_knots(c, routing, j) for j in incoming]...,
-        ))) : routing.rd.grid
+        times=storage_observation_times(c,routing,incoming)
         for time in times
             time in c.grid && continue
             t = searchsortedlast(c.grid, time)

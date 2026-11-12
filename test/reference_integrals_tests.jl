@@ -19,13 +19,11 @@
         model=Model()
         @variable(model,q[1:3,1:4])
         set_start_value.(q,controls)
-        routing=OpenSHOP._dispatch_transport_expressions(model,c,q;integral_grid)
+        routing=OpenSHOP.RiverTransport(model,c,q;integral_grid)
         expected=OpenSHOP.routed_schedule(c,controls)
         set_start_value.(q,expected.release)
-        for (variable,expression) in routing.starts
-            set_start_value(variable,value(start_value,expression))
-        end
-        OpenSHOP.bound_reference_integrals!(c,routing)
+        OpenSHOP.start_transport!(routing)
+        OpenSHOP.bound_transport!(c,routing)
         @test value.(start_value,routing.arrivals)≈expected.arrival_volume atol=1e-12
         @test value.(start_value,routing.terminal)≈expected.transit[:,end] atol=1e-12
         for (i,r) in enumerate(rivers)

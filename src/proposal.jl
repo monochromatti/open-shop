@@ -36,14 +36,6 @@ function propose_commitment(
     N=length(nodes(s))
     ix=nodeindex(s)
     dt=diff(c.grid)
-    exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    !exact &&
-        transport!==nothing &&
-        throw(
-            ArgumentError(
-                "compiled deterministic transport cannot serve distributed proposal",
-            ),
-        )
     m=Model(_PROPOSAL_OPTIMIZER)
     set_silent(m)
     set_attribute(m, MOI.RelativeGapTolerance(), 0.002)
@@ -144,11 +136,20 @@ function propose_commitment(
         end
     end
     injections=river_injections(c,rq,gq,Q)
-    mesh=exact ? nothing : DistributedRouting(c)
-    references=exact ? nothing : _proposal_delay_references(c,reference,mesh)
-    coordinate=(r,q,i,k)->_proposal_delay_coordinate(r,references[i][k])
-    routing=_dispatch_transport_expressions(m,c,rq;transport,injections,coordinate,distributed=mesh)
-    (;nd,rd,arrivals,terminal)=routing
+    coordinate=(r,q,i,k,window)->begin
+        flow=if reference.cohorts!==nothing
+            reference.cohorts[i].release[k]
+        elseif reference.river_release!==nothing
+            t=searchsortedlast(c.grid,(window[1]+window[2])/2)
+            reference.river_release[i,t]
+        else
+            initial,_=river_initial_output(r)
+            something(initial,0.0)
+        end
+        _proposal_delay_coordinate(r,flow)
+    end
+    routing=RiverTransport(m,c,rq;transport,injections,coordinate)
+    (;arrivals,terminal)=routing
     for (d,r) in enumerate(s.rivers)
         for t in 1:T
             set_upper_bound(rq[d,t],min(opinterval(c,r.name,:capacity,t,r.capacity),
@@ -256,7 +257,7 @@ function propose_commitment(
         init = 0.0,
     ) + sum(
         r.water_value*(
-            terminal[d]-(exact ? nd.initial_transit[d] : rd.history_initial[d])
+            terminal[d]-routing.initial_transit[d]
         ) for (d, r) in enumerate(s.rivers);
         init = 0.0,
     )

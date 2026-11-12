@@ -279,7 +279,7 @@ end
     if prepared["accepted"]
         @test validate(c,prepared["solution"])["valid"]
         @test replay_audit(c,prepared["solution"])["valid"]
-        @test prepared["case"]["grid"]==c.grid
+        @test prepared.problem.grid==c.grid
         @test prepared["solution"]["objective"]>0.0
     end
 end

@@ -26,7 +26,7 @@ function _global_level_range(r, lo, hi)
     end
     extrema(vals)
 end
-function _global_capacity_bounds(c, nd, rd)
+function _global_capacity_bounds(c, discretization)
     s=c.system
     T=length(c.prices)
     R=length(s.reservoirs)
@@ -34,35 +34,7 @@ function _global_capacity_bounds(c, nd, rd)
     release_cap=[
         opinterval(c, r.name, :capacity, t, r.capacity) for r in s.rivers, t in 1:T
     ]
-    al=zeros(length(s.rivers), T)
-    au=similar(al)
-    for (i, r) in enumerate(s.rivers), t in 1:T
-        if nd!==nothing
-            lo=hi=nd.arrival_history[i, t]
-            for (d, k, v) in nd.arrival_terms[i, t]
-                z=v*release_cap[d, k]
-                lo+=is_channel(s.rivers[d]) ? -abs(z) : min(0.0,z)
-                hi+=max(0.0, z)
-            end
-        else
-            rows=rd.vertices[t]:(rd.vertices[t+1]-1)
-            lo=hi=sum(view(rd.history_arrival,i,rows))
-            B=rd.interval_coefficients[i]
-            cohort=rd.cohort_grid[i]
-            source=rd.source_cohorts[i]
-            for (k,coefficients) in arrival_terms(B,t)
-                period=source ? k : rd.control[k]
-                cap=release_cap[i,period]
-                l,h=river_transfer_range(r,coefficients,river_flow_lower(r,cap),cap)
-                l*=0.0036*(cohort[k+1]-cohort[k])
-                h*=0.0036*(cohort[k+1]-cohort[k])
-                lo+=l
-                hi+=h
-            end
-        end
-        al[i, t]=lo
-        au[i, t]=hi
-    end
+    al,au=routing_arrival_bounds(c,discretization,release_cap)
     lower=zeros(R, T+1)
     upper=similar(lower)
     delta_lo=zeros(R, T)
