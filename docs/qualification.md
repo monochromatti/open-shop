@@ -38,7 +38,8 @@ fuzz input containing reference controls; paths are relative to the plan.
 Defaults are two repetitions at 30 and 90 seconds, followed by 300 seconds of
 reference scheduling. Short runs cap each nonlinear solve at 45 seconds; the
 reference allows an individual nonlinear solve to use its whole remaining
-budget. Both use five-second commitment proposals and one hydraulic refinement.
+budget. Both use five-second commitment proposals and the scheduler's default
+adaptive hydraulic refinement. Refinement shares the scheduling time budget.
 Alternate repetitions reverse budget order. Each cold run starts independently,
 without a physical reference or a previous solution. Reference scheduling may
 start from the best qualified short solution or generated reference controls.

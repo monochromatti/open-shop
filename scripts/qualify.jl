@@ -107,7 +107,7 @@ function run(request,directory)
                 solve(c;initial,time_limit=budget,diagnostics_path=joinpath(directory,label*".scip.log"))
             else
                 schedule_case(c;initial,warm,time_limit=budget,proposal_time_limit=min(5.,budget),
-                    nlp_time_limit=generous ? budget : min(45.,budget),max_refinements=1)
+                    nlp_time_limit=generous ? budget : min(45.,budget))
             end
             result=timed.value
             writejson(joinpath(directory,label*".json"),result)
@@ -189,7 +189,7 @@ function run(request,directory)
         warmdata=FuzzWorker.FuzzCases.generate_case(1,"cascade","small")
         warmref=FuzzWorker.reconstruct(warmdata)
         compilation=@elapsed begin
-            schedule_case(warmdata.case;time_limit=60.,nlp_time_limit=20.,max_refinements=1)
+            schedule_case(warmdata.case;time_limit=60.,nlp_time_limit=20.)
             solve(warmdata.case;initial=warmref,time_limit=5.)
         end
         report["warmup_seconds"]=compilation
