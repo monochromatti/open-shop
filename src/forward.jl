@@ -37,6 +37,7 @@ function forward_step(
     max_iterations = 100,
     commitment = nothing,
     head_reference = nothing,
+    deadline = Inf,
 )
     validate_unit_modes(s)
     validate_delay_curves(s)
@@ -314,6 +315,7 @@ function simulate(
     tunnel_opening = nothing,
     commitment = nothing,
     head_reference = nothing,
+    deadline = Inf,
 )
     s=c.system
     validate_unit_modes(s)
@@ -348,14 +350,14 @@ function simulate(
         throw(ArgumentError("replay grid must contain original control change times"))
     opening=_physical_tunnel_openings(c,tunnel_opening)
     validate_tunnel_openings(c,opening,state)
-    _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport)
+    _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport,deadline)
 end
 
 # Physical integration kernel. The public wrapper checks controls and temporal
 # operating rules. Local error estimates call this kernel from already checked
 # controls, restarting only the physical state and executed river history.
 function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
-    transport=nothing,topology=HydraulicTopology(c.system),
+    transport=nothing,deadline=Inf,topology=HydraulicTopology(c.system),
     sources=river_source_indices(c.system),
     active_rivers=findall(r->r.law!=:junction,c.system.rivers),
     river_order=_forward_river_order(c.system))
@@ -398,6 +400,7 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     sizehint!(steps,T)
     W[:,1].=exact ? ndat.initial_transit : mesh.history_initial
     for t in 1:T
+        time()<deadline || break
         dt=grid[t + 1]-grid[t]
         if exact
             fill!(network, 0.0)
@@ -484,8 +487,8 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     end
     HydraulicTrajectory(
         collect(grid), V, H, Q, ta, gq, ga, P, R, L, A, W, out,
-        all(z.converged && z.law_domain_valid for z in steps),
-        maximum((z.residual for z in steps); init = 0.0), steps,
+        length(steps)==T && all(z.converged && z.law_domain_valid for z in steps),
+        length(steps)==T ? maximum((z.residual for z in steps); init = 0.0) : Inf, steps,
     )
 end
 
@@ -499,6 +502,7 @@ function simulate(
     tunnel_opening = nothing,
     commitment = nothing,
     head_reference = nothing,
+    deadline = Inf,
 )
-    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment,head_reference)
+    simulate(c, generator_q, gate; grid, transport, tunnel_opening,commitment,head_reference,deadline)
 end

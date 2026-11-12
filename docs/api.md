@@ -48,8 +48,10 @@ For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
 proposal search selects discrete states under the updated inputs.
 The start must have compatible arrays and retain the operating boundaries; it need not satisfy
-the updated physical or operating inputs. Its controls are reconstructed under
-the current inputs and independently checked before retention. `initial` takes precedence
+the updated physical or operating inputs. A feasible start is independently
+reconstructed and checked before retention. An infeasible guess initializes the
+bounded feasibility NLP before its controls are propagated. Mesh changes
+interpolate starting values without integrating a guessed operating plan. `initial` takes precedence
 when both are supplied.
 Distributed-delay proposals use the accepted trajectory's entry-cohort flows
 as their reference. Without a trajectory, they use each reach's last recorded
@@ -171,12 +173,16 @@ error bound at nonsmooth events. Coupled replay and physical checks determine
 acceptance. The best accepted schedule is retained even if a later revenue
 solve times out or returns a worse point. `initial` requests checking and, when
 permitted, resolving the supplied schedule; `warm` supplies unchecked controls
-that are reconstructed under the current forecast before retention.
+that initialize bounded feasibility restoration when they do not satisfy the
+current forecast. Feasible warm schedules still undergo independent reconstruction
+and replay before retention.
 
 `max_refinements=48` bounds mesh updates. `time_limit` in `solve_verified` bounds
-each NLP; `deadline` bounds shared work between phases. `schedule_case` uses its
-shared `time_limit` for the entire search. Integration, construction or final
-checking can overrun a deadline; all work is included in elapsed time.
+each NLP; `deadline` bounds shared work, including integration steps and
+transport-refinement comparisons. `schedule_case` uses its
+shared `time_limit` for the entire search. Compilation, model construction or one numerical step can overrun a deadline;
+all work is included in elapsed time. Interrupted integration is never accepted
+as a completed trajectory.
 
 With `refine_grid=false`, dispatch retains the original hydraulic model and may
 add finer witness equations sharing its controls. Global preparation uses this

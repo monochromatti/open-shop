@@ -56,7 +56,7 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
         u=view(x.commitment,:,k:k)
         opening=view(x.tunnel_opening,:,k:k)
         reference=view(x.head,:,k:k)
-        fine=_simulate_hydraulics(cell,q,gate,u,opening,reference,[a,middle,b];structure...)
+        fine=_simulate_hydraulics(cell,q,gate,u,opening,reference,[a,middle,b];deadline,structure...)
         if !fine.converged
             indicator[k]=Inf
             continue
@@ -81,7 +81,7 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
 end
 
 """Reintegrate held controls, with a new commitment or a new hydraulic mesh."""
-function controlled_trajectory(c,x;u=nothing,opening=nothing,grid=x.grid)
+function controlled_trajectory(c,x;u=nothing,opening=nothing,grid=x.grid,deadline=Inf)
     mesh=TimeDiscretization(c.grid,x.grid)
     cells=first.(mesh.cells)
     u=u===nothing ? x.commitment[:,cells] : u
@@ -89,5 +89,5 @@ function controlled_trajectory(c,x;u=nothing,opening=nothing,grid=x.grid)
     q[u.==0].=0.0
     opening=opening===nothing ? x.tunnel_opening[:,cells] : opening
     dispatch_from_controls(c,u,q,x.gate[:,cells];grid,tunnel_opening=opening,
-        reserves=_reserve_slice(x.reserves,cells),head_reference=interval_means(mesh,x.head))
+        reserves=_reserve_slice(x.reserves,cells),head_reference=interval_means(mesh,x.head),deadline)
 end

@@ -434,10 +434,10 @@ function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
     nothing
 end
 
-function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
+function _repair_dispatch!(c, solution::Schedule, report; transport=nothing,deadline=Inf)
     began=time()
     try
-        repaired, correction=_reconstruct_candidate(c,solution;transport)
+        repaired, correction=_reconstruct_candidate(c,solution;transport,deadline)
         report["forward_reconstruction_audit"]=repaired.diagnostics["validation"]
         report["forward_reconstruction_correction"]=correction
         if repaired.diagnostics["validation"]["valid"]
@@ -519,6 +519,7 @@ function solve_case(
     river_on = nothing,
     replay_grid = nothing,
     grid = c.grid,
+    deadline = Inf,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -539,7 +540,7 @@ function solve_case(
     )
     replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on)
     construction_seconds=time()-b.starttime
-    remaining=time_limit-construction_seconds
+    remaining=min(time_limit-construction_seconds,deadline-time())
     result=Dict{String,Any}(
         "case"=>c.name,
         "problem"=>c,
@@ -563,7 +564,7 @@ function solve_case(
     _local_optimizer!(b.m, solver, remaining;feasibility_only)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
-    if time_limit-construction_seconds<=0
+    if time_limit-construction_seconds<=0 || time()>=deadline
         result["total_seconds"]=time()-b.starttime
         return SolveResult(result)
     end
@@ -577,7 +578,7 @@ function solve_case(
         audit_start=time()
         solution.diagnostics["validation"]=validate(c,solution; transport=b.transport)
         result["validation_seconds"]=time()-audit_start
-        solution=_repair_dispatch!(c,solution,result; transport=b.transport)
+        solution=_repair_dispatch!(c,solution,result; transport=b.transport,deadline)
         result["accepted"]=get(result,"forward_reconstructed",false)
     end
     result["total_seconds"]=time()-b.starttime

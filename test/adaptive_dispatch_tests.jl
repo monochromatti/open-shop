@@ -56,7 +56,7 @@ end
     coarse=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
     @test !validate(c,coarse)["valid"]
     result=solve_verified(c;u=zeros(Int,0,1),warm=coarse,feasibility_only=true,
-        max_refinements=24,time_limit=1e-9)
+        max_refinements=24,time_limit=20.0)
     @test result["accepted"]
     if result["accepted"]
         @test validate(result["problem"],result["solution"])["valid"]
@@ -134,7 +134,7 @@ end
     end
 end
 
-@testset "A numerical start survives an exhausted optimization budget only after reconstruction" begin
+@testset "A feasible numerical start is retained; changed inputs require restoration" begin
     c=warm_dispatch_fixture(;rivers=false)
     u=ones(Int,2,2)
     warm=dispatch_from_controls(c,u,[3.0 3.0;2.8 1.8],zeros(0,2))
@@ -160,7 +160,8 @@ end
     changed=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;reservoirs=[lake]),
         prices=[100.0,20.0])
     @test !validate(changed,warm)["valid"]
-    updated=solve_verified(changed;u,warm,time_limit=1e-9,max_refinements=0)
+    updated=solve_verified(changed;u,warm,time_limit=10.0,deadline=time()+20.0,
+        feasibility_only=true,max_refinements=0)
     @test updated["accepted"]
     if updated["accepted"]
         @test validate(changed,updated["solution"])["valid"]

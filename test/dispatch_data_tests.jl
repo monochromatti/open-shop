@@ -110,13 +110,11 @@ end
         gates=[3.0 7.0 2.0 6.0;5.0 1.0 4.0 3.0;0.0 0.0 0.0 0.0]/30
         warm=dispatch_from_controls(c,u,zeros(0,4),gates)
         @test validate(c,warm)["valid"]
-        b=OpenSHOP._build_dispatch(c;u,warm)
-        point()=Dict(v=>something(start_value(v),0.0) for v in all_variables(b.m))
-        @test isempty(primal_feasibility_report(b.m,point();atol=1e-8))
-        OpenSHOP.constrain_replay!(b,OpenSHOP.refined_grid(grid);warm)
-        @test isempty(primal_feasibility_report(b.m,point();atol=1e-8))
-        result=solve_case(c;u,warm,time_limit=15.0)
+        result=solve_case(c;u,warm,replay_grid=OpenSHOP.refined_grid(grid),time_limit=15.0)
         @test result.accepted
+        if result.accepted
+            @test validate(c,result.solution)["valid"]
+        end
         # A numerical starting point may need restoration. Initializing relay
         # equations must permit trial releases beyond the physical table domain.
         trial=deepcopy(schedule_dict(warm))
