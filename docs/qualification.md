@@ -65,7 +65,10 @@ separate output directories on independent machines when comparing timings.
 
 Every returned accepted schedule is checked against the original equations,
 objective accounting, an independent storage-plus-transit ledger, and four-times
-finer replay. `accepted` records the package's acceptance decision; `qualified`
+finer replay than its recorded hydraulic grid. Reconstruction and the ledger use
+that recorded grid; operating restrictions retain their original windows, also
+when checking unchanged continuation after a restart.
+`accepted` records the package's acceptance decision; `qualified`
 also requires the campaign's finer replay and water ledger. Only qualified
 solutions contribute to economic comparisons. Generation failures, exceptions,
 timeouts and replay sensitivity remain visible; inputs are never resampled.

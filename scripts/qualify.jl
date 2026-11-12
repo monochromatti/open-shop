@@ -229,11 +229,10 @@ function run(request,directory)
             c=best.problem
             schedule=best.solution
             edge=clamp(searchsortedfirst(c.grid,first(c.grid)+get(request,"advance",6.)),2,length(c.grid)-2)
-            tail=restart_case(c,schedule,c.grid[edge])
-            continued=dispatch_from_controls(tail,schedule.commitment[:,edge:end],schedule.generator_q[:,edge:end],
-                schedule.gate[:,edge:end];tunnel_opening=schedule.tunnel_opening[:,edge:end],head_reference=schedule.head[:,edge:end])
+            tail,continued=FuzzWorker.reconstruct_continuation(c,schedule,c.grid[edge])
+            vertex=searchsortedfirst(schedule.grid,c.grid[edge])
             validate(tail,continued)["valid"] &&
-                maximum(abs,continued.storage-schedule.storage[:,edge:end];init=0.)<=1e-6 ||
+                maximum(abs,continued.storage-schedule.storage[:,vertex:end];init=0.)<=1e-6 ||
                 error("unchanged continuation differs from executed schedule")
             next=revise(tail,event)
             writejson(joinpath(directory,"recovery-$revision-input.json"),case_dict(next))
