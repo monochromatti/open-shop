@@ -55,9 +55,10 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "terminal_commitment_obligations"=>obligations,
         "terminal_tunnel_switch_obligations"=>switch_obligations,
         "permitted_penalties"=>permitted_penalties,
+        "storage_path_times"=>storage_path_times,
         "shortfalls"=>(;unit_power=unit_power_shortfall,unit_discharge=unit_discharge_shortfall,
             plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,
-            arrival=arrival_shortfall,storage_path_times),
+            arrival=arrival_shortfall),
     )
     record(name, x; atol=tolerance) = begin
         v=maximum(abs, x; init = 0.0)

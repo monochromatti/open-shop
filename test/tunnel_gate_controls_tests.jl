@@ -279,7 +279,7 @@ end
     @test !prepared["global_optimality_proven"]
     @test all(p->haskey(p,"tunnel_opening"),prepared["proposals"])
     if prepared["accepted"]
-        actual=case_from_dict(prepared["case"])
+        actual=prepared.problem
         @test validate(actual,prepared["solution"])["valid"]
         @test replay_audit(actual,prepared["solution"])["valid"]
         @test haskey(prepared["solution"],"tunnel_opening")

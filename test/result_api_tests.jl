@@ -111,3 +111,31 @@ end
         @test "missing soft release accounting" in audit["errors"]
     end
 end
+
+@testset "Optimization entry points return a common physical result" begin
+    c=warm_dispatch_fixture(;rivers=false)
+    u=zeros(Int,2,2)
+    initial=dispatch_from_controls(c,u,zeros(2,2),zeros(0,2))
+    results=(
+        solve_case(c;u,warm=initial,time_limit=10.0),
+        solve_verified(c;u,initial,max_refinements=0,time_limit=10.0),
+        schedule_case(c;initial,time_limit=1e-9),
+        solve(c;initial,time_limit=1e-9,preparation_time_limit=0.0),
+    )
+    for result in results
+        @test result isa SolveResult
+        @test result.accepted
+        @test validate(result.problem,result.solution)["valid"]
+        @test result.objective≈objective_components(result.problem,result.solution).total
+        @test result["accepted"]==result.accepted
+        @test case_dict(result["case"])==case_dict(result.problem)
+        mktemp() do path,io
+            close(io)
+            writejson(path,result)
+            restored=OpenSHOP.JSON3.read(read(path,String),Dict{String,Any})
+            problem=case_from_dict(restored["problem"])
+            @test validate(problem,restored["solution"])["valid"]
+            @test restored["objective"]≈result.objective
+        end
+    end
+end

@@ -98,7 +98,7 @@ end
         grid=[0.0,0.13,0.7,1.4],prices=zeros(3),routing_grid=[0.0,0.13,0.23,0.7,1.0,1.4])
     model=Model()
     release=@variable(model,[1:1,1:3],lower_bound=0.0,upper_bound=60.0)
-    routing=OpenSHOP._dispatch_transport_expressions(model,c,release)
+    routing=OpenSHOP.RiverTransport(model,c,release)
     for q in ([0.0,30.0,60.0],[17.0,43.0,3.0])
         set_start_value.(release,permutedims(q))
         for (a,b) in ((0.0,1.4),(0.13,0.83),(0.21,0.9))
@@ -131,10 +131,8 @@ end
         model=Model()
         @variable(model,0.0<=release[1:1,1:64]<=60.0)
         set_start_value.(release,flow)
-        routing=OpenSHOP._dispatch_transport_expressions(model,c,release)
-        for (variable,expression) in routing.starts
-            set_start_value(variable,value(start_value,expression))
-        end
+        routing=OpenSHOP.RiverTransport(model,c,release)
+        OpenSHOP.start_transport!(routing)
         # A constant entry stream has reached steady flow long before these
         # observations. The expected volume needs no routing calculation.
         a=origin+0.9hours

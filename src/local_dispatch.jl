@@ -34,6 +34,7 @@ function _build_dispatch(
     model = Model(),
     prefix = "",
     shared_controls = nothing,
+    control_index = nothing,
     integral_grid = c.grid,
     grid = c.grid,
 )
@@ -53,12 +54,8 @@ function _build_dispatch(
     c=hydraulic_case(c,mesh.grid)
     s=c.system
     topology = HydraulicTopology(s)
-    node_names = topology.node_names
     T=length(c.prices)
     R=length(s.reservoirs)
-    N=length(node_names)
-    E=length(s.tunnels)
-    G=length(s.generators)
     D=length(s.rivers)
     ix = topology.node_index
     dt=diff(c.grid)
@@ -71,30 +68,9 @@ function _build_dispatch(
     gates=_tunnel_gate_states!(m,operating_case;fixed=openings)
     constrain_tunnel_switching!(m,operating_case,gates.open,operating_u)
     ustart=copy(u)
-    v=@variable(m, [1:R, 1:(T + 1)], base_name=prefix*"v")
-    h=@variable(m, [1:N, 1:T], base_name=prefix*"h")
-    q=@variable(m, [1:E, 1:T], base_name=prefix*"q")
-    gq=Matrix{VariableRef}(undef,G,T)
-    for t in 1:T, (i,g) in enumerate(s.generators)
-        gq[i,t]=if g.characteristic!==nothing
-            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]")
-        elseif shared_controls!==nothing
-            shared_controls.discharge[i,shared_controls.index[t]]
-        elseif t==first(mesh.cells[mesh.interval[t]])
-            @variable(m,lower_bound=0,base_name=prefix*"gq[$i,$t]")
-        else
-            gq[i,t-1]
-        end
-    end
-    p=@variable(m, [1:G, 1:T], lower_bound=0, base_name=prefix*"p")
-    rq=@variable(m, [1:D, 1:T], lower_bound=0, base_name=prefix*"rq")
-    a=if shared_controls===nothing
-        controls=@variable(m,[1:D,1:length(operating_case.prices)],lower_bound=0,upper_bound=1,
-            base_name=prefix*"a")
-        controls[:,mesh.interval]
-    else
-        shared_controls.gate[:,shared_controls.index]
-    end
+    variables=DispatchVariables(m,s,mesh;prefix,shared_controls,
+        control_index=control_index===nothing ? mesh.interval : control_index)
+    (;v,h,q,gq,p,rq,a,V,H,Q,GQ,P,RQ)=variables
     shortfall_release=@variable(m,[1:D,1:T],lower_bound=0,base_name=prefix*"shortfall_release")
     level_ops=[
         r.level_curve===nothing ? nothing :
@@ -151,12 +127,6 @@ function _build_dispatch(
             nothing
         end for (i, g) in enumerate(s.generators)
     ]
-    V=[s.reservoirs[i].vmax*v[i, t] for i in 1:R, t in 1:(T + 1)]
-    H=250 .* h
-    Q=50 .* q
-    GQ=50 .* gq
-    P=40 .* p
-    RQ=100 .* rq
     for (i, r) in enumerate(s.reservoirs)
         for t in 1:(T + 1)
             lo, hi=soft_storage_bounds(c, r, c.grid[t])
@@ -166,8 +136,8 @@ function _build_dispatch(
         end
         fix(v[i, 1], r.v0/r.vmax; force = true)
         for t in 1:T
-            set_lower_bound(h[i, t], head(r, r.vmin)/250)
-            set_upper_bound(h[i, t], head(r, r.vmax)/250)
+            set_lower_bound(h[i, t], head(r, r.vmin)/DISPATCH_HEAD_SCALE)
+            set_upper_bound(h[i, t], head(r, r.vmax)/DISPATCH_HEAD_SCALE)
             level=mean_level_ops[i]===nothing ? mean_head(r,V[i,t],V[i,t+1]) :
                   mean_level_ops[i](V[i,t],V[i,t+1])
             @constraint(m, (H[i, t]-level)/250==0)
@@ -194,19 +164,19 @@ function _build_dispatch(
     soft=constrain_soft_constraints!(m,operating_case,operating_V,operating_P,operating_GQ;
         level=operating_level)
     for (i, j) in enumerate(s.junctions), t in 1:T
-        set_lower_bound(h[R + i, t], j.hmin/250)
-        set_upper_bound(h[R + i, t], j.hmax/250)
-        set_start_value(h[R + i, t], (j.hmin+j.hmax)/500)
+        set_lower_bound(h[R + i, t], j.hmin/DISPATCH_HEAD_SCALE)
+        set_upper_bound(h[R + i, t], j.hmax/DISPATCH_HEAD_SCALE)
+        set_start_value(h[R + i, t], (j.hmin+j.hmax)/(2DISPATCH_HEAD_SCALE))
     end
     for (i, b) in enumerate(s.boundaries), t in 1:T
-        fix(h[R + length(s.junctions) + i, t], b.head/250; force = true)
+        fix(h[R + length(s.junctions) + i, t], b.head/DISPATCH_HEAD_SCALE; force = true)
     end
     for (i, e) in enumerate(s.tunnels), t in 1:T
         cap=opinterval(c, e.name, :capacity, t, e.capacity)
         opening=gates.opening[i,mesh.interval[t]]
         factor, resistance=tunnel_coefficients(e, opening)
-        set_lower_bound(q[i, t], (e.discharge_river===nothing ? -cap : 0.0)/50)
-        set_upper_bound(q[i, t], cap/50)
+        set_lower_bound(q[i, t], (e.discharge_river===nothing ? -cap : 0.0)/DISPATCH_FLOW_SCALE)
+        set_upper_bound(q[i, t], cap/DISPATCH_FLOW_SCALE)
         if opening==0
             fix(q[i, t], 0; force = true)
         else
@@ -224,8 +194,8 @@ function _build_dispatch(
         plant.name=>begin
             floor=plant.outlet_head_floor
             receiver=h[ix[plant.target], 1]
-            lo=250*(is_fixed(receiver) ? fix_value(receiver) : lower_bound(receiver))
-            hi=250*(is_fixed(receiver) ? fix_value(receiver) : upper_bound(receiver))
+            lo=DISPATCH_HEAD_SCALE*(is_fixed(receiver) ? fix_value(receiver) : lower_bound(receiver))
+            hi=DISPATCH_HEAD_SCALE*(is_fixed(receiver) ? fix_value(receiver) : upper_bound(receiver))
             floor===nothing || lo>=floor ? nothing :
             hi<=floor ? floor :
             table_operator(
@@ -256,10 +226,10 @@ function _build_dispatch(
             P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
             P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
         begin
-            intersect_bounds!(gq[i,t],qmin*u[i,t]/50,qmax*u[i,t]/50)
+            intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
             plo,phi=inset_bounds(pmin,pmax,operational_margin)
-            set_lower_bound(p[i, t], plo*u[i, t]/40)
-            set_upper_bound(p[i, t], phi*u[i, t]/40)
+            set_lower_bound(p[i, t], plo*u[i, t]/DISPATCH_POWER_SCALE)
+            set_upper_bound(p[i, t], phi*u[i, t]/DISPATCH_POWER_SCALE)
             if u[i, t]==0
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
@@ -279,15 +249,18 @@ function _build_dispatch(
         end
     end
     reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops;operating_case)
-    outlet_bounds = _dispatch_outlet_bounds(c)
+    outlet_bounds=(;
+        capacity=[opinterval(c,r.name,:capacity,t,r.capacity) for r in s.rivers,t in 1:T],
+        gate_lower=[opinterval(c,r.name,:gate_min,t,r.gate_min) for r in s.rivers,t in 1:T],
+        gate_upper=[opinterval(c,r.name,:gate_max,t,1.0) for r in s.rivers,t in 1:T])
     injections=river_injections(c,RQ,GQ,Q)
-    routing = _dispatch_transport_expressions(m,c, RQ; transport, injections,integral_grid)
-    (; exact, nd, rd, arrivals, terminal) = routing
+    routing = RiverTransport(m,c, RQ; transport, injections,integral_grid)
+    (;arrivals,terminal)=routing
     for (i, r) in enumerate(s.rivers)
         for t in 1:T
             cap=outlet_bounds.capacity[i, t]
-            set_upper_bound(rq[i, t], cap/100)
-            set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/100)
+            set_upper_bound(rq[i, t], cap/DISPATCH_RELEASE_SCALE)
+            set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/DISPATCH_RELEASE_SCALE)
             intersect_bounds!(a[i,t],outlet_bounds.gate_lower[i,t],outlet_bounds.gate_upper[i,t])
             if is_channel(r)
                 fix(a[i,t],0.0;force=true)
@@ -389,59 +362,20 @@ function _build_dispatch(
         fixed=fixed_river_on(operating_case,river_on,operating_warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing)
-    history_initial=exact ? nd.initial_transit : rd.history_initial
+    history_initial=routing.initial_transit
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
         operating_case,operating_u)
     reserves===nothing || (obj+=reserves.value)
     @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
-    rng=MersenneTwister(seed)
-    for i in 1:R, t in 1:T
-        set_start_value(h[i, t], head(s.reservoirs[i], s.reservoirs[i].v0)/250)
-    end
-    for (i, g) in enumerate(s.generators), t in 1:T
-        guess=clamp((seed==1 ? 0.6 : 0.45+0.3rand(rng))*g.qmax, g.qmin, g.qmax)*ustart[i, t]
-        set_start_value(gq[i, t], guess/50)
-        set_start_value(p[i, t], power(g, guess, g.hbest)/40)
-    end
-    for (i, r) in enumerate(s.rivers), t in 1:T
-        set_start_value(rq[i, t], mean(r.history_release)/100)
-        r.law==:orifice && set_start_value(a[i, t], 0.5)
-    end
-    if warm!==nothing && haskey(warm, "V")
-        for i in 1:R, t in 1:(T + 1)
-            set_start_value(v[i, t], warm.storage[i, t]/s.reservoirs[i].vmax)
-        end
-        for i in 1:N, t in 1:T
-            set_start_value(h[i, t], warm.head[i, t]/250)
-        end
-        for i in 1:E, t in 1:T
-            set_start_value(q[i, t], warm.tunnel_q[i, t]/50)
-        end
-        for (i, g) in enumerate(s.generators), t in 1:T
-            set_start_value(
-                gq[i, t],
-                clamp(warm.generator_q[i, t], g.qmin*ustart[i, t], g.qmax*ustart[i, t])/50,
-            )
-            set_start_value(
-                p[i, t],
-                clamp(warm.power[i, t], g.pmin*ustart[i, t], g.pmax*ustart[i, t])/40,
-            )
-        end
-        for i in 1:D, t in 1:T
-            set_start_value(rq[i, t], warm.river_release[i, t]/100)
-            set_start_value(a[i, t], warm.gate[i, t])
-        end
+    initialize_dispatch!(variables,c,ustart;warm,seed)
+    if warm!==nothing
         for (variable,value) in river_operation_start_values(river_operations,operating_case,operating_warm.river_release)
             set_start_value(variable,value)
         end
     end
     _start_reserves!(reserves,c,warm)
-    # Relay rates follow upstream arrivals in the same topological order as
-    # their conservation equations, using the assigned control starts.
-    for (variable,rate) in routing.starts
-        set_start_value(variable,JuMP.value(v->something(start_value(v),0.0),rate))
-    end
+    start_transport!(routing)
     if warm!==nothing
         for (variable,value) in window_start_values(operating_case,operating_warm,flow_integrals,[])
             set_start_value(variable,value)
@@ -451,7 +385,7 @@ function _build_dispatch(
         end
     end
     (;
-        reserves,
+        variables,reserves,
         case=c,
         operating_case,mesh,operating_u,
         m,
@@ -460,18 +394,15 @@ function _build_dispatch(
         H,
         Q,
         GQ,
-        gq,
         P,
         RQ,
-        a,
-        arrivals,
-        terminal,
         u,
         starttime,
         shortfall_release,
         penalty_cost,
         soft,
-        transport = nd,
+        transport = routing.compiled,
+        routing,
         warm_start,
         gates,
         river_operations,
@@ -489,7 +420,7 @@ function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
     operating=_river_replace(b.operating_case;routing_grid=refined.routing_grid)
     f=_build_dispatch(operating;grid,u=b.operating_u,model=b.m,prefix="replay_",
         warm,tunnel_opening=Matrix{Float64}(b.gates.opening),river_on,
-        shared_controls=(;discharge=b.gq,gate=b.a,index=parent.interval))
+        shared_controls=b.variables,control_index=parent.interval)
     if b.reserves!==nothing
         base_cells=first.(b.mesh.cells)
         fine_cells=first.(f.mesh.cells)
@@ -501,19 +432,6 @@ function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
     end
     set_objective_function(b.m,objective)
     nothing
-end
-
-function _dispatch_values(b)
-    c=b.case
-    release=value.(b.RQ)
-    opening=_tunnel_gate_solution(b.gates)[:,b.mesh.interval]
-    raw=Schedule(copy(c.grid), round.(Int,value.(b.u)), value.(b.V), value.(b.H),
-        value.(b.Q), Matrix{Float64}(opening), value.(b.GQ), value.(b.P), value.(b.a),
-        release, Matrix{Float64}(value.(b.arrivals)), Vector{Float64}(value.(b.terminal)), value.(b.shortfall_release),
-        value(b.obj), value(b.gates.cost), value(b.penalty_cost),
-        Dict{String,Any}("case"=>c.name,
-            "fractional_tunnel_opening"=>value.(b.gates.opening)[:,b.mesh.interval]);reserves=_reserve_values(c,b.reserves;operating_case=b.operating_case))
-    with_soft_assessment(b.operating_case,raw;included_cost=value(b.soft.cost))
 end
 
 function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)

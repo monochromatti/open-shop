@@ -48,7 +48,53 @@ These are mesh convergence tests, not bounds on continuous-time error.
 """
 replay_audit(c::ScheduleCase, x; kwargs...) = _replay_report(_replay(c, x; kwargs...))
 
-_replay_report(check) = Dict{String,Any}(string(k)=>v for (k,v) in pairs(check))
+"""Numerical replay quantities. Unevaluated checks remain unsuccessful.
+
+Storage and transit differences are Mm³, level differences are metres and
+objective differences are currency units. Constraint times are hours. Reports
+are retained for presentation; mesh selection reads the numerical fields.
+"""
+Base.@kwdef struct ReplayResult
+    valid::Bool = false
+    original_valid::Bool = false
+    physically_valid::Bool = false
+    numerically_converged::Bool = false
+    errors::Vector{String} = String[]
+    violations::Dict{String,Float64} = Dict{String,Float64}()
+    shortfalls::@NamedTuple{arrival::Float64,power::Float64,discharge::Float64} =
+        (arrival=0.0,power=0.0,discharge=0.0)
+    original_audit::Dict{String,Any} = Dict{String,Any}()
+    transport_audit::Union{Nothing,Dict{String,Any}} = nothing
+    replay_grid::Vector{Float64} = Float64[]
+    constraint_times::Vector{Float64} = Float64[]
+    storage_differences_Mm3::Vector{Float64} = Float64[]
+    storage_convergence_tolerances_Mm3::Vector{Float64} = Float64[]
+    level_differences_m::Vector{Float64} = Float64[]
+    terminal_transit_difference_Mm3::Float64 = Inf
+    replayed_objective::Union{Nothing,Float64} = nothing
+    objective_difference::Float64 = Inf
+    storage_convergence_tolerance_Mm3::Float64 = 2e-3
+    relative_storage_convergence_tolerance::Float64 = 1e-3
+    level_convergence_tolerance_m::Float64 = 1e-2
+    relative_objective_convergence_tolerance::Float64 = 1e-3
+    estimated_error_factor::Float64 = 1.0
+    seconds::Float64 = 0.0
+end
+
+function _replay_report(check::ReplayResult)
+    report=Dict{String,Any}(string(k)=>getfield(check,k) for k in fieldnames(ReplayResult))
+    # A failed probe has no finer trajectory or numerical differences to report.
+    if !isempty(check.replay_grid)
+        report["replay_intervals"]=length(check.replay_grid)-1
+        report["max_water_residual_Mm3"]=get(check.violations,"global_water",Inf)
+        report["max_storage_difference_Mm3"]=maximum(check.storage_differences_Mm3;init=0.0)
+        report["max_level_difference_m"]=maximum(check.level_differences_m;init=0.0)
+        report["certificate"]="numerical finer-grid and transport acceptance only"
+    else
+        delete!(report,"replay_grid")
+    end
+    report
+end
 
 # Numerical replay returns named quantities. Diagnostic labels never determine
 # a subsequent solve's margins or its physical acceptance.
@@ -74,11 +120,16 @@ function _replay(
     errors=String[]
     violations=Dict{String,Float64}()
     shortfalls=(arrival=0.0,power=0.0,discharge=0.0)
+    limits=(;storage_convergence_tolerance_Mm3=storage_convergence,
+        relative_storage_convergence_tolerance=storage_relative_convergence,
+        level_convergence_tolerance_m=level_convergence,
+        relative_objective_convergence_tolerance=objective_convergence,
+        estimated_error_factor=error_factor)
     original=validate(c,x;transport)
     if !original["valid"]
         push!(errors,"original equation audit failed")
-        require_original && return (;valid=false,errors,violations,original_audit=original,
-            shortfalls,seconds=time()-began)
+        require_original && return ReplayResult(;errors,violations,original_audit=original,
+            shortfalls,seconds=time()-began,limits...)
     end
     x=_schedule_input(x;case=c)
     grid=grid===nothing ? refined_grid(x.grid;existing=river_routing_grid(c;physical_grid=x.grid)) : grid
@@ -88,8 +139,8 @@ function _replay(
         "compiled deterministic transport cannot serve distributed acceptance"))
     if length(grid)<=length(x.grid)
         push!(errors,"acceptance requires a strictly finer replay grid")
-        return (; valid=false, errors, violations, original_audit=original,
-            shortfalls, seconds=time()-began)
+        return ReplayResult(;errors,violations,original_audit=original,original_valid=original["valid"],
+            shortfalls,seconds=time()-began,limits...)
     end
     try
         mesh=TimeDiscretization(c.grid,x.grid)
@@ -142,7 +193,6 @@ function _replay(
         storage_limits=storage_convergence_limits(c,storage_convergence,storage_relative_convergence)
         level_errors=[maximum(abs(head(r,z.storage[i,edges[t]])-head(r,x.storage[i,t]))
             for t in eachindex(x.grid); init=0.0) for (i,r) in enumerate(c.system.reservoirs)]
-        storage_error=maximum(storage_errors; init=0.0)
         level_error=maximum(level_errors; init=0.0)
         transit_error=maximum(abs, z.terminal_transit-x.terminal_transit; init = 0.0)
         replayed_objective=z.objective
@@ -160,38 +210,30 @@ function _replay(
             errors,
             "finer replay exceeded storage, level, transit or objective convergence tolerance",
         )
-        (;
+        ReplayResult(;
             valid=isempty(errors),
+            original_valid=original["valid"],
             physically_valid=physical,
             numerically_converged=numerical,
             errors, violations, shortfalls,
             original_audit=original,
             transport_audit=transport_check,
             replay_grid=collect(grid),
-            constraint_times=fine_shortfalls.storage_path_times,
-            replay_intervals=length(grid)-1,
-            max_water_residual_Mm3=get(violations, "global_water", Inf),
-            max_storage_difference_Mm3=storage_error,
+            constraint_times=audit["storage_path_times"],
             storage_differences_Mm3=storage_errors,
             storage_convergence_tolerances_Mm3=storage_limits,
-            max_level_difference_m=level_error,
             level_differences_m=level_errors,
             terminal_transit_difference_Mm3=transit_error,
             replayed_objective,
             objective_difference=objective_error,
-            storage_convergence_tolerance_Mm3=storage_convergence,
-            relative_storage_convergence_tolerance=storage_relative_convergence,
-            level_convergence_tolerance_m=level_convergence,
-            relative_objective_convergence_tolerance=objective_convergence,
-            estimated_error_factor=error_factor,
             seconds=time()-began,
-            certificate="numerical finer-grid and transport acceptance only",
+            limits...,
         )
     catch e
         e isa Union{ArgumentError,DomainError} || rethrow()
         push!(errors, sprint(showerror, e))
-        (; valid=false, errors, violations, original_audit=original,
-            shortfalls, seconds=time()-began)
+        ReplayResult(;errors,violations,original_audit=original,original_valid=original["valid"],
+            shortfalls,seconds=time()-began,limits...)
     end
 end
 
@@ -215,17 +257,24 @@ finer witness constraints. Global preparation uses that finite-model scope.
 """
 solve_verified(c::ScheduleCase; kwargs...) = _verified_report(_verified_dispatch(c; kwargs...))
 
+function _dispatch_reports(attempts)
+    [Dict{String,Any}(string(k)=>(k==:replay ? _replay_report(v) : v)
+        for (k,v) in pairs(attempt)) for attempt in attempts]
+end
+
 function _verified_report(result)
-    Dict{String,Any}(
+    SolveResult(Dict{String,Any}(
+        "status"=>result.accepted ? "FEASIBLE" : "NO_ACCEPTED_SOLUTION",
         "accepted"=>result.accepted,
         "problem"=>result.case,
-        "case"=>result.case,
         "solution"=>result.solution,
         "audit"=>_replay_report(result.audit),
-        "attempts"=>result.attempts,
+        "attempts"=>_dispatch_reports(result.attempts),
         "total_seconds"=>result.total_seconds,
+        "feasible_lower_bound"=>result.accepted ? result.solution.objective : nothing,
+        "acceptance_scope"=>"physical equations, operating limits and finer replay",
         "global_optimality_proven"=>false,
-    )
+    ))
 end
 
 """Resolve fixed controls; return a physical failure for the next NLP to repair."""
@@ -241,13 +290,13 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
             error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0,
             require_original=!reconstructed)
         push!(steps,(;intervals=length(x.grid)-1,objective=x.objective,accepted=audit.valid))
-        original_valid=get(get(audit,:original_audit,Dict()),"valid",false)
+        original_valid=audit.original_valid
         if audit.valid || !reconstructed && !original_valid ||
            refinements==max_refinements || time()>=deadline
             return (;case=c,solution=x,audit,grid=x.grid,refinements,steps)
         end
         physical=hydraulic_case(c,x.grid)
-        if get(audit,:numerically_converged,false)
+        if audit.numerically_converged
             # Accuracy is resolved. A binding restriction must be enforced on
             # the checked mesh; moving the primary mesh alone can land on the
             # new bound and fail its next replay in exactly the same way.
@@ -359,8 +408,7 @@ function _verified_dispatch(
     tolerances=(;storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)
     best=nothing
     latest=nothing
-    latest_audit=(valid=false,errors=["dispatch deadline exhausted"],
-        shortfalls=(arrival=0.0,power=0.0,discharge=0.0))
+    latest_audit=ReplayResult(errors=["dispatch deadline exhausted"])
     grid=copy(c.grid)
     replay_grid=nothing
     refinements=0
@@ -415,27 +463,27 @@ function _verified_dispatch(
         refinements+=resolution.refinements
         grid=copy(resolution.grid)
         replay_grid===nothing || (replay_grid=sort!(unique!(vcat(replay_grid,grid))))
-        original=get(latest_audit,:original_audit,Dict{String,Any}())
-        push!(attempts,Dict(
-            "iteration"=>length(attempts),"intervals"=>length(c.prices),
-            "integration_intervals"=>length(latest.grid)-1,
-            "transport_intervals"=>length(river_routing_grid(c;physical_grid=grid))-1,
-            "operational_margin_MW"=>operational_margin,
-            "status"=>dispatch===nothing ? get(latest,"status","FORWARD_RECONSTRUCTED") : dispatch.status,
-            "objective"=>latest.objective,"model_valid"=>get(original,"valid",false),
-            "model_errors"=>get(original,"errors",String[]),"replay"=>_replay_report(latest_audit),
-            "integration_steps"=>resolution.steps,
-            "solve_seconds"=>dispatch===nothing ? 0.0 : get(dispatch,"total_seconds",0.0),
-            "construction_seconds"=>dispatch===nothing ? 0.0 : get(dispatch,"construction_seconds",0.0),
-            "optimization_seconds"=>dispatch===nothing ? 0.0 : get(dispatch,"seconds",0.0),
-            "iterations"=>dispatch===nothing ? nothing : get(dispatch,"iterations",nothing)))
+        original=latest_audit.original_audit
+        push!(attempts,(;
+            iteration=length(attempts),intervals=length(c.prices),
+            integration_intervals=length(latest.grid)-1,
+            transport_intervals=length(river_routing_grid(c;physical_grid=grid))-1,
+            operational_margin_MW=operational_margin,
+            status=dispatch===nothing ? get(latest,"status","FORWARD_RECONSTRUCTED") : dispatch.status,
+            objective=latest.objective,model_valid=latest_audit.original_valid,
+            model_errors=get(original,"errors",String[]),replay=latest_audit,
+            integration_steps=resolution.steps,
+            solve_seconds=dispatch===nothing ? 0.0 : get(dispatch,"total_seconds",0.0),
+            construction_seconds=dispatch===nothing ? 0.0 : get(dispatch,"construction_seconds",0.0),
+            optimization_seconds=dispatch===nothing ? 0.0 : get(dispatch,"seconds",0.0),
+            iterations=dispatch===nothing ? nothing : get(dispatch,"iterations",nothing)))
         if latest_audit.valid && (best===nothing || latest.objective>best.solution.objective)
             best=(;case=c,solution=latest,audit=latest_audit)
         end
         # Initial schedules retain the audit-only contract. A feasible numerical
         # start or feasibility solve is followed by one revenue solve.
         initial!==nothing && latest_audit.valid && break
-        initial!==nothing && !get(original,"valid",false) && resolution.refinements==0 && break
+        initial!==nothing && !latest_audit.original_valid && resolution.refinements==0 && break
         time()<deadline || break
         if latest_audit.valid
             feasibility_only && break
@@ -443,22 +491,22 @@ function _verified_dispatch(
             feasibility=false
         elseif grid!=latest.grid
             feasibility=true
-        elseif !get(original,"valid",false) &&
-               (!get(latest_audit,:numerically_converged,false) || refinements==max_refinements)
+        elseif !latest_audit.original_valid &&
+               (!latest_audit.numerically_converged || refinements==max_refinements)
             # Exhausting the mesh budget still permits repair of restrictions
             # already represented by the primary model.
             dispatch!==nothing && resolution.refinements==0 && break
             feasibility=true
         else
             refinements<max_refinements || break
-            if !refine_grid || get(latest_audit,:numerically_converged,false)
+            if !refine_grid || latest_audit.numerically_converged
                 parent=replay_grid===nothing ? grid : replay_grid
                 replay_grid=refined_grid(parent;factor=replay_factor,
                     existing=river_routing_grid(c;physical_grid=parent))
                 # A quadratic storage path can violate a bound between mesh
                 # vertices. Enforce its observed extremum in the next solve.
                 replay_grid=sort!(unique!(vcat(replay_grid,
-                    get(latest_audit,:constraint_times,Float64[]))))
+                    latest_audit.constraint_times)))
                 refinements+=1
                 feasibility=true
             else

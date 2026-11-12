@@ -132,37 +132,3 @@ function start_reference_integrals!(data,r,release,put)
     end
     nothing
 end
-
-
-# Global search needs finite domains. These are the integrals of the maximum
-# admissible reference flow over each control window, including its time moment.
-function bound_reference_integrals!(c,routing)
-    routing.exact && return
-    for (i,data) in enumerate(routing.primitives)
-        data===nothing && continue
-        r=c.system.rivers[i]
-        J=size(data.variables,1)
-        for t in 1:length(data.control)-1
-            left,right=data.control[t],data.control[t+1]
-            cap=opvalue(c,r.name,:capacity,left,r.capacity)
-            for series in c.operations
-                series.object==r.name && series.attribute==:capacity || continue
-                for (time,capacity) in zip(series.times,series.values)
-                    left<time<right && (cap=max(cap,capacity))
-                end
-            end
-            H=right-left
-            for l in 1:J
-                unit=zeros(J);unit[l]=1.0
-                _,maximum_flux=river_transfer_range(r,unit,0.0,cap)
-                for k in data.edges[t]:data.edges[t+1]-1
-                    elapsed=data.grid[k+1]-data.control[t]
-                    set_lower_bound(data.variables[l,1,k],0.0)
-                    set_lower_bound(data.variables[l,2,k],0.0)
-                    set_upper_bound(data.variables[l,1,k],0.0036elapsed*maximum_flux/0.3)
-                    set_upper_bound(data.variables[l,2,k],0.0036elapsed^2/(2H)*maximum_flux/0.3)
-                end
-            end
-        end
-    end
-end

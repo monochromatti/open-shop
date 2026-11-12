@@ -33,7 +33,7 @@ end
         rivers=[inlet,last(base.system.rivers)]))
     model = Model()
     release = @variable(model,[1:2,1:2],lower_bound=0.0)
-    routing = OpenSHOP._dispatch_transport_expressions(model,c,release)
+    routing = OpenSHOP.RiverTransport(model,c,release)
     for flow in (0.0,30.0,37.0,60.0)
         set_start_value.(release,[flow flow;0.0 0.0])
         for (a,b) in ((0.0,1.0),(0.2,1.0),(0.13,0.83))
@@ -75,7 +75,7 @@ end
     audit=validate(c,x)
     @test !audit["valid"]
     @test audit["residuals"]["storage_path_Pond"]≈2.75e-6 atol=1e-12
-    @test any(t->isapprox(t,0.5;atol=1e-10),audit["shortfalls"].storage_path_times)
+    @test any(t->isapprox(t,0.5;atol=1e-10),audit["storage_path_times"])
     @test !replay_audit(c,x)["valid"]
     # The same flow is safe with four extra cubic metres below the initial
     # level. Detect the excursion analytically, without adding time steps.
@@ -83,7 +83,7 @@ end
         reservoirs=[first(system.reservoirs),OpenSHOP._river_replace(pond;vmin=0.000495)]))
     y=dispatch_from_controls(safe,zeros(Int,0,1),zeros(0,1),controls)
     @test validate(safe,y)["valid"]
-    @test isempty(validate(safe,y)["shortfalls"].storage_path_times)
+    @test isempty(validate(safe,y)["storage_path_times"])
     changed=deepcopy(y)
     changed.storage[2,:].+=2e-6
     @test !validate(safe,changed)["valid"]
