@@ -30,4 +30,6 @@ end
     @test !stopped.converged
     @test_throws ArgumentError dispatch_from_controls(c,u,q,gate;deadline=time()-1)
     @test simulate(c,q,gate;commitment=u).converged
+    complete=dispatch_from_controls(c,u,q,gate)
+    @test !replay_audit(c,complete;deadline=time()-1)["valid"]
 end
