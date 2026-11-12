@@ -136,12 +136,11 @@ function propose_commitment(
         end
     end
     injections=river_injections(c,rq,gq,Q)
-    coordinate=(r,q,i,k,window)->begin
+    coordinate=(r,q,i,k,period)->begin
         flow=if reference.cohorts!==nothing
             reference.cohorts[i].release[k]
         elseif reference.river_release!==nothing
-            t=searchsortedlast(c.grid,(window[1]+window[2])/2)
-            reference.river_release[i,t]
+            reference.river_release[i,period]
         else
             initial,_=river_initial_output(r)
             something(initial,0.0)

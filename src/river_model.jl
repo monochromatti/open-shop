@@ -29,8 +29,13 @@ function transport_discretization(c,transport=nothing)
     DistributedRouting(c)
 end
 
+"""Build river equations; `coordinate` supplies a formulation's reference mixture.
+
+Its arguments are the river, release expression, river index, cohort index and
+operating interval. Transport owns that interval mapping, including narrow cells.
+"""
 function RiverTransport(m,c,release;transport=nothing,
-    injections=river_injections(c,release),coordinate=(r,q,i,k,window)->nothing,
+    injections=river_injections(c,release),coordinate=(r,q,i,k,period)->nothing,
     discretization=transport_discretization(c,transport),integral_grid=c.grid)
     exact=discretization isa CompiledTransport
     nd=exact ? discretization : nothing
@@ -72,7 +77,7 @@ function RiverTransport(m,c,release;transport=nothing,
                     push!(starts,q[k]=>injections[i,t]+incoming/(0.0036duration))
                 end
             end
-            coordinates[i]=Any[coordinate(r,q,i,k,(rd.cohort_grid[i][k],rd.cohort_grid[i][k+1]))
+            coordinates[i]=Any[coordinate(r,q,i,k,rd.source_cohorts[i] ? k : rd.control[k])
                 for (k,q) in enumerate(rates[i])]
             # Fixed mixtures are linear coefficient maps. Variable mixtures
             # use anchored integrals to keep fine observation rows short.

@@ -454,7 +454,7 @@ function _build_global_dispatch(
     reserves=_global_reserve_points!(m,c,u,H,P,GQ,node_bounds,plant_heads)
     constrain_dispatch_operations!(m,c,u,P,GQ,RQ; margin=operational_margin, transitions)
     injections=river_injections(c,RQ,GQ,Q)
-    coordinate=(r,q,i,k,window)->river_reference_coordinate!(m,r,q;name=Symbol("routing_",i,"_",k))
+    coordinate=(r,q,i,k,period)->river_reference_coordinate!(m,r,q;name=Symbol("routing_",i,"_",k))
     routing=RiverTransport(m,c,RQ;injections,coordinate,discretization)
     bound_transport!(c,routing)
     arrivals,terminal=routing.arrivals,routing.terminal

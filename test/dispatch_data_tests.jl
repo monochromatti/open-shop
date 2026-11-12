@@ -48,6 +48,35 @@
     @test isempty(empty_routing.terminal)
 end
 
+@testset "Fixed travel references retain narrow operating intervals" begin
+    duration=2.0^-12
+    for origin in (0.0,nextfloat(2.0^40))
+        grid=[origin,origin+duration,origin+1.0]
+        river=River(name=:Reach,source=:Lake,target=:Sea,law=:controlled,
+            capacity=10.0,water_value=0.0,
+            curves=[RiverRouting.DelayCurve(0.0,[0.0,1.0],[1.0]),
+                RiverRouting.DelayCurve(10.0,[1.0,2.0],[1.0])],
+            history_grid=[origin-3.0,origin],history_release=[0.0])
+        system=HydroSystem(reservoirs=[Reservoir(name=:Lake,v0=1.0,vmin=0.0,
+            vmax=2.0,water_value=0.0)],rivers=[river],
+            boundaries=[Boundary(name=:Sea,head=0.0)])
+        c=ScheduleCase(;name="narrow operating interval",system,grid,prices=zeros(2))
+        model=Model()
+        @variable(model,0.0<=q[1:1,1:2]<=10.0)
+        flows=[1.0 10.0]
+        set_start_value.(q,flows)
+        coordinate=(r,q,i,k,period)->OpenSHOP._proposal_delay_coordinate(r,flows[i,period])
+        routing=OpenSHOP.RiverTransport(model,c,q;coordinate)
+        arrival=sum(value.(start_value,routing.arrivals))
+        # The first release uses 90% uniform [0,1] and 10% uniform [1,2].
+        # The second release cannot arrive within the one-hour horizon.
+        expected=0.9*0.0036*duration*(1-duration/2)
+        @test arrival≈expected atol=1e-12
+        @test arrival+only(value.(start_value,routing.terminal))≈
+            0.0036sum(flows.*permutedims(diff(grid))) atol=1e-12
+    end
+end
+
 @testset "Local dispatch retains time-varying outlet bounds" begin
     base=warm_dispatch_fixture()
     operations=vcat(base.operations, [
