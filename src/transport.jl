@@ -1,5 +1,5 @@
-# Exact deterministic-delay routing retains rectangular release cohorts through
-# every confluence. Labels identify source decision variables; label (0,0) is
+# Exact deterministic-delay routing retains constant-rate releases through
+# every river junction. Labels identify source decision variables; label (0,0) is
 # historical water. No intermediate scheduling-bin averaging is performed.
 struct _TransportPulse
     start::Float64
@@ -217,8 +217,8 @@ end
 Each `arrival_terms[d,t]` / `release_terms[d,t]` is a vector of
 `(source_river, original_period, coefficient)` triples. Its dot product with
 local injections in m³/s plus the corresponding `*_history[d,t]` gives volume in
-Mm³. Confluence release rows also include upstream arrivals. Terminal terms
-have the same units. Historical cohorts independently declared on each reach
+Mm³. River junction release rows also include upstream arrivals. Terminal terms
+have the same units. Historical releases independently declared on each reach
 represent water already entering that reach before horizon start; upstream
 historical arrivals propagate downstream only after the horizon starts. This
 clipping avoids counting pre-horizon water twice.
@@ -250,7 +250,7 @@ function deterministic_network_data(c::ScheduleCase; arrival_grid = c.grid)
         delay=r.deterministic_delay
         isfinite(delay) && delay>=0 || throw(ArgumentError("invalid deterministic delay"))
         # Local injections retain their original decision windows. At a
-        # confluence the incoming pulses are additional, never rebinned.
+        # river junction the incoming pulses are additional, never rebinned.
         local_sources[d] && append!(releases[d],[_TransportPulse(c.grid[k],c.grid[k+1],1.0,d,k)
             for k in 1:(length(c.grid)-1)])
         if !(r.source in reservoirs)
@@ -355,7 +355,7 @@ function deterministic_knots(data::CompiledTransport, d; kind = :arrival)
 end
 _transport_value(x, q) = x.history+sum(v*q[d, k] for (d, k, v) in x.terms; init = 0.0)
 
-"""Evaluate exact deterministic network routing, including restart cohorts."""
+"""Evaluate exact deterministic network routing, including restart releases."""
 function route_network_exact(
     c::ScheduleCase,
     source_release::AbstractMatrix;
@@ -376,7 +376,7 @@ function route_network_exact(
     A=zeros(D, T)
     R=zeros(D, T)
     W=zeros(D, T+1)
-    cohorts=Any[]
+    release_series=Any[]
     W[:, 1].=data.initial_transit
     for t in 1:T, d in 1:D
         A[d, t]=data.arrival_history[d, t]+sum(
@@ -403,14 +403,14 @@ function route_network_exact(
                 "instantaneous release exceeds capacity of $(c.system.rivers[d].name)",
             ),
         )
-        push!(cohorts, (grid = knots, release = q))
+        push!(release_series, (grid = knots, release = q))
     end
     Dict{String,Any}(
         "release"=>R,
         "arrival_volume"=>A,
         "transit"=>W,
         "order"=>data.order,
-        "release_cohorts"=>cohorts,
+        "release_series"=>release_series,
         "exact"=>true,
         "converged"=>true,
         "transport_grid"=>Float64.(grid),
@@ -423,8 +423,8 @@ function _transport_evaluate_previous(c, previous, newgrid)
     A=zeros(length(c.system.rivers), length(newgrid)-1)
     W=zeros(length(c.system.rivers), length(newgrid))
     for (d, r) in enumerate(c.system.rivers)
-        cohort=previous["release_cohorts"][d]
-        oldgrid,q=cohort.grid,cohort.release
+        series=previous["release_series"][d]
+        oldgrid,q=series.grid,series.release
         A[d, :]=route_volumes(r, newgrid, oldgrid, q)+route_volumes(
             r,
             newgrid,
@@ -437,10 +437,10 @@ function _transport_evaluate_previous(c, previous, newgrid)
     A, W
 end
 
-"""Converged transport audit on a grid independent of scheduling decisions.
+"""Converged transport validation on a grid independent of scheduling decisions.
 
 All deterministic networks are evaluated exactly. General flow-dependent
-networks refine junction mixing, retaining original reservoir release cohorts.
+networks refine junction mixing, retaining original reservoir interval releases.
 The estimate compares cumulative arrivals and physical transit on successive
 grids; it is a numerical convergence check, not a rigorous continuum bound.
 `converged=false` is explicit when the refinement limit is exhausted.
@@ -523,12 +523,12 @@ function route_network_controlled(
         "estimated_transit_error_Mm3"=>transiterror,
         "termination"=>converged ? "tolerance" :
                        rounds==max_refinements ? "refinement_limit" : "interval_limit",
-        "release_cohorts"=>previous["release_cohorts"],
+        "release_series"=>previous["release_series"],
     )
 end
 
 """Compare a stored schedule with independently controlled network transport."""
-function transport_audit(
+function validate_transport(
     c::ScheduleCase,
     x;
     absolute_tolerance = 1e-5,
@@ -558,7 +558,7 @@ function transport_audit(
     )
     terminal=maximum(abs, routed["transit"][:, end]-x.terminal_transit; init = 0.0)
     injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
-    residuals=river_arrival_residuals(c,(;cohorts=routed["release_cohorts"],injections))
+    residuals=river_arrival_residuals(c,(;release_series=routed["release_series"],injections))
     violations=Dict(k=>v for (k,v) in river_arrival_report(c,residuals) if !isfinite(v) || v>tolerance)
     operating_valid=isempty(violations)
     Dict(

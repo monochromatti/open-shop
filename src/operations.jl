@@ -212,7 +212,7 @@ function validate_operations(c)
             throw(ArgumentError("uncontrolled weir gate must be one"))
         r.law==:junction &&
             opinterval(c, r.name, :gate_min, t, r.gate_min)>0 &&
-            throw(ArgumentError("inferred confluence has no gate"))
+            throw(ArgumentError("inferred river junction has no gate"))
         opinterval(c,r.name,:inflow,t,r.inflow)<=opinterval(c,r.name,:capacity,t,r.capacity) ||
             throw(ArgumentError("river inflow exceeds capacity of $(r.name)"))
         opinterval(c, r.name, :capacity, t, r.capacity)<=r.capacity+1e-12 || throw(

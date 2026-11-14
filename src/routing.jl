@@ -124,9 +124,9 @@ function integral_survival(c::DelayCurve, lo, hi)
     total
 end
 
-# Exact fraction of one uniform release cohort arriving within [a,b]. Shared by
+# Exact fraction of one uniform interval release arriving within [a,b]. Shared by
 # the optimizer's coefficient tensor and streaming numerical replay.
-function cohort_transfer_fraction(c::DelayCurve, a, b, s, e)
+function release_transfer_fraction(c::DelayCurve, a, b, s, e)
     (b<=s+first(c.edges) || a>=e+last(c.edges)) && return 0.0
     # Release time and each delay bin are uniform. Their sum has a trapezoidal
     # density: a rising ramp, a plateau and a falling ramp. Integrate those
@@ -154,7 +154,7 @@ end
 """Exact transfer fractions [arrival interval, release interval, reference curve].
 
 Releases are constant within each release interval. Arrival/release time grids
-need not coincide, and may include negative times for historical cohorts.
+need not coincide, and may include negative times for historical releases.
 """
 function coefficients(arrival_grid, release_grid, curves)
     check_grid(arrival_grid)
@@ -167,12 +167,12 @@ function coefficients(arrival_grid, release_grid, curves)
 
         a, b = arrival_grid[t], arrival_grid[t + 1]
         s, e = release_grid[k], release_grid[k + 1]
-        B[t,k,l]=cohort_transfer_fraction(curves[l],a,b,s,e)
+        B[t,k,l]=release_transfer_fraction(curves[l],a,b,s,e)
     end
     B
 end
 
-"""Exact uniform-cohort fractions for a deterministic nonnegative delay."""
+"""Exact constant-release fractions for a deterministic nonnegative delay."""
 function fixed_coefficients(arrival_grid, release_grid, delay::Real)
     check_grid(arrival_grid)
     check_grid(release_grid)
@@ -195,12 +195,12 @@ function check_releases(release_grid, releases)
         throw(ArgumentError("one finite nonnegative mean release is required per interval"))
 end
 
-"""Mix delay distributions using this cohort's total release flow `q`.
+"""Mix delay distributions using this release's total release flow `q`.
 
 Multiple curves interpolate their probability distributions linearly between
 neighboring reference flows, including the supplied endpoints. Out-of-range
 flows are rejected; one curve is flow-independent for every nonnegative flow.
-Historical cohorts use their own original release flow, never the current or
+Historical releases use their own original release flow, never the current or
 previous interval's flow. Newton and optimizer trial continuations are separate
 numerical operations and do not enlarge this routing domain.
 """
@@ -273,12 +273,12 @@ function transfer_range(curves, values, qlo, qhi)
     lower,upper
 end
 
-"""Route original release cohorts; returns arrival volumes in Mm³.
+"""Route original interval releases; returns arrival volumes in Mm³.
 
 Flow-dependent distributions are selected at release time. The entire original
-cohort must be retained for restart on a finer grid: arrival bucket averages
+release must be retained for restart on a finer grid: arrival bucket averages
 generally cannot reconstruct its within-bucket arrival shape. Numerical replay
-streams only arrival intervals overlapping each cohort's delay support.
+streams only arrival intervals overlapping each release's delay support.
 """
 function route(arrival_grid, release_grid, releases, curves)
     check_releases(release_grid, releases)
@@ -294,7 +294,7 @@ function route(arrival_grid, release_grid, releases, curves)
         lo=max(1,searchsortedlast(arrival_grid,s+first(c.edges)))
         hi=min(length(volumes),searchsortedfirst(arrival_grid,e+last(c.edges))-1)
         for t in lo:hi
-            volumes[t]+=scale*cohort_transfer_fraction(c,arrival_grid[t],
+            volumes[t]+=scale*release_transfer_fraction(c,arrival_grid[t],
                 arrival_grid[t+1],s,e)
         end
     end
@@ -303,7 +303,7 @@ end
 
 """Already released but not yet arrived volume (Mm³) at `time`.
 
-Future, unreleased parts of cohorts are excluded. This is physical water in
+Future, unreleased parts of releases are excluded. This is physical water in
 transit, rather than the total amount scheduled to arrive after `time`.
 """
 function remaining_volume(time::Real, release_grid, releases, curves)
@@ -324,9 +324,9 @@ function remaining_volume(time::Real, release_grid, releases, curves)
     volume
 end
 
-"""Water in transit at ordered observation times, evaluated from release cohorts.
+"""Water in transit at ordered observation times, evaluated from interval releases.
 
-Each cohort contributes only from its release until its last possible arrival.
+Each release contributes only from its release until its last possible arrival.
 This integrates the survival distribution directly, independently of arrival
 volumes and without accumulating a time-stepping conservation residual.
 """

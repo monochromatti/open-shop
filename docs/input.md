@@ -57,7 +57,7 @@ River `law` is `controlled`, `orifice`, `weir`, `junction` or `delta`. The delta
 
 Reservoir, hydraulic-junction and boundary names identify physical endpoints. Tunnel networks and instantaneous delta-level channels may contain loops. Delayed river networks must be acyclic. A zero-storage river node can have several incoming and outgoing reaches; prescribed allocation fractions determine how it distributes the arrivals. Each node needs a water supply and at least one outgoing reach. Hydraulic junctions and river nodes have different roles.
 
-A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred confluence. A shared source/target label distinct from every object name also declares an internal river node; no `RiverJunction` object is required. OpenSHOP restores direct river links and node labels on serialization. Names beginning with `__river_merge__` or `__river_node__` are reserved. An explicit source on a receiving direct-link river is rejected.
+A river can name another river as its `target`. The receiving river uses `law="junction"` and omits `source` or sets it to `"auto"`. All rivers targeting that receiving river share an inferred river junction. A shared source/target label distinct from every object name also declares an internal river node; no `RiverJunction` object is required. OpenSHOP restores direct river links and node labels on serialization. Names beginning with `__river_merge__` or `__river_node__` are reserved. An explicit source on a receiving direct-link river is rejected.
 
 Plants and tunnels can set `discharge_river` to a receiving reach while retaining
 `target` as their hydraulic head reference. Routed tunnel outfalls are forward
@@ -90,7 +90,7 @@ Turbine and electrical efficiencies are separate.
 
 Each distributed delay curve contains `reference_flow`, `edges`, and `weights`. Edges are finite increasing nonnegative delays; weights are nonnegative bin probabilities summing to one. One distributed curve is independent of flow. Multiple curves have strictly increasing reference flows covering zero through `capacity`; their neighboring transfer distributions are blended using contemporaneous release flow. A deterministic reach instead supplies nonnegative `deterministic_delay`; `curves` may be an empty array. History edges end at the scheduling horizon's first edge and have one nonnegative release value per interval. History is physical water already in transit, not an optimization decision.
 
-Deterministic transport preserves release cohorts through confluences. A network containing distributed reaches mixes downstream flows on a separate transport mesh. The optional top-level `routing_grid` supplies its edges; they must span the horizon and include every control boundary. Otherwise distributed confluences use four transport cells per control interval. Source cohorts, reservoir states and operating windows retain `grid`. Both grids are part of the model; numerical refinement does not turn its discrete global bound into a continuous-time certificate.
+Deterministic transport preserves interval releases through river junctions. A network containing distributed reaches mixes downstream flows on a separate transport mesh. The optional top-level `routing_grid` supplies its edges; they must span the horizon and include every control boundary. Otherwise distributed river junctions use four transport cells per control interval. Source releases, reservoir states and operating windows retain `grid`. Both grids are part of the model; numerical refinement does not turn its discrete global bound into a continuous-time certificate.
 
 ## Operating series
 
@@ -127,7 +127,7 @@ account for all of this water.
 Both accept operating series. Bounds may be negative for a signed measurement.
 `inflow` is nonnegative and also accepts a series. Each contribution list must
 contain unique existing names. An observation can combine several tributaries
-without inserting a confluence or routing water again.
+without inserting a river junction or routing water again.
 
 ```julia
 FlowRequirement(name=:DownstreamGauge, river_arrivals=[:North, :South],

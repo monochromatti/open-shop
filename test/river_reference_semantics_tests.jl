@@ -10,7 +10,7 @@ function river_reference_case(;history=[2.0,8.0])
             boundaries=[Boundary(name=:Sea,head=0.0)]))
 end
 
-@testset "Each release and historical cohort selects its own delay distribution" begin
+@testset "Each release and historical release selects its own delay distribution" begin
     c=river_reference_case()
     q=reshape([0.0,10.0,5.0],1,:)
     x=dispatch_from_controls(c,zeros(Int,0,3),zeros(0,3),q/10.0)
@@ -32,7 +32,7 @@ end
         [4.8,5.8,6.25] atol=1e-12
 
     # Swapping the first two releases changes arrivals, although total release
-    # and the last cohort are unchanged. This is not a previous-interval lookup.
+    # and the last release are unchanged. This is not a previous-interval lookup.
     swapped=route_network(c,reshape([10.0,0.0,5.0],1,:))
     @test vec(swapped["arrival_volume"])≈0.0036 .* [9.8,5.8,1.25] atol=1e-12
     @test vec(swapped["transit"])≈0.0036 .* [5.6,5.8,0.0,3.75] atol=1e-12
@@ -44,7 +44,7 @@ end
     fine=dispatch_from_controls(refined,zeros(Int,0,6),zeros(0,6),
         reshape([0.0,0.0,1.0,1.0,0.5,0.5],1,:))
     @test vec(sum(reshape(vec(fine.arrival_volume),2,:);dims=1))≈arrivals atol=1e-12
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     continued=restart_case(c,x,1.0)
     rest=dispatch_from_controls(continued,zeros(Int,0,2),zeros(0,2),reshape([1.0,0.5],1,:))
     @test validate(continued,rest)["valid"]

@@ -137,8 +137,8 @@ function propose_commitment(
     end
     injections=river_injections(c,rq,gq,Q)
     coordinate=(r,q,i,k,period)->begin
-        flow=if reference.cohorts!==nothing
-            reference.cohorts[i].release[k]
+        flow=if reference.release_series!==nothing
+            reference.release_series[i].release[k]
         elseif reference.river_release!==nothing
             reference.river_release[i,period]
         else

@@ -25,7 +25,7 @@ soft_copy(x;kwargs...)=typeof(x)(;merge((;(k=>getfield(x,k) for k in fieldnames(
     @test x.soft_penalty_cost≈penalty atol=1e-9
     @test x.objective≈40.0*power-penalty atol=1e-8
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     for result in (solve_case(c;u=ones(Int,1,1),warm=x,time_limit=30.0),
         solve(c;initial=x,time_limit=60.0,relative_gap=1e-4))
         @test result.accepted
@@ -48,7 +48,7 @@ end
     @test x.objective≈revenue-18.0 atol=1e-9
     @test validate(c,x)["valid"]
     @test !isempty(validate(c,x)["permitted_penalties"])
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     local_result=solve_case(c;u,warm=x,time_limit=60.0)
     @test local_result.accepted
     if local_result.solution!==nothing
@@ -68,7 +68,7 @@ end
         if result.solution!==nothing
             @test result.solution.generator_q[1,1]≈expected_q atol=1e-4
             @test result.solution.soft_penalty_cost≈expected_cost atol=1e-3
-            @test replay_audit(case,result.solution)["valid"]
+            @test validate_replay(case,result.solution)["valid"]
         end
     end
     too_small=soft_limit_case(allowance=0.01)
@@ -165,7 +165,7 @@ end
     @test x.soft_slacks[1].lower≈0.036 atol=1e-10
     @test x.soft_penalty_cost≈36.0 atol=1e-8
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     local_result=solve_case(c;u=ones(Int,1,1),warm=x,time_limit=45.0)
     @test local_result.accepted
     result=solve(c;initial=x,time_limit=60.0,relative_gap=1e-4)
@@ -183,7 +183,7 @@ end
     c=soft_copy(base;grid=[0.0,1.0,2.0],prices=[40.0,40.0],soft_constraints=[point,endpoint])
     x=dispatch_from_controls(c,ones(Int,1,2),fill(5.0,1,2),zeros(0,2))
     @test x.soft_penalty_cost≈40.0 atol=1e-9
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     fine=with_grid(c,collect(0.0:0.25:2.0))
     xf=dispatch_from_controls(fine,ones(Int,1,8),fill(5.0,1,8),zeros(0,8))
     @test xf.soft_penalty_cost≈x.soft_penalty_cost atol=1e-8
@@ -202,7 +202,7 @@ end
     rates=reshape([1.0,5.0],1,:)
     balanced=dispatch_from_controls(window,ones(Int,1,2),rates,zeros(0,2))
     @test balanced.soft_penalty_cost≈0.0 atol=1e-10
-    @test replay_audit(window,balanced)["valid"]
+    @test validate_replay(window,balanced)["valid"]
     @test_throws ArgumentError restart_case(window,balanced,1.0)
     first_window=soft_copy(flow;name=:FirstWindow,end_time=1.0)
     second_window=soft_copy(flow;name=:SecondWindow,time=1.0)
@@ -254,7 +254,7 @@ end
     fine=with_grid(c,[0.0,0.25,0.5,1.0,1.5,2.0])
     xf=dispatch_from_controls(fine,ones(Int,2,5),rates[:,[1,1,2,2,2]],zeros(0,5))
     @test xf.soft_penalty_cost≈x.soft_penalty_cost atol=1e-8
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 end
 
 @testset "Malformed or unsupported soft restrictions are rejected" begin

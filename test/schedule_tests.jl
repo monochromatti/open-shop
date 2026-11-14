@@ -25,14 +25,14 @@ end
 @testset "Preparation improves an accepted schedule and preserves its feasibility" begin
     c=warm_dispatch_fixture(;rivers=false)
     off=dispatch_from_controls(c,zeros(Int,2,2),zeros(2,2),zeros(0,2))
-    @test replay_audit(c,off)["valid"]
+    @test validate_replay(c,off)["valid"]
     prepared=schedule_case(c;initial=off,time_limit=15.0,proposal_time_limit=2.0,
         nlp_time_limit=5.0,max_refinements=0,refine_grid=false)
     @test prepared["accepted"]
     if prepared["accepted"]
         @test prepared["solution"]["objective"]>off.objective+1.0
         @test validate(c,prepared["solution"])["valid"]
-        @test replay_audit(c,prepared["solution"])["valid"]
+        @test validate_replay(c,prepared["solution"])["valid"]
     end
     damaged=OpenSHOP.schedule_dict(off)
     damaged["power"][1]=1.0
@@ -47,11 +47,11 @@ end
     @test expired["solution"]===nothing
     @test expired["case"].grid==c.grid
 
-    # Auditing a supplied schedule remains necessary even when no optimization
+    # Validating a supplied schedule remains necessary even when no optimization
     # time remains. A deadline must never turn stale acceptance into evidence.
     x=dispatch_from_controls(c,u,zeros(2,2),ones(1,2))
-    audited=solve_verified(c;u,initial=x,deadline=time()-1,max_refinements=0)
-    @test audited["accepted"]
+    validated=solve_verified(c;u,initial=x,deadline=time()-1,max_refinements=0)
+    @test validated["accepted"]
     damaged=OpenSHOP.schedule_dict(x)
     damaged["power"][1]=1.0
     rejected=solve_verified(c;u,initial=damaged,deadline=time()-1,max_refinements=0)
@@ -81,7 +81,7 @@ end
     if prepared["accepted"]
         y=prepared["solution"]
         @test validate(updated,y)["valid"]
-        @test replay_audit(updated,y)["valid"]
+        @test validate_replay(updated,y)["valid"]
         @test objective_components(updated,y).total≈y.objective
         @test all(iszero,y.commitment[1,:])
     end
@@ -104,7 +104,7 @@ end
     @test verified["accepted"]
     @test verified["case"].grid==c.grid
     @test verified["solution"]["u"]==u
-    @test replay_audit(c,verified["solution"])["valid"]
+    @test validate_replay(c,verified["solution"])["valid"]
 end
 
 @testset "Finer replay measures the power shortfall in physical units" begin
@@ -126,17 +126,17 @@ end
     c=ScheduleCase(name="known replay shortfall",system=system,grid=[0.0,1.0],prices=[50.0])
     x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
     @test validate(c,x)["valid"]
-    check=replay_audit(c,x)
+    check=validate_replay(c,x)
     @test !check["valid"]
     @test check["shortfalls"].power≈gain*rise/4 atol=1e-10
     @test check["shortfalls"].arrival==0.0
-    @test !replay_audit(c,x;grid=[0.0,0.5,1.5])["valid"]
-    @test_throws MethodError replay_audit(c,x;grid=Any[0.0,"midpoint",1.0])
+    @test !validate_replay(c,x;grid=[0.0,0.5,1.5])["valid"]
+    @test_throws MethodError validate_replay(c,x;grid=Any[0.0,"midpoint",1.0])
     verified=solve_verified(c;u=x.commitment,warm=x,time_limit=10.0,
         max_refinements=1,refine_grid=false)
     @test verified["accepted"]
     @test verified["case"].grid==c.grid
-    @test replay_audit(c,verified["solution"])["valid"]
+    @test validate_replay(c,verified["solution"])["valid"]
 end
 
 @testset "Local reconstruction corrects controls and recomputes physical values" begin
@@ -152,13 +152,13 @@ end
     raw["validation"]=validate(c, raw)
     @test !raw["validation"]["valid"]
     original=deepcopy(raw)
-    rebuilt, correction=OpenSHOP._reconstruct_candidate(c, raw)
+    rebuilt, correction=OpenSHOP._reconstruct_schedule(c, raw)
     @test raw==original
     @test correction.flow==1e-7
     @test correction.gate>0
     @test rebuilt["validation"]["valid"]
     report=Dict{String,Any}("status"=>raw["status"])
-    raw=OpenSHOP._repair_dispatch!(c, OpenSHOP._schedule_input(raw;case=c), report)
+    raw=OpenSHOP._reconstruct_dispatch!(c, OpenSHOP._schedule_input(raw;case=c), report)
     @test report["forward_reconstructed"]
     @test report["status"]=="TIME_LIMIT"
     @test report["raw_solver_validation"]==original["validation"]
@@ -168,14 +168,14 @@ end
     @test raw["power"]==zeros(2, 2)
     @test raw["V"]≈physical["V"] atol=1e-10
     @test raw["objective"]≈physical["objective"] atol=1e-8
-    @test replay_audit(c, raw)["valid"]
+    @test validate_replay(c, raw)["valid"]
     for (key, value) in (("generator_q", 1e-3), ("generator_q", -1e-3),
             ("gate", 1.0001), ("gate", NaN))
         invalid=deepcopy(original)
         invalid[key][1]=value
-        @test_throws ArgumentError OpenSHOP._reconstruct_candidate(c, invalid)
+        @test_throws ArgumentError OpenSHOP._reconstruct_schedule(c, invalid)
         report=Dict{String,Any}()
-        invalid=OpenSHOP._repair_dispatch!(c, OpenSHOP._schedule_input(invalid;case=c), report)
+        invalid=OpenSHOP._reconstruct_dispatch!(c, OpenSHOP._schedule_input(invalid;case=c), report)
         @test !get(report, "forward_reconstructed", false)
         @test haskey(report, "forward_reconstruction_error")
         @test invalid["objective"]==original["objective"]
@@ -227,15 +227,15 @@ end
     x=dispatch_from_controls(c, zeros(Int, 2, 2), zeros(2, 2), zeros(1, 2))
     @test !x["validation"]["valid"]
     report=Dict{String,Any}()
-    repaired=OpenSHOP._repair_dispatch!(c, x, report)
+    repaired=OpenSHOP._reconstruct_dispatch!(c, x, report)
     @test repaired.generator_q==x.generator_q
     @test repaired.objective==x.objective
     @test !get(report, "forward_reconstructed", false)
-    @test !report["forward_reconstruction_audit"]["valid"]
+    @test !report["forward_reconstruction_validation"]["valid"]
     @test x["gate"]==zeros(1, 2)
 end
 
-@testset "Verified dispatch uses a fresh original audit" begin
+@testset "Verified dispatch uses a fresh original validation" begin
     c=warm_dispatch_fixture()
     u=zeros(Int, 2, 2)
     physical=dispatch_from_controls(c, u, zeros(2, 2), ones(1, 2))
@@ -248,7 +248,7 @@ end
         @test !result["accepted"]
         @test !result["attempts"][1]["model_valid"]
         @test !isempty(result["attempts"][1]["model_errors"])
-        @test !haskey(result["audit"], "replay_grid")
+        @test !haskey(result["replay_validation"], "replay_grid")
     end
     for key in ("power", "gate")
         bad=OpenSHOP.schedule_dict(physical)
@@ -263,9 +263,9 @@ end
     valid["raw_solver_validation"]=Dict("valid"=>false)
     result=solve_verified(c; u, initial=valid, max_refinements=0)
     @test result["accepted"]
-    @test result["audit"]["original_audit"]["valid"]
+    @test result["replay_validation"]["original_validation"]["valid"]
     @test isempty(result["attempts"][1]["model_errors"])
-    @test haskey(result["audit"], "replay_grid")
+    @test haskey(result["replay_validation"], "replay_grid")
     wrong_grid=OpenSHOP.schedule_dict(physical)
     wrong_grid["grid"]=[0.0, 0.5, 2.0]
     @test_throws ArgumentError solve_verified(c; u, initial=wrong_grid, max_refinements=0)
@@ -278,7 +278,7 @@ end
     @test prepared["accepted"]
     if prepared["accepted"]
         @test validate(c,prepared["solution"])["valid"]
-        @test replay_audit(c,prepared["solution"])["valid"]
+        @test validate_replay(c,prepared["solution"])["valid"]
         @test prepared.problem.grid==c.grid
         @test prepared["solution"]["objective"]>0.0
     end
@@ -315,7 +315,7 @@ end
         system=OpenSHOP._river_replace(base.system;tunnels=[tunnel],rivers=[river]))
     x=dispatch_from_controls(c,ones(Int,2,2),fill(2.0,2,2),fill(0.5,1,2);
         tunnel_opening=ones(1,2))
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     p=OpenSHOP.propose_commitment(c;reference=x,incumbent=x,time_limit=5.0)
     @test haskey(p,"u")
     if haskey(p,"u")
@@ -327,7 +327,7 @@ end
     @test result["accepted"]
     @test result["solution"].objective>=x.objective
     @test validate(c,result["solution"])["valid"]
-    @test replay_audit(c,result["solution"])["valid"]
+    @test validate_replay(c,result["solution"])["valid"]
 end
 
 function fixed_power_replay_case()
@@ -349,13 +349,13 @@ end
 @testset "Finer equations recover fixed power without contradictory margins" begin
     c=fixed_power_replay_case()
     u=ones(Int,1,1)
-    witness=dispatch_from_controls(c,u,fill(2.0,1,1),fill(78/80,1,1))
-    @test replay_audit(c,witness)["valid"]
+    reference_schedule=dispatch_from_controls(c,u,fill(2.0,1,1),fill(78/80,1,1))
+    @test validate_replay(c,reference_schedule)["valid"]
     b=100+0.0018*80
     q=400/(b+sqrt(b^2-4*0.0018*200))
     coarse=dispatch_from_controls(c,u,fill(q,1,1),zeros(1,1))
     @test validate(c,coarse)["valid"]
-    @test !replay_audit(c,coarse)["valid"]
+    @test !validate_replay(c,coarse)["valid"]
     for refine_grid in (false,true)
         result=solve_verified(c;u,initial=coarse,max_refinements=1,refine_grid,time_limit=15.0)
         @test result["accepted"]
@@ -363,11 +363,11 @@ end
         @test all(t in result["solution"].grid for t in c.grid)
         @test all(isapprox.(result["solution"].generator_q,2.0;atol=1e-5))
         @test all(isapprox.(result["solution"].gate,78/80;atol=1e-4))
-        @test replay_audit(c,result["solution"])["valid"]
+        @test validate_replay(c,result["solution"])["valid"]
         # A nonzero explicitly requested inset also preserves a fixed value.
-        inset=solve_case(c;u,warm=witness,operational_margin=0.1,time_limit=10.0)
+        inset=solve_case(c;u,warm=reference_schedule,operational_margin=0.1,time_limit=10.0)
         @test inset.accepted
-        @test inset.solution.power≈witness.power atol=1e-5
+        @test inset.solution.power≈reference_schedule.power atol=1e-5
     end
 end
 
@@ -384,7 +384,7 @@ end
     c=ScheduleCase(name="discharge error only",system=system,grid=[0.0,1.0],prices=[0.0])
     x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
     @test validate(c,x)["valid"]
-    check=replay_audit(c,x)
+    check=validate_replay(c,x)
     @test !check["valid"]
     @test check["shortfalls"].power==0.0
     @test check["shortfalls"].discharge≈0.0021553422261328947 atol=1e-9
@@ -420,7 +420,7 @@ end
         @test all(iszero,x.commitment[1,:])
         @test x.objective>0.5
         @test validate(c,x)["valid"]
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
     end
     forced=OpenSHOP._river_replace(c;operations=[OperationalSeries(
         object=:HighHead,attribute=:forced_on,times=[0.0],values=[1.0])])

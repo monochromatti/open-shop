@@ -29,7 +29,7 @@ end
     @test x.power≈expected_power atol=1e-9
     @test only(x.terminal_transit)≈0.0072 atol=1e-12
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     parts=objective_components(c,x)
     @test parts.energy_revenue≈100.0*sum(expected_power) atol=1e-8
     @test parts.reservoir_value≈14845.8*(-0.0288)+6016.8*0.0108 atol=1e-8
@@ -54,7 +54,7 @@ end
         if result.solution!==nothing
             @test result.solution.objective≈parts.total atol=2e-3
             @test objective_components(c,result.solution).total≈result.solution.objective atol=1e-5
-            @test replay_audit(c,result.solution)["valid"]
+            @test validate_replay(c,result.solution)["valid"]
         end
     end
 end
@@ -70,7 +70,7 @@ end
     @test objective_components(continued,rest).total≈rest.objective atol=1e-8
     @test objective_components(prefix,past).total≈past.objective atol=1e-8
     @test rest.storage≈x.storage[:,2:end] atol=1e-10
-    @test replay_audit(continued,rest)["valid"]
+    @test validate_replay(continued,rest)["valid"]
 
     # Converting every monetary input by the same fixed rate preserves controls
     # and scales the complete objective; no exchange rate is inferred internally.
@@ -133,7 +133,7 @@ end
         reserves=ReserveAllocation(;up,down,generator_q=q))
     parts=objective_components(c,x)
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test parts.energy_revenue≈100.0*(sum(x.power[1:2,:])-sum(x.power[3,:])) atol=1e-9
     @test parts.reserve_revenue≈25.0 atol=1e-10
     @test parts.reserve_penalty≈2.0 atol=1e-10

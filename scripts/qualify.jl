@@ -122,7 +122,7 @@ function run(request,directory)
                 row["global_certificate"]=result.global_certificate
                 row["search"]=Dict(key=>get(result.diagnostics,key,nothing) for key in
                     ("preparation_seconds","prepared_objective","construction_seconds",
-                     "solve_seconds","incumbent_source","scip_diagnostics"))
+                     "solve_seconds","incumbent_source","solver_statistics"))
             end
             attempts=global_search ? Dict() : result
             row["attempts"]=[Dict(k=>v for (k,v) in a if k ∉ ("u","tunnel_opening"))
@@ -135,17 +135,17 @@ function run(request,directory)
                 end
             end
             if result["accepted"]
-                candidate=result["solution"]
-                row["objective"]=candidate.objective
+                trial_solution=result["solution"]
+                row["objective"]=trial_solution.objective
                 actual=result["problem"]
-                checking=@timed FuzzWorker.check_schedule!(report,actual,candidate,label,4)
+                checking=@timed FuzzWorker.check_schedule!(report,actual,trial_solution,label,4)
                 checks=checking.value
                 row["campaign_check_seconds"]=checking.time
                 row["checks"]=checks
-                row["qualified"]=checks["audit"]["valid"] && checks["replay"]["valid"] &&
+                row["qualified"]=checks["validation"]["valid"] && checks["replay"]["valid"] &&
                     checks["water_error_Mm3"]<=1e-6 &&
                     !any(f->f["stage"]==label && f["severity"]=="error",report["findings"])
-                row["qualified"] && (x=(;problem=actual,solution=candidate,objective=candidate.objective))
+                row["qualified"] && (x=(;problem=actual,solution=trial_solution,objective=trial_solution.objective))
             end
         catch error
             row["exception"]=sprint(showerror,error,catch_backtrace())
@@ -166,22 +166,22 @@ function run(request,directory)
         writejson(joinpath(directory,"input.json"),data.u===nothing ? case_dict(c) :
             FuzzWorker.input_dict(merge(data,(;case=c))))
         report["features"]=FuzzWorker.topology_features(c)
-        witness=nothing
+        reference_schedule=nothing
         if data.u!==nothing
             progress("reference_controls")
-            witness=FuzzWorker.reconstruct(merge(data,(;case=c)))
-            validate(c,witness)["valid"] || error("generated reference violates original equations or restrictions")
+            reference_schedule=FuzzWorker.reconstruct(merge(data,(;case=c)))
+            validate(c,reference_schedule)["valid"] || error("generated reference violates original equations or restrictions")
             if get(request,"restricted",false)
-                c=FuzzWorker.FuzzCases.restrict_case(parse(Int,request["seed"]),c,witness)
+                c=FuzzWorker.FuzzCases.restrict_case(parse(Int,request["seed"]),c,reference_schedule)
                 writejson(joinpath(directory,"input.json"),FuzzWorker.input_dict(merge(data,(;case=c))))
-                witness=FuzzWorker.reconstruct(merge(data,(;case=c)))
+                reference_schedule=FuzzWorker.reconstruct(merge(data,(;case=c)))
             end
-            checks=FuzzWorker.check_schedule!(report,c,witness,"reference_controls",4)
+            checks=FuzzWorker.check_schedule!(report,c,reference_schedule,"reference_controls",4)
             report["reference_controls"]=checks
-            checks["audit"]["valid"] && checks["replay"]["valid"] &&
+            checks["validation"]["valid"] && checks["replay"]["valid"] &&
                 checks["water_error_Mm3"]<=1e-6 &&
                 !any(f->f["stage"]=="reference_controls" && f["severity"]=="error",report["findings"]) ||
-                (witness=nothing)
+                (reference_schedule=nothing)
         end
         # Compile both public paths separately from the measured case. Remaining
         # specialization is reported per call, rather than assumed to be zero.
@@ -196,7 +196,7 @@ function run(request,directory)
         report["features"]=FuzzWorker.topology_features(c)
         checkpoint()
         rows=Any[]
-        best=witness===nothing ? nothing : (;problem=c,solution=witness,objective=witness.objective)
+        best=reference_schedule===nothing ? nothing : (;problem=c,solution=reference_schedule,objective=reference_schedule.objective)
         # Reverse the budget order on alternate repetitions to expose order and
         # residual compilation effects. No result is passed to another cold run.
         for repetition in 1:repetitions, budget in (isodd(repetition) ? budgets : reverse(budgets))

@@ -1,5 +1,5 @@
 # Object-level extensions support Newton and optimizer trial points. Strict
-# public table APIs and schedule domain audits determine physical admissibility.
+# public table APIs and schedule domain checks determine physical admissibility.
 head(r::Reservoir, v; extrapolation = :linear) =
     r.level_curve===nothing ? r.z0+r.slope*v+r.curvature*v^2 :
     table_value(r.level_curve, v; extrapolation)

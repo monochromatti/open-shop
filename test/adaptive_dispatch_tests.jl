@@ -8,7 +8,7 @@
         if result["accepted"]
             x=result["solution"]
             @test validate(result["problem"],x)["valid"]
-            @test replay_audit(result["problem"],x)["valid"]
+            @test validate_replay(result["problem"],x)["valid"]
             @test x.storage[1,end]/scale ≈ 0.0002 atol=0.2e-6
             @test all(t in x.grid for t in c.grid)
             @test length(x.grid)>length(c.grid)
@@ -38,7 +38,7 @@ end
     if result["accepted"]
         @test validate(result["problem"],result["solution"])["valid"]
         @test maximum(result["solution"].gate)<=0.5+1e-6
-        @test replay_audit(result["problem"],result["solution"])["valid"]
+        @test validate_replay(result["problem"],result["solution"])["valid"]
     end
     fixed=solve_verified(c;u=zeros(Int,0,1),warm,feasibility_only=true,refine_grid=false,
         time_limit=20.0,max_refinements=4)
@@ -83,7 +83,7 @@ end
     if result["accepted"]
         @test validate(result["problem"],result["solution"])["valid"]
         @test maximum(result["solution"].power)<=0.5+1e-4
-        @test replay_audit(result["problem"],result["solution"])["valid"]
+        @test validate_replay(result["problem"],result["solution"])["valid"]
     end
 end
 
@@ -98,7 +98,7 @@ end
     if result["accepted"]
         @test result["solution"].objective>500.0
         @test validate(result["problem"],result["solution"])["valid"]
-        @test replay_audit(result["problem"],result["solution"])["valid"]
+        @test validate_replay(result["problem"],result["solution"])["valid"]
     end
 end
 
@@ -121,7 +121,7 @@ end
         mesh=OpenSHOP.TimeDiscretization(c.grid,x.grid)
         @test x.tunnel_opening==opening[:,mesh.interval]
         @test objective_components(c,x).gate_cost ≈ 3.5
-        @test replay_audit(result["problem"],x)["valid"]
+        @test validate_replay(result["problem"],x)["valid"]
     end
     # An unchecked selected position does not replace the case's prescribed
     # default when dispatch did not request that position.
@@ -152,7 +152,7 @@ end
     @test validate(c,worse)["valid"]
     @test worse.objective<warm.objective
     interrupted=(case;kwargs...)->SolveResult(Dict("status"=>"TIME_LIMIT");solution=worse)
-    retained=OpenSHOP._verified_dispatch(c,interrupted;u,warm,max_refinements=0)
+    retained=OpenSHOP._adaptive_dispatch(c,interrupted;u,warm,max_refinements=0)
     @test retained.accepted
     @test retained.solution.objective>=expected-1e-8
     @test validate(retained.case,retained.solution)["valid"]

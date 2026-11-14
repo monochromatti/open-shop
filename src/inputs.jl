@@ -118,7 +118,7 @@ function validate_inputs(c)
         x.discharge_river===nothing && continue
         reach=only(r for r in s.rivers if r.name==x.discharge_river)
         reach.law==:junction && any(j.name==reach.source for j in s.river_junctions) ||
-            throw(ArgumentError("outfall $(x.name) must feed a confluence; normalize direct river connections before constructing a case"))
+            throw(ArgumentError("outfall $(x.name) must feed a river junction; normalize direct river connections before constructing a case"))
     end
     for j in s.junctions
         j.hmin<=j.hmax || error("Junction limits")
@@ -177,7 +177,7 @@ function validate_inputs(c)
     validate_delay_curves(c.system)
     validate_curve_data(c.system)
     validate_operations(c)
-    # Graph and cohort validation do not require transfer tensors.
+    # Graph and release validation do not require transfer tensors.
     river_order(c)
     true
 end

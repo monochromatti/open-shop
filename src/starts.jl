@@ -7,12 +7,12 @@ function _sos2_residual(x,weights)
         for i in 1:(length(ordered)-1))
 end
 
-"""Complete an audited start after MOI has introduced objective-bridge variables.
+"""Complete an validated start after MOI has introduced objective-bridge variables.
 
 The slack equals the actual JuMP objective evaluated at its start, including
 constants and scaling. MOI's stock slack-start attribute requires constraint
 primal starts, which SCIP does not support. Only primal variable starts are
-needed here. Physical feasibility is established by `_lift_start!`, separately
+needed here. Physical feasibility is established by `_initialize_global_start!`, separately
 from this check of the native representation. SCIP checks the completed point
 using its own constraint handlers and relative feasibility tolerances.
 """
@@ -66,8 +66,8 @@ function _clear_scip_start!(model)
     nothing
 end
 
-"""Lift a physical incumbent into all algebraic variables and audit feasibility."""
-function _lift_start!(b, c, warm; tolerance = 1e-7)
+"""Lift a physical incumbent into all algebraic variables and check feasibility."""
+function _initialize_global_start!(b, c, warm; tolerance = 1e-7)
     assigned=Dict{VariableRef,Float64}()
     variables=all_variables(b.m)
     for v in variables
@@ -94,7 +94,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
         put(graph.y,evaluate(x))
     end
     try
-        validate(c, warm)["valid"] || error("seed fails original physical audit")
+        validate(c, warm)["valid"] || error("seed fails original physical validation")
         physical=_schedule_input(warm;case=c)
         s=c.system
         T=length(c.prices)
@@ -236,7 +236,7 @@ function _lift_start!(b, c, warm; tolerance = 1e-7)
             set isa MOI.Interval ? max(0.0, set.lower-x, x-set.upper) :
             set isa MOI.ZeroOne ? max(abs(x-round(x)), max(0.0, -x, x-1)) :
             set isa MOI.Integer ? abs(x-round(x)) :
-            error("unsupported audit set $(typeof(set))")
+            error("unsupported validation set $(typeof(set))")
         for ref in all_constraints(b.m; include_variable_in_set_constraints = true)
             obj=constraint_object(ref)
             e=if obj.set isa MOI.SOS2

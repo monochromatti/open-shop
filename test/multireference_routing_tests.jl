@@ -19,7 +19,7 @@ end
     warm=dispatch_from_controls(c,u,zeros(0,2),[0.1 0.2;0.2 0.1;0.0 0.0])
     @test validate(c,warm)["valid"]
     model=OpenSHOP._build_global_dispatch(c;u)
-    @test OpenSHOP._lift_start!(model,c,warm)["valid"]
+    @test OpenSHOP._initialize_global_start!(model,c,warm)["valid"]
     result=OpenSHOP.solve(c;initial=warm,time_limit=60.0,preparation_time_limit=0.0)
     @test result.accepted
     @test result.global_certificate
@@ -67,7 +67,7 @@ end
     end
 end
 
-@testset "Multiple-reference cohorts conserve volume and retain restart history" begin
+@testset "Multiple-reference releases conserve volume and retain restart history" begin
     curves=multireference_curves()
     grid=[-2.0,-1.7,-0.6,0.0,0.3,1.2,2.5,3.4]
     q=[0.0,4.0,8.0,12.0,20.0,35.0,50.0]

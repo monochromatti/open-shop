@@ -17,7 +17,7 @@ end
 
 """Check prescribed shares of upstream water at every zero-storage river node.
 
-Local branch injections and historical branch cohorts are already on that branch.
+Local branch injections and historical branch releases are already on that branch.
 Fractions are retained exactly as supplied, with a 1e-12 tolerance on their sum.
 """
 function validate_river_allocations(s::HydroSystem)
@@ -61,7 +61,7 @@ end
 """Local source rates for compiled transport, excluding incoming river arrivals.
 
 Reservoir outlet rows contain total reach input (including natural inflow).
-Other rows contain plant/tunnel discharges and natural inflow; confluence
+Other rows contain plant/tunnel discharges and natural inflow; river junction
 arrivals are added by the transport operator. Each stream enters exactly once.
 """
 function river_injections(c, release, generator_q=nothing, tunnel_q=nothing)
@@ -90,7 +90,7 @@ function _river_injections(s, release, generator_q, tunnel_q;indices=river_sourc
         for (d,r) in enumerate(s.rivers)]
 end
 
-# Ordinary conservation rows at zero-storage confluences. The same local source
+# Ordinary conservation rows at zero-storage river junctions. The same local source
 # matrix also drives the exact routing operator and chronological reconstruction.
 function constrain_river_sources!(m,c,release,arrivals,injections)
     for j in c.system.river_junctions

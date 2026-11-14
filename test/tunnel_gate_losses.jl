@@ -44,7 +44,7 @@ end
         @test vec(x["tunnel_q"])≈expected atol=1e-8
         @test vec(x["V"])≈storage atol=1e-10
         @test x["tunnel_q"][1,3]≈0.0 atol=1e-9
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         continued=restart_case(c,x,1.0)
         remainder=dispatch_from_controls(continued,zeros(Int,0,2),zeros(0,2),zeros(0,2))
         @test remainder["validation"]["valid"]

@@ -14,7 +14,7 @@ end
     x=dispatch_from_controls(c,ones(Int,1,2),fill(4.0,1,2),zeros(0,2))
     @test validate(c,x)["valid"]
     @test x.head[1,1]<100.0
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     continued=restart_case(c,x,1.0)
     y=dispatch_from_controls(continued,ones(Int,1,1),fill(4.0,1,1),zeros(0,1))
     @test validate(continued,y)["valid"] # Continuing below the startup threshold is allowed.
@@ -84,7 +84,7 @@ end
         reservoirs=[OpenSHOP._river_replace(r;water_value=r.name==:Upper ? 1000.0 : 0.0) for r in valid.system.reservoirs]))
     x=dispatch_from_controls(valid,zeros(Int,0,2),zeros(0,2),reshape([0.75,0.0],1,2))
     @test validate(valid,x)["valid"]
-    @test replay_audit(valid,x)["valid"]
+    @test validate_replay(valid,x)["valid"]
     @test x.arrival_volume≈[0.0054 0.0054] atol=1e-10
     continued=restart_case(valid,x,1.0)
     @test only(continued.flow_requirements).initial_volume≈0.0054
@@ -115,7 +115,7 @@ end
     costs=objective_components(c,x)
     @test (costs.river_change_cost,costs.river_start_cost,costs.river_stop_cost)==(8.0,7.0,3.0)
     @test costs.total≈x.objective
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     restarted=restart_case(c,x,0.5)
     y=dispatch_from_controls(restarted,zeros(Int,0,1),zeros(0,1),zeros(1,1))
     @test validate(restarted,y)["valid"]
@@ -133,7 +133,7 @@ end
     global_result=OpenSHOP.solve(c;initial=x,time_limit=30.0,preparation_time_limit=0.0)
     @test global_result.accepted
     @test global_result.solution.objective≈0.0 atol=1e-3
-    @test global_result["start_audit"]["valid"]
+    @test global_result["start_validation"]["valid"]
 end
 
 @testset "A river startup cost changes the preferred release schedule" begin
@@ -175,7 +175,7 @@ end
     global_result=OpenSHOP.solve(c;initial=x,time_limit=30.0,preparation_time_limit=0.0)
     @test global_result.accepted
     @test global_result.solution.objective≈-1.0 atol=1e-3
-    @test global_result["native_start_audit"]["valid"]
+    @test global_result["native_start_validation"]["valid"]
 end
 
 @testset "Pumping startup head uses positive lift at the starting surface" begin

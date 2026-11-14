@@ -1,5 +1,5 @@
 # One interpretation of prescribed and selectable tunnel gates for every model
-# and independent physical audit. Opening zero is closed; every positive listed
+# and independent physical validation. Opening zero is closed; every positive listed
 # position counts as open, regardless of its hydraulic resistance.
 
 tunnel_initial_opening(e::Tunnel) =
@@ -56,7 +56,7 @@ end
 
 """Complete default opening trajectory in physical gate-position units.
 
-For an optimized gate this is an initial witness, not a restriction before an
+For an optimized gate this is an initial guess, not a restriction before an
 opening schedule begins. Explicit optimized controls may select any listed
 position on those free intervals.
 """

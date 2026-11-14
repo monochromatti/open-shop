@@ -49,7 +49,7 @@
     literal=dispatch_from_controls(prescribed,zeros(Int,0,3),zeros(0,3),zeros(0,3);
         tunnel_opening=fill(0.1,1,3))
     @test literal["validation"]["valid"]
-    @test replay_audit(prescribed,literal)["valid"]
+    @test validate_replay(prescribed,literal)["valid"]
     shut=tg_copy(prescribed;system=tg_copy(prescribed.system;
         tunnels=[tg_copy(only(prescribed.system.tunnels);opening=0.0)]))
     @test_throws ArgumentError validate_tunnel_openings(shut,fill(1e-9,1,3))
@@ -82,11 +82,11 @@ end
     @test 200.0<=x["H"][2,1]<=250.0
     @test x["V"]==fill(10.0,1,2)
     @test x["tunnel_q"]==zeros(2,1)
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     for reference in (200.0,250.0)
         shifted=OpenSHOP.schedule_dict(x);shifted["H"][2,1]=reference
         @test validate(c,shifted)["valid"]
-        @test replay_audit(c,shifted)["valid"]
+        @test validate_replay(c,shifted)["valid"]
     end
     bad=OpenSHOP.schedule_dict(x);bad["H"][2,1]=199.0
     @test !validate(c,bad)["valid"]
@@ -112,7 +112,7 @@ end
     @test validate(pair,shifted)["valid"]
     relative=deepcopy(y);relative["H"][2,1]+=1.0
     @test !validate(pair,relative)["valid"]
-    @test replay_audit(pair,y)["valid"]
+    @test validate_replay(pair,y)["valid"]
     for ref in (-100.0,1000.0)
         guess=Dict("Vnew"=>[10.0],"H"=>[101.0,ref,ref+5.0,0.0],
             "tunnel_q"=>[1.0,-1.0,2.0],"river_release"=>Float64[])
@@ -146,7 +146,7 @@ end
     x=dispatch_from_controls(c,zeros(Int,0,3),zeros(0,3),zeros(0,3);tunnel_opening=opening)
     @test x["validation"]["valid"]
     @test x["H"][2,2]≈101.0 atol=1e-9 # Connected to the reservoir in this interval.
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     shifted=OpenSHOP.schedule_dict(x);shifted["H"][2,1]=140.0;shifted["H"][2,3]=10.0
     @test validate(c,shifted)["valid"]
     shifted["H"][2,2]=110.0

@@ -66,7 +66,7 @@ end
 
 """Assign the solver coordinates of a physical schedule, without altering it.
 
-`put(variable,value)` also permits an audited global lift to collect assignments
+`put(variable,value)` also permits an validated global lift to collect assignments
 before installing them in the solver. Auxiliary curve variables are separate.
 """
 function set_dispatch_start!(variables::DispatchVariables,x,put=set_start_value)

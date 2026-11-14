@@ -9,10 +9,10 @@
         set_optimizer(m,optimizer_with_attributes(SCIP.Optimizer,
             "limits/time"=>10.0,"limits/nodes"=>0,"numerics/feastol"=>1e-8))
         JuMP.MOI.Utilities.attach_optimizer(backend(m))
-        audit=OpenSHOP._complete_scip_start!(m)
-        @test audit["valid"]
-        @test isempty(audit["missing"])
-        @test audit["scaled_objective"]≈(nonlinear ? 3.25 : 3.5)/scale atol=1e-14
+        validation=OpenSHOP._complete_scip_start!(m)
+        @test validation["valid"]
+        @test isempty(validation["missing"])
+        @test validation["scaled_objective"]≈(nonlinear ? 3.25 : 3.5)/scale atol=1e-14
         if nonlinear
             opt=backend(m).optimizer
             F=JuMP.MOI.get(backend(m),JuMP.MOI.ObjectiveFunctionType())
@@ -21,14 +21,14 @@
                 JuMP.MOI.VariablePrimalStart(),bridge.slack)≈3.25/scale atol=1e-14
         end
         optimize!(m)
-        diagnostics=OpenSHOP._scip_diagnostics(m)
+        diagnostics=OpenSHOP._scip_statistics(m)
         @test termination_status(m)!=JuMP.MOI.TIME_LIMIT
         @test diagnostics["native_incumbent_available"]
         native_objective=diagnostics["native_incumbent_objective"]/10000
-        @test sense==JuMP.MOI.MAX_SENSE ? native_objective≥audit["scaled_objective"]-1e-8 :
-            native_objective≤audit["scaled_objective"]+1e-8
+        @test sense==JuMP.MOI.MAX_SENSE ? native_objective≥validation["scaled_objective"]-1e-8 :
+            native_objective≤validation["scaled_objective"]+1e-8
         if nonlinear && sense==JuMP.MOI.MAX_SENSE
-            @test native_objective≈audit["scaled_objective"] atol=1e-8
+            @test native_objective≈validation["scaled_objective"] atol=1e-8
         end
     end
 end
@@ -86,16 +86,16 @@ end
     @test_throws DomainError OpenSHOP._global_tensor_coordinate_weights([0.0,0.3],q[1])
     model=OpenSHOP._build_global_dispatch(c;joint=true)
     OpenSHOP._enclose_global_equalities!(model.m)
-    @test OpenSHOP._lift_start!(model,c,warm;tolerance)["valid"]
+    @test OpenSHOP._initialize_global_start!(model,c,warm;tolerance)["valid"]
     result=solve(c;initial=warm,time_limit=45.0)
     @test result.accepted
-    @test result["start_audit"]["valid"]
-    @test result["native_start_audit"]["valid"]
-    @test result["scip_diagnostics"]["native_incumbent_available"]
+    @test result["start_validation"]["valid"]
+    @test result["native_start_validation"]["valid"]
+    @test result["solver_statistics"]["native_incumbent_available"]
     @test result.solution.objective>=warm.objective-1e-5
     @test warm.generator_q==q
     outside=dispatch_from_controls(c,ones(Int,1,2),fill(0.3+100tolerance,1,2),zeros(0,2))
-    @test !OpenSHOP._lift_start!(model,c,outside;tolerance)["valid"]
+    @test !OpenSHOP._initialize_global_start!(model,c,outside;tolerance)["valid"]
 end
 
 @testset "River inventory value retains its native start with power cuts" begin
@@ -104,21 +104,21 @@ end
     @test validate(c,warm)["valid"]
     result=solve(c;initial=warm,time_limit=45.0)
     @test result.accepted
-    @test result["start_audit"]["valid"]
-    @test result["native_start_audit"]["valid"]
-    @test result["native_start_audit"]["scaled_objective"]≈warm.objective/10000 atol=1e-10
-    @test result["scip_diagnostics"]["native_incumbent_available"]
-    @test result["scip_diagnostics"]["native_incumbent_objective"]≥warm.objective-1e-5
+    @test result["start_validation"]["valid"]
+    @test result["native_start_validation"]["valid"]
+    @test result["native_start_validation"]["scaled_objective"]≈warm.objective/10000 atol=1e-10
+    @test result["solver_statistics"]["native_incumbent_available"]
+    @test result["solver_statistics"]["native_incumbent_objective"]≥warm.objective-1e-5
     @test result["power_cut_statistics"]!==nothing
 end
 
-@testset "Absent and rejected starts never acquire an audited native start" begin
+@testset "Absent and rejected starts never acquire an validated native start" begin
     c=zero_minimum_case()
     warm=dispatch_from_controls(c,ones(Int,1,2),fill(2.0,1,2),zeros(0,2))
     for result in (solve(c;preparation_time_limit=0.0,time_limit=30.0),
         solve(c;initial=warm,fixed_u=zeros(Int,1,2),time_limit=30.0))
         @test result.accepted
-        @test !haskey(result,"native_start_audit")
+        @test !haskey(result,"native_start_validation")
         @test validate(c,result.solution)["valid"]
     end
 end
@@ -163,7 +163,7 @@ end
         else
             @test result.solution.objective≈warm.objective atol=1e-8
             @test validate(c,result.solution)["valid"]
-            @test result["replay_audit"]["valid"]
+            @test result["replay_validation"]["valid"]
         end
     end
     elapsed=Ref(0.0)
@@ -220,7 +220,7 @@ end
     # row tolerance. This point is acceptable for use, but not for a certificate.
     unit=OpenSHOP._river_replace(unit;pmin=minimum(warm.power)+2e-5)
     c=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;generators=[unit]))
-    @test replay_audit(c,warm)["valid"]
+    @test validate_replay(c,warm)["valid"]
     calls=Ref(0)
     clock=()->begin
         calls[]+=1
@@ -231,7 +231,7 @@ end
     @test result.accepted
     @test result.solution!==nothing
     @test result.solution.power≈warm.power atol=1e-9
-    @test replay_audit(c,result.solution)["valid"]
+    @test validate_replay(c,result.solution)["valid"]
     @test result.feasible_lower_bound===nothing
     @test result.relative_gap===nothing && result.absolute_gap===nothing
     @test !result.global_certificate

@@ -145,7 +145,7 @@ Each `Plant` groups units with a common intake and outlet reference. Separate
 Plants do not automatically share power caps, ramps, dwell rules, maintenance
 or reserve constraints merely because their outlets join. The capacity reserve
 contract holds scheduled hydraulic node heads fixed for its operating-point
-witnesses; it does not re-solve the shared tunnel network during activation.
+operating points; it does not re-solve the shared tunnel network during activation.
 
 ## Turbine outlet elevation
 

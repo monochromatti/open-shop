@@ -1,14 +1,14 @@
 """River transport mesh, independent of control and hydraulic decision times.
 
-A supplied mesh is retained. Otherwise distributed confluences use four transport
-cells per control interval; source cohorts retain their control grid.
+A supplied mesh is retained. Otherwise distributed river junctions use four transport
+cells per control interval; source releases retain their control grid.
 Exact deterministic networks do not need a mixing mesh. Finer independent routing
 and hydraulic replay still determine whether this resolution is sufficient.
 """
 function river_routing_grid(c;physical_grid=c.grid)
     grid=if !isempty(c.routing_grid)
         c.routing_grid
-    elseif any(!,river_cohort_sources(c.system)) && any(r->r.deterministic_delay===nothing,c.system.rivers)
+    elseif any(!,river_source_reaches(c.system)) && any(r->r.deterministic_delay===nothing,c.system.rivers)
         refined_grid(c.grid;factor=4,existing=physical_grid)
     else
         c.grid
@@ -18,16 +18,17 @@ end
 
 """Finite-volume river transport data, without control or state decisions.
 
-Source reaches retain the hydraulic/control cohort grid. Zero-storage relay
+Source reaches retain the hydraulic/control release grid. Zero-storage relay
 reaches use `grid`; their rates follow subinterval conservation. Coefficients
-map each reach's own cohort grid into transport-cell arrival volumes.
+map each reach's own release grid into transport-cell arrival volumes.
+`source_reaches[d]` identifies reaches that retain the hydraulic release grid.
 """
 struct DistributedRouting
     grid::Vector{Float64}
     control::Vector{Int}
     vertices::Vector{Int}
-    source_cohorts::BitVector
-    cohort_grid::Vector{Vector{Float64}}
+    source_reaches::BitVector
+    release_grid::Vector{Vector{Float64}}
     coefficients::Vector{RiverTransfer}
     interval_coefficients::Vector{RiverTransfer}
     history_arrival::Matrix{Float64}
@@ -35,7 +36,7 @@ struct DistributedRouting
     history_terminal::Vector{Float64}
 end
 
-function river_cohort_sources(s)
+function river_source_reaches(s)
     reservoirs=Set(r.name for r in s.reservoirs)
     BitVector(r.source in reservoirs || !any(e->e.target==r.source,s.rivers)
         for r in s.rivers)
@@ -45,13 +46,13 @@ function DistributedRouting(c;grid=river_routing_grid(c))
     RiverRouting.check_grid(grid)
     first(grid)==first(c.grid) && last(grid)==last(c.grid) && all(t in grid for t in c.grid) ||
         throw(ArgumentError("transport mesh must retain the hydraulic grid"))
-    source=river_cohort_sources(c.system)
+    source=river_source_reaches(c.system)
     control=[searchsortedlast(c.grid,(grid[k]+grid[k+1])/2) for k in 1:(length(grid)-1)]
     vertices=[searchsortedfirst(grid,t) for t in c.grid]
-    cohorts=[source[d] ? copy(c.grid) : copy(grid) for d in eachindex(source)]
-    B=[RiverTransfer(r,grid,cohorts[d]) for (d,r) in enumerate(c.system.rivers)]
+    release_grids=[source[d] ? copy(c.grid) : copy(grid) for d in eachindex(source)]
+    B=[RiverTransfer(r,grid,release_grids[d]) for (d,r) in enumerate(c.system.rivers)]
     intervals=grid==c.grid ? B :
-        [RiverTransfer(r,c.grid,cohorts[d]) for (d,r) in enumerate(c.system.rivers)]
+        [RiverTransfer(r,c.grid,release_grids[d]) for (d,r) in enumerate(c.system.rivers)]
     history=zeros(length(source),length(grid)-1)
     initial=zeros(length(source));terminal=similar(initial)
     for (d,r) in enumerate(c.system.rivers)
@@ -59,22 +60,22 @@ function DistributedRouting(c;grid=river_routing_grid(c))
         initial[d]=remaining_volume(r,first(grid),r.history_grid,r.history_release)
         terminal[d]=remaining_volume(r,last(grid),r.history_grid,r.history_release)
     end
-    DistributedRouting(copy(grid),control,vertices,source,cohorts,B,intervals,history,initial,terminal)
+    DistributedRouting(copy(grid),control,vertices,source,release_grids,B,intervals,history,initial,terminal)
 end
 
-"""Known arrivals and current-cohort transfer rows for one hydraulic step."""
+"""Known arrivals and current-release transfer rows for one hydraulic step."""
 struct DistributedRoutingStep
     known_arrival::Matrix{Float64}
     transfer::Vector{RiverTransfer}
     block::UnitRange{Int}
     interval::Int
     duration::Vector{Float64}
-    source_cohorts::BitVector
+    source_reaches::BitVector
 end
 
 function DistributedRoutingStep(mesh::DistributedRouting,s,t,known)
     block=mesh.vertices[t]:(mesh.vertices[t+1]-1)
-    source=mesh.source_cohorts
+    source=mesh.source_reaches
     DistributedRoutingStep(copy(known[:,block]),mesh.coefficients,block,t,
         diff(view(mesh.grid,first(block):(last(block)+1))),source)
 end
@@ -97,7 +98,7 @@ function routed_schedule(c,release;transport=nothing,injections=nothing,generato
     if exact
         routed=route_network_exact(c,release;transport,injections,generator_q,tunnel_q)
         return (;release=routed["release"],arrival_volume=routed["arrival_volume"],
-            transit=routed["transit"],cohorts=routed["release_cohorts"],injections)
+            transit=routed["transit"],release_series=routed["release_series"],injections)
     end
     grid=river_routing_grid(c)
     routed=_route_network(c,release;grid,injections,generator_q,tunnel_q)
@@ -107,7 +108,7 @@ function routed_schedule(c,release;transport=nothing,injections=nothing,generato
         (c.grid[t+1]-c.grid[t]) for d in axes(R,1),t in eachindex(c.prices)]
     arrivals=[sum(view(A,d,edges[t]:(edges[t+1]-1))) for d in axes(A,1),t in eachindex(c.prices)]
     (;release=mean_release,arrival_volume=arrivals,transit=routed.transit[:,edges],
-        routed.cohorts,injections)
+        routed.release_series,injections)
 end
 
 function reference_flux!(values,r,q)
@@ -122,13 +123,13 @@ function reference_flux!(values,r,q)
     values
 end
 
-"""Refine transport cohorts for prescribed controls before the next NLP.
+"""Refine transport releases for prescribed controls before the next NLP.
 
 Compare cumulative arrivals on nested meshes in receiving-reservoir volume
 units. The returned mesh is the coarse one, so use the second-order 4/3
 correction for its estimated error, as in coupled hydraulic replay.
 Mark entry cells by variation of q*theta(q), the reference flux that is
-projected onto constant cohorts. Bulk marking splits cells covering half of
+projected onto constant releases. Bulk marking splits cells covering half of
 that variation. Control times and all original transport vertices are retained.
 This is a numerical error estimate; independent coupled replay remains required.
 """
@@ -138,7 +139,7 @@ function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refi
     all(r->r.deterministic_delay!==nothing,c.system.rivers) && return grid
     error_factor=4/3
     s=c.system
-    sources=river_cohort_sources(s)
+    sources=river_source_reaches(s)
     injections=river_injections(c,x.river_release,x.generator_q,x.tunnel_q)
     incidence=[Float64(reach.target==r.name) for r in s.reservoirs,reach in s.rivers]
     current=_route_network(c,injections;grid,injections)
@@ -148,8 +149,8 @@ function refine_transport_grid(c,x,storage_limits,absolute;deadline=Inf,max_refi
         fine=_route_network(c,injections;grid=probe,injections)
         coarse=zeros(size(fine.arrival_volume))
         for (d,r) in enumerate(s.rivers)
-            cohort=current.cohorts[d]
-            coarse[d,:].=route_volumes(r,probe,cohort.grid,cohort.release)+
+            series=current.release_series[d]
+            coarse[d,:].=route_volumes(r,probe,series.grid,series.release)+
                 route_volumes(r,probe,r.history_grid,r.history_release)
         end
         cumulative=cumsum(fine.arrival_volume-coarse;dims=2)
@@ -193,7 +194,7 @@ end
 """Arrival and capacity shortfalls in m³/s, indexed by reach.
 
 `mean_arrival` uses the declared observation windows; `pointwise_arrival` uses
-the actual wave. `capacity` also checks confluence peaks before cell averaging.
+the actual wave. `capacity` also checks river junction peaks before cell averaging.
 Channels have zero entries: their signed hydraulic laws are checked separately.
 """
 function river_arrival_residuals(c,routed)
@@ -204,31 +205,31 @@ function river_arrival_residuals(c,routed)
     exact=all(r->r.deterministic_delay!==nothing,c.system.rivers)
     for (d,r) in enumerate(c.system.rivers)
         is_channel(r) && continue
-        cohort=routed.cohorts[d]
+        series=routed.release_series[d]
         windows=isempty(r.arrival_window_grid) ? c.grid : r.arrival_window_grid
-        volume=route_volumes(r,windows,cohort.grid,cohort.release)+
+        volume=route_volumes(r,windows,series.grid,series.release)+
             route_volumes(r,windows,r.history_grid,r.history_release)
         mean_arrival[d]=maximum(
             opaverage(c,r.name,:min_arrival,windows[k],windows[k+1],r.min_arrival)-
             volume[k]/(0.0036*(windows[k+1]-windows[k]))
             for k in eachindex(volume);init=0.0)
-        capacity_error=maximum(cohort.release[k]-opinterval(c,r.name,:capacity,t,r.capacity)
-            for k in eachindex(cohort.release),t in eachindex(c.prices)
-            if min(cohort.grid[k+1],c.grid[t+1])>max(cohort.grid[k],c.grid[t]);init=0.0)
+        capacity_error=maximum(series.release[k]-opinterval(c,r.name,:capacity,t,r.capacity)
+            for k in eachindex(series.release),t in eachindex(c.prices)
+            if min(series.grid[k+1],c.grid[t+1])>max(series.grid[k],c.grid[t]);init=0.0)
         upstream=findall(e->e.target==r.source,c.system.rivers)
         if !exact && r.law==:junction && !isempty(upstream)
-            grids=[cohort.grid for cohort in routed.cohorts]
-            times=confluence_knots(c,grids,upstream)
+            grids=[series.grid for series in routed.release_series]
+            times=junction_arrival_times(c,grids,upstream)
             # Evaluate each upstream wave once at all observation times. Keep
-            # both limits: deterministic reaches can jump at a confluence knot.
+            # both limits: deterministic reaches can jump at a river junction knot.
             incoming=zeros(length(times),2)
             for i in upstream
                 reach=c.system.rivers[i]
-                upstream_cohort=routed.cohorts[i]
+                upstream_series=routed.release_series[i]
                 for (column,side) in enumerate((:left,:right))
-                    view(incoming,:,column) .+= cohort_arrival_rates(reach,
-                        upstream_cohort.grid,upstream_cohort.release,times;side)
-                    view(incoming,:,column) .+= cohort_arrival_rates(reach,
+                    view(incoming,:,column) .+= release_arrival_rates(reach,
+                        upstream_series.grid,upstream_series.release,times;side)
+                    view(incoming,:,column) .+= release_arrival_rates(reach,
                         reach.history_grid,reach.history_release,times;side)
                 end
             end
@@ -244,7 +245,7 @@ function river_arrival_residuals(c,routed)
         end
         capacity[d]=capacity_error
         pointwise_arrival[d]=r.arrival_policy==:pointwise ?
-            arrival_requirement_violation(c,r,cohort.grid,cohort.release) : 0.0
+            arrival_requirement_violation(c,r,series.grid,series.release) : 0.0
     end
     (;mean_arrival,capacity,pointwise_arrival)
 end
@@ -252,6 +253,6 @@ end
 river_control_interval(c,time,side)=clamp(side==:left ? searchsortedfirst(c.grid,time)-1 :
     searchsortedlast(c.grid,time),1,length(c.prices))
 
-function confluence_knots(c,grids,upstream)
+function junction_arrival_times(c,grids,upstream)
     sort!(unique!(vcat(c.grid,[arrival_knots(c.system.rivers[d],grids[d]) for d in upstream]...)))
 end

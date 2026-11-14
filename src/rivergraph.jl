@@ -247,7 +247,7 @@ function source_integrals(grid, original_grid, q; delay=0.0)
     volumes
 end
 
-# Interval averages preserve the original release cohorts.
+# Interval averages preserve the original interval releases.
 source_averages(grid,original_grid,q)=source_integrals(grid,original_grid,q)./diff(grid)
 
 """Route all reaches in topological order, independently of model coefficients.
@@ -256,15 +256,15 @@ source_averages(grid,original_grid,q)=source_integrals(grid,original_grid,q)./di
 prescribed total reach releases, including natural inflow. Other local injections
 come from `generator_q`, `tunnel_q` and natural inflow. Each outgoing reach adds
 its allocated share of upstream arrivals divided by interval duration. Optional `grid` preserves
-original reservoir cohorts, but
+original reservoir releases, but
 junction mixing rebins arrivals: its timing is a convergent grid approximation,
-not an exact continuous-time convolution. Transit includes historical cohorts.
+not an exact continuous-time convolution. Transit includes historical releases.
 """
 function route_network(c::ScheduleCase, source_release::AbstractMatrix; grid = c.grid,
     generator_q=nothing, tunnel_q=nothing, injections=nothing)
     z=_route_network(c,source_release;grid,generator_q,tunnel_q,injections)
     Dict{String,Any}("grid"=>z.grid,"release"=>z.release,"arrival_volume"=>z.arrival_volume,
-        "transit"=>z.transit,"order"=>z.order,"release_cohorts"=>z.cohorts)
+        "transit"=>z.transit,"order"=>z.order,"release_series"=>z.release_series)
 end
 
 function _route_network(c::ScheduleCase,source_release::AbstractMatrix;grid=c.grid,
@@ -281,18 +281,18 @@ function _route_network(c::ScheduleCase,source_release::AbstractMatrix;grid=c.gr
     T=length(grid)-1
     size(source_release)==(D, length(c.grid)-1) ||
         throw(ArgumentError("source release matrix has incorrect dimensions"))
-    sources=river_cohort_sources(s)
+    sources=river_source_reaches(s)
     release=zeros(D, T)
     arrival=zeros(D, T)
     transit=zeros(D, T+1)
-    cohorts=Vector{NamedTuple{(:grid,:release),Tuple{Vector{Float64},Vector{Float64}}}}(undef,D)
+    release_series=Vector{NamedTuple{(:grid,:release),Tuple{Vector{Float64},Vector{Float64}}}}(undef,D)
     for d in order
         r=s.rivers[d]
         if sources[d]
             q=collect(source_release[d, :])
-            cohort_grid=c.grid
-            _check_river_releases(r,cohort_grid,q)
-            release[d, :]=source_averages(grid, cohort_grid, q)
+            release_grid=c.grid
+            _check_river_releases(r,release_grid,q)
+            release[d, :]=source_averages(grid, release_grid, q)
         else
             upstream=findall(e->e.target==r.source, s.rivers)
             q=source_averages(grid,c.grid,view(source_release,d,:)) +
@@ -301,17 +301,17 @@ function _route_network(c::ScheduleCase,source_release::AbstractMatrix;grid=c.gr
             # ulps outside its reference range. Do not hide physical excess.
             q=[x<=r.capacity+1e-10 ? min(x, r.capacity) : x for x in q]
             release[d, :]=q
-            cohort_grid=grid
+            release_grid=grid
         end
         all(q .<= r.capacity) ||
             throw(ArgumentError("release in $(r.name) exceeds routing curve domain"))
-        cohorts[d]=(grid=Float64.(cohort_grid),release=Float64.(q))
-        arrival[d, :]=route_volumes(r, grid, cohort_grid, q) +
+        release_series[d]=(grid=Float64.(release_grid),release=Float64.(q))
+        arrival[d, :]=route_volumes(r, grid, release_grid, q) +
                       route_volumes(r, grid, r.history_grid, r.history_release)
-        transit[d, :]=remaining_volume(r,grid,cohort_grid,q)+
+        transit[d, :]=remaining_volume(r,grid,release_grid,q)+
                       remaining_volume(r,grid,r.history_grid,r.history_release)
     end
-    (;grid=Float64.(grid),release,arrival_volume=arrival,transit,order,cohorts)
+    (;grid=Float64.(grid),release,arrival_volume=arrival,transit,order,release_series)
 end
 
 # Fixed atoms and distributed bins share the same conservation interface.

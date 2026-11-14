@@ -31,7 +31,7 @@ end
 
 """Build river equations; `coordinate` supplies a formulation's reference mixture.
 
-Its arguments are the river, release expression, river index, cohort index and
+Its arguments are the river, release expression, river index, release interval index and
 operating interval. Transport owns that interval mapping, including narrow cells.
 """
 function RiverTransport(m,c,release;transport=nothing,
@@ -62,7 +62,7 @@ function RiverTransport(m,c,release;transport=nothing,
         reservoirs=river_source_indices(c.system).reservoirs
         for i in river_order(c)
             r=c.system.rivers[i]
-            if rd.source_cohorts[i]
+            if rd.source_reaches[i]
                 rates[i]=Any[reservoirs[i] ? release[i,t] : injections[i,t] for t in 1:T]
             else
                 q=@variable(m,[1:K],lower_bound=0.0,base_name="routing_release_$i")
@@ -77,25 +77,25 @@ function RiverTransport(m,c,release;transport=nothing,
                     push!(starts,q[k]=>injections[i,t]+incoming/(0.0036duration))
                 end
             end
-            coordinates[i]=Any[coordinate(r,q,i,k,rd.source_cohorts[i] ? k : rd.control[k])
+            coordinates[i]=Any[coordinate(r,q,i,k,rd.source_reaches[i] ? k : rd.control[k])
                 for (k,q) in enumerate(rates[i])]
             # Fixed mixtures are linear coefficient maps. Variable mixtures
             # use anchored integrals to keep fine observation rows short.
-            if !rd.source_cohorts[i] && r.deterministic_delay===nothing
+            if !rd.source_reaches[i] && r.deterministic_delay===nothing
                 varying=any(curve->curve.edges!=first(r.curves).edges ||
                     curve.weights!=first(r.curves).weights,r.curves)
                 fixed=all(z->z!==nothing && all(w->w isa Real,z.weights),coordinates[i])
                 if varying && !fixed
-                    primitives[i]=reference_integrals!(m,integral_grid,r,rates[i],coordinates[i],rd.cohort_grid[i],starts)
+                    primitives[i]=reference_integrals!(m,integral_grid,r,rates[i],coordinates[i],rd.release_grid[i],starts)
                 end
             end
             primitive=primitives[i]
-            cohort_dt=diff(rd.cohort_grid[i])
+            release_duration=diff(rd.release_grid[i])
             B=rd.coefficients[i]
             for k in 1:K
                 fine_arrival[i,k]=AffExpr(rd.history_arrival[i,k])+(primitive!==nothing ?
                     reference_arrival_volume(primitive,r,rd.grid[k],rd.grid[k+1]) : sum(
-                    0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
+                    0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
                     for (j,fractions) in arrival_terms(B,k);init=0.0))
             end
@@ -104,13 +104,13 @@ function RiverTransport(m,c,release;transport=nothing,
                 arrivals[i,t]=AffExpr(sum(view(rd.history_arrival,i,
                     rd.vertices[t]:(rd.vertices[t+1]-1))))+(primitive!==nothing ?
                     reference_arrival_volume(primitive,r,c.grid[t],c.grid[t+1]) : sum(
-                    0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
+                    0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
                     for (j,fractions) in arrival_terms(intervals,t);init=0.0))
             end
             terminal[i]=AffExpr(rd.history_terminal[i])+(primitive!==nothing ?
                 reference_transit(primitive,r,last(c.grid)) : sum(
-                0.0036cohort_dt[j]*river_transfer_expression(m,r,rates[i][j],
+                0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                     view(B.terminal,:,j);coordinate=coordinates[i][j])
                 for j in eachindex(rates[i]);init=0.0))
         end
@@ -136,14 +136,14 @@ function routing_volume_expression(m,c,routing,i,a,b)
         history=only(route_volumes(r,[a,b],r.history_grid,r.history_release))
         return history+reference_arrival_volume(primitive,r,a,b)
     end
-    grid=routing._data.cohort_grid[i]
+    grid=routing._data.release_grid[i]
     row=get!(routing._volume_rows,(i,Float64(a),Float64(b))) do
         volume_transfer_row(r,grid,a,b)
     end
     history=only(route_volumes(r,[a,b],r.history_grid,r.history_release))
     history+sum(0.0036*(grid[k+1]-grid[k])*river_transfer_expression(m,r,routing._rates[i][k],
         view(row.fractions,:,j);coordinate=routing._coordinates[i][k])
-        for (j,k) in enumerate(row.cohorts);init=0.0)
+        for (j,k) in enumerate(row.release_indices);init=0.0)
 end
 
 function routing_point_expression(m,c,routing,i,time;side)
@@ -155,26 +155,26 @@ function routing_point_expression(m,c,routing,i,time;side)
     r=c.system.rivers[i]
     primitive=routing._primitives[i]
     if primitive!==nothing
-        history=cohort_point_arrival(r,r.history_grid,r.history_release,time;side)
+        history=release_arrival_rate(r,r.history_grid,r.history_release,time;side)
         return history+reference_arrival_rate(primitive,r,time)
     end
-    grid=routing._data.cohort_grid[i]
+    grid=routing._data.release_grid[i]
     row=get!(routing._point_rows,(i,Float64(time),side)) do
         point_transfer_row(r,grid,time;side)
     end
-    history=cohort_point_arrival(r,r.history_grid,r.history_release,time;side)
+    history=release_arrival_rate(r,r.history_grid,r.history_release,time;side)
     history+sum(river_transfer_expression(m,r,routing._rates[i][k],
         view(row.fractions,:,j);coordinate=routing._coordinates[i][k])
-        for (j,k) in enumerate(row.cohorts);init=0.0)
+        for (j,k) in enumerate(row.release_indices);init=0.0)
 end
 
 function routing_arrival_knots(c,routing,i)
     (routing._data isa CompiledTransport) ? sort!(unique!(vcat(deterministic_knots(routing._data,i),c.grid))) :
-        operational_arrival_knots(c,c.system.rivers[i],routing._data.cohort_grid[i])
+        operational_arrival_knots(c,c.system.rivers[i],routing._data.release_grid[i])
 end
 
-"""Bound actual stream rates, including confluence waves before cell averaging.
-Each wave is affine between its cohort/response and operating knots. Both sides
+"""Bound actual stream rates, including river junction waves before cell averaging.
+Each wave is affine between its release/response and operating knots. Both sides
 of jumps are retained. Existing release coordinates serve these rows too.
 """
 function constrain_river_stream_capacities!(m,c,routing)
@@ -193,9 +193,9 @@ function constrain_river_stream_capacities!(m,c,routing)
             end
             continue
         end
-        routing._data.source_cohorts[i] && continue
+        routing._data.source_reaches[i] && continue
         upstream=findall(e->e.target==r.source,c.system.rivers)
-        for time in confluence_knots(c,routing._data.cohort_grid,upstream)
+        for time in junction_arrival_times(c,routing._data.release_grid,upstream)
             sides=time==first(c.grid) ? (:right,) :
                 time==last(c.grid) ? (:left,) : (:left,:right)
             for side in sides
@@ -223,18 +223,18 @@ function start_transport!(routing::RiverTransport)
     nothing
 end
 
-"""Lift prescribed physical cohorts into this model's auxiliary variables."""
+"""Lift prescribed physical releases into this model's auxiliary variables."""
 function start_transport!(routing::RiverTransport,c,physical,put)
     routing._data isa CompiledTransport && return
     routed=routed_schedule(c,physical.river_release;
         generator_q=physical.generator_q,tunnel_q=physical.tunnel_q)
     for i in eachindex(routing._rates),k in eachindex(routing._rates[i])
         variable=routing._rates[i][k]
-        variable isa VariableRef && put(variable,routed.cohorts[i].release[k])
+        variable isa VariableRef && put(variable,routed.release_series[i].release[k])
     end
     for (i,data) in enumerate(routing._primitives)
         data===nothing && continue
-        start_reference_integrals!(data,c.system.rivers[i],routed.cohorts[i].release,put)
+        start_reference_integrals!(data,c.system.rivers[i],routed.release_series[i].release,put)
     end
     nothing
 end
@@ -290,14 +290,14 @@ function routing_arrival_bounds(c,data,release_cap)
             rows=data.vertices[t]:(data.vertices[t+1]-1)
             lo=hi=sum(view(data.history_arrival,i,rows))
             B=data.interval_coefficients[i]
-            cohort=data.cohort_grid[i]
-            source=data.source_cohorts[i]
+            release_grid=data.release_grid[i]
+            source=data.source_reaches[i]
             for (k,coefficients) in arrival_terms(B,t)
                 period=source ? k : data.control[k]
                 cap=release_cap[i,period]
                 l,h=river_transfer_range(r,coefficients,river_flow_lower(r,cap),cap)
-                l*=0.0036*(cohort[k+1]-cohort[k])
-                h*=0.0036*(cohort[k+1]-cohort[k])
+                l*=0.0036*(release_grid[k+1]-release_grid[k])
+                h*=0.0036*(release_grid[k+1]-release_grid[k])
                 lo+=l
                 hi+=h
             end

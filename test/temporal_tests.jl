@@ -88,7 +88,7 @@ end
     @test arrival_knots(rr, g)==[0.0, 0.25, 0.75, 1.75, 2.0]
     @test minimum_arrival(rr, g, q)["value"]==4.0
     # Decimal delays can round (edge+delay)-delay past the original edge.
-    # Both one-sided rates still follow the actual translated cohort endpoints.
+    # Both one-sided rates still follow the actual translated release endpoints.
     decimal=atom(0.3)
     edges=[0.0,0.25,0.5,0.75,1.0]
     rates=[1.0,2.0,3.0,4.0]
@@ -132,7 +132,7 @@ end
     @test_throws ArgumentError point_arrival(r, g, [21.0, 0.0, 0.0], 1.0)
 end
 
-@testset "Restart preserves release cohorts" begin
+@testset "Restart preserves interval releases" begin
     g=[-2.0, -0.7, 0.0, 1.0, 3.0]
     q=[2.0, 8.0, 10.0, 4.0]
     h=release_history(g, q, 0.4)
@@ -172,7 +172,7 @@ end
     end
 end
 
-@testset "Finite-support point arrivals retain old and irregular cohorts" begin
+@testset "Finite-support point arrivals retain old and irregular releases" begin
     curves=[RiverRouting.DelayCurve(q,[lag,lag+0.2,lag+1.1],[0.3,0.7])
         for (q,lag) in ((0.0,2.0),(10.0,1.0),(30.0,0.2))]
     r=River(;name=:support,source=:a,target=:b,capacity=30.0,water_value=0.0,

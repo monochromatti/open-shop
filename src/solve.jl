@@ -1,13 +1,13 @@
 include("starts.jl")
 
-# Native SCIP statistics do not supply the audited incumbent. A conservative
+# Native SCIP statistics do not supply the validated incumbent. A conservative
 # unresolved-root guard may withhold a certificate. Bound values use physical
 # objective units; the optional logfile retains the progress trajectory.
 function _scip_bound_value(optimizer, value; scale=10000.)
     isfinite(value) && !Bool(SCIP.SCIPisInfinity(optimizer, abs(value))) ? value*scale : nothing
 end
 
-function _scip_diagnostics(model)
+function _scip_statistics(model)
     result=Dict{String,Any}("source"=>"SCIP native statistics; objective bounds in physical units")
     try
         optimizer=JuMP.unsafe_backend(model)
@@ -119,17 +119,17 @@ function _unresolved_root_certificate(diagnostics, status)
     diagnostics["first_root_lp_upper_bound"]===nothing
 end
 
-function _set_incumbent!(result, candidate, source, relative_gap, absolute_gap; model_feasible=true)
-    result["solution"] = candidate
+function _set_incumbent!(result, trial_solution, source, relative_gap, absolute_gap; model_feasible=true)
+    result["solution"] = trial_solution
     result["incumbent_source"] = source
-    result["validation"] = candidate["validation"]
-    result["objective"] = candidate.objective
-    result["feasible_lower_bound"] = model_feasible ? candidate.objective : nothing
+    result["validation"] = trial_solution["validation"]
+    result["objective"] = trial_solution.objective
+    result["feasible_lower_bound"] = model_feasible ? trial_solution.objective : nothing
     result["relative_gap"] = nothing
     result["absolute_gap"] = nothing
     result["global_certificate"] = false
     model_feasible || return result
-    upper, lower = result["global_bound"], candidate.objective
+    upper, lower = result["global_bound"], trial_solution.objective
     if upper !== nothing && upper < lower - 1e-6
         result["rejected_global_bound"] = upper
         result["bound_rejection"] = "solver upper bound below independently reconstructed objective"
@@ -160,7 +160,7 @@ allowance, capped at 60 seconds; unused time remains available to SCIP.
 only preparation; the global model retains the original physical restrictions.
 `diagnostics_path` optionally writes a native SCIP
 progress log and an accompanying `.statistics.json` file with native plugin
-and LP counters. Returned `scip_diagnostics` and `scip_statistics` are
+and LP counters. Returned `solver_statistics` and `scip_statistics` are
 observational statistics, not independent feasibility or certificate evidence.
 The objective
 is revenue minus transition and gate movement costs and release penalties, plus
@@ -259,14 +259,14 @@ function _solve(
     reconstruction_started=clock()
     best = nothing
     if initial !== nothing
-        initial_audit = validate(c, initial)
-        initial_audit["valid"] ||
-            throw(ArgumentError("initial schedule fails the equation audit"))
+        initial_validation = validate(c, initial)
+        initial_validation["valid"] ||
+            throw(ArgumentError("initial schedule fails the equation validation"))
         _schedule_input(initial;case=c).grid==c.grid || throw(ArgumentError(
             "global initial schedule must use the global model's hydraulic grid"))
-        best, correction = _reconstruct_candidate(c, initial)
+        best, correction = _reconstruct_schedule(c, initial)
         best["validation"]["valid"] ||
-            throw(ArgumentError("initial controls fail reconstruction audit"))
+            throw(ArgumentError("initial controls fail reconstruction validation"))
         result["initial_objective"] = best.objective
     end
     result["initial_reconstruction_seconds"]=clock()-reconstruction_started
@@ -292,8 +292,8 @@ function _solve(
             source=result["preparation_accepted"] ? "preparation" : "initial"
             _set_incumbent!(result,best,source,relative_gap,absolute_gap;model_feasible=false)
             if replay
-                result["replay_audit"]=replay_audit(c,best)
-                result["accepted"]=result["replay_audit"]["valid"]
+                result["replay_validation"]=validate_replay(c,best)
+                result["accepted"]=result["replay_validation"]["valid"]
             end
         end
         result["total_seconds"]=clock()-began
@@ -313,11 +313,11 @@ function _solve(
     result["equality_enclosure_radius"] = _GLOBAL_EQUALITY_RADIUS
     initial_model_feasible=false
     if best !== nothing
-        start_audit = _lift_start!(b, c, best)
-        result["start_audit"] = start_audit
-        initial_model_feasible=start_audit["valid"]
+        start_validation = _initialize_global_start!(b, c, best)
+        result["start_validation"] = start_validation
+        initial_model_feasible=start_validation["valid"]
         # A partial or invalid lift must not be submitted as a feasible start.
-        if !start_audit["valid"]
+        if !start_validation["valid"]
             for variable in all_variables(b.m)
                 set_start_value(variable, nothing)
             end
@@ -379,8 +379,8 @@ function _solve(
             # Copy resets SCIP's native instance; attach before installing its log.
             JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(b.m))
             if best!==nothing && initial_model_feasible
-                result["native_start_audit"]=_complete_scip_start!(b.m)
-                if !result["native_start_audit"]["valid"]
+                result["native_start_validation"]=_complete_scip_start!(b.m)
+                if !result["native_start_validation"]["valid"]
                     _clear_scip_start!(b.m)
                     initial_model_feasible=false
                 else
@@ -408,7 +408,7 @@ function _solve(
                 result["power_cut_statistics_error"]=sprint(showerror,error)
             end
         end
-        result["scip_diagnostics"]=_scip_diagnostics(b.m)
+        result["solver_statistics"]=_scip_statistics(b.m)
         if diagnostics_path!==nothing
             try
                 statistics_path=diagnostics_path*".statistics.json"
@@ -428,7 +428,7 @@ function _solve(
         catch
             nothing
         end
-        if _unresolved_root_certificate(result["scip_diagnostics"],result["status"])
+        if _unresolved_root_certificate(result["solver_statistics"],result["status"])
             result["bound_rejection"]="SCIP terminated without a finite first root LP bound despite LP iterations; native bound is retained only in diagnostics"
             upper=nothing
         end
@@ -450,21 +450,21 @@ function _solve(
                     if constraint_object(ref).set isa MOI.SOS2);init=0.0)
                 result["raw_sos2_residual"]=sos2_error
                 if error <= 1e-6 && gate_integrality<=1e-6 && sos2_error <= 1e-6 && (fixed_u === nothing || raw.commitment == fixed_u)
-                    x, correction = _reconstruct_candidate(c, raw; transport = b.transport)
+                    x, correction = _reconstruct_schedule(c, raw; transport = b.transport)
                     result["control_boundary_correction"] =
                         Dict("flow" => correction.flow, "gate" => correction.gate,
                             "tunnel_opening"=>correction.tunnel_opening)
                     if x["validation"]["valid"] &&
                        (best === nothing || x.objective > best.objective)
-                        model_audit=_lift_start!(b,c,x)
-                        result["solution_model_audit"]=model_audit
-                        best_model_feasible=model_audit["valid"]
+                        model_validation=_initialize_global_start!(b,c,x)
+                        result["solution_model_validation"]=model_validation
+                        best_model_feasible=model_validation["valid"]
                         best = x
                         result["incumbent_source"] = "solver"
                     end
                 end
             catch error
-                result["candidate_error"] = sprint(showerror, error)
+                result["solution_error"] = sprint(showerror, error)
             end
         end
     end
@@ -473,18 +473,18 @@ function _solve(
         _set_incumbent!(result, best, source, relative_gap, absolute_gap;
             model_feasible=best_model_feasible)
         if replay
-            result["replay_audit"] = replay_audit(c, best; transport = b.transport)
-            result["accepted"] = result["replay_audit"]["valid"]
+            result["replay_validation"] = validate_replay(c, best; transport = b.transport)
+            result["accepted"] = result["replay_validation"]["valid"]
             if !result["accepted"] && source == "solver" && validated_initial !== nothing
-                initial_replay = replay_audit(c, validated_initial; transport = b.transport)
+                initial_replay = validate_replay(c, validated_initial; transport = b.transport)
                 if initial_replay["valid"]
-                    result["discrete_candidate"] = Dict(
+                    result["rejected_solution"] = Dict(
                         "solution" => best,
                         "objective" => result["objective"],
                         "relative_gap" => result["relative_gap"],
                         "absolute_gap" => result["absolute_gap"],
                         "global_certificate" => result["global_certificate"],
-                        "replay_audit" => result["replay_audit"],
+                        "replay_validation" => result["replay_validation"],
                     )
                     _set_incumbent!(
                         result,
@@ -493,7 +493,7 @@ function _solve(
                         relative_gap,
                         absolute_gap; model_feasible=initial_model_feasible,
                     )
-                    result["replay_audit"] = initial_replay
+                    result["replay_validation"] = initial_replay
                     result["accepted"] = true
                 end
             end

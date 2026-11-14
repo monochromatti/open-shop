@@ -5,6 +5,35 @@ Construct named objects with keyword arguments, then pass a `HydroSystem` to
 construction resolves direct river links without modifying the supplied system.
 See [input objects and units](input.md) for fields and JSON conventions.
 
+## Names in version 0.9
+
+Version 0.9 uses validation names for checks of physical equations and numerical
+accuracy. A replay means re-simulating the same controls on a finer time grid.
+Update calls and result readers as follows; the former names are removed.
+
+| Version 0.8 | Version 0.9 |
+| --- | --- |
+| `replay_audit(case, schedule)` | `validate_replay(case, schedule)` |
+| `transport_audit(case, schedule)` | `validate_transport(case, schedule)` |
+| Result key `audit` or `replay_audit` | `replay_validation` |
+| Replay field `original_audit` | `original_validation` |
+| Replay field `transport_audit` | `transport_validation` |
+| Replay field `certificate` | `validation_scope` |
+| Routing result `release_cohorts` | `release_series` |
+| Solver report `scip_diagnostics` | `solver_statistics` |
+| Solver report `discrete_candidate` | `rejected_solution` |
+| Solver report `candidate_error` | `solution_error` |
+
+Start-feasibility and reconstruction report names likewise replace `_audit`
+with `_validation`; reserve residual labels replace `_witness` with
+`_operating_point`. Physical input attributes, schedule arrays, units and
+numerical tolerances retain their definitions.
+
+`release_series` contains one discharge time series per river reach. Each entry
+has `grid` in hours and piecewise-constant `release` in m³/s. Keeping these
+release times lets routing calculate downstream arrivals without treating an
+arrival average as a new release.
+
 ## Solve and inspect
 
 ```julia
@@ -51,7 +80,7 @@ The start must have compatible arrays and retain the operating boundaries; it ne
 the updated physical or operating inputs. Its controls are reconstructed under
 the current inputs and independently checked before retention. `initial` takes precedence
 when both are supplied.
-Distributed-delay proposals use the accepted trajectory's entry-cohort flows
+Distributed-delay proposals use the accepted trajectory's entry-interval flows
 as their reference. Without a trajectory, they use each reach's last recorded
 flow, or zero when no previous flow is known. The proposal freezes only the
 delay mixture; nonlinear dispatch retains the flow-dependent response.
@@ -80,7 +109,7 @@ Use `validate(case, schedule)`, `objective_components(case, schedule)` and
 `restart_case(case, schedule, time)` with the original case. Serialization
 retains the actual hydraulic grid. Restart times remain operating boundaries;
 previous-output history uses the preceding operating interval, and river
-transport keeps its executed cohorts. `replay_audit` refines the returned
+transport keeps its executed releases. `validate_replay` refines the returned
 physical grid and checks the same held controls.
 
 The default hydraulic grid in `solve_case` is `case.grid`. `solve_verified` and
@@ -121,11 +150,11 @@ its global bound and gaps remain unavailable when search did not supply a bound.
 Time budgets are checked between phases. Model construction, a solver iteration,
 physical validation and replay can overrun the allowance.
 
-An audited initial schedule is retained independently of SCIP. After optimizer
-attachment, `native_start_audit` checks that every native variable has a finite
+An validated initial schedule is retained independently of SCIP. After optimizer
+attachment, `native_start_validation` checks that every native variable has a finite
 start, including any objective-bridge slack. That slack uses the actual scaled
 objective, including constants. This is a completeness check, not a new physical
-feasibility proof. `scip_diagnostics.native_incumbent_available` and
+feasibility proof. `solver_statistics.native_incumbent_available` and
 `native_incumbent_objective` report SCIP's own incumbent separately; retaining a
 preparation schedule does not establish that SCIP accepted it.
 
@@ -144,8 +173,8 @@ schedule = dispatch_from_controls(case; commitment=commitment,
     generator_q=discharge, gate=outlet_opening, tunnel_opening=positions)
 trajectory = simulate(case; generator_q=discharge,
     gate=outlet_opening, tunnel_opening=positions)
-audit = validate(case, schedule)
-finer = replay_audit(case, schedule)
+validation = validate(case, schedule)
+finer = validate_replay(case, schedule)
 ```
 
 Replay reports separate arrival and discharge shortfalls (m³/s) from power
@@ -179,7 +208,7 @@ shared `time_limit` for the entire search. Integration, construction or final
 checking can overrun a deadline; all work is included in elapsed time.
 
 With `refine_grid=false`, dispatch retains the original hydraulic model and may
-add finer witness equations sharing its controls. Global preparation uses this
+add refined-grid equations sharing its controls. Global preparation uses this
 mode so its incumbent belongs to the finite model being bounded. Neither mode
 proves continuous-time accuracy. An explicitly requested `operational_margin` is a
 power inset in MW, capped at half the permitted power range so a fixed-power
@@ -187,7 +216,7 @@ unit remains well-defined. It is not converted into a discharge margin.
 
 `validate` checks supplied arrays against the equations, restrictions and river
 transport directly. It does not repeat the same-grid hydraulic solve.
-`replay_audit` independently integrates on a finer mesh and retains the separate
+`validate_replay` independently integrates on a finer mesh and retains the separate
 transport check. Neither accepts stored validation flags as evidence. Unexpected
 programming errors in replay or reconstruction are raised to the caller.
 Storage bounds, initial storage and reservoir balances use the smaller of
@@ -203,12 +232,12 @@ usable volume plus one litre. Each level difference must be below 1 cm.
 The small absolute allowance keeps the volume comparison meaningful for a fixed
 or nearly zero storage range. Set `storage_convergence` (Mm³),
 `storage_relative_convergence` (capacity fraction), and `level_convergence` (m)
-on `replay_audit` or `solve_verified` to request different accuracy. An infinite
+on `validate_replay` or `solve_verified` to request different accuracy. An infinite
 tolerance disables that comparison. The returned per-reservoir storage and level
 differences follow reservoir order. Passing these comparisons estimates mesh
 convergence; it does not bound the error against a continuous-time solution.
 Distributed river mixing is refined even when the case supplies `routing_grid`.
-Before a nonlinear retry, local entry-cohort refinement controls the error in
+Before a nonlinear retry, local entry-interval refinement controls the error in
 cumulative arrivals at receiving reservoirs. It splits cells with the largest
 variation in reference-weighted flow, retaining every original vertex. The
 next solve starts from the latest physical trajectory on the refined mesh.
@@ -247,17 +276,17 @@ equation error, so it can exceed `tolerance` when `converged` is true. Operating
 bounds and time-discretization checks remain separate.
 
 `ScheduleCase(routing_grid=...)` optionally supplies a river transport mesh
-containing every control boundary. Distributed confluences otherwise use four
+containing every control boundary. Distributed river junctions otherwise use four
 transport cells per control interval. This mesh adds no controls or reservoir
 states; schedule arrays and operating windows retain `case.grid`.
 For flow-dependent relay waves, the nonlinear and global models evaluate
 transport through volume and first-time-moment integrals anchored at each
 control boundary. These auxiliary variables reproduce the declared constant
-cohorts exactly. Global search uses finite bounds obtained by integrating the
-maximum admissible reference flow. Source cohorts and fixed linear mixtures
+releases exactly. Global search uses finite bounds obtained by integrating the
+maximum admissible reference flow. Source releases and fixed linear mixtures
 retain direct transfer coefficients. This changes algebraic assembly, not the
 river law or its transport resolution.
-`transport_audit` separately checks timing convergence and operating arrival
+`validate_transport` separately checks timing convergence and operating arrival
 and capacity limits on the independently routed waves, including peaks between
 control boundaries. See [river networks](river-networks.md).
 
@@ -320,8 +349,8 @@ independent editable profile; validate edited schedules before reuse.
 
 `with_grid(case, edges)` changes the decision grid while retaining physical-time
 inputs. `restart_case(case, schedule, time)` requires a source schedule that passes original-grid validation
-and an existing grid edge. It carries storage, executed river cohorts, unit and
-plant state ages, previous outputs and gate positions. `transport_audit` checks
+and an existing grid edge. It carries storage, executed river releases, unit and
+plant state ages, previous outputs and gate positions. `validate_transport` checks
 convergence of distributed mixing separately from hydraulic integration.
 Soft state observations and output assessment windows retain their original
 times. Restart removes completed assessments and rejects a restart inside an

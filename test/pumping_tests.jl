@@ -30,7 +30,7 @@ pump_replace(x;kwargs...)=OpenSHOP._river_replace(x;kwargs...)
     @test idle.diagnostics["validation"]["valid"]
     @test idle.power==zeros(2,4)
     @test net_power(c,idle)==zeros(4)
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     @test case_from_dict(case_dict(c)).system.generators[2].mode==:pump
     @test schedule_dict(x)["power"]≈expected atol=1e-10
@@ -44,7 +44,7 @@ pump_replace(x;kwargs...)=OpenSHOP._river_replace(x;kwargs...)
     @test continued.system.generators[2].initial_on==1
     @test continued.system.generators[2].initial_power≈x.power[2,1]
     @test continued.system.commitment_exclusions==c.system.commitment_exclusions
-    @test replay_audit(continued,rest)["valid"]
+    @test validate_replay(continued,rest)["valid"]
 end
 
 @testset "Hydraulic pump tables and connected pressure network" begin
@@ -60,7 +60,7 @@ end
         eta=0.86+0.04*(lift-200.0)/100.0
         @test x.power[2,t]≈0.00981*20.0*lift/(eta*0.96) atol=1e-8
     end
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     local_result=solve_case(c;u,warm=x,feasibility_only=true,time_limit=20.0)
     @test local_result.accepted
     @test local_result.solution.storage≈x.storage atol=1e-8

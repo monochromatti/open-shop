@@ -232,7 +232,7 @@ function curve_samples(c)
     )
 end
 
-"""Identify cases requiring operational and tabulated-physics audit handling."""
+"""Identify cases requiring operational and tabulated-physics validation handling."""
 function has_operational_data(c)
     !isempty(c.operations) || !isempty(c.flow_requirements) ||
         !isempty(c.system.tunnel_interlocks) ||

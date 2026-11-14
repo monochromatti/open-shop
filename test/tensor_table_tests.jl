@@ -95,17 +95,17 @@ end
         seed=dispatch_from_controls(c,reshape([1,0],2,1),reshape([8.0,0.0],2,1),zeros(0,1))
         @test seed["validation"]["valid"]
         b=OpenSHOP._build_global_dispatch(c;joint=true)
-        audit=OpenSHOP._lift_start!(b,c,seed)
-        @test audit["valid"]
-        @test audit["objective"]≈seed["objective"] atol=1e-6
+        validation=OpenSHOP._initialize_global_start!(b,c,seed)
+        @test validation["valid"]
+        @test validation["objective"]≈seed["objective"] atol=1e-6
         fixed=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=seed["u"])
-        lifted=OpenSHOP._lift_start!(fixed,c,seed)
+        lifted=OpenSHOP._initialize_global_start!(fixed,c,seed)
         @test lifted["valid"]
         @test lifted["objective"]≈seed["objective"] atol=1e-6
         result=solve(c;initial=seed,time_limit=20.0,relative_gap=1e-3)
         @test result["accepted"]
-        @test result["start_audit"]["valid"]
-        @test result["scip_diagnostics"]["available"]
+        @test result["start_validation"]["valid"]
+        @test result["solver_statistics"]["available"]
         @test result["raw_sos2_residual"]<=1e-6
         @test result["feasible_lower_bound"]>=seed["objective"]-1e-6
     end

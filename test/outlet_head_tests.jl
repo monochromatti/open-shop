@@ -123,12 +123,12 @@ end
     @test only(simulation["boundary_outflow"])≈2.0 atol=1e-10
     @test a["river_release"][1, 1]≈4*0.5 atol=1e-10
     @test a["power"][1, 1]<b["power"][1, 1]
-    @test replay_audit(floored, a)["valid"]
+    @test validate_replay(floored, a)["valid"]
     @test only(floored.system.plants).target==:Receiver
     crossing=outlet_test_case(100.0)
     global_model=OpenSHOP._build_global_dispatch(crossing; joint = true)
     controls=dispatch_from_controls(crossing,ones(Int,1,1),fill(2.0,1,1),fill(0.5,1,1))
-    @test OpenSHOP._lift_start!(global_model,crossing,controls)["valid"]
+    @test OpenSHOP._initialize_global_start!(global_model,crossing,controls)["valid"]
     local_result=solve_case(crossing;u=ones(Int,1,1),warm=controls,time_limit=10.0)
     @test local_result["accepted"]
 end
@@ -151,9 +151,9 @@ end
     @test sum(z["V"][:, end])+sum(z["transit"][:, end])-sum(z["V"][:, 1])-sum(
         z["transit"][:, 1],
     ) ≈ 0.0036*(inflow-only(z["boundary_outflow"])) atol=1e-10
-    @test replay_audit(c, x)["valid"]
+    @test validate_replay(c, x)["valid"]
     b=OpenSHOP._build_global_dispatch(c; joint = true)
-    @test OpenSHOP._lift_start!(b, c, x)["valid"]
+    @test OpenSHOP._initialize_global_start!(b, c, x)["valid"]
     backwards=OpenSHOP._river_replace(
         c;
         system = OpenSHOP._river_replace(
@@ -189,9 +189,9 @@ end
     x=dispatch_from_controls(c, ones(Int, 1, 1), fill(2.0, 1, 1), fill(0.5, 1, 1))
     @test x["validation"]["valid"]
     @test x["power"][1, 1]≈0.00981*2*(202-100-0.2)*0.65 atol=1e-9
-    @test replay_audit(c, x)["valid"]
+    @test validate_replay(c, x)["valid"]
     b=OpenSHOP._build_global_dispatch(c; joint = true)
-    @test OpenSHOP._lift_start!(b, c, x)["valid"]
+    @test OpenSHOP._initialize_global_start!(b, c, x)["valid"]
     forbidden=OpenSHOP._river_replace(
         c;
         system = OpenSHOP._river_replace(
@@ -218,7 +218,7 @@ end
     )
     x=dispatch_from_controls(c, zeros(Int, 1, 2), zeros(1, 2), zeros(1, 2))
     @test x["validation"]["valid"]
-    @test replay_audit(c, x)["valid"]
+    @test validate_replay(c, x)["valid"]
     income=sum(c.prices[t]*diff(c.grid)[t]*x["power"][1, t] for t in 1:2)
     water=sum(
         r.water_value*(x["V"][i, end]-r.v0) for (i, r) in enumerate(c.system.reservoirs)

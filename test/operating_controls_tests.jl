@@ -44,7 +44,7 @@ function operating_balanced(c, q; releases=fill(1.0,length(c.prices)))
 end
 
 # To test commitment tampering, reconstruct an actual physical trajectory with
-# only state controls removed, then independently audit the original restrictions.
+# only state controls removed, then independently check the original restrictions.
 function operating_physical_without_states(c,u,q,gate)
     cc=operating_replace(c;operations=[z for z in c.operations
         if z.attribute ∉ (:maintenance,:forced_on,:power,:discharge)])
@@ -96,11 +96,11 @@ end
     # Unit1 50+15+80; Unit2 20; Unit3 20+5+20; Unit4 no transitions.
     @test x["objective"]≈expected_revenue-210.0 atol=1e-8
     @test OpenSHOP.transition_costs(c,u)==210.0
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     continued=restart_case(c,x,0.5)
     remainder=dispatch_from_controls(continued,u[:,2:end],q[:,2:end],gate[:,2:end])
     @test remainder["validation"]["valid"]
-    @test replay_audit(continued,remainder)["valid"]
+    @test validate_replay(continued,remainder)["valid"]
     @test remainder["V"]≈x["V"][:,2:end] atol=1e-10
     @test remainder["power"]≈x["power"][:,2:end] atol=1e-9
     # Historical output windows use the executed .5h interval at this edge.
@@ -132,13 +132,13 @@ end
     @test !validate(c,bad)["valid"]
 
     # Both numerical optimizers receive the same physical schedules, and the
-    # independent audits check their outputs instead of trusting solver status.
+    # independent checks check their outputs instead of trusting solver status.
     local_result=solve_case(c;u,warm=x,time_limit=45.0)
     @test haskey(local_result,"validation")
     if haskey(local_result,"validation")
         @test local_result["validation"]["valid"]
         @test local_result["objective"]≈x["objective"] atol=1e-3
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     global_result=solve(c;initial=x,time_limit=30.0,relative_gap=1e-3)
     @test global_result["accepted"]
@@ -186,7 +186,7 @@ end
         u=ones(Int,1,3); gate=fill(0.25,1,3)
         x=dispatch_from_controls(c,u,q,gate)
         @test x["validation"]["valid"]
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         for object in (only(c.system.generators),only(c.system.plants))
             @test OpenSHOP.ramp_allowance(c,object,attribute,0.25,1.25)≈2.5 atol=1e-12
             @test OpenSHOP.ramp_allowance(c,object,attribute,1.25,2.5)≈2.5 atol=1e-12
@@ -204,7 +204,7 @@ end
     q=reshape([2.0,4.4,6.8],1,3); c=operating_balanced(c,q)
     x=dispatch_from_controls(c,ones(Int,1,3),q,fill(0.25,1,3))
     @test x["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     changed=copy(q); changed[1,2]+=0.2
     bad=dispatch_from_controls(c,ones(Int,1,3),changed,fill(0.25,1,3))
     @test !bad["validation"]["valid"]
@@ -218,7 +218,7 @@ end
     q=fill(2.2,1,3); c=operating_balanced(c,q)
     x=dispatch_from_controls(c,ones(Int,1,3),q,fill(0.25,1,3))
     @test x["validation"]["valid"] # -1h to .25h: allowance1.25, not .5.
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     changed=copy(q); changed[1,1]=2.3
     bad=dispatch_from_controls(c,ones(Int,1,3),changed,fill(0.25,1,3))
     @test !bad["validation"]["valid"]
@@ -228,7 +228,7 @@ end
     q=fill(2.0,1,3); c=operating_balanced(c,q;releases=fill(2.2,3))
     x=dispatch_from_controls(c,ones(Int,1,3),q,fill(2.2/4,1,3))
     @test x["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     bad=dispatch_from_controls(c,ones(Int,1,3),q,fill(2.3/4,1,3))
     @test !bad["validation"]["valid"]
     @test bad["validation"]["residuals"]["river_ramp_River"]≈0.05 atol=1e-9
@@ -249,7 +249,7 @@ end
     @test get(get(local_result,"validation",Dict()),"valid",false)
     if haskey(local_result,"generator_q")
         @test local_result["generator_q"]≈q atol=2e-4
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     global_result=solve(c;initial=x,fixed_u=u,time_limit=20.0)
     @test global_result["accepted"]
@@ -269,7 +269,7 @@ end
         r=kind==:tabulated ? OpenSHOP._river_replace(r;
             level_curve=TableCurve([4.0,5.0,6.0],[99.0,100.0,102.0])) :
             OpenSHOP._river_replace(r;z0=97.5,slope=0.0,curvature=0.1)
-        # The independent witness lowers the level by .02m/hour, at vertices.
+        # The independent operating point lowers the level by .02m/hour, at vertices.
         levels=[100.0,99.99,99.96]
         volumes=kind==:tabulated ? 5.0 .+ (levels .-100.0) :
             sqrt.((levels .-97.5)./0.1)
@@ -279,12 +279,12 @@ end
         u=ones(Int,1,2);x=dispatch_from_controls(c,u,q,fill(0.25,1,2))
         @test x["validation"]["valid"]
         @test head.(Ref(r),vec(x["V"]))≈levels atol=1e-9
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         local_result=solve_case(c;u,warm=x,time_limit=20.0)
         @test get(get(local_result,"validation",Dict()),"valid",false)
         if haskey(local_result,"V")
             @test head.(Ref(r),vec(local_result["V"]))≈levels atol=2e-4
-            @test replay_audit(c,local_result)["valid"]
+            @test validate_replay(c,local_result)["valid"]
         end
         global_result=solve(c;initial=x,fixed_u=u,time_limit=20.0)
         @test global_result["accepted"]
@@ -310,14 +310,14 @@ end
         x=dispatch_from_controls(c,ones(Int,1,3),q,fill(0.25,1,3))
         @test x["validation"]["valid"]
         @test vec(diff(x["V"];dims=2))≈desired atol=1e-10
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         bad_rate=level ? 0.0005 : 0.005
         r=OpenSHOP._river_replace(only(c.system.reservoirs);NamedTuple{(attribute,)}((bad_rate,))...)
         cc=operating_replace(c;reservoirs=[r])
-        audit=validate(cc,x)
-        @test !audit["valid"]
+        validation=validate(cc,x)
+        @test !validation["valid"]
         label=level ? "level_ramp_Lake" : "volume_ramp_Lake"
-        @test audit["residuals"][label]≈(abs(delta)-(level ? bad_rate/0.1 : bad_rate))*maximum(dt)*(level ? 0.1 : 1.0) atol=1e-9
+        @test validation["residuals"][label]≈(abs(delta)-(level ? bad_rate/0.1 : bad_rate))*maximum(dt)*(level ? 0.1 : 1.0) atol=1e-9
     end
 end
 
@@ -330,7 +330,7 @@ end
     c=operating_balanced(c,q)
     x=dispatch_from_controls(c,u,q,fill(0.25,1,3))
     @test x["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     # Current pmin at startup, previous pmin at shutdown: both jumps2alpha.
     @test x["validation"]["residuals"]["unit_ramp_Unit1"]<1e-9
     @test x["validation"]["residuals"]["plant_ramp_Plant1"]<1e-9
@@ -340,7 +340,7 @@ end
     remainder=dispatch_from_controls(continued,u[:,3:end],q[:,3:end],fill(0.25,1,1))
     @test remainder["validation"]["valid"]
     @test remainder["objective"]≈-5.0 atol=1e-9
-    @test replay_audit(continued,remainder)["valid"]
+    @test validate_replay(continued,remainder)["valid"]
     strict=operating_replace(c;generators=[OpenSHOP._river_replace(only(c.system.generators);
         discharge_ramp_up=0.0,discharge_ramp_down=0.0)])
     @test !validate(strict,x)["valid"]
@@ -394,7 +394,7 @@ end
     @test case_dict(case_from_dict(case_dict(no_power_ramp)))==case_dict(no_power_ramp)
 end
 
-@testset "Confluence restart retains interval release history and exact pulse cohorts" begin
+@testset "River junction restart retains interval release history and exact pulse releases" begin
     lakes=[Reservoir(name=name,z0=99.5,slope=0.1,v0=5.0,vmin=4.0,vmax=6.0,
         water_value=0.0) for name in (:TributaryLakeA,:TributaryLakeB)]
     reaches=[
@@ -440,7 +440,7 @@ end
     @test x["validation"]["valid"]
     @test x["V"]≈fill(5.0,2,3) atol=1e-10
     @test x["river_release"]≈[10.0 0.0;0.0 0.0;5.0 5.0] atol=1e-10
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 
     fine_x=dispatch_from_controls(c,u,q,gate;grid=[0.0,0.5,1.0,1.5,2.0])
     @test fine_x["validation"]["valid"]
@@ -456,10 +456,10 @@ end
     @test remainder["validation"]["valid"]
     @test remainder["river_release"]≈x["river_release"][:,2:end] atol=1e-10
     @test remainder["terminal_transit"]≈x["terminal_transit"] atol=1e-10
-    @test replay_audit(continued,remainder)["valid"]
+    @test validate_replay(continued,remainder)["valid"]
     @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
 
-    # Reproduce the former restart behavior while leaving routing cohorts intact:
+    # Reproduce the former restart behavior while leaving routing releases intact:
     # it incorrectly compares the next average5 to the final pulse10.
     old_rivers=copy(continued.system.rivers)
     old_rivers[3]=OpenSHOP._river_replace(merged;initial_release=nothing)
@@ -473,7 +473,7 @@ end
     @test get(get(local_result,"validation",Dict()),"valid",false)
     if haskey(local_result,"river_release")
         @test local_result["river_release"]≈remainder["river_release"] atol=1e-7
-        @test replay_audit(continued,local_result)["valid"]
+        @test validate_replay(continued,local_result)["valid"]
     end
     global_result=solve(continued;initial=remainder,time_limit=30.0)
     @test global_result["accepted"]

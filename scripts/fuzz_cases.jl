@@ -262,7 +262,7 @@ function pumping(rng,n,grid)
     (;system,u,q,gate=zeros(0,T),opening=zeros(0,T),operations=OperationalSeries[])
 end
 
-"""Construct a synthetic basin and controls before adding witness-compatible restrictions.
+"""Construct a synthetic basin and controls before adding restrictions satisfied by the reference schedule.
 
 There is no rejection sampling: a failed hydraulic reference remains a finding.
 The saved JSON, rather than the seed alone, is the cross-version reproduction.
@@ -292,7 +292,7 @@ function generate_case(seed::Integer, family::AbstractString, size::AbstractStri
 end
 
 """Add operating restrictions around an independently reconstructed feasible schedule."""
-function restrict_case(seed, case, witness;window_rules=true)
+function restrict_case(seed, case, reference_schedule;window_rules=true)
     rng = Xoshiro(seed ⊻ 0x1c4b7a21)
     s,grid = case.system,case.grid
     dt = diff(grid)
@@ -300,7 +300,7 @@ function restrict_case(seed, case, witness;window_rules=true)
     for (i,r) in enumerate(s.reservoirs)
         width = r.vmax-r.vmin
         margin = rand(rng,(0.002,0.03,0.15))*width
-        v = witness.storage[i,:]
+        v = reference_schedule.storage[i,:]
         # A held restriction covers both ends of its interval, not just its start.
         lower = vcat(min.(v[1:end-1],v[2:end]),last(v)).-margin
         upper = vcat(max.(v[1:end-1],v[2:end]),last(v)).+margin
@@ -308,19 +308,19 @@ function restrict_case(seed, case, witness;window_rules=true)
         push!(operations,series(r.name,:vmax,grid,min.(r.vmax,upper)))
     end
     for (i,g) in enumerate(s.generators)
-        q = witness.generator_q[i,:]
-        p = witness.power[i,:]
+        q = reference_schedule.generator_q[i,:]
+        p = reference_schedule.power[i,:]
         push!(operations,series(g.name,:qmax,grid[1:end-1],
             max.(g.qmin+0.02g.qmax,min.(g.qmax,q.+0.2g.qmax))))
         push!(operations,series(g.name,:pmax,grid[1:end-1],min.(g.pmax,p.+0.2g.pmax)))
-        forced = [rand(rng)<0.25 ? Float64(witness.commitment[i,t]) : -1.0 for t in eachindex(dt)]
+        forced = [rand(rng)<0.25 ? Float64(reference_schedule.commitment[i,t]) : -1.0 for t in eachindex(dt)]
         push!(operations,series(g.name,:forced_on,grid[1:end-1],forced))
         push!(operations,series(g.name,:maintenance,grid[1:end-1],
-            [witness.commitment[i,t]==0 && rand(rng)<0.3 ? 1.0 : 0.0 for t in eachindex(dt)]))
+            [reference_schedule.commitment[i,t]==0 && rand(rng)<0.3 ? 1.0 : 0.0 for t in eachindex(dt)]))
         # A hard zero-discharge schedule requests an off state in the input API.
         # Retain idle committed units by leaving their flow unscheduled.
         if rand(rng)<0.3 && g.characteristic===nothing &&
-           all(t->q[t]>0 || witness.commitment[i,t]==0,eachindex(dt))
+           all(t->q[t]>0 || reference_schedule.commitment[i,t]==0,eachindex(dt))
             push!(operations,series(g.name,:discharge,grid[1:end-1],q))
         end
         # Midpoint-to-midpoint rates, as required by the public ramp convention.
@@ -336,26 +336,26 @@ function restrict_case(seed, case, witness;window_rules=true)
         if !isempty(e.gate_positions) && rand(rng)<0.5
             # A late schedule leaves the earlier gate choices free.
             k = rand(rng,2:length(dt))
-            push!(operations,series(e.name,:opening,grid[k:end-1],witness.tunnel_opening[i,k:end]))
+            push!(operations,series(e.name,:opening,grid[k:end-1],reference_schedule.tunnel_opening[i,k:end]))
         end
-        cap = min.(e.capacity,abs.(witness.tunnel_q[i,:]).+0.2e.capacity)
+        cap = min.(e.capacity,abs.(reference_schedule.tunnel_q[i,:]).+0.2e.capacity)
         push!(operations,series(e.name,:capacity,grid[1:end-1],cap))
     end
     for (i,r) in enumerate(s.rivers)
         r.law==:controlled || continue
-        lower = max.(r.gate_min,witness.gate[i,:].-0.15)
-        upper = min.(1.0,witness.gate[i,:].+0.15)
+        lower = max.(r.gate_min,reference_schedule.gate[i,:].-0.15)
+        upper = min.(1.0,reference_schedule.gate[i,:].+0.15)
         push!(operations,series(r.name,:gate_min,grid[1:end-1],lower))
         push!(operations,series(r.name,:gate_max,grid[1:end-1],upper))
-        push!(operations,series(r.name,:min_release,grid[1:end-1],0.8witness.river_release[i,:]))
+        push!(operations,series(r.name,:min_release,grid[1:end-1],0.8reference_schedule.river_release[i,:]))
     end
     requirements = isempty(s.generators) ? FlowRequirement[] : [FlowRequirement(
         name=:ObservedStationFlow,generators=[first(s.generators).name],
-        min_flow=0.7minimum(witness.generator_q[1,:]),
-        max_flow=maximum(witness.generator_q[1,:])+0.1first(s.generators).qmax,
-        max_volume=1.2*0.0036sum(dt.*witness.generator_q[1,:]))]
+        min_flow=0.7minimum(reference_schedule.generator_q[1,:]),
+        max_flow=maximum(reference_schedule.generator_q[1,:])+0.1first(s.generators).qmax,
+        max_volume=1.2*0.0036sum(dt.*reference_schedule.generator_q[1,:]))]
     if !isempty(s.rivers)
-        arrivals=witness.arrival_volume[1,:]
+        arrivals=reference_schedule.arrival_volume[1,:]
         rates=arrivals./(0.0036.*dt)
         push!(requirements,FlowRequirement(name=:ObservedArrival,
             river_arrivals=[first(s.rivers).name],min_flow=minimum(rates)-0.1maximum(abs,rates)-1e-5,
@@ -365,7 +365,7 @@ function restrict_case(seed, case, witness;window_rules=true)
     end
     rivers=[begin
         initial=something(r.initial_release,isempty(r.history_release) ? 0.0 : last(r.history_release))
-        positive=filter(>(0.0),vcat(witness.river_release[i,:],initial))
+        positive=filter(>(0.0),vcat(reference_schedule.river_release[i,:],initial))
         minimum_flow=isempty(positive) ? min(0.1,0.01r.capacity) : 0.5minimum(positive)
         change_cost=uniform(rng,0.0,5.0)
         if r.law==:controlled && minimum_flow>=1e-5
@@ -379,14 +379,14 @@ function restrict_case(seed, case, witness;window_rules=true)
     surface(name)=begin
         i=findfirst(r->r.name==name,s.reservoirs)
         i===nothing ? fill(only(b.head for b in s.boundaries if b.name==name),length(grid)) :
-            head.(Ref(s.reservoirs[i]),witness.storage[i,:])
+            head.(Ref(s.reservoirs[i]),reference_schedule.storage[i,:])
     end
     ix=nodeindex(s)
     generators=[begin
         p=plantof(s,g)
         if p.source in references && p.target in references
             sign=g.mode==:pump ? -1.0 : 1.0
-            heads=sign.*(witness.head[ix[p.source],:]-witness.head[ix[p.target],:])
+            heads=sign.*(reference_schedule.head[ix[p.source],:]-reference_schedule.head[ix[p.target],:])
             vertices=sign.*(surface(p.source)-surface(p.target))
             minimum(heads)>=0 && minimum(vertices)>=0 ? updated(g;
                 gross_head_min=0.9minimum(heads),gross_head_max=1.1maximum(heads)+1e-6,
@@ -398,7 +398,7 @@ function restrict_case(seed, case, witness;window_rules=true)
     r = first(s.reservoirs)
     allowance = 0.15(r.vmax-r.vmin)
     soft = [SoftConstraint(name=:TerminalStorage,object=r.name,quantity=:volume,
-        time=last(grid),lower=min(r.vmax,witness.storage[1,end]+0.3allowance),
+        time=last(grid),lower=min(r.vmax,reference_schedule.storage[1,end]+0.3allowance),
         max_lower_slack=allowance,lower_cost=uniform(rng,100.0,30000.0))]
     if !window_rules
         return updated(case;system=updated(s;rivers,generators),operations,
@@ -407,8 +407,8 @@ function restrict_case(seed, case, witness;window_rules=true)
     middle=grid[clamp(div(length(grid),2)+1,2,length(grid)-1)]
     hours=1.3first(dt)
     requirements=[begin
-        q=OpenSHOP.observed_flow(case,rule,witness.generator_q,witness.river_release,
-            witness.arrival_volume,witness.tunnel_q)
+        q=OpenSHOP.observed_flow(case,rule,reference_schedule.generator_q,reference_schedule.river_release,
+            reference_schedule.arrival_volume,reference_schedule.tunnel_q)
         a,b=first(grid)+0.25first(dt),last(grid)-0.25last(dt)
         total=0.0036sum(max(0.0,min(b,grid[t+1])-max(a,grid[t]))*q[t]
             for t in eachindex(dt))
@@ -422,7 +422,7 @@ function restrict_case(seed, case, witness;window_rules=true)
                 up=difference,down=difference)])
     end for rule in requirements]
     reservoirs=[begin
-        levels=head.(Ref(r),witness.storage[i,:])
+        levels=head.(Ref(r),reference_schedule.storage[i,:])
         difference=maximum(levels)-minimum(levels)
         updated(r;level_windows=[LevelWindow(start_time=first(grid),end_time=last(grid),
             max_change=1.1difference+1e-5)])

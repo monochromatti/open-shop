@@ -145,25 +145,26 @@ supplied when there is one weight per edge.
 At an intermediate release flow, the neighboring distributions are mixed
 linearly. Their bin edges may differ. The mixture is selected from total reach
 entry flow, including natural inflow and upstream arrivals, and stays attached
-to the released cohort. Zero flow releases no water. Historical cohorts keep
+to the released water. Zero flow releases no water. Historical releases keep
 their original flows and release intervals, including water still in transit
 at time zero.
 
-The reference is the flow of **that release cohort**. It is not the previous
+The reference is the flow of **that interval release**. It is not the previous
 time interval's release, the arrival flow, or a previous optimization iterate.
-Writing the reference flows as `q[j]`, a cohort released at `Q` between two
+Writing the reference flows as `q[j]`, water released at discharge `Q` between two
 references uses
 
 ```math
 w=\frac{Q-q_j}{q_{j+1}-q_j},\qquad F_Q=(1-w)F_j+wF_{j+1}.
 ```
 
-Here `F` is the travel-time CDF. Each historical cohort uses its own original
+Here `F` is the cumulative distribution function (CDF): the fraction of water
+that has arrived by a given travel time. Each historical release uses its own original
 release and interval to select these weights. A subsequent change in flow does
 not reselect the distribution of water already released. At a distributed
-confluence, total entry is the allocated arriving flow plus branch-local
+river junction, total entry is the allocated arriving flow plus branch-local
 injections, averaged on its declared transport interval. This is the flow used
-for the new downstream cohort.
+for the new downstream release.
 
 Raw routing accepts the first and last reference exactly and rejects a flow
 below or above a multi-curve reference range. The full case additionally needs
@@ -181,7 +182,8 @@ The nonlinear dispatch and global model both use `Q F_Q`, so the released
 transfer is piecewise quadratic in `Q`. The MILP commitment proposal freezes
 transfer coefficients at its reference schedule or a default capacity-based
 flow as a surrogate; its objective is not a bound on this nonlinear model.
-Feasibility and replay use the contemporaneous-cohort law.
+Validation and finer-grid simulation select each interval's travel-time
+response using the discharge during that interval.
 
 For example, mix a slow uniform delay `[2, 3]` at reference flow zero and a
 fast uniform delay `[0.5, 1.5]` at reference flow ten. A one-hour release at
@@ -191,8 +193,8 @@ delivered nothing and the fast fraction has delivered `7/8`. Arrival volume is
 Of the released `0.009 Mm³`, `0.00703125 Mm³` remains in transit.
 Tests check these values within `1e-12 Mm³`.
 
-Distributed confluences conserve water but average arriving streams on the
-transport grid before sending them downstream. `transport_audit` reports
+Distributed river junctions conserve water but average arriving streams on the
+transport grid before sending them downstream. `validate_transport` reports
 cumulative-arrival and terminal-inventory differences on a finer grid
 separately from equation feasibility. Conservation alone does not establish
 arrival-time accuracy. Restart retains release histories, not just averaged

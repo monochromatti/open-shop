@@ -24,12 +24,12 @@ window_dispatch(c,q)=dispatch_from_controls(c,ones(Int,1,length(c.prices)),
     c=window_rule_case(rules=[rule])
     x=window_dispatch(c,[2.0,4.0,3.0,1.0])
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     continued=restart_case(c,x,0.5)
     y=window_dispatch(continued,[4.0,3.0,1.0])
     @test validate(continued,y)["valid"]
-    @test replay_audit(continued,y)["valid"]
+    @test validate_replay(continued,y)["valid"]
     @test y.storage≈x.storage[:,2:end] atol=1e-10
     again=restart_case(continued,y,2.0)
     z=window_dispatch(again,[3.0,1.0])
@@ -45,11 +45,11 @@ end
         history_flow=[0.0,8.0,0.0],rolling_ramps=[RollingRamp(hours=1.0,up=1.0)])
     c=window_rule_case(grid=[0.0,2.0],rules=[rule])
     x=window_dispatch(c,[2.0])
-    audit=validate(c,x)
-    @test !audit["valid"]
+    validation=validate(c,x)
+    @test !validation["valid"]
     # Both scheduling endpoints have zero upward deviation. At t=0.25 the
     # historical pulse has just left the window: mean=0.5, current flow=2.
-    @test audit["residuals"]["rolling_ramp_Gauge_1"]≈0.5 atol=1e-10
+    @test validation["residuals"]["rolling_ramp_Gauge_1"]≈0.5 atol=1e-10
     jumps=OpenSHOP._river_replace(rule;history_grid=[-1.0,0.0],history_flow=[0.0])
     cc=window_rule_case(grid=[0.0,1.0,2.0],rules=[jumps])
     y=window_dispatch(cc,[0.0,4.0])
@@ -67,7 +67,7 @@ end
     c=window_rule_case(rules=[rule])
     x=window_dispatch(c,[2.0,4.0,3.0,1.0])
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     strict=OpenSHOP._river_replace(c;flow_requirements=[OpenSHOP._river_replace(rule;
         period_ramps=[PeriodRamp(grid=[-1.0,0.0,2.0,4.0],up=1.0,down=1.0)])])
     # Period means are 2, 3.5 and 2; arithmetic averages would miss this.
@@ -75,7 +75,7 @@ end
     continued=restart_case(c,x,0.5)
     y=window_dispatch(continued,[4.0,3.0,1.0])
     @test validate(continued,y)["valid"]
-    @test replay_audit(continued,y)["valid"]
+    @test validate_replay(continued,y)["valid"]
     @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
 end
 
@@ -84,11 +84,11 @@ end
     c=window_rule_case(level_windows=windows,history_grid=[-1.0,0.0],history_storage=[10.01,10.0])
     x=window_dispatch(c,[2.0,4.0,3.0,1.0])
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     continued=restart_case(c,x,0.5)
     y=window_dispatch(continued,[4.0,3.0,1.0])
     @test validate(continued,y)["valid"]
-    @test replay_audit(continued,y)["valid"]
+    @test validate_replay(continued,y)["valid"]
     @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
     strict=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;
         reservoirs=[OpenSHOP._river_replace(only(c.system.reservoirs);
@@ -122,13 +122,13 @@ end
         x=local_result.solution
         @test validate(c,x)["valid"]
         @test x.objective>warm.objective+1.0
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         @test sum(0.0036*max(0.0,min(3.5,c.grid[t+1])-max(0.25,c.grid[t]))*x.generator_q[1,t]
             for t in eachindex(c.prices))<=0.036+1e-6
         global_result=OpenSHOP.solve(c;initial=x,time_limit=30.0,preparation_time_limit=0.0)
         @test global_result.accepted
         @test global_result.global_bound===nothing || global_result.global_bound>=x.objective-1e-3
-        @test get(global_result.diagnostics,"start_audit",Dict("valid"=>false))["valid"]
+        @test get(global_result.diagnostics,"start_validation",Dict("valid"=>false))["valid"]
     end
     # A nonlinear level table must also constrain actual optimized dispatch.
     table=TableCurve([8.0,10.0,12.0],[80.0,100.0,140.0])
@@ -178,7 +178,7 @@ end
             if haskey(proposal,"u")
                 @test proposal["generator_q"]≈fill(2.0,1,2) atol=1e-6
                 y=dispatch_from_controls(c,proposal["u"],proposal["generator_q"],zeros(0,2))
-                @test replay_audit(c,y)["valid"]
+                @test validate_replay(c,y)["valid"]
             end
         end
     end
@@ -215,7 +215,7 @@ end
     gate=reshape([1.0,0.5,0.75,0.0],1,:)
     x=dispatch_from_controls(c,zeros(Int,0,4),zeros(0,4),gate)
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     continued=restart_case(c,x,0.5)
     y=dispatch_from_controls(continued,zeros(Int,0,3),zeros(0,3),gate[:,2:end])
     @test validate(continued,y)["valid"]
@@ -237,5 +237,5 @@ end
     result=OpenSHOP.solve(signed;initial=z,time_limit=15.0,preparation_time_limit=0.0)
     @test result.accepted
     @test validate(signed,result.solution)["valid"]
-    @test get(result.diagnostics,"start_audit",Dict("valid"=>false))["valid"]
+    @test get(result.diagnostics,"start_validation",Dict("valid"=>false))["valid"]
 end

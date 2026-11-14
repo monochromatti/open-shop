@@ -234,7 +234,7 @@ function river_rates!(work, x, data::HydraulicStepData)
     work
 end
 
-"""Confluence conservation on transport cells inside one hydraulic interval."""
+"""River junction conservation on transport cells inside one hydraulic interval."""
 function distributed_river_rates!(work,data)
     routing=data.routing
     arrival,release=work.routing_arrival,work.routing_release
@@ -243,7 +243,7 @@ function distributed_river_rates!(work,data)
     cells=length(routing.duration)
     for d in data.river_order
         r=data.system.rivers[d]
-        if routing.source_cohorts[d]
+        if routing.source_reaches[d]
             work.release[d]=data.sources.reservoirs[d] ? work.release[d] : work.injection[d]
             release[d,:].=work.release[d]
             for (k,fractions) in release_terms(routing.transfer[d],routing.interval,routing.block)
@@ -256,8 +256,8 @@ function distributed_river_rates!(work,data)
                     arrival[i,j] for i in data.topology.river_upstream[d];init=0.0)/
                     (0.0036*routing.duration[j])
             end
-            for (j,cohort) in enumerate(routing.block)
-                for (k,fractions) in release_terms(routing.transfer[d],cohort,routing.block)
+            for (j,release_interval) in enumerate(routing.block)
+                for (k,fractions) in release_terms(routing.transfer[d],release_interval,routing.block)
                     arrival[d,k-first(routing.block)+1]+=0.0036*routing.duration[j]*released_fraction(
                         r,release[d,j],fractions)
                 end

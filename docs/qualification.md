@@ -3,7 +3,7 @@
 `scripts/qualify.py` measures the scheduling search separately from global bound
 closure. It compares cold solves at several budgets against the best accepted
 schedule found with more time. It can then execute a prefix, restart with the
-actual storage, river cohorts and operating history, and compare cold and warm
+actual storage, river releases and operating history, and compare cold and warm
 replanning after changed inputs. The optimizer and physical model are unchanged.
 
 Save a campaign plan outside the checkout, for example `../work/qualification.json`:
@@ -27,7 +27,7 @@ nix develop -c python3 scripts/qualify.py ../work/qualification.json \
 ```
 
 The six [fuzz families](fuzzing.md) and their sizes are available. `restricted`
-adds the witness-compatible operating restrictions used by the fuzz campaign;
+adds operating restrictions satisfied by the reference schedule used by the fuzz campaign;
 it defaults to false. The integrated family combines a pressure ring, selectable
 gates, tabulated turbines, delayed river splits and merges, a small forebay and
 downstream generation. Seeds vary its resistances, inflows, prices and water
@@ -69,7 +69,7 @@ finer replay than its recorded hydraulic grid. Reconstruction and the ledger use
 that recorded grid; operating restrictions retain their original windows, also
 when checking unchanged continuation after a restart.
 `accepted` records the package's acceptance decision; `qualified`
-also requires the campaign's finer replay and water ledger. Only qualified
+also requires the campaign's finer replay and water balance. Only qualified
 solutions contribute to economic comparisons. Generation failures, exceptions,
 timeouts and replay sensitivity remain visible; inputs are never resampled.
 

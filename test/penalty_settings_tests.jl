@@ -58,7 +58,7 @@ end
     fine=dispatch_from_controls(refined,ones(Int,1,5),reshape([1.0,1.0,3.0,3.0,3.0],1,:),zeros(0,5))
     @test [s.cost_factor for s in penalty_settings(refined).soft]≈[1.0,1.0,0.5,0.0072,1.0] atol=1e-15
     @test soft_constraint_assessment(refined,fine).cost≈assessment.cost atol=1e-7
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test penalty_settings(case_from_dict(case_dict(c)))==settings
     corrupted=schedule_dict(x);corrupted["V"][1,end]+=0.001
     @test !validate(c,corrupted)["valid"]

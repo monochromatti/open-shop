@@ -47,7 +47,7 @@ J = \text{energy revenue} - \text{costs}
 ```
 
 `W[r,0]` is historical water already in transit, not zero by convention.
-`W[r,T]` includes all cohorts still in that reach at the end. A unit of water
+`W[r,T]` includes all releases still in that reach at the end. A unit of water
 is valued where it resides, so it is not counted in both a reservoir and transit.
 
 Water between the stations can generate only below. The example sets that

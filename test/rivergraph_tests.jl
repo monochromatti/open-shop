@@ -93,7 +93,7 @@ end
     q[2, 1]=5.0
     o=route_network(c, q)
     @test sum(o["arrival_volume"][3, :])≈0.0036*15.0 atol=1e-14
-    # Exact source-cohort routing is retained under refinement.
+    # Exact source-release routing is retained under refinement.
     fine=collect(0.0:0.125:8.0)
     f=route_network(c, q; grid = fine)
     @test f["arrival_volume"][1, :]≈RiverRouting.route(

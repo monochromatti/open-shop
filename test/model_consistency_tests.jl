@@ -34,12 +34,12 @@ end
     warm=dispatch_from_controls(c;commitment=ones(Int,1,1),generator_q=zeros(1,1),
         gate=zeros(0,1),head_reference=reference)
     @test validate(c,warm)["valid"]
-    @test replay_audit(c,warm)["valid"]
+    @test validate_replay(c,warm)["valid"]
     @test reference==reshape([106.0,100.0],2,1)
     for result in (solve_case(c;u=ones(Int,1,1),warm,time_limit=30.0),
         solve(c;initial=warm,time_limit=45.0))
         @test result.accepted
-        result.solution===nothing || @test replay_audit(c,result.solution)["valid"]
+        result.solution===nothing || @test validate_replay(c,result.solution)["valid"]
     end
     invalid=dispatch_from_controls(c,ones(Int,1,1),zeros(1,1),zeros(0,1);
         head_reference=reshape([100.0,100.0],2,1))

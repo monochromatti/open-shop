@@ -2,7 +2,7 @@
 
 Incidence is positive into a node. A plant or tunnel outfall contributes water
 at its river destination; its hydraulic target still supplies the outlet head.
-River source/target index zero denotes a river confluence, not a hydraulic node.
+River source/target index zero denotes a river junction, not a hydraulic node.
 This contains connectivity only, so changing operating limits needs no new graph.
 """
 struct HydraulicTopology
@@ -145,7 +145,7 @@ Between arrival and operating-data knots the net rate is affine, so storage is
 quadratic. Check its endpoints and its stationary point without time stepping.
 Each control boundary restarts from the supplied storage; ordinary balance rows
 separately check agreement with the next supplied vertex. This checks the routed
-cohort representation, not an exact continuous river-network solution.
+release representation, not an exact continuous river-network solution.
 """
 function storage_path_residuals(c,x,routed)
     s=c.system
@@ -159,13 +159,13 @@ function storage_path_residuals(c,x,routed)
         changes=[t for z in c.operations if z.object in objects for t in z.times
             if first(c.grid)<t<last(c.grid)]
         knots=sort!(unique!(vcat(c.grid,changes,
-            [arrival_knots(s.rivers[d],routed.cohorts[d].grid) for d in incoming]...)))
+            [arrival_knots(s.rivers[d],routed.release_series[d].grid) for d in incoming]...)))
         left=zeros(length(knots));right=similar(left);fill!(right,0.0)
         for d in incoming
-            river,cohort=s.rivers[d],routed.cohorts[d]
+            river,series=s.rivers[d],routed.release_series[d]
             for (side,rates) in ((:left,left),(:right,right))
-                rates .+= cohort_arrival_rates(river,cohort.grid,cohort.release,knots;side)
-                rates .+= cohort_arrival_rates(river,river.history_grid,river.history_release,knots;side)
+                rates .+= release_arrival_rates(river,series.grid,series.release,knots;side)
+                rates .+= release_arrival_rates(river,river.history_grid,river.history_release,knots;side)
             end
         end
         volume=x.storage[i,1]

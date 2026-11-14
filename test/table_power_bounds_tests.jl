@@ -112,9 +112,9 @@ end
         end
         for fixed in (false,true)
             b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-            audit=OpenSHOP._lift_start!(b,c,seed)
-            @test audit["valid"]
-            @test audit["objective"]≈seed["objective"] atol=1e-6
+            validation=OpenSHOP._initialize_global_start!(b,c,seed)
+            @test validation["valid"]
+            @test validation["objective"]≈seed["objective"] atol=1e-6
         end
     end
 end
@@ -134,7 +134,7 @@ end
     seed=dispatch_from_controls(c,ones(Int,1,1),fill(8.0,1,1),zeros(0,1))
     @test seed["validation"]["valid"]
     b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=seed["u"])
-    @test OpenSHOP._lift_start!(b,c,seed)["valid"]
+    @test OpenSHOP._initialize_global_start!(b,c,seed)["valid"]
 end
 
 @testset "Table bounds tighten the joint-product relaxation" begin
@@ -154,7 +154,7 @@ end
         hmin=1.0,hmax=3.0,turbine_table=table)
     system=HydroSystem(reservoirs=Reservoir[],junctions=Junction[],boundaries=Boundary[],tunnels=Tunnel[],rivers=River[],
         plants=[Plant(name=:Plant,source=:Source,target=:Target,pmax=.1)],generators=[generator])
-    c=ScheduleCase(name="lp_witness",system=system,grid=[0.0,1.0],prices=[1.0])
+    c=ScheduleCase(name="power_relaxation",system=system,grid=[0.0,1.0],prices=[1.0])
     graph=(turbine=(qcoordinate=qc,hcoordinate=hc),)
     b=(m=m,u=reshape([1.0],1,1),GQ=reshape([q],1,1),P=reshape([p],1,1),
         graphs=(generator_graphs=reshape([graph],1,1),))

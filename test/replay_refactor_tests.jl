@@ -156,7 +156,7 @@ end
         end
         if distributed
             # Operating limits do not replace the original calibration domain:
-            # the q=4 cohort still interpolates against reference flows 0 and 10.
+            # the q=4 release still interpolates against reference flows 0 and 10.
             river=only(c.system.rivers)
             expected=RiverRouting.route(c.grid,c.grid,releases,river.curves)
             @test vec(trajectory.arrival_volume) ≈ expected atol=1e-12

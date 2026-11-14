@@ -139,7 +139,7 @@ end
         dispatch_from_controls(soft, zeros(Int, 0, 1), zeros(0, 1), zeros(1, 1)))
 end
 
-@testset "Delayed confluence capacity bounds preserve routed cohorts" begin
+@testset "Delayed river junction capacity bounds preserve routed releases" begin
     reservoirs=[Reservoir(name = name, z0 = 100.0, slope = 1.0,
         v0 = 2.0, vmin = 1.0, vmax = 3.0, water_value = 10.0) for name in (:A, :B)]
     rivers=[River(name = :First, source = :A, target = :Merge, law = :controlled,
@@ -223,7 +223,7 @@ end
     @test OpenSHOP._global_polynomial_range((0.0,-1.0,0.0,1.0),-1.0,1.0)[2]≈2/(3sqrt(3))
 end
 
-@testset "Fixed tunnel directions preserve audited zero-flow starts" begin
+@testset "Fixed tunnel directions preserve validated zero-flow starts" begin
     c=bounds_only_case(;
         boundaries=[Boundary(name=:A,head=100.),Boundary(name=:B,head=100.)],
         tunnels=[Tunnel(name=:Link,source=:A,target=:B,resistance=1.,capacity=5.)])
@@ -233,8 +233,8 @@ end
         OpenSHOP.JuMP.fix(OpenSHOP.JuMP.variable_by_name(b.m,"tunnel_direction_1_1"),direction;force=true)
         probe=OpenSHOP.schedule_dict(initial)
         probe["tunnel_q"][1,1]=direction==1 ? -1e-10 : 1e-10
-        @test OpenSHOP._lift_start!(b,c,probe)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,probe)["valid"]
         probe["tunnel_q"][1,1]=direction==1 ? -1. : 1.
-        @test !OpenSHOP._lift_start!(b,c,probe)["valid"]
+        @test !OpenSHOP._initialize_global_start!(b,c,probe)["valid"]
     end
 end

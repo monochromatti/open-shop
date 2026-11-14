@@ -78,14 +78,14 @@ end
     @test x["validation"]["valid"]
     @test x["H"][1, 1]≈25.0 atol=1e-10
     @test x["power"][1, 1]≈0.00981*2*25*0.65 atol=1e-10
-    @test replay_audit(c, x)["valid"]
+    @test validate_replay(c, x)["valid"]
     global_model=OpenSHOP._build_global_dispatch(c; joint = true)
-    lift=OpenSHOP._lift_start!(global_model, c, x)
+    lift=OpenSHOP._initialize_global_start!(global_model, c, x)
     @test lift["valid"]
     @test lift["objective"]≈x["objective"] atol=1e-8
 end
 
-@testset "Preparation margin tightens candidates without changing the case" begin
+@testset "Preparation margin tightens proposed schedules without changing the case" begin
     c = head_extrapolation_case(:linear)
     unit = OpenSHOP._river_replace(only(c.system.generators); pmax = 0.7)
     c = OpenSHOP._river_replace(

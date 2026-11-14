@@ -411,7 +411,7 @@ function _build_dispatch(
 end
 
 # A second hydraulic mesh shares the requested controls. Its state variables are
-# witnesses of the finer equations, not additional scheduling decisions. The
+# states satisfying the finer equations, not additional scheduling decisions. The
 # objective and returned schedule still belong to the original model.
 function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
     objective=objective_function(b.m)
@@ -434,11 +434,11 @@ function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
     nothing
 end
 
-function _repair_dispatch!(c, solution::Schedule, report; transport=nothing)
+function _reconstruct_dispatch!(c, solution::Schedule, report; transport=nothing)
     began=time()
     try
-        repaired, correction=_reconstruct_candidate(c,solution;transport)
-        report["forward_reconstruction_audit"]=repaired.diagnostics["validation"]
+        repaired, correction=_reconstruct_schedule(c,solution;transport)
+        report["forward_reconstruction_validation"]=repaired.diagnostics["validation"]
         report["forward_reconstruction_correction"]=correction
         if repaired.diagnostics["validation"]["valid"]
             report["raw_solver_validation"]=solution.diagnostics["validation"]
@@ -495,7 +495,7 @@ the global mixed-integer problem, or [`schedule_case`](@ref) to prepare a feasib
 schedule by combining MILP proposals with nonlinear dispatch.
 
 Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
-`nothing` if no candidate exists. `accepted` means the candidate passed the
+`nothing` if no solution exists. `accepted` means the solution passed the
 physical equations and original operating-window checks. `grid=case.grid`
 optionally supplies a finer primary hydraulic mesh; controls retain their
 original intervals and the returned schedule records the physical grid.
@@ -574,10 +574,10 @@ function solve_case(
     solution=nothing
     if has_values(b.m)
         solution=_dispatch_values(b)
-        audit_start=time()
+        validation_start=time()
         solution.diagnostics["validation"]=validate(c,solution; transport=b.transport)
-        result["validation_seconds"]=time()-audit_start
-        solution=_repair_dispatch!(c,solution,result; transport=b.transport)
+        result["validation_seconds"]=time()-validation_start
+        solution=_reconstruct_dispatch!(c,solution,result; transport=b.transport)
         result["accepted"]=get(result,"forward_reconstructed",false)
     end
     result["total_seconds"]=time()-b.starttime

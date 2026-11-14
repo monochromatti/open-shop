@@ -15,24 +15,24 @@ end
         c=passive_replay_case(scale;tabulated)
         x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),zeros(0,1))
         @test validate(c,x)["valid"]
-        audit=replay_audit(c,x)
-        @test audit["physically_valid"]
-        @test !audit["numerically_converged"]
-        @test !audit["valid"]
+        validation=validate_replay(c,x)
+        @test validation["physically_valid"]
+        @test !validation["numerically_converged"]
+        @test !validation["valid"]
         # Each rescaling has the same head trajectory and capacity-relative
         # mesh discrepancy. Conservation cannot establish time accuracy.
-        @test audit["max_level_difference_m"]≈0.030694129 rtol=1e-5
-        @test audit["max_storage_difference_Mm3"]/(0.0002scale)≈0.153470645 rtol=1e-5
-        head_only=replay_audit(c,x;storage_convergence=Inf,storage_relative_convergence=Inf)
+        @test validation["max_level_difference_m"]≈0.030694129 rtol=1e-5
+        @test validation["max_storage_difference_Mm3"]/(0.0002scale)≈0.153470645 rtol=1e-5
+        head_only=validate_replay(c,x;storage_convergence=Inf,storage_relative_convergence=Inf)
         @test !head_only["valid"]
-        @test replay_audit(c,x;storage_convergence=Inf,
+        @test validate_replay(c,x;storage_convergence=Inf,
             storage_relative_convergence=Inf,level_convergence=Inf)["valid"]
     end
     c=with_grid(passive_replay_case(1.0),OpenSHOP.refined_grid([0.0,1.0];factor=64))
     x=dispatch_from_controls(c,zeros(Int,0,64),zeros(0,64),zeros(0,64))
-    @test replay_audit(c,x)["valid"]
-    @test_throws ArgumentError replay_audit(c,x;storage_relative_convergence=-1.0)
-    @test_throws ArgumentError replay_audit(c,x;level_convergence=NaN)
+    @test validate_replay(c,x)["valid"]
+    @test_throws ArgumentError validate_replay(c,x;storage_relative_convergence=-1.0)
+    @test_throws ArgumentError validate_replay(c,x;level_convergence=NaN)
 end
 
 @testset "Flat levels do not conceal storage error in a small receiving pond" begin
@@ -52,16 +52,16 @@ end
     for mesh in (Float64[],[0.0,1.0])
         case=OpenSHOP._river_replace(c;routing_grid=mesh)
         x=dispatch_from_controls(case,zeros(Int,0,1),zeros(0,1),reshape([1.0,0.0],2,1))
-        audit=replay_audit(case,x)
+        validation=validate_replay(case,x)
         @test validate(case,x)["valid"]
         # Two independent uniform [0,1] hour responses deliver one sixth
         # of the first hour's 72 m³ release by the one-hour horizon.
         @test abs(x.arrival_volume[2,1]-12e-6)>0.1e-6
-        @test audit["physically_valid"]
-        @test audit["max_level_difference_m"]==0.0
-        @test !audit["numerically_converged"]
-        @test !audit["valid"]
-        @test replay_audit(case,x;storage_relative_convergence=Inf)["valid"]
+        @test validation["physically_valid"]
+        @test validation["max_level_difference_m"]==0.0
+        @test !validation["numerically_converged"]
+        @test !validation["valid"]
+        @test validate_replay(case,x;storage_relative_convergence=Inf)["valid"]
     end
 end
 
@@ -87,7 +87,7 @@ end
         @test x.grid==c.grid
         @test isempty(c.routing_grid)
         @test validate(actual,x)["valid"]
-        @test replay_audit(actual,x)["valid"]
+        @test validate_replay(actual,x)["valid"]
         @test x.arrival_volume[2,1]≈12e-6 atol=0.15e-6
         # Preparation's finite problem must survive a budget-exhausted public
         # solve and serialization, rather than reverting to the original mesh.

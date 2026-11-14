@@ -53,7 +53,7 @@ function schedule_case(
         size(initial_schedule.commitment)==(length(c.system.generators),length(mesh.dt)) ||
             throw(ArgumentError("initial schedule commitment dimensions differ from its grid"))
         u=initial_schedule.commitment[:,first.(mesh.cells)]
-        v=_verified_dispatch(
+        v=_adaptive_dispatch(
             c;
             u,
             initial,
@@ -111,7 +111,7 @@ function schedule_case(
         push!(dispatched,controls)
         try
             problem=best===nothing ? c : best.case
-            v=_verified_dispatch(problem;u,tunnel_opening=opening,river_on,
+            v=_adaptive_dispatch(problem;u,tunnel_opening=opening,river_on,
                 warm=reference,max_refinements,time_limit=nlp_time_limit,
                 operational_margin,deadline,refine_grid)
             push!(attempts,Dict("stage"=>"dispatch","accepted"=>v.accepted,
@@ -140,7 +140,7 @@ function schedule_case(
         "accepted"=>best!==nothing,
         "problem"=>best===nothing ? c : best.case,
         "solution"=>best===nothing ? nothing : best.solution,
-        "audit"=>best===nothing ? nothing : _replay_report(best.audit),
+        "replay_validation"=>best===nothing ? nothing : _replay_report(best.replay_validation),
         "proposals"=>proposals,
         "attempts"=>attempts,
         "seconds"=>elapsed,

@@ -41,8 +41,8 @@ end
         @test x["arrival_volume"]≈flow .* reshape(0.0036 .* diff(c.grid),1,:) atol=1e-12
         @test maximum(abs,x["terminal_transit"])<1e-12
         @test vec(sum(x["V"];dims=1))≈fill(6.0+direction,4) atol=1e-10
-        @test replay_audit(c,x)["valid"]
-        @test transport_audit(c,x)["accepted"]
+        @test validate_replay(c,x)["valid"]
+        @test validate_transport(c,x)["accepted"]
         continued=restart_case(c,x,1.0)
         rest=dispatch_from_controls(continued,zeros(Int,0,1),zeros(0,1),zeros(1,1))
         @test rest["validation"]["valid"]
@@ -90,7 +90,7 @@ end
         @test local_result["validation"]["valid"]
         @test local_result["river_release"]≈flow atol=1e-6
         b=OpenSHOP._build_global_dispatch(c;warm=initial)
-        @test OpenSHOP._lift_start!(b,c,initial)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,initial)["valid"]
         JuMP.set_optimizer(b.m,OpenSHOP.SCIP.Optimizer)
         JuMP.set_silent(b.m)
         JuMP.set_optimizer_attribute(b.m,"limits/time",15.0)
@@ -144,7 +144,7 @@ end
             @test x["V"][:,t+1]≈volumes atol=1e-10
         end
         b=OpenSHOP._build_global_dispatch(c;warm=x)
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
         local_result=solve_case(c;warm=x,time_limit=10.0)
         @test local_result["validation"]["valid"]
         @test local_result["river_release"]≈x["river_release"] atol=1e-6
@@ -181,11 +181,11 @@ function channel_network_case(; distributed=false)
     operations=[OperationalSeries(object=:LakeA,attribute=:inflow,times=[0.5],values=[30.0]),
         OperationalSeries(object=:ACPressureLink,attribute=:opening,times=[1.0],values=[0.0]),
         OperationalSeries(object=:AB,attribute=:capacity,times=[1.0],values=[40.0])]
-    ScheduleCase(name="lake channels and delayed confluence",system=system,grid=grid,
+    ScheduleCase(name="lake channels and delayed river junction",system=system,grid=grid,
         prices=[40.0,50.0,100.0,80.0,30.0],operations=operations)
 end
 
-@testset "Hydraulic channel loops with pressure links and delayed confluences" begin
+@testset "Hydraulic channel loops with pressure links and delayed river junctions" begin
     for distributed in (false,true)
         c=channel_network_case(;distributed)
         @test OpenSHOP.validate_inputs(c)
@@ -203,7 +203,7 @@ end
         @test rest["V"]≈x["V"][:,4:end] atol=1e-9
         @test rest["terminal_transit"]≈x["terminal_transit"] atol=1e-9
         b=OpenSHOP._build_global_dispatch(c;warm=x)
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
         result=solve_case(c;warm=x,u=ones(Int,2,5),time_limit=15.0)
         @test result["validation"]["valid"]
         @test result["objective"]>=x["objective"]-1e-3

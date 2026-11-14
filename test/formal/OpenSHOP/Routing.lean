@@ -17,8 +17,8 @@ first and second derivatives' coefficients. -/
 theorem released_transfer_quadratic (q reference a slope : ℝ) :
     q*(a+slope*(q-reference)) = slope*q^2+(a-slope*reference)*q := by ring
 
-/-- Arrived and remaining volume partition an already released cohort. -/
-theorem cohort_inventory (volume fraction : ℝ)
+/-- Arrived and remaining volume partition an already released release. -/
+theorem release_inventory (volume fraction : ℝ)
     (hv : 0 ≤ volume) (hf : 0 ≤ fraction ∧ fraction ≤ 1) :
     0 ≤ volume*fraction ∧ 0 ≤ volume*(1-fraction) ∧
       volume*fraction+volume*(1-fraction)=volume := by
@@ -29,8 +29,8 @@ theorem adjacent_window_additivity (primitive : ℝ → ℝ) (a b c : ℝ) :
     (primitive b-primitive a)+(primitive c-primitive b)=primitive c-primitive a := by ring
 
 /-- Splitting a constant release does not change its volume. This does not
-assert invariance of a confluence's interval-averaged timing. -/
-theorem constant_cohort_refinement (conversion rate a b c : ℝ) :
+assert invariance of a river junction's interval-averaged timing. -/
+theorem constant_release_refinement (conversion rate a b c : ℝ) :
     conversion*(b-a)*rate+conversion*(c-b)*rate=conversion*(c-a)*rate := by ring
 
 /-- Mixture weights sum exactly to one in the mathematical model. -/
@@ -38,14 +38,14 @@ theorem blend_unit_mass (w : ℝ) : (1-w)+w=1 := by ring
 
 
 /-- A cumulative response gives nonnegative instantaneous contributions from
-rectangular release cohorts. -/
-theorem cohort_point_nonnegative (cdf : ℝ → ℝ) (monotone : Monotone cdf)
+constant-rate releases. -/
+theorem release_arrival_nonnegative (cdf : ℝ → ℝ) (monotone : Monotone cdf)
     (a b time q : ℝ) (ordered : a ≤ b) (hq : 0 ≤ q) :
     0 ≤ q*(cdf (time-a)-cdf (time-b)) := by
   exact mul_nonneg hq (sub_nonneg.mpr (monotone (by linarith)))
 
-/-- No water arrives from a future cohort if the delay distribution is causal. -/
-theorem future_cohort_zero (cdf : ℝ → ℝ) (causal : ∀ x ≤ 0, cdf x=0)
+/-- No water arrives from a future release if the delay distribution is causal. -/
+theorem future_release_zero (cdf : ℝ → ℝ) (causal : ∀ x ≤ 0, cdf x=0)
     (a b time q : ℝ) (ordered : a ≤ b) (future : time ≤ a) :
     q*(cdf (time-a)-cdf (time-b))=0 := by
   rw [causal (time-a) (by linarith), causal (time-b) (by linarith)]
@@ -71,7 +71,7 @@ theorem anchored_reference_integral (primitive increment : ℕ → ℝ)
       rw [Finset.sum_range_succ, ← ih]
       linarith [step n]
 
-/-- An affine observation weight on a constant cohort is represented exactly
+/-- An affine observation weight on a constant release is represented exactly
 by its volume and normalized first time moment. No quadrature approximation
 is introduced by this algebraic change of variables. -/
 theorem affine_reference_moments (conversion rate origin duration a b wa wb : ℝ)
