@@ -218,14 +218,26 @@ function river_arrival_residuals(c,routed)
         upstream=findall(e->e.target==r.source,c.system.rivers)
         if !exact && r.law==:junction && !isempty(upstream)
             grids=[cohort.grid for cohort in routed.cohorts]
-            for time in confluence_knots(c,grids,upstream)
+            times=confluence_knots(c,grids,upstream)
+            # Evaluate each upstream wave once at all observation times. Keep
+            # both limits: deterministic reaches can jump at a confluence knot.
+            incoming=zeros(length(times),2)
+            for i in upstream
+                reach=c.system.rivers[i]
+                upstream_cohort=routed.cohorts[i]
+                for (column,side) in enumerate((:left,:right))
+                    view(incoming,:,column) .+= cohort_arrival_rates(reach,
+                        upstream_cohort.grid,upstream_cohort.release,times;side)
+                    view(incoming,:,column) .+= cohort_arrival_rates(reach,
+                        reach.history_grid,reach.history_release,times;side)
+                end
+            end
+            for (k,time) in enumerate(times)
                 sides=time==first(c.grid) ? (:right,) :
                     time==last(c.grid) ? (:left,) : (:left,:right)
                 for side in sides
                     t=river_control_interval(c,time,side)
-                    rate=routed.injections[d,t]+r.allocation*sum(
-                        point_arrival(c.system.rivers[i],routed.cohorts[i].grid,
-                            routed.cohorts[i].release,time;side) for i in upstream;init=0.0)
+                    rate=routed.injections[d,t]+r.allocation*incoming[k,side==:left ? 1 : 2]
                     capacity_error=max(capacity_error,rate-opvalue(c,r.name,:capacity,time,r.capacity;side))
                 end
             end

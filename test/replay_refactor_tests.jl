@@ -25,6 +25,44 @@ function operating_replay_case(; distributed=false)
         prices=zeros(3),operations=operations)
 end
 
+@testset "A controlled outlet with a discharge curve still follows head" begin
+    c=operating_replay_case(;distributed=true)
+    curve=TableCurve([100.0,110.0],[0.0,10.0])
+    river=OpenSHOP._river_replace(only(c.system.rivers);discharge_curve=curve)
+    c=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;rivers=[river]))
+    gate=fill(0.5,1,length(c.prices))
+    for factor in (1,3)
+        grid=OpenSHOP.refined_grid(c.grid;factor)
+        z=simulate(c,zeros(0,3),gate;grid)
+        @test z.converged
+        for t in 1:(length(grid)-1)
+            inflow=OpenSHOP.opaverage(c,river.name,:inflow,grid[t],grid[t+1],river.inflow)
+            reservoir=only(c.system.reservoirs)
+            natural=OpenSHOP.opaverage(c,reservoir.name,:inflow,grid[t],grid[t+1],reservoir.inflow)
+            # Here Q(h)=h-100 and the reservoir level is affine in volume.
+            head_mean=100+(z.storage[1,t]+z.storage[1,t+1])/2
+            outlet=0.5*(head_mean-100)
+            @test z.river_release[1,t]≈inflow+outlet atol=1e-10
+            @test z.storage[1,t+1]-z.storage[1,t]≈
+                0.0036*(grid[t+1]-grid[t])*(natural-outlet) atol=1e-10
+        end
+    end
+end
+
+@testset "Out-of-domain prescribed inflows return an unclipped invalid trajectory" begin
+    base=operating_replay_case(;distributed=true)
+    operations=[z.object==:Outlet && z.attribute==:inflow ?
+        OpenSHOP._river_replace(z;values=fill(11.0,length(z.values))) : z for z in base.operations]
+    c=OpenSHOP._river_replace(base;operations)
+    z=simulate(c,zeros(0,3),ones(1,3))
+    @test !z.converged
+    @test !first(z.steps).routing_domain_valid
+    @test vec(z.river_release)≈fill(11.0,3) atol=1e-10
+    # With I>C the controlled outlet withdraws no reservoir water. Reservoir
+    # inflow still accumulates while the excessive river input is retained.
+    @test vec(diff(z.storage;dims=2))≈0.0036 .* [2.0,4.0,1.0] atol=1e-10
+end
+
 @testset "Physical replay JSON retains public array names and shapes" begin
     c=operating_replay_case()
     trajectory=simulate(c;generator_q=zeros(0,3),gate=fill(0.5,1,3))

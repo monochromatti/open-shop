@@ -112,4 +112,33 @@ theorem transport_cell_aggregation {M : Type*} [Fintype M]
   rw [← mean, ← partition] at total
   simpa only [mul_assoc] using total
 
+/-- Fixed external inputs determine at most one state of an acyclic river
+network. Each transfer map may be nonlinear, but depends only on earlier
+reaches in topological order. This does not assert existence or uniqueness of
+the coupled hydraulic problem. -/
+theorem prescribed_routing_unique {n : ℕ} {A : Type*}
+    (F : (Fin n → A) → Fin n → A)
+    (dependency : ∀ i x y, (∀ j, j.val < i.val → x j = y j) → F x i = F y i)
+    (x y : Fin n → A) (hx : ∀ i, x i = F x i) (hy : ∀ i, y i = F y i) : x = y := by
+  have same : ∀ k : ℕ, ∀ hk : k < n, x ⟨k,hk⟩ = y ⟨k,hk⟩ := by
+    intro k
+    induction k using Nat.strong_induction_on with
+    | h k ih =>
+      intro hk
+      rw [hx, hy]
+      apply dependency
+      intro j hj
+      exact ih j.val hj j.isLt
+  funext i
+  exact same i.val i.isLt
+
+/-- Substituting a prescribed routing solution preserves every remaining
+physical restriction. The hypothesis states that the inputs are fixed. -/
+theorem prescribed_routing_substitution {X R : Type*} (inputs : X → R)
+    (route : R → R) (P : X → R → Prop) (fixed : R) (x : X)
+    (hfixed : inputs x = fixed) :
+    (∃ r, r = route (inputs x) ∧ P x r) ↔ P x (route fixed) := by
+  rw [hfixed]
+  simp
+
 end OpenSHOP

@@ -151,6 +151,11 @@ transport adds no reservoir states or control decisions. Downstream cell flows
 are determined by conservation, and their interval averages remain the reported
 river releases. Restart history preserves the actual cell cohorts.
 
+During forward simulation, prescribed river inputs are routed once before
+the hydraulic steps. Flow-dependent travel times still use the original
+release-time mixtures and transport mesh. Head-dependent outlets, tunnel
+outfalls and fixed-speed pump outfalls remain coupled to the hydraulic states.
+
 A confluence's incoming wave must respect the outgoing reach's capacity before
 cell averaging. The optimizers enforce this at every upstream arrival knot and
 both sides of jumps, where a piecewise affine wave reaches its extrema. A mean
