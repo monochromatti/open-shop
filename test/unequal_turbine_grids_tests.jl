@@ -124,20 +124,20 @@ end
         @test vec(x.power)≈expected atol=1e-10
         @test x.objective≈sum(c.prices.*expected) atol=1e-8
         @test validate(c,x)["valid"]
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         next=restart_case(c,x,1.0)
         continued=dispatch_from_controls(next,ones(Int,1,1),fill(5.0,1,1),zeros(0,1))
         @test continued.storage[:,end]≈x.storage[:,end] atol=1e-12
         @test continued.power[:,1]≈x.power[:,2] atol=1e-10
         b=OpenSHOP._build_global_dispatch(c;joint=true)
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
         for result in (solve_case(c;u=ones(Int,1,2),warm=x,time_limit=60.0),
             solve(c;initial=x,time_limit=60.0,relative_gap=1e-4))
             @test result.accepted
             if result.solution!==nothing
                 @test result.solution.generator_q≈fill(5.0,1,2) atol=1e-4
                 @test result.solution.objective≈x.objective atol=1e-3
-                @test replay_audit(c,result.solution)["valid"]
+                @test validate_replay(c,result.solution)["valid"]
             end
         end
     end
@@ -160,7 +160,7 @@ end
         @test result.accepted
         if result.solution!==nothing
             @test result.solution.generator_q≈fill(5.0,1,2) atol=1e-4
-            @test replay_audit(c,result.solution)["valid"]
+            @test validate_replay(c,result.solution)["valid"]
         end
     end
 end

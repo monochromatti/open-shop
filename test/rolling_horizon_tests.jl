@@ -5,7 +5,7 @@ include(joinpath(@__DIR__,"..","examples","rolling_horizon.jl"))
     c=data.case
     x=dispatch_from_controls(c,data.u,data.q,data.gate;tunnel_opening=data.opening)
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     time=2.0
     edge=searchsortedfirst(c.grid,time)
     continued=restart_case(c,x,time)
@@ -25,7 +25,7 @@ include(joinpath(@__DIR__,"..","examples","rolling_horizon.jl"))
     y=dispatch_from_controls(updated,guess["u"],guess["generator_q"],guess["gate"];
         tunnel_opening=guess["tunnel_opening"])
     @test validate(updated,y)["valid"]
-    @test replay_audit(updated,y)["valid"]
+    @test validate_replay(updated,y)["valid"]
     @test y.storage[:,1]==x.storage[:,edge]
     old=simulate(c,data.q,data.gate;commitment=data.u,tunnel_opening=data.opening)
     new=simulate(updated,y.generator_q,y.gate;commitment=y.commitment,

@@ -1,11 +1,11 @@
 """Independent discrete-gradient hydraulic step. Rates are m³/s; storage is Mm³.
 
-`river_arrival` contains known history/prior-cohort arrivals. `current_transfer`
-contains the fractions of each current release cohort arriving in this same
+`river_arrival` contains known history/prior-release arrivals. `current_transfer`
+contains the fractions of each current interval release arriving in this same
 interval, one column per reference curve. River junction mixing and current
 arrivals are evaluated inside Newton's residual, coupled to storage and heads.
 For deterministic transport, `current_network` maps local injections to arrivals;
-upstream water entering a confluence is represented by those same source pulses.
+upstream water entering a river junction is represented by those same source pulses.
 Operational bounds are reported, never imposed by clipping physical states.
 For a fixed-speed pump, optional `commitment` selects operation and its flow
 entry is a Newton guess. Without commitment, a positive entry means on and zero
@@ -300,10 +300,10 @@ replace hydraulic equations or operating bounds; validate the returned schedule.
 
 Source outlet laws, volume-averaged heads and zero/short-delay transfers are solved
 simultaneously during each forward step. Deterministic routing preserves each
-local injection's pulses through confluences. Distributed junction mixing
+local injection's pulses through river junctions. Distributed junction mixing
 conserves volume on an independent transport mesh. It uses four transport cells
 per control interval by default, or the case's `routing_grid`. Refinement changes
-neither the held controls nor their operating windows. Each cohort contributes once.
+neither the held controls nor their operating windows. Each release contributes once.
 """
 function simulate(
     c::ScheduleCase,
@@ -353,7 +353,7 @@ end
 
 """Route prescribed river inputs before solving the hydraulic states.
 
-On an acyclic river network, fixed entry flows determine all downstream cohorts
+On an acyclic river network, fixed entry flows determine all downstream releases
 and arrivals, even with flow-dependent travel times. Return interval volumes and
 initial inventory, or `nothing` when an entry flow depends on hydraulic unknowns.
 The routing mesh and release-time mixtures are the same as in coupled stepping.
@@ -511,15 +511,15 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
             block=mesh.vertices[t]:(mesh.vertices[t+1]-1)
             future=mesh.vertices[t+1]:(length(mesh.grid)-1)
             for (d,r) in enumerate(s.rivers)
-                if mesh.source_cohorts[d]
+                if mesh.source_reaches[d]
                     for (k,fractions) in release_terms(mesh.coefficients[d],t,future)
                         routing_arrival[d,k]+=0.0036dt*released_fraction(
                             r,R[d,t],fractions)
                     end
                 else
-                    for (j,cohort) in enumerate(block),
-                        (k,fractions) in release_terms(mesh.coefficients[d],cohort,future)
-                        duration=mesh.grid[cohort+1]-mesh.grid[cohort]
+                    for (j,release_interval) in enumerate(block),
+                        (k,fractions) in release_terms(mesh.coefficients[d],release_interval,future)
+                        duration=mesh.grid[release_interval+1]-mesh.grid[release_interval]
                         routing_arrival[d,k]+=0.0036duration*released_fraction(
                             r,work.routing_release[d,j],fractions)
                     end

@@ -69,14 +69,14 @@ end
     end
 end
 
-function coordinate_strength_witness(nodes, weights_value, u_value, moment_value, coefficients;
+function coordinate_relaxation_bound(nodes, weights_value, u_value, moment_value, coefficients;
     shared=false, affine=false)
     m = Model(optimizer_with_attributes(SCIP.Optimizer, "numerics/feastol" => 1e-9))
     set_silent(m)
     @variable(m, 0 <= u <= 1)
     fix(u, u_value; force=true)
     # The commitment must stay unfixed in the helper: this is a fractional
-    # relaxation witness, not a model with known binary commitment.
+    # solution of the relaxation, with commitment allowed to be fractional.
     unfix(u)
     @constraint(m, u == u_value)
     @variable(m, 0 <= weights[1:length(nodes)] <= 1)
@@ -88,7 +88,7 @@ function coordinate_strength_witness(nodes, weights_value, u_value, moment_value
     moment = affine ? sum(nodes[j] * weights[j] for j in eachindex(nodes)) : moment_value
     records = OpenSHOP._TablePowerCoordinateRecord[]
     onweights = shared ? OpenSHOP._table_power_onweights!(m, coordinate, u, moment,
-        "witness", records; affine) : nothing
+        "power_coordinate", records; affine) : nothing
     @variable(m, -10 <= p <= 10)
     for (i, row) in enumerate(coefficients)
         intercept = if shared
@@ -108,26 +108,26 @@ function coordinate_strength_witness(nodes, weights_value, u_value, moment_value
     objective_value(m)
 end
 
-@testset "Shared weights remove strict fractional gate witnesses" begin
+@testset "Shared weights exclude inconsistent fractional power values" begin
     # Three independent gates can reuse the same on-state mass three times.
     rows = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    baseline = coordinate_strength_witness([-1.0, 1.0, 3.0], fill(1 / 3, 3), .5, .5, rows)
-    shared = coordinate_strength_witness([-1.0, 1.0, 3.0], fill(1 / 3, 3), .5, .5, rows; shared=true)
+    baseline = coordinate_relaxation_bound([-1.0, 1.0, 3.0], fill(1 / 3, 3), .5, .5, rows)
+    shared = coordinate_relaxation_bound([-1.0, 1.0, 3.0], fill(1 / 3, 3), .5, .5, rows; shared=true)
     @test baseline ≈ 1 / 3 atol=1e-9
     @test shared ≈ 1 / 6 atol=1e-9
 
     # The existing on-state head moment supplies information that a scalar
     # intercept gate cannot express, even with just one support row.
     rows = [[1.0, 0.0]]
-    baseline = coordinate_strength_witness([-2.0, 3.0], [.5, .5], .5, 1.0, rows)
-    shared = coordinate_strength_witness([-2.0, 3.0], [.5, .5], .5, 1.0, rows; shared=true)
+    baseline = coordinate_relaxation_bound([-2.0, 3.0], [.5, .5], .5, 1.0, rows)
+    shared = coordinate_relaxation_bound([-2.0, 3.0], [.5, .5], .5, 1.0, rows; shared=true)
     @test baseline ≈ .5 atol=1e-9
     @test shared ≈ .1 atol=1e-9
 
     # Zero discharge has a unique coordinate vector. Its on-state first
     # weight is known affinely, so a separate scalar product overestimates it.
-    baseline = coordinate_strength_witness([0.0, 2.0], [.5, .5], .5, 1.0, rows; affine=true)
-    shared = coordinate_strength_witness([0.0, 2.0], [.5, .5], .5, 1.0, rows;
+    baseline = coordinate_relaxation_bound([0.0, 2.0], [.5, .5], .5, 1.0, rows; affine=true)
+    shared = coordinate_relaxation_bound([0.0, 2.0], [.5, .5], .5, 1.0, rows;
         shared=true, affine=true)
     @test baseline ≈ .5 atol=1e-9
     @test shared ≈ 0.0 atol=1e-9
@@ -153,8 +153,8 @@ end
         seed = dispatch_from_controls(c,reshape([on,0],2,1),reshape([8.0*on,0.0],2,1),zeros(0,1))
         @test seed["validation"]["valid"]
         b = OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-        audit = OpenSHOP._lift_start!(b,c,seed)
-        @test audit["valid"]
-        @test audit["objective"] ≈ seed["objective"] atol=1e-6
+        validation = OpenSHOP._initialize_global_start!(b,c,seed)
+        @test validation["valid"]
+        @test validation["objective"] ≈ seed["objective"] atol=1e-6
     end
 end

@@ -36,7 +36,7 @@ inflow. Input changes must lie on scheduling edges.
 
 `ScheduleCase` compiles direct connections from native Julia objects;
 `readcase` and `case_from_dict` use the same construction. Inferred
-confluences are internal zero-storage nodes and disappear from `case_dict`.
+river junctions are internal zero-storage nodes and disappear from `case_dict`.
 Users do not need to declare a RiverJunction. Explicit junctions remain
 supported for existing inputs.
 
@@ -124,7 +124,7 @@ Alternatively, `curves` supplies normalized delay-bin probabilities. One curve
 is independent of flow. Multiple curves have strictly increasing reference
 flows covering zero through capacity; intermediate references are allowed.
 At release flow `q`, only the neighboring reference distributions are blended.
-The chosen distribution stays with the original cohort, including on restart.
+The chosen distribution stays with the original release, including on restart.
 The supplied probabilities must sum to one; invalid inputs are rejected.
 
 For multiple references the global model uses one shared SOS2 flow coordinate
@@ -137,34 +137,34 @@ can change at an interior reference flow.
 
 Numerical distributed routing accumulates only transfers whose delay support
 overlaps the arrival grid; it does not allocate a dense tensor for replay.
-Optimization compiles transfer coefficients between each reach's entry-cohort
+Optimization compiles transfer coefficients between each reach's entry-interval
 grid and the river transport grid.
 
 A network containing distributed reaches mixes upstream arrivals over the
 transport cells. This also applies to deterministic reaches within that
 network. The default uses four transport cells per control interval when the
-network contains distributed confluences. An optional `routing_grid` on
+network contains distributed river junctions. An optional `routing_grid` on
 `ScheduleCase` overrides this mesh; it must span the horizon and contain every
 control boundary. Source releases, unit decisions, gate positions, operating
 ramps and observation windows retain their original control grid. Refining
 transport adds no reservoir states or control decisions. Downstream cell flows
 are determined by conservation, and their interval averages remain the reported
-river releases. Restart history preserves the actual cell cohorts.
+river releases. Restart history preserves the actual cell releases.
 
 During forward simulation, prescribed river inputs are routed once before
 the hydraulic steps. Flow-dependent travel times still use the original
 release-time mixtures and transport mesh. Head-dependent outlets, tunnel
 outfalls and fixed-speed pump outfalls remain coupled to the hydraulic states.
 
-A confluence's incoming wave must respect the outgoing reach's capacity before
+A river junction's incoming wave must respect the outgoing reach's capacity before
 cell averaging. The optimizers enforce this at every upstream arrival knot and
 both sides of jumps, where a piecewise affine wave reaches its extrema. A mean
 flow below capacity can still hide a peak above it. Independent transport
 acceptance checks these peaks again, as well as minimum arrival rates and
-declared arrival windows, on the finer routed cohorts.
+declared arrival windows, on the finer routed releases.
 
 Transport refinement checks convergence of cumulative arrivals and
-inventory; it is not a continuous-time global certificate. `transport_audit`
+inventory; it is not a continuous-time global certificate. `validate_transport`
 uses at most six successive bisections by default, retaining the same available
 resolution per control interval as the horizon grows. An optional
 `max_internal_intervals` caps the total cell count. The check reports
@@ -172,7 +172,7 @@ nonconvergence when either limit stops refinement before the volume tolerance
 is met. A larger tolerance permits a larger estimated discretization error.
 
 Inventory is evaluated directly from the survival probabilities of the original
-entry cohorts, independently of arrival-volume conservation. A cohort contributes
+release intervals, independently of arrival-volume conservation. A release contributes
 only between its release and its last possible arrival. Fixed-delay volumes use
 interval overlaps without allocating dense matrices during numerical replay.
 
@@ -184,18 +184,18 @@ reach's upstream history. Each history ends at the horizon start. Upstream
 historical arrivals propagate into downstream reaches only after that start;
 pre-horizon transfers are already represented by downstream history.
 Incoming historical water arriving at a fork after the horizon start receives
-the prescribed shares. A branch's own historical cohorts are already allocated
+the prescribed shares. A branch's own historical releases are already allocated
 and are never multiplied by its share again.
 
-`restart_case` retains original executed cohorts, delayed inventory and the
+`restart_case` retains original executed releases, delayed inventory and the
 previous control-window average used by release ramps. Simulation refines
 hydraulics and transport while holding the original controls. `validate` checks
 conservation, outfall direction, operating laws and the scheduling-grid routing;
-`replay_audit` checks the finer trajectory separately.
+`validate_replay` checks the finer trajectory separately.
 
 The [mixed-source example](../examples/mixed_source_network.jl) shows direct
 connections and a globally solved two-plant case. The [river-split example](../examples/river_splits.jl)
 optimizes a unit feeding unequal branches with a binding branch capacity.
 Tests also combine a
-pressurized loop, reservoir-release branches, successive confluences, routed
+pressurized loop, reservoir-release branches, successive river junctions, routed
 tunnel discharge, operating changes and unequal delays on an irregular grid.

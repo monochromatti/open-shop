@@ -56,12 +56,12 @@ function input_integral(c, object, attribute, a, b, default)
     end
 end
 
-# This ledger uses the returned physical boundary exchange and public input
+# This water-balance calculation uses the returned physical boundary exchange and public input
 # series, rather than the optimization constraints or validation residuals.
 function water_error(c, trajectory; grid=c.grid)
     inventory = vec(sum(trajectory.storage;dims=1)+sum(trajectory.transit;dims=1))
     length(inventory)==length(grid) && length(trajectory.boundary_outflow)==length(grid)-1 ||
-        throw(DimensionMismatch("water ledger grid and trajectory differ"))
+        throw(DimensionMismatch("water balance grid and trajectory differ"))
     expected = first(inventory)
     error = 0.0
     for t in 1:length(grid)-1
@@ -76,8 +76,8 @@ function water_error(c, trajectory; grid=c.grid)
 end
 
 function check_schedule!(report,c,x,stage,replay_factor)
-    audit = validate(c,x)
-    audit["valid"] || finding!(report,"invalid_schedule",stage,audit)
+    validation = validate(c,x)
+    validation["valid"] || finding!(report,"invalid_schedule",stage,validation)
     components = objective_components(c,x)
     tolerance = 1e-6+1e-7max(1.0,abs(x.objective))
     abs(components.total-x.objective)<=tolerance ||
@@ -91,13 +91,13 @@ function check_schedule!(report,c,x,stage,replay_factor)
         head_reference=OpenSHOP.interval_means(mesh,x.head))
     trajectory.converged || finding!(report,"hydraulic_nonconvergence",stage,
         Dict("raw_residual"=>trajectory.residual))
-    ledger = water_error(c,trajectory;grid=x.grid)
-    ledger<=1e-6 || finding!(report,"water_conservation",stage,ledger)
-    fine = replay_audit(c,x;grid=OpenSHOP.refined_grid(x.grid;factor=replay_factor))
+    balance_error = water_error(c,trajectory;grid=x.grid)
+    balance_error<=1e-6 || finding!(report,"water_conservation",stage,balance_error)
+    fine = validate_replay(c,x;grid=OpenSHOP.refined_grid(x.grid;factor=replay_factor))
     if !fine["valid"]
         finding!(report,"replay_sensitivity",stage,fine;severity="warning")
     end
-    Dict("audit"=>audit,"water_error_Mm3"=>ledger,"objective_components"=>Dict(
+    Dict("validation"=>validation,"water_error_Mm3"=>balance_error,"objective_components"=>Dict(
         string(k)=>v for (k,v) in pairs(components)),"replay"=>fine)
 end
 
@@ -118,16 +118,16 @@ function reconstruct_continuation(c,x,at)
 end
 
 function continuation_check!(report,c,x)
-    # The first complete interval is executed; the remainder retains its cohorts,
+    # The first complete interval is executed; the remainder retains its releases,
     # gate positions, output history and outstanding commitment obligations.
     k = max(2,cld(length(c.grid),2))
     try
         tail,y = reconstruct_continuation(c,x,c.grid[k])
-        audit = validate(tail,y)
+        validation = validate(tail,y)
         vertex=searchsortedfirst(x.grid,c.grid[k])
         difference = maximum(abs,y.storage-x.storage[:,vertex:end];init=0.0)
-        audit["valid"] && difference<=1e-6 || finding!(report,"restart_difference",
-            "reference",Dict("audit"=>audit,"storage_difference_Mm3"=>difference))
+        validation["valid"] && difference<=1e-6 || finding!(report,"restart_difference",
+            "reference",Dict("validation"=>validation,"storage_difference_Mm3"=>difference))
     catch error
         finding!(report,"restart_exception","reference",sprint(showerror,error))
     end
@@ -153,12 +153,12 @@ end
 function check_result!(report,c,result,stage,reference,options)
     c=something(result.problem,c)
     mesh=OpenSHOP.river_routing_grid(c)
-    audit = nothing
+    validation = nothing
     if result.solution!==nothing
         # A rejected iterate may be useful evidence, but is not a promised schedule.
         original = validate(c,result.solution)
         if result.accepted || original["valid"]
-            audit = check_schedule!(report,c,result.solution,stage,options["replay_factor"])
+            validation = check_schedule!(report,c,result.solution,stage,options["replay_factor"])
         end
         result.accepted && !original["valid"] &&
             finding!(report,"accepted_invalid_schedule",stage,original)
@@ -174,14 +174,14 @@ function check_result!(report,c,result,stage,reference,options)
     # mesh before using its value as a lower bound.
     known=-Inf
     try
-        projected,_=OpenSHOP._reconstruct_candidate(c,reference)
+        projected,_=OpenSHOP._reconstruct_schedule(c,reference)
         validate(c,projected)["valid"] && (known=projected.objective)
     catch error
         error isa Union{ArgumentError,DomainError} || rethrow()
     end
     for previous in values(get(report,"stages",Dict()))
         checks = previous["checks"]
-        if get(previous,"routing_grid",mesh)==mesh && checks!==nothing && checks["audit"]["valid"]
+        if get(previous,"routing_grid",mesh)==mesh && checks!==nothing && checks["validation"]["valid"]
             known=max(known,previous["objective"])
         end
     end
@@ -208,7 +208,7 @@ function check_result!(report,c,result,stage,reference,options)
     if stage!="local" && result.status in ("INFEASIBLE","INFEASIBLE_OR_UNBOUNDED")
         finding!(report,"false_infeasibility",stage,result.status)
     end
-    start = get(result.diagnostics,"start_audit",nothing)
+    start = get(result.diagnostics,"start_validation",nothing)
     stage=="warm" && start!==nothing && !start["valid"] &&
         finding!(report,"reference_rejected_by_model",stage,start)
     if result.global_certificate
@@ -232,9 +232,9 @@ function check_result!(report,c,result,stage,reference,options)
         "routing_grid"=>mesh,
         "global_bound"=>result.global_bound,"relative_gap"=>result.relative_gap,
         "global_certificate"=>result.global_certificate,"total_seconds"=>result.total_seconds,
-        "native_incumbent_available"=>get(get(result.diagnostics,"scip_diagnostics",Dict()),
+        "native_incumbent_available"=>get(get(result.diagnostics,"solver_statistics",Dict()),
             "native_incumbent_available",nothing),
-        "incumbent_source"=>get(result.diagnostics,"incumbent_source",nothing),"checks"=>audit)
+        "incumbent_source"=>get(result.diagnostics,"incumbent_source",nothing),"checks"=>validation)
 end
 
 function run(request, directory)
@@ -287,7 +287,7 @@ function run(request, directory)
             writejson(joinpath(directory,"reference.json"),reference)
             report["reference"] = check_schedule!(report,c,reference,phase,request["replay_factor"])
             checkpoint(joinpath(directory,"partial.json"),report)
-            if report["reference"]["audit"]["valid"]
+            if report["reference"]["validation"]["valid"]
                 continuation_check!(report,c,reference)
                 for stage in request["stages"]
                     phase = stage

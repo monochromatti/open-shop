@@ -279,7 +279,7 @@ function turbine_efficiency_bounds(c::TurbineTable, qlo, qhi, hlo, hhi)
 end
 
 """Register a JuMP operator using an explicit linear extension for trial points.
-The caller must constrain and audit the physical table domain separately.
+The caller must constrain and validate the physical table domain separately.
 """
 table_operator(m, c::TableCurve; name = gensym(:table)) =
     JuMP.add_nonlinear_operator(m, 1, x->table_value(c, x; extrapolation = :linear); name)

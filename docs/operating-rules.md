@@ -109,7 +109,7 @@ schedule: on-state flow lies in a disjoint positive range, so the state follows
 from the resulting flow.
 
 Restart carries the last control-window release independently of river transport
-cohorts. Finer replay assesses flow states and costs on the original control
+releases. Finer replay assesses flow states and costs on the original control
 windows, so refinement adds no switching events. `objective_components` reports
 `river_change_cost`, `river_start_cost` and `river_stop_cost` separately.
 
@@ -148,8 +148,8 @@ Differing member windows require explicit aggregate history. A missing quantity
 omits its first comparison; later comparisons still apply. River release history
 provides the previous value and duration, when present. Explicit river
 `initial_release` and `initial_interval_hours` override that fallback. Restart
-carries the previous control-window average separately from transport cohorts:
-a delayed confluence can contain several release pulses inside that window.
+carries the previous control-window average separately from transport releases:
+a delayed river junction can contain several release pulses inside that window.
 
 Reservoirs accept `volume_ramp_up`/`volume_ramp_down` in Mm³/hour and
 `level_ramp_up`/`level_ramp_down` in metres/hour. These compare storage or level
@@ -162,7 +162,7 @@ they do not establish a continuous-time derivative bound.
 Finer replay preserves original operating windows for schedules and ramps.
 Power, discharge and release are averaged back onto those windows, while
 reservoir values are sampled at their original vertices. Restart retains
-previous unit/plant output, durations, state ages and river cohorts.
+previous unit/plant output, durations, state ages and river releases.
 
 With an explicit finer hydraulic grid, these are still the intervals in
 `case.grid`. Running gross-head restrictions use the volume-averaged levels
@@ -180,7 +180,7 @@ retain their declared windows. Pointwise arrival requirements retain their
 separate event-based meaning.
 
 Reserve allocations stay fixed over operating intervals, while their physical
-witnesses and response-rate limits are checked at each hydraulic operating
+operating points and response-rate limits are checked at each hydraulic operating
 point. A scheduling ramp between interval-average outputs is a different
 restriction from delivering reserve within its response time.
 
@@ -403,10 +403,10 @@ water. This differs from a level range, whose prefix is already meaningful.
 ## Optimization scope
 
 Unit commitment remains binary throughout the horizon. The MILP proposal enforces
-commitment, discharge schedules and linear ramps to find candidate states.
+commitment, discharge schedules and linear ramps to propose unit states.
 Nonlinear dispatch enforces physical power schedules and reservoir level ramps.
 The proposal also uses soft-limit costs, with surrogate power and a secant
-head–storage approximation for level observations; its candidate still needs
+head–storage approximation for level observations; the proposed schedule still needs
 the exact nonlinear dispatch and independent assessment.
 Proposal objectives are surrogate values, not bounds on the physical problem.
 

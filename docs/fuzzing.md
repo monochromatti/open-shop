@@ -74,13 +74,13 @@ accepted schedule is checked against the original physical and
 operating equations. The campaign also recomputes objective components, closes a
 separate whole-basin storage-plus-transit ledger, reconstructs the controls, and
 runs four-times-finer replay. The reference schedule is continued from an
-intermediate grid edge to check restart histories and river cohorts.
+intermediate grid edge to check restart histories and river releases.
 
 Failures include an accepted invalid schedule, exceptions or process crashes,
 false infeasibility despite a valid reference, a global upper bound below a known
 feasible objective, a rejected physical warm start, changed fixed controls, and
-an unsupported global-certificate claim. Each new feasible candidate is compared
-with bounds from earlier stages as well as its own bound. Physical audits remain numerical checks;
+an unsupported global-certificate claim. Each new feasible solution is compared
+with bounds from earlier stages as well as its own bound. Physical checks remain numerical checks;
 the campaign is not a proof of correctness or exhaustive domain coverage.
 
 Time limits without a schedule are `search_inconclusive` warnings. Other local

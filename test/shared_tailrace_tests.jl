@@ -18,7 +18,7 @@ using .SharedTailraceExample: shared_tailrace_case
     @test x["power"]≈power atol=1e-8
     expected=sum(diff(c.grid).*c.prices.*vec(sum(power;dims=1)))-5.0
     @test x["objective"]≈expected atol=1e-7
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 
     # Increasing B's flow reduces A's head even with A's flow held fixed.
     other=dispatch_from_controls(c,u,[5.0 5.0;4.0 4.0],gates)
@@ -28,7 +28,7 @@ using .SharedTailraceExample: shared_tailrace_case
     extra_drawdown=0.01 .* [0.0009,0.0036]
     @test vec(x["power"][1,:]-other["power"][1,:])≈
         0.00981*0.90*5 .* (drop .+extra_drawdown) atol=1e-8
-    @test replay_audit(c,other)["valid"]
+    @test validate_replay(c,other)["valid"]
 
     restored=case_from_dict(case_dict(c))
     copy_dispatch=dispatch_from_controls(restored,u,q,gates)
@@ -57,7 +57,7 @@ using .SharedTailraceExample: shared_tailrace_case
         @test local_result["objective"]≈optimum atol=5e-3
         @test vec(local_result["generator_q"][1,:])≈optimal_a atol=0.02
         @test vec(local_result["generator_q"][2,:])≈optimal_b atol=0.02
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     result=solve(c;initial=x,time_limit=60.0,relative_gap=1e-6)
     @test result.accepted
@@ -66,6 +66,6 @@ using .SharedTailraceExample: shared_tailrace_case
         @test result.solution["objective"]≈optimum atol=5e-3
         @test result.solution["tunnel_q"][3,:]≈fill(10.0,2) atol=1e-4
         @test vec(result.solution["generator_q"][1,:])≈optimal_a atol=0.02
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end

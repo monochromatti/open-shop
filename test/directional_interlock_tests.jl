@@ -52,7 +52,7 @@ end
     # opening, and future head depletion is smaller than the current gain.
     # Thus each unblocked interval runs at q=3; enumerate gate decisions only.
     choices=((1.0,0.0),(0.5,0.0),(0.0,1.0),(0.0,0.5))
-    candidates=map(Iterators.product(choices,choices,choices)) do early
+    gate_schedules=map(Iterators.product(choices,choices,choices)) do early
         A=hcat(collect.(early)...,fill([0.0,1.0],3)...)
         u=zeros(Int,1,6);previous=(1.0,0.0);until=0.0
         for t in 1:6
@@ -64,13 +64,13 @@ end
         end
         (;opening=A,commitment=u,reference=di_reference(c,u,A;discharge=3.0))
     end
-    best=argmax(candidate.reference.objective for candidate in candidates)
-    winner=collect(candidates)[best]
-    witness=dispatch_from_controls(c,winner.commitment,3.0 .*winner.commitment,zeros(0,6);
+    best=argmax(schedule.reference.objective for schedule in gate_schedules)
+    winner=collect(gate_schedules)[best]
+    reference_schedule=dispatch_from_controls(c,winner.commitment,3.0 .*winner.commitment,zeros(0,6);
         tunnel_opening=winner.opening)
-    @test validate(c,witness)["valid"]
-    @test witness.objective≈winner.reference.objective atol=1e-8
-    @test replay_audit(c,witness)["valid"]
+    @test validate(c,reference_schedule)["valid"]
+    @test reference_schedule.objective≈winner.reference.objective atol=1e-8
+    @test validate_replay(c,reference_schedule)["valid"]
     A=tunnel_opening_schedule(c);initial_u=reshape([1,1,1,0,0,1],1,:)
     initial=dispatch_from_controls(c,initial_u,1.0 .*initial_u,zeros(0,6);tunnel_opening=A)
     result=solve(c;initial,time_limit=90.0,relative_gap=1e-4)
@@ -79,7 +79,7 @@ end
         @test result.solution.objective≈winner.reference.objective atol=1e-3
         @test result.solution.objective>initial.objective+100.0
         @test validate_tunnel_openings(c,result.solution.tunnel_opening,result.solution.commitment)
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end
 
@@ -94,7 +94,7 @@ end
     @test x.storage≈expected.storage atol=1e-9
     @test x.power≈expected.power atol=1e-8
     @test x.objective≈expected.objective atol=1e-8
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test simulate(c,q,gate;grid=OpenSHOP.refined_grid(c.grid;factor=5),tunnel_opening=A).converged
     # Low opens at 1h, even though production must wait until 2.5h. High opens
     # at 3h, and production may resume at 3.5h, with one gate always open.
@@ -109,7 +109,7 @@ end
     @test_throws ArgumentError dispatch_from_controls(c,false_state,q,gate;tunnel_opening=A)
     bad=schedule_dict(x);bad["u"][1,4]=1
     @test !validate(c,bad)["valid"]
-    @test !replay_audit(c,bad)["valid"]
+    @test !validate_replay(c,bad)["valid"]
     @test_throws ArgumentError solve_case(c;u=false_state,tunnel_opening=A,time_limit=5.0)
     # Moving from one positive opening to another is not a closure.
     positive=[1.0 .5 1.0 1.0 1.0 1.0 1.0 1.0;zeros(8)']
@@ -130,7 +130,7 @@ end
     @test local_result.accepted
     if local_result.solution!==nothing
         @test local_result.solution.objective≈expected.objective atol=1e-3
-        @test replay_audit(c,local_result.solution)["valid"]
+        @test validate_replay(c,local_result.solution)["valid"]
     end
     proposal=OpenSHOP.propose_commitment(c;reference=initial,time_limit=10.0)
     @test haskey(proposal,"u")
@@ -144,7 +144,7 @@ end
         @test result.solution.commitment==u
         @test result.solution.generator_q≈5.0 .*u atol=2e-4
         @test result.solution.objective≈expected.objective atol=1e-3
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
     if result.global_bound!==nothing
         @test isfinite(result.global_bound) && result.global_bound>=expected.objective-1e-3
@@ -171,7 +171,7 @@ end
         rest=dispatch_from_controls(continued,u[:,edge:end],q[:,edge:end],zeros(0,9-edge);
             tunnel_opening=A[:,edge:end])
         @test validate(continued,rest)["valid"]
-        @test replay_audit(continued,rest)["valid"]
+        @test validate_replay(continued,rest)["valid"]
         @test rest.storage≈x.storage[:,edge:end] atol=1e-9
         @test rest.power≈x.power[:,edge:end] atol=1e-8
         @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
@@ -191,7 +191,7 @@ end
     rest=dispatch_from_controls(continued,xf.commitment[:,edge:end],xf.generator_q[:,edge:end],
         zeros(0,length(continued.prices));tunnel_opening=xf.tunnel_opening[:,edge:end])
     @test rest.storage≈xf.storage[:,edge:end] atol=1e-9
-    @test replay_audit(continued,rest)["valid"]
+    @test validate_replay(continued,rest)["valid"]
 end
 
 @testset "Terminal obligations and repeated closures survive continuation" begin
@@ -206,7 +206,7 @@ end
     @test only(continued.system.tunnel_interlocks).initial_forward_wait≈1.0 atol=1e-12
     rest=dispatch_from_controls(continued,u[:,9:end],q[:,9:end],zeros(0,2);tunnel_opening=A[:,9:end])
     @test rest.storage≈x.storage[:,9:end] atol=1e-9
-    @test replay_audit(continued,rest)["valid"]
+    @test validate_replay(continued,rest)["valid"]
     prefix=di_copy(c;grid=c.grid[1:9],prices=c.prices[1:8])
     past=dispatch_from_controls(prefix,u[:,1:8],q[:,1:8],zeros(0,8);tunnel_opening=A[:,1:8])
     obligations=validate(prefix,past)["terminal_tunnel_switch_obligations"]

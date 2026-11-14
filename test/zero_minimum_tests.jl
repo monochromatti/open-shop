@@ -23,7 +23,7 @@ end
             if result.solution!==nothing
                 @test result.solution.generator_q≈fill(5.0,1,2) atol=1e-4
                 @test validate(c,result.solution)["valid"]
-                @test replay_audit(c,result.solution)["valid"]
+                @test validate_replay(c,result.solution)["valid"]
             end
         end
     end
@@ -36,7 +36,7 @@ end
     @test validate(c,idle)["valid"] && validate(c,off)["valid"]
     @test idle.storage==off.storage
     @test idle.objective==-3.0 && off.objective==0.0
-    @test replay_audit(c,idle)["valid"]
+    @test validate_replay(c,idle)["valid"]
     restarted=restart_case(c,idle,1.0)
     @test only(restarted.system.generators).initial_on==1
     @test validate(restarted,dispatch_from_controls(restarted,ones(Int,1,1),zeros(1,1),zeros(0,1)))["valid"]
@@ -73,7 +73,7 @@ end
         @test result.accepted
         @test result.solution.generator_q≈zeros(1,2) atol=1e-8
         @test result.solution.power≈zeros(1,2) atol=1e-8
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end
 

@@ -1,4 +1,4 @@
-# Instantaneous arrival laws for the same original release cohorts used by
+# Instantaneous arrival laws for the same original interval releases used by
 # RiverRouting. Arrival rates are m³/s; volume conversion does not enter here.
 function delay_cdf(c::RiverRouting.DelayCurve, x::Real)
     total=0.0
@@ -9,10 +9,10 @@ function delay_cdf(c::RiverRouting.DelayCurve, x::Real)
     total
 end
 
-"""Instantaneous arrival coefficients, cohort × reference curve.
+"""Instantaneous arrival coefficients, release interval × reference curve.
 
 Each distributed reference curve has a column. A single curve or deterministic
-delay retains two identical columns for compatibility. A release cohort [a,b) contributes
+delay retains two identical columns for compatibility. A interval release [a,b) contributes
 q*(F(t-a)-F(t-b)). For an atom, `side` chooses the one-sided value at a jump.
 """
 function point_coefficients(r::River, release_grid, time::Real; side::Symbol = :right)
@@ -50,13 +50,13 @@ function point_coefficients(r::River, release_grid, time::Real; side::Symbol = :
     K
 end
 
-function cohort_point_arrival(r::River, grid, q, time; side = :right)
+function release_arrival_rate(r::River, grid, q, time; side = :right)
     _check_river_releases(r,grid,q)
     isfinite(time) || throw(ArgumentError("arrival query time must be finite"))
     side in (:left,:right) || throw(ArgumentError("side must be :left or :right"))
     if r.deterministic_delay===nothing
         RiverRouting.check_curves(r.curves)
-        # Validate all original releases, including cohorts whose arrivals have
+        # Validate all original releases, including releases whose arrivals have
         # passed. Restrict only the numerical sum to the finite delay support.
         if length(r.curves)>1
             all(x->first(r.curves).reference_flow<=x<=last(r.curves).reference_flow,q) ||
@@ -88,15 +88,15 @@ function cohort_point_arrival(r::River, grid, q, time; side = :right)
     total
 end
 
-"""Exact instantaneous arrivals from historical and scheduled cohorts."""
+"""Exact instantaneous arrivals from historical and scheduled releases."""
 function point_arrival(r::River, current_grid, q, time::Real; side::Symbol = :right)
-    cohort_point_arrival(r, current_grid, q, time; side) +
-    cohort_point_arrival(r, r.history_grid, r.history_release, time; side)
+    release_arrival_rate(r, current_grid, q, time; side) +
+    release_arrival_rate(r, r.history_grid, r.history_release, time; side)
 end
 
-# Evaluate an ordered set of observations in one pass over release cohorts.
-# The finite delay support limits work; original cohort flows select mixtures.
-function cohort_arrival_rates(r,grid,q,times;side=:right)
+# Evaluate an ordered set of observations in one pass over interval releases.
+# The finite delay support limits work; original release flows select mixtures.
+function release_arrival_rates(r,grid,q,times;side=:right)
     _check_river_releases(r,grid,q)
     all(isfinite,times) && issorted(times) ||
         throw(ArgumentError("arrival observation times must be finite and ordered"))
@@ -129,10 +129,10 @@ end
 
 """All breakpoints of the piecewise-linear instantaneous arrival rate.
 
-Original cohort edges and all delay-bin edges are retained. Thus evaluating
+Original release edges and all delay-bin edges are retained. Thus evaluating
 both sides of these knots is sufficient for an exact minimum for prescribed
 piecewise-constant releases, including flow-dependent mixtures selected at
-release time. This statement applies to a reach's supplied cohorts; a confluence
+release time. This statement applies to a reach's supplied releases; a river junction
 rebinned onto scheduling intervals remains an approximation to continuous
 upstream mixing.
 """
@@ -179,7 +179,7 @@ function minimum_arrival(r::River, grid, q)
     Dict("value"=>best, "time"=>at, "side"=>bestside)
 end
 
-"""Clip original release cohorts to a restart time, retaining their flows.
+"""Clip original interval releases to a restart time, retaining their flows.
 
 This is restart history, not arrival bucket averages. The returned edges are
 absolute times; the caller may translate all edges by the same restart origin.

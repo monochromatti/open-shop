@@ -1,6 +1,6 @@
 # A gate proposal must distinguish the heads supplied by alternative intakes.
 # These affine head/storage and secant loss equations are a scheduling surrogate,
-# never a physical audit or a bound on the nonlinear problem. They are used only
+# never a physical validation or a bound on the nonlinear problem. They are used only
 # when the case contains selectable gates. Prescribed-gate proposals instead
 # enclose omitted pressure laws through their physical flow domains.
 function _proposal_reference(c, point)
@@ -11,9 +11,9 @@ function _proposal_reference(c, point)
             point=first(_dispatch_start(c,u,point))
         end
         point===nothing && return _proposal_reference(c,nothing)
-        cohorts=all(r->r.deterministic_delay!==nothing,c.system.rivers) ? nothing :
-            routed_schedule(c,point.river_release;generator_q=point.generator_q,tunnel_q=point.tunnel_q).cohorts
-        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release,cohorts)
+        release_series=all(r->r.deterministic_delay!==nothing,c.system.rivers) ? nothing :
+            routed_schedule(c,point.river_release;generator_q=point.generator_q,tunnel_q=point.tunnel_q).release_series
+        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release,release_series)
     end
     # A linearization point may prescribe only some physical quantities.
     # Missing components retain the surrogate's existing nominal defaults.
@@ -27,10 +27,10 @@ function _proposal_reference(c, point)
         head=matrix("H",length(nodes(s)),T),
         tunnel_q=matrix("tunnel_q",length(s.tunnels),T),
         generator_q=matrix("generator_q",length(s.generators),T),
-        river_release=matrix("river_release",length(s.rivers),T),cohorts=nothing)
+        river_release=matrix("river_release",length(s.rivers),T),release_series=nothing)
 end
 
-"""Freeze delay mixtures at physical reference cohorts or the last recorded flow."""
+"""Freeze delay mixtures at physical reference releases or the last recorded flow."""
 function _proposal_delay_coordinate(r,flow)
     r.deterministic_delay!==nothing && return nothing
     weights=zeros(length(r.curves))

@@ -10,6 +10,11 @@
     profile["power"][1]+=1.0
     @test profile["power"]!=x.power
     @test validate(c,x)["valid"]
+    replay=validate_replay(c,x)
+    @test replay["original_validation"]["valid"]
+    @test replay["transport_validation"]["accepted"]
+    @test validate_transport(c,x)["accepted"]
+    @test OpenSHOP.jsonready(replay)["validation_scope"]==replay["validation_scope"]
     profile=schedule_dict(x)
     @test OpenSHOP._schedule_input(OpenSHOP.jsonready(x);case=c).storage==x.storage
     @test validate(c,OpenSHOP.jsonready(x))["valid"]
@@ -106,9 +111,9 @@ end
     for key in ("shortfall_release","release_penalty_cost")
         profile=schedule_dict(x)
         delete!(profile,key)
-        audit=validate(c,profile)
-        @test !audit["valid"]
-        @test "missing soft release accounting" in audit["errors"]
+        validation=validate(c,profile)
+        @test !validation["valid"]
+        @test "missing soft release accounting" in validation["errors"]
     end
 end
 

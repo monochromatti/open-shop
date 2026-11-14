@@ -9,14 +9,14 @@ using Random
             deterministic_delay=delay,curves=delay===nothing ?
                 [RiverRouting.DelayCurve(0.0,[0.0,0.2,0.7],[0.4,0.6]),
                  RiverRouting.DelayCurve(10.0,[0.1,0.3,0.5],[0.7,0.3])] : RiverRouting.DelayCurve[])
-        rates=OpenSHOP.cohort_arrival_rates(river,grid,flows,times;side)
-        expected=[OpenSHOP.cohort_point_arrival(river,grid,flows,t;side) for t in times]
+        rates=OpenSHOP.release_arrival_rates(river,grid,flows,times;side)
+        expected=[OpenSHOP.release_arrival_rate(river,grid,flows,t;side) for t in times]
         @test rates≈expected atol=1e-12
-        @test isempty(OpenSHOP.cohort_arrival_rates(river,grid,flows,Float64[];side))
+        @test isempty(OpenSHOP.release_arrival_rates(river,grid,flows,Float64[];side))
     end
 end
 
-@testset "Cohort operators reproduce routed volumes and physical transit" begin
+@testset "Release operators reproduce routed volumes and physical transit" begin
     rng=MersenneTwister(7183)
     for trial in 1:8
         release=vcat(-1.7,-1.7 .+ cumsum(0.03 .+ rand(rng,15)))
@@ -53,7 +53,7 @@ end
                 row=OpenSHOP.volume_transfer_row(r,release,a,b)
                 volume=sum(0.0036*(release[k+1]-release[k])*
                     OpenSHOP.released_fraction(r,q[k],view(row.fractions,:,j))
-                    for (j,k) in enumerate(row.cohorts);init=0.0)
+                    for (j,k) in enumerate(row.release_indices);init=0.0)
                 @test volume≈only(OpenSHOP.route_volumes(r,[a,b],release,q)) atol=1e-12
             end
             lag=delay===nothing ? 0.19 : delay
@@ -61,8 +61,8 @@ end
                 release[4]+lag,release[end-1]+lag),side in (:left,:right)
                 row=OpenSHOP.point_transfer_row(r,release,time;side)
                 arrival=sum(OpenSHOP.released_fraction(r,q[k],view(row.fractions,:,j))
-                    for (j,k) in enumerate(row.cohorts);init=0.0)
-                @test arrival≈OpenSHOP.cohort_point_arrival(r,release,q,time;side) atol=1e-11
+                    for (j,k) in enumerate(row.release_indices);init=0.0)
+                @test arrival≈OpenSHOP.release_arrival_rate(r,release,q,time;side) atol=1e-11
             end
         end
     end
@@ -76,7 +76,7 @@ end
     for (side,expected) in ((:left,4.0),(:right,7.0))
         row=OpenSHOP.point_transfer_row(r,grid,2.05;side)
         actual=sum(OpenSHOP.released_fraction(r,q[k],view(row.fractions,:,j))
-            for (j,k) in enumerate(row.cohorts);init=0.0)
+            for (j,k) in enumerate(row.release_indices);init=0.0)
         @test actual==expected
     end
     r=River(name=:Reach,source=:Lake,target=:Sea,capacity=1e9,water_value=0.0,

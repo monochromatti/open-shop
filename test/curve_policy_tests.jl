@@ -72,18 +72,18 @@ end
     @test vec(x.storage)≈[2.0,1.9928,1.9856] atol=1e-10
     @test vec(x.power)≈expected_power atol=1e-10
     @test x.objective≈sum(c.prices .* expected_power) atol=1e-8
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     local_result=solve_case(c;u=ones(Int,1,2),warm=x,time_limit=10.0)
     @test local_result["accepted"]
     @test local_result["objective"]≈x.objective atol=1e-3
     model=OpenSHOP._build_global_dispatch(c;joint=true)
-    lift=OpenSHOP._lift_start!(model,c,x)
+    lift=OpenSHOP._initialize_global_start!(model,c,x)
     @test lift["valid"]
     @test lift["objective"]≈x.objective atol=1e-8
     off=dispatch_from_controls(c,reshape([1,0],1,2),reshape([2.0,0.0],1,2),zeros(0,2))
     @test off["validation"]["valid"]
     @test off.power[1,2]==0.0
-    @test OpenSHOP._lift_start!(model,c,off)["valid"]
+    @test OpenSHOP._initialize_global_start!(model,c,off)["valid"]
     restarted=restart_case(c,x,1.0)
     rest=dispatch_from_controls(restarted,ones(Int,1,1),fill(4.0,1,1),zeros(0,1))
     @test rest["validation"]["valid"]
@@ -109,7 +109,7 @@ end
     @test cubic["validation"]["valid"]
     @test vec(cubic.power)≈0.00981 .* 1.5 .* [100.0009,100.0027] .* 0.903125 .* 0.95 atol=1e-10
     cubic_model=OpenSHOP._build_global_dispatch(cubic_case;joint=true)
-    @test OpenSHOP._lift_start!(cubic_model,cubic_case,cubic)["valid"]
+    @test OpenSHOP._initialize_global_start!(cubic_model,cubic_case,cubic)["valid"]
 end
 
 @testset "Single-head global optimization" begin
@@ -119,5 +119,5 @@ end
     @test result.accepted
     @test result.solution.objective≈x.objective atol=1e-3
     @test validate(c,result.solution)["valid"]
-    @test replay_audit(c,result.solution)["valid"]
+    @test validate_replay(c,result.solution)["valid"]
 end

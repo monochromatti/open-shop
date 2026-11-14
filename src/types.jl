@@ -256,7 +256,7 @@ end
     River(; name, target, curves, capacity, water_value, ...)
 
 A routed reach with flow in m³/s, travel time in hours and inventory in Mm³.
-`source` names a reservoir or explicit river confluence. A direct river
+`source` names a reservoir or explicit river junction. A direct river
 connection uses the upstream `target` to name the downstream reach, whose
 `source` is `:auto`; `ScheduleCase` resolves these connections during construction. Plants and tunnels can feed a reach through `discharge_river`.
 A shared source/target label also defines an internal zero-storage river node.
@@ -281,7 +281,7 @@ Base.@kwdef struct River
     coefficient::Float64 = 0.0 # q=C*a*sqrt(H-crest), or C*(H-crest)^1.5
     crest::Float64 = 0.0
     min_arrival::Float64 = 0.0
-    arrival_policy::Symbol = :interval_average # or :pointwise for exact cohort-wave minima
+    arrival_policy::Symbol = :interval_average # or :pointwise for exact arrival-wave minima
     arrival_window_grid::Vector{Float64} = Float64[] # empty selects scheduling grid; preserved on refinement
     deterministic_delay::Union{Nothing, Float64} = nothing
     gate_min::Float64 = 0.0 # optional sufficient environmental-release guard
@@ -294,7 +294,7 @@ Base.@kwdef struct River
     allow_dry::Bool = false
     ramp_up::Union{Nothing, Float64} = nothing # release (m³/s)/hour
     ramp_down::Union{Nothing, Float64} = nothing
-    initial_release::Union{Nothing, Float64} = nothing # previous control-window average, separate from cohorts
+    initial_release::Union{Nothing, Float64} = nothing # previous control-window average; history may use a finer grid
     initial_interval_hours::Float64 = 1.0
     flow_change_cost::Float64 = 0.0 # currency/(m³/s), per change rather than per hour
     flow_start_cost::Float64 = 0.0 # currency per off-to-on transition

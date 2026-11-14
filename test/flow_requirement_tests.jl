@@ -11,7 +11,7 @@
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     good=dispatch_from_controls(c,ones(Int,1,1),fill(5.0,1,1),fill(0.2,1,1))
     @test good["validation"]["valid"]
-    @test replay_audit(c,good)["valid"]
+    @test validate_replay(c,good)["valid"]
     bad=dispatch_from_controls(c,ones(Int,1,1),fill(5.0,1,1),zeros(1,1))
     @test !bad["validation"]["valid"]
     @test bad["validation"]["residuals"]["flow_requirement_Reach"]≈2.0
@@ -25,7 +25,7 @@
     end
     result=OpenSHOP.solve(c;initial=good,time_limit=15.0)
     @test result["accepted"]
-    @test result["start_audit"]["valid"]
+    @test result["start_validation"]["valid"]
     # Refinement and restart retain the observation and its physical input times.
     longer=OpenSHOP._river_replace(c;grid=[0.0,1.0,2.0],prices=[100.0,100.0],operations=[
         OperationalSeries(object=:Reach,attribute=:inflow,times=[0.0,1.0],values=[1.0,2.0]),

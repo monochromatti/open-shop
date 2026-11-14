@@ -69,7 +69,7 @@ function level_flow_derivatives(c::LevelFlowCurve,delta,reference;extrapolation=
 end
 
 """JuMP operator with explicit derivatives and linear delta extension.
-The physical model must constrain or audit its intended delta domain.
+The physical model must constrain or validate its intended delta domain.
 """
 function level_flow_operator(m,c::LevelFlowCurve;name=gensym(:level_flow))
     function gradient(g,delta,reference)

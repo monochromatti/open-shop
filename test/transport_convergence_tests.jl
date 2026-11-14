@@ -68,14 +68,14 @@ end
     probe=OpenSHOP._replay(c,infeasible;require_original=false)
     @test !probe.valid
     @test !probe.original_valid
-    @test probe.transport_audit!==nothing
-    if probe.transport_audit!==nothing
+    @test probe.transport_validation!==nothing
+    if probe.transport_validation!==nothing
         # The preliminary error estimate is unresolved. It must not be
         # presented as transport convergence for this infeasible iterate.
-        @test !probe.transport_audit["converged"]
+        @test !probe.transport_validation["converged"]
         @test !probe.numerically_converged
     end
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 end
 
 @testset "Transport accuracy is retained when the horizon grows" begin

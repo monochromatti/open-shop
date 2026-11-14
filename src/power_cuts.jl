@@ -99,7 +99,7 @@ mutable struct _PowerCutSeparator{F} <: SCIP.AbstractSeparator
     checked::BitVector
     added::BitVector
     ranking::Vector{Tuple{Float64,Int}}
-    candidates::Vector{Tuple{Float64,Float64,Int}}
+    violated_cuts::Vector{Tuple{Float64,Float64,Int}}
     limits::typeof(_POWER_CUT_LIMITS)
     calls::Int
     skipped::Int
@@ -244,18 +244,18 @@ function SCIP.exec_lp(separator::_PowerCutSeparator)
                 _power_cut_certify!(separator,separator.ranking[j][2])
             end
         end
-        empty!(separator.candidates)
+        empty!(separator.violated_cuts)
         for (index,cut) in enumerate(separator.certified)
             separator.added[index] && continue
             violation=40.0*_power_cut_value(cut.expression,at)
             violation>limits.violation_mw || continue
             weight=separator.coordinates[cut.coordinate].objective_weight
-            push!(separator.candidates,(weight*violation,violation,index))
+            push!(separator.violated_cuts,(weight*violation,violation,index))
         end
-        sort!(separator.candidates;by=x->(-x[1],-x[2],x[3]))
-        count=min(limits.cuts_per_round,limits.cuts-separator.cuts_added,length(separator.candidates))
+        sort!(separator.violated_cuts;by=x->(-x[1],-x[2],x[3]))
+        count=min(limits.cuts_per_round,limits.cuts-separator.cuts_added,length(separator.violated_cuts))
         for j in 1:count
-            _,violation,index=separator.candidates[j]
+            _,violation,index=separator.violated_cuts[j]
             infeasible=_power_cut_add_row!(separator,separator.certified[index].expression)
             separator.added[index]=true
             separator.cuts_added+=1

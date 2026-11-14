@@ -42,7 +42,7 @@ end
         x=dispatch_from_controls(equivalent,zeros(Int,0,3),zeros(0,3),zeros(6,3))
         @test x.arrival_volume≈expected atol=1e-10
         @test validate(equivalent,x)["valid"]
-        @test replay_audit(equivalent,x)["valid"]
+        @test validate_replay(equivalent,x)["valid"]
         @test case_dict(case_from_dict(case_dict(equivalent)))==case_dict(equivalent)
         @test case_dict(equivalent)["river_junctions"]==[Dict("name"=>j.name) for j in junctions]
         continued=restart_case(equivalent,x,0.7)
@@ -82,7 +82,7 @@ end
     q=reshape([4.0,0.0,3.0,2.0],1,:);u=Int.(q.>0);gates=zeros(4,4)
     x=dispatch_from_controls(c,u,q,gates)
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     # The canal supplies 1 m³/s to Left. Both local inputs enter after the fork.
     upstream(t)=t<0 ? 3.5 : q[1,searchsortedlast(c.grid,t)]
     left(t)=t<0 ? 3.4 : 0.4*upstream(t-0.25)+2.0
@@ -110,7 +110,7 @@ end
         continued=restart_case(c,x,time)
         remainder=dispatch_from_controls(continued,u[:,edge:end],q[:,edge:end],gates[:,edge:end])
         @test validate(continued,remainder)["valid"]
-        @test replay_audit(continued,remainder)["valid"]
+        @test validate_replay(continued,remainder)["valid"]
         @test remainder.storage≈x.storage[:,edge:end] atol=1e-10
         @test simulate(continued,q[:,edge:end],gates[:,edge:end]).transit≈trajectory.transit[:,edge:end] atol=1e-10
         @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
@@ -152,13 +152,13 @@ end
     @test near.generator_q==rounded
     @test maximum(near.river_release[2,:])>3.6
     @test 0<validate(c,near)["residuals"]["river_capacity_Left"]<1e-6
-    @test replay_audit(c,near)["valid"]
+    @test validate_replay(c,near)["valid"]
     @test_throws ArgumentError dispatch_from_controls(c,u,fill(5.0,1,4),gates)
     local_result=solve_case(c;u,warm=initial,time_limit=60.0)
     @test get(get(local_result,"validation",Dict()),"valid",false)
     if haskey(local_result,"objective")
         @test local_result["objective"]≈expected atol=1e-3
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     proposal=OpenSHOP.propose_commitment(c;reference=initial,time_limit=10.0)
     @test haskey(proposal,"u")
@@ -216,7 +216,7 @@ end
     @test validate(c,x)["valid"]
     @test x.river_release[2,:]≈fill(2.0,4) atol=1e-10
     @test x.arrival_volume[2,1]≈0.0036*(0.35*3.4+0.15*2.0) atol=1e-10
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 end
 
 @testset "Invalid allocations and stale transport are rejected" begin

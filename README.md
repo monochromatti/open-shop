@@ -102,7 +102,7 @@ transit are explicit parts of the model. Constitutive functions must be supplied
 and calibrated. Pumps use hydraulic efficiency data and constant motor efficiency;
 reversible mode groups explicitly exclude simultaneous operation. See
 [pumping](docs/pumping.md) for the model and supported scope.
-A spinning-capacity contract adds unit/plant operating-point witnesses,
+A spinning-capacity contract adds unit/plant operating-point operating points,
 response limits, explicit shortfalls and capacity revenue. Other reserve
 products, full activation trajectories, stochastic scenarios, river geometry
 and transient pressure dynamics are outside the current model.

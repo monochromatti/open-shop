@@ -46,7 +46,7 @@ For fixed-speed pumps, `commitment` selects on/off and the corresponding
 The returned schedule contains the hydraulically solved characteristic flows.
 Adjustable-unit flows remain prescribed controls. Supply an explicit
 `tunnel_opening[tunnel, interval]` for selectable tunnel gates. Optional `reserves`
-contains capacity controls; their unit/plant flow witnesses are inferred at the
+contains capacity controls; their unit/plant operating-point discharges are inferred at the
 scheduled hydraulic heads and never enter nominal water balances.
 Optional `head_reference[node,interval]` supplies head guesses and selects the
 reference in floating pressure components without relaxing any physical law.
@@ -84,7 +84,7 @@ function dispatch_from_controls(
     req=release_requirements(physical,z.river_release)
     adjustment_cost=tunnel_adjustment_cost(c,opening)
     reserves=reserves===nothing ? _zero_reserves(physical,z.generator_q;operating_case=c) :
-        reserve_witnesses(physical,_reserve_slice(_reserve_input(reserves,length(c.prices)),mesh.interval),held_u,z;operating_case=c)
+        reserve_operating_points(physical,_reserve_slice(_reserve_input(reserves,length(c.prices)),mesh.interval),held_u,z;operating_case=c)
     objective=sum(physical.prices[k]*mesh.dt[k]*unit_power_sign(g)*z.power[j,k]
         for (j,g) in enumerate(c.system.generators),k in eachindex(mesh.dt);init=0.0) -
         transition_costs(c,u)-req.cost-adjustment_cost-river_operating_cost(c,windows.river_release).total +
@@ -103,7 +103,7 @@ function dispatch_from_controls(
 end
 
 """Correct bounded solver roundoff, then independently rebuild all physical values."""
-function _reconstruct_candidate(c, raw; transport = nothing)
+function _reconstruct_schedule(c, raw; transport = nothing)
     raw=_schedule_input(raw; case=c)
     mesh=TimeDiscretization(c.grid,raw.grid)
     firstcell=first.(mesh.cells)

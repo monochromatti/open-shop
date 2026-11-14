@@ -80,7 +80,7 @@ end
     @test x == dispatch_from_controls(c, u, q, gate)
     @test x["validation"]["valid"]
     @test (q, gate, u) == (f.q, f.gates, f.u)
-    @test replay_audit(c, x)["valid"]
+    @test validate_replay(c, x)["valid"]
     @test occursin(c.name, sprint(show, MIME"text/plain"(), c))
     a, b = HydroSystem(), HydroSystem()
     push!(a.boundaries, Boundary(name = :Sea, head = 0.0))

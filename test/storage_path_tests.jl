@@ -52,7 +52,7 @@ end
     x = dispatch_from_controls(c, zeros(Int,0,1), zeros(0,1), reshape([1.0,24/64],2,1))
     @test x.storage[2,end] ≈ 0.002 atol=1e-10
     @test !validate(c,x)["valid"]
-    @test !replay_audit(c,x)["valid"]
+    @test !validate_replay(c,x)["valid"]
     # Every constant release fails: the midpoint needs q ≤ 170/9, while
     # the final upper storage bound needs q ≥ 212/9 m³/s.
     proposal = OpenSHOP.propose_commitment(c;time_limit=60.0)
@@ -72,11 +72,11 @@ end
     controls=reshape([1.0,(12.0+1/240)/64],2,1)
     x=dispatch_from_controls(c,zeros(Int,0,1),zeros(0,1),controls)
     @test x.storage[2,end]≈0.0005 atol=1e-12
-    audit=validate(c,x)
-    @test !audit["valid"]
-    @test audit["residuals"]["storage_path_Pond"]≈2.75e-6 atol=1e-12
-    @test any(t->isapprox(t,0.5;atol=1e-10),audit["storage_path_times"])
-    @test !replay_audit(c,x)["valid"]
+    validation=validate(c,x)
+    @test !validation["valid"]
+    @test validation["residuals"]["storage_path_Pond"]≈2.75e-6 atol=1e-12
+    @test any(t->isapprox(t,0.5;atol=1e-10),validation["storage_path_times"])
+    @test !validate_replay(c,x)["valid"]
     # The same flow is safe with four extra cubic metres below the initial
     # level. Detect the excursion analytically, without adding time steps.
     safe=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(system;
@@ -97,7 +97,7 @@ end
         x = result["solution"]
         @test vec(x.river_release[2,:]) ≈ [15.0,21.0,27.0,33.0] atol=1e-5
         @test x.storage[2,:] ≈ fill(0.002,5) atol=1e-9
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
     end
 end
 
@@ -129,7 +129,7 @@ end
         if result["accepted"]
             x=result["solution"]
             @test validate(result["problem"],x)["valid"]
-            @test replay_audit(result["problem"],x;grid=OpenSHOP.refined_grid(x.grid;factor=4))["valid"]
+            @test validate_replay(result["problem"],x;grid=OpenSHOP.refined_grid(x.grid;factor=4))["valid"]
             @test maximum(abs,x.generator_q.-optimal_flow)<=0.02
         end
     end

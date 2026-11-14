@@ -1,9 +1,9 @@
 """Two reference-flow integrals, anchored at each supplied window start.
 
-`C[l,1,k]` is κ∫ψ_l(q) ds through cohort k, and `C[l,2,k]` is
-κ∫((s-start)/duration)ψ_l(q) ds, both in Mm³. Constant cohorts give exact
+`C[l,1,k]` is κ∫ψ_l(q) ds through release interval k, and `C[l,2,k]` is
+κ∫((s-start)/duration)ψ_l(q) ds, both in Mm³. Constant releases give exact
 partial-cell integrals. Arrival windows then use endpoint differences instead
-of sums over all overlapping cohorts. `variables` are scaled by 0.3 Mm³.
+of sums over all overlapping releases. `variables` are scaled by 0.3 Mm³.
 """
 struct ReferenceIntegrals
     C::Array{AffExpr,3}
@@ -16,7 +16,7 @@ end
 function reference_integrals!(m,control,r,rates,coordinates,grid,starts)
     RiverRouting.check_grid(control)
     first(control)==first(grid) && last(control)==last(grid) && all(in(grid),control) ||
-        throw(ArgumentError("integral windows must partition the cohort grid"))
+        throw(ArgumentError("integral windows must partition the release grid"))
     J,K=river_curve_count(r),length(grid)-1
     edges=[searchsortedfirst(grid,t) for t in control]
     z=@variable(m,[1:J,1:2,1:K],base_name="reference_integral_$(r.name)")
@@ -110,7 +110,7 @@ function reference_transit(data,r,time)
     value
 end
 
-"""Assign integral variables from physical cohorts for a native global start."""
+"""Assign integral variables from physical releases for a native global start."""
 function start_reference_integrals!(data,r,release,put)
     J=size(data.variables,1)
     volume=zeros(J);moment=zeros(J);flux=zeros(J)

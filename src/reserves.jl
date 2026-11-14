@@ -459,7 +459,7 @@ function validate_reserves(c,x::Schedule;tolerance=1e-4,operating_case=c)
         for (i,g) in enumerate(c.system.generators)
             if g.mode==:pump
                 actual[i]=x.power[i,t]
-                record("$(g.name)_$(direction)_witness",abs(Q[i,t]-x.generator_q[i,t]))
+                record("$(g.name)_$(direction)_operating_point",abs(Q[i,t]-x.generator_q[i,t]))
                 continue
             end
             plant=plantof(c.system,g)
@@ -472,7 +472,7 @@ function validate_reserves(c,x::Schedule;tolerance=1e-4,operating_case=c)
             plo,phi=opinterval(c,g.name,:pmin,t,g.pmin),opinterval(c,g.name,:pmax,t,g.pmax)
             record("$(g.name)_$(direction)_flow",max(qlo*u-q,q-qhi*u))
             record("$(g.name)_$(direction)_power",max(plo*u-actual[i],actual[i]-phi*u))
-            record("$(g.name)_$(direction)_witness",abs(actual[i]-(x.power[i,t]+(d==1 ? amount : -amount))))
+            record("$(g.name)_$(direction)_operating_point",abs(actual[i]-(x.power[i,t]+(d==1 ? amount : -amount))))
             record("$(g.name)_$(direction)_flow_direction",d==1 ? x.generator_q[i,t]-q : q-x.generator_q[i,t])
             if u==1
                 eta=efficiency(g,q,h)
@@ -522,8 +522,8 @@ end
 
 """Capacity controls with nominal-discharge guesses for their two operating points.
 `up` and `down` are unit × group × interval MW arrays. Forward reconstruction
-infers the physical witnesses and shortfalls; independent schedule validation
-checks the stored witnesses without repairing them.
+infers the physical operating points and shortfalls; independent schedule validation
+checks the stored operating points without repairing them.
 """
 function ReserveAllocation(;up,down,generator_q)
     size(up)==size(down) && size(up,1)==size(generator_q,1) &&
@@ -555,11 +555,11 @@ end
 # Invert the plant power equations with bounded damped Newton. Scalar failures
 # fall back to a sign bracket, without assuming power monotonicity. Bounds only
 # restrict trial guesses; capacity controls are never clipped.
-function reserve_witnesses(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4,operating_case=c)
+function reserve_operating_points(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4,operating_case=c)
     mesh=TimeDiscretization(operating_case.grid,c.grid)
     G,K,T=length(c.system.generators),length(c.reserve_groups),length(c.prices)
     size(r.up)==size(r.down)==(G,K,T) && size(r.up_q)==size(r.down_q)==(G,T) ||
-        throw(DimensionMismatch("reserve capacity controls and witness guesses"))
+        throw(DimensionMismatch("reserve capacity controls and operating-point guesses"))
     all(isfinite,r.up) && all(isfinite,r.down) && all(>=(0),r.up) && all(>=(0),r.down) ||
         throw(ArgumentError("finite nonnegative reserve capacity controls required"))
     ix=nodeindex(c.system)
@@ -633,7 +633,7 @@ function reserve_witnesses(c,r::ReserveAllocation,u,trajectory;tolerance=1e-4,op
                 admitted && (q[1]=root;converged=true)
             end
         end
-        # A boundary point can miss an exact root by less than solver/audit
+        # A boundary point can miss an exact root by less than solver/validation
         # tolerance. Keep that physical point rather than altering its capacity.
         converged || (converged=maximum(abs,residual(q);init=0.0)<=tolerance)
         converged || throw(ArgumentError("reserve operating-point reconstruction failed at $(plant.name), interval $t"))

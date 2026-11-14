@@ -11,9 +11,9 @@ function river_arrival_report(c,residuals)
     report
 end
 
-"""Audit equations, operating limits and routing directly from the supplied arrays.
+"""Validation equations, operating limits and routing directly from the supplied arrays.
 
-This check does not reintegrate the same controls. Use `replay_audit` for an
+This check does not reintegrate the same controls. Use `validate_replay` for an
 independent hydraulic integration on a finer mesh.
 
 Residuals use physical units except objective (relative error). Storage bounds,
@@ -169,15 +169,15 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         end
         record("gate_adjustment_cost_relative",[(cost-adjustment_cost)/max(1.0,abs(adjustment_cost))])
     end
-    reserve_audit=try
+    reserve_validation=try
         validate_reserves(c,result;tolerance,operating_case=operating)
     catch error
         error isa Union{ArgumentError,DimensionMismatch,DomainError} || rethrow()
         Dict("errors"=>["reserve capacity check failed: "*sprint(showerror,error)],
             "residuals"=>Dict{String,Float64}())
     end
-    append!(errors,reserve_audit["errors"])
-    merge!(residuals,Dict("reserve_"*k=>v for (k,v) in reserve_audit["residuals"]))
+    append!(errors,reserve_validation["errors"])
+    merge!(residuals,Dict("reserve_"*k=>v for (k,v) in reserve_validation["residuals"]))
     V=result.storage
     H=result.head
     Q=result.tunnel_q
@@ -494,7 +494,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         )
     catch e
         e isa Union{ArgumentError,DomainError} || rethrow()
-        push!(errors, "independent routing audit failed: $(sprint(showerror,e))")
+        push!(errors, "independent routing validation failed: $(sprint(showerror,e))")
     end
     finish()
 end

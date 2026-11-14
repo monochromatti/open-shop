@@ -53,7 +53,7 @@ The outlet floor is omitted when not supplied. Every unit in the station shares
 this head. A unit that provides no reserve can adjust its operating-point flow
 to hold its scheduled power when another unit changes plant tailwater.
 
-The formulation uses feasible power/flow witnesses instead of assuming maximum
+The formulation uses feasible power–discharge operating points instead of assuming maximum
 power occurs at maximum discharge. Analytic efficiencies, bilinear tables,
 discharge PCHIP and electrical efficiency tables retain their existing exact
 representations. `reserve_available=false` (or its operational series) removes
@@ -86,7 +86,7 @@ for sustained duration or treat a qualification budget as a hydraulic proof.
 ## Results, reconstruction and scope
 
 `ReserveAllocation.up/down[unit,group,interval]` are MW. Its `up_q/down_q`
-matrices are physical m³/s witnesses and `up_shortfall/down_shortfall` matrices
+matrices are discharges in m³/s and `up_shortfall/down_shortfall` matrices
 are MW by group and interval. JSON stores capacity as one unit-by-interval
 matrix per group. Named group order follows `case.reserve_groups`.
 
@@ -98,15 +98,15 @@ schedule = dispatch_from_controls(case; commitment=u, generator_q=q,
     gate=river_gates, reserves=capacity)
 ```
 
-Forward reconstruction infers witness flows through the coupled plant power
-laws; independent validation checks the stored witnesses without repairing
-them. Finer replay repeats capacity controls and reconstructs witnesses at the
+Forward reconstruction infers operating-point discharges through the coupled plant power
+laws; independent validation checks the stored operating points without repairing
+them. Finer replay repeats capacity controls and reconstructs operating points at the
 replayed node heads. Reconstruction retains supplied physical branches and uses
 bounded Newton steps, with scalar bisection when a sign bracket is available.
 It solves power residuals to 1e-8 MW where possible; boundary points use the same
 1e-4 MW acceptance tolerance as independent power validation. Finer replay
 retains reserve response limits even when ordinary scheduling ramps are checked
-on their original intervals. A failed physical witness is a failed replay. Restart and
+on their original intervals. An infeasible reserve operating point fails replay. Restart and
 grid refinement retain reserve contract data and absolute operating times.
 
 **This is a capacity model at scheduled hydraulic node heads.** Nominal tunnel,

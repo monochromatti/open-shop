@@ -46,7 +46,7 @@ end
     @test simulate(c,zeros(1,3),zeros(0,3);commitment=u).generator_q≈x.generator_q atol=1e-9
     @test simulate(c,zeros(Int,1,3),zeros(0,3);commitment=u).generator_q≈x.generator_q atol=1e-9
     @test simulate(c,[10.0 0.0 10.0],zeros(0,3)).generator_q≈x.generator_q atol=1e-9
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     refined=simulate(c,guess,zeros(0,3);commitment=u,grid=OpenSHOP.refined_grid(c.grid;factor=4))
     @test refined.converged
     @test refined.generator_q[1,1]!=refined.generator_q[1,4]
@@ -81,7 +81,7 @@ end
     if result.solution!==nothing
         @test result.solution.commitment==u
         @test validate(c,result.solution)["valid"]
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end
 
@@ -97,7 +97,7 @@ end
         q=2*(12-0.02h0)/(b+sqrt(b^2+4*0.0002*(12-0.02h0)))
         @test x.generator_q[1,t]≈q atol=1e-8
     end
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     forced=OpenSHOP._river_replace(c;operations=[OperationalSeries(object=:Pump,
         attribute=:forced_on,times=[0.0],values=[1.0])])
     proposal=OpenSHOP.propose_commitment(forced;reference=x,time_limit=20.0)

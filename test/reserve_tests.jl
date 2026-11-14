@@ -27,7 +27,7 @@ end
         @test vec(x.reserves.down)≈fill(4.829-1.7658,2) atol=1e-5
         expected=2*(50*4.829+100*4+25*(4.829-1.7658))-5
         @test x.objective≈expected atol=1e-3
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
         profile=OpenSHOP.jsonready(x)
         @test validate(c,profile)["valid"]
@@ -41,7 +41,7 @@ end
         mixed["reserves"]["down"]=copy(x.reserves.down)
         @test OpenSHOP._schedule_input(mixed;case=c).reserves==x.reserves
         bad=schedule_dict(x)
-        # Alter a capacity control without changing its physical witness.
+        # Alter a capacity control without changing its physical operating point.
         bad["reserves"]=deepcopy(bad["reserves"])
         bad["reserves"].up[1,1,1]+=1.0
         @test !validate(c,bad)["valid"]
@@ -51,10 +51,10 @@ end
         refined=with_grid(c,[0.0,0.5,1.0,1.5,2.0])
         @test refined.reserve_groups==c.reserve_groups
         b=OpenSHOP._build_global_dispatch(c;joint=true)
-        lift=OpenSHOP._lift_start!(b,c,x)
+        lift=OpenSHOP._initialize_global_start!(b,c,x)
         @test lift["valid"]
         for (i,v) in enumerate(all_variables(b.m));set_name(v,"reserve_reference_$i");end
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
         result=OpenSHOP.solve(c;initial=x,time_limit=30.0,relative_gap=1e-3)
         @test result.accepted
         @test result.solution.reserves isa ReserveAllocation
@@ -97,7 +97,7 @@ end
     end
 end
 
-@testset "Reserve witnesses use shared tailwater and real efficiency laws" begin
+@testset "Reserve operating points use shared tailwater and real efficiency laws" begin
     c=spinning_case()
     first=only(c.system.generators)
     table=TurbineTable([50.0,100.0,150.0],[0.0,5.0,10.0],
@@ -125,9 +125,9 @@ end
                 @test actual≈x.power[i,t]+sum(x.reserves.up[i,:,t]) atol=1e-4
             end
         end
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         b=OpenSHOP._build_global_dispatch(c;joint=true)
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
     end
 end
 
@@ -173,9 +173,9 @@ end
     x=dispatch_from_controls(c;commitment=u,generator_q=q,gate=zeros(0,2),reserves=controls)
     @test validate(c,x)["valid"]
     @test x.reserves.up_q[1,1]!=x.reserves.up_q[1,2]
-    @test controls.up_q==q # reconstruction owns the inferred witnesses
-    @test replay_audit(c,x)["valid"]
-    @test replay_audit(c,x;grid=collect(0.0:0.25:2.0))["valid"]
+    @test controls.up_q==q # reconstruction owns the inferred operating points
+    @test validate_replay(c,x)["valid"]
+    @test validate_replay(c,x;grid=collect(0.0:0.25:2.0))["valid"]
     profile=OpenSHOP.jsonready(x)
     @test validate(c,profile)["valid"]
     next=restart_case(c,x,1.0)
@@ -218,9 +218,9 @@ end
     bad=schedule_dict(x);r=deepcopy(x.reserves)
     r.up_q.=8.0;r.down_q.=4.0;bad["reserves"]=r
     @test !validate(c,bad)["valid"]
-    audit=OpenSHOP.validate_reserves(c,OpenSHOP._schedule_input(bad;case=c))
-    @test audit["residuals"]["Unit_up_witness"]>1.0
-    @test audit["residuals"]["Unit_down_witness"]>1.0
+    validation=OpenSHOP.validate_reserves(c,OpenSHOP._schedule_input(bad;case=c))
+    @test validation["residuals"]["Unit_up_operating_point"]>1.0
+    @test validation["residuals"]["Unit_down_operating_point"]>1.0
 
     g=only(c.system.generators)
     first=OpenSHOP._river_replace(g;ramp_up=100.0,discharge_ramp_up=100.0)
@@ -265,7 +265,7 @@ end
     @test validate(c,x)["valid"]
     @test x.reserves.down_q[1,1]≈5.4991873 atol=1e-3
     @test power(g,x.reserves.down_q[1,1],x.head[1,1])≈x.power[1,1]-0.5 atol=1e-4
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
 end
 
 @testset "Finer reserve replay retains physical discharge response limits" begin
@@ -281,9 +281,9 @@ end
     g=OpenSHOP._river_replace(only(c.system.generators);discharge_ramp_up=rate)
     c=OpenSHOP._river_replace(c;system=OpenSHOP._river_replace(c.system;generators=[g]))
     @test validate(c,x)["valid"]
-    audit=replay_audit(c,x)
-    @test !audit["valid"]
-    @test audit["violations"]["reserve_Unit_up_flow_response"]>1e-4
+    validation=validate_replay(c,x)
+    @test !validation["valid"]
+    @test validation["violations"]["reserve_Unit_up_flow_response"]>1e-4
 end
 
 @testset "Nonmonotonic reserve inversion preserves an admitted supplied root" begin
@@ -350,7 +350,7 @@ end
     @test x.soft_penalty_cost≈39.6 atol=1e-8
     @test x.objective≈expected atol=1e-8
     @test validate(c,x)["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     continued=restart_case(c,x,1.0)
     remainder=dispatch_from_controls(continued,ones(Int,2,1),q[:,2:2],zeros(0,1);
@@ -364,7 +364,7 @@ end
         if result.solution!==nothing
             @test result.solution.objective≈expected atol=2e-3
             @test validate(c,result.solution)["valid"]
-            @test replay_audit(c,result.solution)["valid"]
+            @test validate_replay(c,result.solution)["valid"]
         end
     end
     invalid=case_dict(c);invalid["reserve_groups"][1]["generators"]=["Pump"]

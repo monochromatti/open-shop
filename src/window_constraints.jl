@@ -154,7 +154,7 @@ function observed_flow_bounds(c,rule,t)
             is_channel(r) && (cap+=bound)
         end
         # Arrival rates can exceed the local current release capacity after a
-        # delay mixture. Bound each historical/current cohort by its released
+        # delay mixture. Bound each historical/current release by its released
         # volume divided by the receiving interval; routing is conservative.
         if r.name in rule.river_arrivals
             if is_channel(r)
@@ -163,7 +163,7 @@ function observed_flow_bounds(c,rule,t)
                 cap+=bound
                 continue
             end
-            # Upstream outfalls/confluences may carry water whose original
+            # Upstream outfalls/river junctions may carry water whose original
             # history lives on other reaches. All historical water is a safe
             # finite bound, independent of network topology.
             released=0.0036*r.capacity*(last(c.grid)-first(c.grid))+

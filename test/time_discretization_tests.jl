@@ -100,7 +100,7 @@ end
         @test objective_components(c,x).transition_cost ≈ 7.0 atol=1e-8
         @test objective_components(c,x).total ≈ x.objective atol=1e-7
         @test x.generator_q[1,1] ≈ x.generator_q[1,2] atol=1e-9
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
     end
 end
 
@@ -115,7 +115,7 @@ end
     end
 end
 
-@testset "Resolved reserve capacity is held while its physical witness changes" begin
+@testset "Resolved reserve capacity is held while its physical operating point changes" begin
     group=ReserveGroup(name=:Spinning,generators=[:Unit],up_requirement=0.1,up_max=2.0,
         up_price=5.0,response_hours=0.25)
     c=resolved_operating_case(reserve_groups=[group])
@@ -142,7 +142,7 @@ end
     @test !validate(restricted,fine)["valid"]
 end
 
-@testset "Resolved river continuation retains executed cohorts" begin
+@testset "Resolved river continuation retains executed releases" begin
     reservoirs=[Reservoir(name=name,z0=100.0,slope=1.0,v0=5.0,vmin=1.0,vmax=10.0,
         water_value=0.0) for name in (:Upper,:Lower)]
     river=River(name=:Reach,source=:Upper,target=:Lower,law=:orifice,coefficient=1.0,
@@ -259,6 +259,6 @@ end
     @test result.accepted
     if result.solution!==nothing
         @test validate(c,result.solution)["valid"]
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end

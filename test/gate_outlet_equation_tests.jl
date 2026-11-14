@@ -25,13 +25,13 @@ end
         @test x.river_release≈fill(withdrawal+0.3,1,2) atol=1e-10
         @test x.arrival_volume≈reshape(0.0036.*diff(c.grid).*(withdrawal+0.3),1,:) atol=1e-10
         @test x.objective≈0.0 atol=1e-10
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         local_result=solve_case(c;warm=x,time_limit=30.0)
         @test local_result.status in ("LOCALLY_SOLVED","ALMOST_LOCALLY_SOLVED")
         @test local_result.accepted
         if local_result.solution!==nothing
             @test local_result.solution.river_release≈x.river_release atol=2e-5
-            @test replay_audit(c,local_result.solution)["valid"]
+            @test validate_replay(c,local_result.solution)["valid"]
         end
         result=solve(c;initial=x,time_limit=30.0)
         @test result.accepted
@@ -60,7 +60,7 @@ end
                 @test maximum(abs,result.solution.gate)<2e-5
                 @test result.solution.storage[1,end]≈2.0+expected atol=2e-7
                 @test result.solution.river_release≈fill(0.3,1,2) atol=2e-5
-                @test replay_audit(c,result.solution)["valid"]
+                @test validate_replay(c,result.solution)["valid"]
             end
         end
     end
@@ -89,7 +89,7 @@ end
         @test vec(x.storage)≈volumes atol=1e-9
         @test vec(x.river_release)≈withdrawals.+0.3 atol=1e-8
         @test x.head[1,1]<100.0<x.head[1,2]<x.head[1,3]
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         local_result=solve_case(c;warm=x,time_limit=30.0)
         @test local_result.status in ("LOCALLY_SOLVED","ALMOST_LOCALLY_SOLVED")
         @test local_result.accepted
@@ -120,7 +120,7 @@ end
         @test validate(c,x)["valid"]
         @test only(x.tunnel_q)≈expected atol=1e-9
         @test x.head[:,1]==[100.0+delta,100.0]
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         result=solve(c;initial=x,time_limit=20.0)
         @test result.accepted
         if result.solution!==nothing
@@ -141,12 +141,12 @@ end
         @test only(x.power)≈expected atol=1e-10
         @test x.storage≈fill(2.0,2,2) atol=1e-10
         @test x.objective≈50.0*expected atol=1e-8
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         result=solve(c;initial=x,time_limit=30.0)
         @test result.accepted
         if result.solution!==nothing
             @test only(result.solution.power)≈expected atol=2e-5
-            @test replay_audit(c,result.solution)["valid"]
+            @test validate_replay(c,result.solution)["valid"]
         end
     end
 end

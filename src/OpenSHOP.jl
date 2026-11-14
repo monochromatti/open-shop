@@ -52,7 +52,7 @@ include("proposal.jl")
 include("io.jl")
 include("dispatch_controls.jl")
 include("mesh_refinement.jl")
-include("verification.jl")
+include("adaptive_dispatch.jl")
 include("restart.jl")
 include("schedule.jl")
 include("global_bounds.jl")
@@ -120,7 +120,7 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     curve_samples,
     with_grid,
     solve_verified,
-    replay_audit,
+    validate_replay,
     point_arrival,
     minimum_arrival,
     release_history,
@@ -131,5 +131,5 @@ export Schedule, SolveResult, schedule_dict, HydraulicStep, HydraulicTrajectory,
     public_river_connections,
     deterministic_network_data,
     route_network_controlled,
-    transport_audit
+    validate_transport
 end

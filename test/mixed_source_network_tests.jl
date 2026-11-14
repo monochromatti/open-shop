@@ -54,7 +54,7 @@ end
     @test public["plants"][1]["discharge_river"]==:Tail1
     x=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates)
     @test x["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     # The Unit1 off pulse [.5,1.5] reaches the receiver at[1.05,2.05].
     expected_arrival=[5.75,4.85,4.65]
     @test x["arrival_volume"][3,:]≈0.0036 .* diff(c.grid) .* expected_arrival atol=1e-10
@@ -71,12 +71,12 @@ end
     z=simulate(c,fixture.q,fixture.gates)
     mixed_source_conservation(c,z)
 
-    # Restart retains delayed cohorts from before the commitment change.
+    # Restart retains delayed releases from before the commitment change.
     continued=restart_case(c,x,0.5)
     remainder=dispatch_from_controls(continued,fixture.u[:,2:end],
         fixture.q[:,2:end],fixture.gates[:,2:end])
     @test remainder["validation"]["valid"]
-    @test replay_audit(continued,remainder)["valid"]
+    @test validate_replay(continued,remainder)["valid"]
     @test remainder["V"]≈x["V"][:,2:end] atol=1e-9
     @test remainder["terminal_transit"]≈x["terminal_transit"] atol=1e-10
     @test case_dict(case_from_dict(case_dict(continued)))==case_dict(continued)
@@ -85,7 +85,7 @@ end
     @test get(get(local_result,"validation",Dict()),"valid",false)
     if haskey(local_result,"objective")
         @test local_result["objective"]≈expected_objective atol=1e-3
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     proposal=OpenSHOP.propose_commitment(c;reference=x,time_limit=10.0)
     @test haskey(proposal,"u")
@@ -109,7 +109,7 @@ end
         @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
         x=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates)
         @test x["validation"]["valid"]
-        coarse_replay=replay_audit(c,x)
+        coarse_replay=validate_replay(c,x)
         @test coarse_replay["valid"]
         z=simulate(c,fixture.q,fixture.gates)
         @test z["converged"]
@@ -140,15 +140,15 @@ end
         @test remainder["validation"]["valid"]
         @test remainder["V"]≈x["V"][:,4:end] atol=1e-8
         @test remainder["terminal_transit"]≈x["terminal_transit"] atol=1e-8
-        @test replay_audit(continued,remainder)["valid"]
+        @test validate_replay(continued,remainder)["valid"]
 
         global_model=OpenSHOP._build_global_dispatch(c;joint=true,warm=x)
-        lift=OpenSHOP._lift_start!(global_model,c,x)
+        lift=OpenSHOP._initialize_global_start!(global_model,c,x)
         @test lift["valid"]
         local_result=solve_case(c;u=fixture.u,warm=x,feasibility_only=true,time_limit=20.0)
         @test get(get(local_result,"validation",Dict()),"valid",false)
         if haskey(local_result,"validation") && local_result["validation"]["valid"]
-            @test replay_audit(c,local_result)["valid"]
+            @test validate_replay(c,local_result)["valid"]
         end
         if distributed
             # Finer hydraulic replay retains the original operating windows and
@@ -160,7 +160,7 @@ end
             @test physical["validation"]["valid"]
             windows=OpenSHOP.operating_window_values(c,physical,grid,indices,fixture.u)
             @test maximum(values(OpenSHOP.operating_residuals(c,windows)))<=1e-4
-            fine_replay=replay_audit(c,physical)
+            fine_replay=validate_replay(c,physical)
             @test fine_replay["valid"]
             refined_restart=restart_case(c,physical,2.0)
             edge=findfirst(==(2.0),grid)
@@ -171,7 +171,7 @@ end
             @test refined_remainder["validation"]["valid"]
             @test refined_remainder["V"]≈physical["V"][:,edge:end] atol=1e-8
             @test refined_remainder["terminal_transit"]≈physical["terminal_transit"] atol=1e-8
-            @test replay_audit(refined_restart,refined_remainder)["valid"]
+            @test validate_replay(refined_restart,refined_remainder)["valid"]
         end
     end
 end
@@ -181,7 +181,7 @@ end
     x=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates)
     @test x["validation"]["valid"]
     @test x["river_release"][1,:]≈[2.25,0.25,2.25] atol=1e-10
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test case_dict(case_from_dict(case_dict(c)))==case_dict(c)
     z=simulate(c,fixture.q,fixture.gates)
     mixed_source_conservation(c,z)
@@ -191,12 +191,12 @@ end
     @test remainder["validation"]["valid"]
     @test remainder["V"]≈x["V"][:,2:end] atol=1e-9
     @test remainder["terminal_transit"]≈x["terminal_transit"] atol=1e-9
-    @test replay_audit(continued,remainder)["valid"]
+    @test validate_replay(continued,remainder)["valid"]
     local_result=solve_case(c;u=fixture.u,warm=x,time_limit=45.0)
     @test get(get(local_result,"validation",Dict()),"valid",false)
     if haskey(local_result,"validation") && local_result["validation"]["valid"]
         @test local_result["objective"]≈x["objective"] atol=1e-3
-        @test replay_audit(c,local_result)["valid"]
+        @test validate_replay(c,local_result)["valid"]
     end
     proposal=OpenSHOP.propose_commitment(c;reference=x,time_limit=10.0)
     @test haskey(proposal,"u")
@@ -221,7 +221,7 @@ end
     maximum_q=copy(fixture.q);maximum_q[2,:].=5.0
     best=dispatch_from_controls(c,fixture.u,maximum_q,fixture.gates)
     @test best["validation"]["valid"]
-    @test replay_audit(c,best)["valid"]
+    @test validate_replay(c,best)["valid"]
     # Extra Unit2 discharge reaches Receiver after .75+.3=1.05h.
     receiver=[5.0,5.00495,5.01485,5.02799]
     upper_b=[5.0,4.9964,4.9892,4.982]
@@ -243,7 +243,7 @@ end
     if haskey(local_result,"generator_q")
         @test vec(local_result["generator_q"][2,:])≈fill(5.0,3) atol=2e-4
         @test local_result["objective"]≈expected_objective atol=1e-3
-        local_replay=replay_audit(c,local_result)
+        local_replay=validate_replay(c,local_result)
         @test local_replay["valid"]
     end
     result=solve(c;initial,time_limit=30.0,relative_gap=1e-4)

@@ -15,7 +15,7 @@ function low_flow_delay_case()
     flows=[0.0,2.5,1.0,0.0]
     operations=[OperationalSeries(;object=:Outlet,attribute=attr,times=[0.0,1.0,2.0,3.0],
         values=flows ./ 10) for attr in (:gate_min,:gate_max)]
-    ScheduleCase(;name="low_flow_confluence",system=HydroSystem(;reservoirs=[lake,receiver],rivers),
+    ScheduleCase(;name="low_flow_river_junction",system=HydroSystem(;reservoirs=[lake,receiver],rivers),
         grid=collect(0.0:4.0),prices=zeros(4),operations)
 end
 
@@ -75,12 +75,12 @@ end
     @test rest["validation"]["valid"]
     @test rest.storage≈x.storage[:,3:end] atol=1e-9
     @test rest.terminal_transit≈x.terminal_transit atol=1e-10
-    # Distributed confluences rebin arrivals. Report this grid-dependent error
+    # Distributed river junctions rebin arrivals. Report this grid-dependent error
     # separately instead of treating volume conservation as timing accuracy.
-    transport=transport_audit(c,x;schedule_tolerance=0.01,absolute_tolerance=1e-5)
+    transport=validate_transport(c,x;schedule_tolerance=0.01,absolute_tolerance=1e-5)
     @test transport["converged"]
     @test haskey(transport,"cumulative_schedule_discrepancy_Mm3")
-    @test OpenSHOP._lift_start!(OpenSHOP._build_global_dispatch(c;joint=true),c,x)["valid"]
+    @test OpenSHOP._initialize_global_start!(OpenSHOP._build_global_dispatch(c;joint=true),c,x)["valid"]
     local_result=solve_case(c;u=zeros(Int,0,4),warm=x,time_limit=10.0)
     @test local_result["accepted"]
     @test local_result["terminal_transit"]≈x.terminal_transit atol=1e-6
@@ -92,8 +92,8 @@ end
         history_grid=[-6.0,0.0],history_release=[5.0])
     good=ScheduleCase(;name="positive_reference",system=HydroSystem(
         reservoirs=c.system.reservoirs,rivers=[good_river]),grid=[0.0,1.0],prices=[0.0])
-    witness=dispatch_from_controls(good,zeros(Int,0,1),zeros(0,1),fill(0.5,1,1))
-    @test witness["validation"]["valid"]
+    reference_schedule=dispatch_from_controls(good,zeros(Int,0,1),zeros(0,1),fill(0.5,1,1))
+    @test reference_schedule["validation"]["valid"]
     bad_river=OpenSHOP._river_replace(good_river;curves=positive)
     bad=OpenSHOP._river_replace(good;system=OpenSHOP._river_replace(good.system;rivers=[bad_river]))
     @test_throws ArgumentError OpenSHOP.validate_inputs(bad)
@@ -103,6 +103,6 @@ end
     @test_throws ArgumentError dispatch_from_controls(bad,zeros(Int,0,1),zeros(0,1),fill(0.5,1,1))
     @test_throws ArgumentError forward_step(bad.system,[2.0,2.0],1.0,Float64[],[0.5],[0.0])
     @test_throws ArgumentError case_from_dict(case_dict(bad))
-    @test !validate(bad,witness)["valid"]
-    @test validate(bad,witness)["residuals"]["curve_input"]==Inf
+    @test !validate(bad,reference_schedule)["valid"]
+    @test validate(bad,reference_schedule)["residuals"]["curve_input"]==Inf
 end

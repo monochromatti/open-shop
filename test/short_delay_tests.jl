@@ -65,7 +65,7 @@ using Test
         rivers = reaches,
     )
     c=ScheduleCase(
-        name = "zero-delay confluence feedback",
+        name = "zero-delay river junction feedback",
         system = s,
         grid = [0.0, 1.0, 2.0],
         prices = zeros(2),

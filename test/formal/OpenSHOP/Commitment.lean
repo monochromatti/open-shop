@@ -82,9 +82,9 @@ theorem binary_transitions (previous current startup shutdown : ℝ)
 
 /-- A certificate requires a real enclosing upper bound on the full feasible
 set. Neither a feasible schedule nor a local stationary point supplies it. -/
-theorem absolute_gap_bound (incumbent upper candidate epsilon : ℝ)
-    (enclosing : candidate ≤ upper) (gap : upper-incumbent ≤ epsilon) :
-    candidate-incumbent ≤ epsilon := by linarith
+theorem absolute_gap_bound (incumbent upper objective_value epsilon : ℝ)
+    (enclosing : objective_value ≤ upper) (gap : upper-incumbent ≤ epsilon) :
+    objective_value-incumbent ≤ epsilon := by linarith
 
 /-- An equality is contained in every nonnegative band about its right side.
 The band is used only for bounding; it does not redefine physical feasibility. -/

@@ -38,7 +38,7 @@ end
         seed = dispatch_from_controls(c, reshape([1, 0], 2, 1), reshape([8.0, 0.0], 2, 1), zeros(0, 1))
         @test seed["validation"]["valid"]
         b = OpenSHOP._build_global_dispatch(c; joint=true, fixed_u=fixed ? seed["u"] : nothing)
-        @test OpenSHOP._lift_start!(b, c, seed)["valid"]
+        @test OpenSHOP._initialize_global_start!(b, c, seed)["valid"]
         set_optimizer(b.m, SCIP.Optimizer)
         JuMP.MOI.Utilities.attach_optimizer(backend(b.m))
         separator = OpenSHOP._install_power_cuts!(b, c; certificate_budget=0.0)
@@ -74,7 +74,7 @@ end
     end
 end
 
-function power_cut_native_witness(; certificate_budget=1.5, max_cuts=64, corrupt=false)
+function power_cut_relaxation(; certificate_budget=1.5, max_cuts=64, corrupt=false)
     # A constant efficiency graph has an exact tangent at fraction 0.375.
     # The four pre-existing slopes leave a strict gap at this fixed q/head.
     table = TurbineTable([1.0, 3.0], [1.0, 3.0], fill(.9, 2, 2), [1.0, 1.0], [3.0, 3.0])
@@ -104,7 +104,7 @@ function power_cut_native_witness(; certificate_budget=1.5, max_cuts=64, corrupt
     end
     # The LP prefers (dummy, auxiliary)=(.75,1.5), while the best integer
     # solution is (1,1). Ordinary bound propagation cannot fix the binary.
-    # This independent witness makes SCIP call root separators.
+    # This independent integer subproblem makes SCIP call root separators.
     @variable(m, dummy, Bin)
     @variable(m, 0 <= auxiliary <= 2)
     @constraint(m, auxiliary <= 2*dummy)
@@ -119,7 +119,7 @@ function power_cut_native_witness(; certificate_budget=1.5, max_cuts=64, corrupt
     optimizer = unsafe_backend(m)
     @test SCIP.SCIPsetHeuristics(optimizer, SCIP.SCIP_PARAMSETTING_OFF, true) == SCIP.SCIP_OKAY
     @test SCIP.SCIPsetSeparating(optimizer, SCIP.SCIP_PARAMSETTING_OFF, true) == SCIP.SCIP_OKAY
-    # Separation emphasis resets the pool frequency to ten. This small witness
+    # Separation emphasis resets the pool frequency to ten. This small relaxation
     # must process its global pool cut before it branches on the dummy binary.
     set_optimizer_attribute(m, "separating/minefficacyroot", 0.0)
     set_optimizer_attribute(m, "separating/poolfreq", 1)
@@ -137,25 +137,25 @@ function power_cut_native_witness(; certificate_budget=1.5, max_cuts=64, corrupt
 end
 
 @testset "Native root separator adds and applies a certified global cut" begin
-    witness = power_cut_native_witness()
-    statistics = OpenSHOP._power_cut_statistics(witness.separator)
+    separation_result = power_cut_relaxation()
+    statistics = OpenSHOP._power_cut_statistics(separation_result.separator)
     @test isempty(statistics["errors"])
-    @test abs(objective_value(witness.m) - .1) <= 1e-7
-    @test value(witness.p) ≈ witness.flow_cost*value(witness.q) atol=1e-7
+    @test abs(objective_value(separation_result.m) - .1) <= 1e-7
+    @test value(separation_result.p) ≈ separation_result.flow_cost*value(separation_result.q) atol=1e-7
 
-    disabled = power_cut_native_witness(; certificate_budget=0.0)
+    disabled = power_cut_relaxation(; certificate_budget=0.0)
     disabled_statistics = OpenSHOP._power_cut_statistics(disabled.separator)
     @test isempty(disabled_statistics["errors"])
     @test objective_value(disabled.m) - .1 ≈ disabled.old_upper-disabled.exact_power atol=1e-7
 
-    capped = power_cut_native_witness(; max_cuts=0)
+    capped = power_cut_relaxation(; max_cuts=0)
     capped_statistics = OpenSHOP._power_cut_statistics(capped.separator)
     @test isempty(capped_statistics["errors"])
     @test objective_value(capped.m) - .1 ≈ capped.old_upper-capped.exact_power atol=1e-7
 end
 
-@testset "Callback failures reject proof while preserving the audited schedule" begin
-    failed = power_cut_native_witness(; corrupt=true)
+@testset "Callback failures reject proof while preserving the validated schedule" begin
+    failed = power_cut_relaxation(; corrupt=true)
     statistics = OpenSHOP._power_cut_statistics(failed.separator)
     @test !isempty(statistics["errors"])
     c = table_power_bounds_case()
@@ -183,7 +183,7 @@ end
         @test seed["validation"]["valid"]
         result = OpenSHOP.solve(c; initial=seed, time_limit=20.0, relative_gap=1e-4)
         @test result["accepted"] && result["validation"]["valid"]
-        @test result["start_audit"]["valid"]
+        @test result["start_validation"]["valid"]
         @test result["global_bound"] === nothing || result["global_bound"] >= seed["objective"]-1e-6
         @test !haskey(result, "solver_error")
         @test !haskey(result, "power_cut_statistics_error")

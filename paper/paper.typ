@@ -17,7 +17,7 @@
   and power conversion are nonlinear, and
   tabulated equipment curves keep their specified interpolants. For fixed
   river travel times, releases are shifted through the network without
-  averaging at confluences. Distributed delays use interval cohorts and track
+  averaging at river junctions. Distributed delays use interval releases and track
   water still in transit. SCIP searches the full model using feasible starts
   prepared by mixed-integer proposals and nonlinear dispatch. A separate
   integration checks the controls on the optimization grid and a finer grid.
@@ -342,8 +342,9 @@ unless linear end-secant extrapolation is explicitly supplied. A single
 reference head requires an explicit constant characteristic. Static and
 operative unit bounds intersect this point, and an incompatible bound makes
 operation infeasible. Independent integration retains commitment and solves
-characteristic flow jointly with storage and pressure, including on finer
-replay grids. Schedule validation checks the original flow against the
+characteristic flow jointly with storage and pressure. Re-simulating the same
+controls on a finer time grid is called _replay_. Schedule validation checks
+the original flow against the
 characteristic without replacing it. Equal discharge bounds on an ordinary
 variable-discharge unit instead prescribe a fixed-flow operating point.
 
@@ -422,7 +423,7 @@ no exclusion is supplied; shared ternary-machine characteristics are not modeled
 
 = Outlets and river transport
 
-== Entry laws, confluences and splits
+== Entry laws, river junctions and splits
 
 A river _reach_ is a link with a defined entry and downstream destination.
 For a reach fed by a reservoir outlet, total entry is
@@ -469,25 +470,24 @@ tunnel outfalls enter each branch after this allocation. Let $L_(r t)$ collect
 these local injections:
 
 $ L_(r t) = n_(r t) + sum_(g -> r) q_(g t) + sum_(e -> r) Q_(e t), quad
-  R_(r t) = L_(r t) + alpha_r sum_(s -> r) frac(A_(s t), kappa Delta_t). $ <eq:confluence>
+  R_(r t) = L_(r t) + alpha_r sum_(s -> r) frac(A_(s t), kappa Delta_t). $ <eq:riverjunction>
 ]
 
 Here $g->r$ and $e->r$ identify local outfalls, while $s->r$ identifies
 reaches arriving at the source node of $r$. At every zero-storage node,
 $0<=alpha_r<=1$ and the outgoing shares sum to one. These supplied constants
-hold throughout the horizon. A confluence with one outgoing reach has
+hold throughout the horizon. A river junction with one outgoing reach has
 $alpha_r=1$. A 40% branch receiving 5 m³/s upstream and 1 m³/s locally
 carries 3 m³/s. Its capacity must accommodate both sources; spare capacity
 on another branch cannot change the prescribed split. Delayed reaches form
 a directed acyclic network, so we propagate arrivals in upstream order.
 Tunnels and instantaneous channels may form loops.
 
-== Release cohorts and travel-time responses
+== Release intervals and travel-time responses
 
-A _cohort_ is the water entering a reach during one release interval.
-With a fixed travel time, that release simply appears downstream later.
-With a distributed delay, different fractions of the cohort arrive at
-different times. The response functions are deterministic approximations
+The entering discharge is held constant during each release interval.
+A fixed travel time shifts the entire flow pulse downstream. A distribution
+of travel times spreads its volume over a longer arrival period. The response functions are deterministic approximations
 of river transport~@dooge.
 
 For reference entry flow $rho_(r j)$, let fraction $w_(r j ell)$ have a
@@ -500,9 +500,9 @@ The cumulative fraction that has arrived after elapsed time $s$ is
 $ F_(r j) (s) = sum_ell w_(r j ell)
   min{1, max{0, frac(s - delta_(r j ell), delta_(r j,ell+1) - delta_(r j ell))}}. $ <eq:cdf>
 
-Each reach has entry cohorts $[sigma_(r k),sigma_(r,k+1))$, with duration
+Each reach has release intervals $[sigma_(r k),sigma_(r,k+1))$, with duration
 $Delta_(r k)^c$ and rate $hat(R)_(r k)$. Reservoir outlets and reaches with only
-local injections retain the control cohort grid. Other downstream reaches may
+local injections retain the control time grid. Other downstream reaches may
 use a finer transport grid, described below.
 
 Entry flow may change the travel response. For two or more nonnegative, strictly increasing reference
@@ -515,31 +515,31 @@ $ theta_(r k j) >= 0, quad sum_j theta_(r k j) = 1, quad
   hat(R)_(r k) = sum_j rho_(r j) theta_(r k j), quad
   theta_(r k) in op("SOS2"). $ <eq:delayweights>
 
-The weights reproduce the cohort's total entry flow, including natural inflow
+The weights reproduce the total entry flow for the interval, including natural inflow
 and upstream arrivals. For example, halfway between two reference flows,
 the two distributions receive equal weights. A single distribution needs
 only $theta_(r k 1)=1$. We then omit the flow-reproduction equation, so the
 reference flow does not fix the release.
-Once released, each cohort keeps its chosen mixture. Reference flows are
+Water released during an interval keeps the mixture selected at entry. Reference flows are
 calibration data and are unaffected by changes in operating capacity.
 
-Consider water entering at time $s$ in cohort $k$. The fraction of it arriving
+Consider water entering at time $s$ in release interval $k$. The fraction of it arriving
 during interval $t$ is the cumulative fraction at age $tau_(t+1)-s$ minus
 that at age $tau_t-s$. Averaging over the release interval gives
 
 $ B_(r t k j) = frac(1, Delta_(r k)^c) integral_(sigma_(r k))^(sigma_(r,k+1))
   [F_(r j) (tau_(t+1) - s) - F_(r j) (tau_t - s)] dif s. $ <eq:transfer>
 
-Multiplying by released volume and summing over cohorts gives arrival volume
+Multiplying by released volume and summing over release intervals gives arrival volume
 $A_(r t)$:
 
 $ A_(r t) = A_(r t)^"hist"
   + kappa sum_k Delta_(r k)^c hat(R)_(r k) sum_j theta_(r k j) B_(r t k j). $ <eq:arrival>
 
-Water arriving at clock time $s$ from cohort $k$ must have a travel time between
+Water arriving at clock time $s$ from release interval $k$ must have a travel time between
 $s-sigma_(r,k+1)$ and $s-sigma_(r k)$. Integrating the delay density over this range
 gives the difference of cumulative fractions below. Multiplying by the
-cohort's release rate gives its contribution to instantaneous arrival rate:
+interval's discharge gives its contribution to instantaneous arrival rate:
 
 $ f_r (s) = f_r^"hist" (s) + sum_k hat(R)_(r k) sum_j theta_(r k j)
   [F_(r j) (s - sigma_(r k)) - F_(r j) (s - sigma_(r,k+1))]. $ <eq:pointarrival>
@@ -549,12 +549,12 @@ integrals analytically for the uniform bins. Adding a uniform release time
 to a uniform delay gives a trapezoidal density. Integrating its ramps and
 plateau directly avoids subtracting nearly equal cumulative integrals when
 a release interval is very short. Since $theta$ depends linearly on
-cohort flow within a reference-flow interval, multiplying the arrival fraction by
+release flow within a reference-flow interval, multiplying the arrival fraction by
 released volume gives a quadratic dependence on that flow. Interpolating arrival
 volumes directly would give a different travel response.
 
-Each cohort selects $theta$ from its own contemporaneous total release,
-including historical cohorts at their original flows. The nonlinear dispatch,
+For each interval, $theta$ is selected using the total entry discharge during
+that interval. Historical releases use their recorded discharges. The nonlinear dispatch,
 global model and physical reconstruction use this same law. A frozen-reference
 MILP proposes commitments but provides no bound for this nonlinear problem.
 Physical releases stay within the supplied reference domain;
@@ -601,26 +601,26 @@ $ hat(R)_(r m) = L_(r t) + alpha_r sum_(s -> r)
   A_(r t) = sum_(m in cal(M)_t) hat(A)_(r m). $ <eq:transportmesh>
 
 We apply @eq:transfer on this mesh for cell arrivals. Summing the cell balances
-recovers @eq:confluence. The cell rates are determined by conservation; they
-do not add control decisions. Source cohorts, reservoir states and operating
-windows retain their original grid. The default at confluences is four transport cells per
+recovers @eq:riverjunction. The cell rates are determined by conservation; they
+do not add control decisions. Source releases, reservoir states and operating
+windows retain their original grid. The default at river junctions is four transport cells per
 control interval, and an explicit mesh may be supplied.
 
 Cell means alone cannot enforce the capacity of a stream. At a river node,
 we also require
 
 $ L_(r t) + alpha_r sum_(s -> r) f_s (v) <= C_(r t), quad
-  v in [tau_t,tau_(t+1)). $ <eq:confluencecapacity>
+  v in [tau_t,tau_(t+1)). $ <eq:junctioncapacity>
 
-For fixed entry cohorts, the left side is piecewise affine in clock time.
+For fixed release intervals, the left side is piecewise affine in clock time.
 It is enough to impose this bound at its arrival knots and both sides of
 jumps, including changes in local injections and capacity. The same release
 mixtures determine cell volumes and these peak rates. A mean of five cubic
 metres per second can hide a peak of ten; neither conservation nor cumulative delivery detects
 that capacity violation.
 
-Equations @eq:transfer and @eq:arrival are exact for the rectangular entry
-cohorts. Averaging within transport cells still approximates continuous timing.
+Equations @eq:transfer and @eq:arrival are exact for piecewise-constant
+entry flow. Averaging within transport cells still approximates continuous timing.
 We assess that error on a finer transport grid by comparing cumulative arrivals
 and water in transit, and checking operating arrival and capacity limits again.
 The check bisects each cell until the requested tolerance is met, with at most
@@ -640,7 +640,7 @@ $ W_(r,t+1) = W_(r t) + kappa Delta_t R_(r t) - A_(r t), quad
 ]
 
 Pre-horizon entry records determine both initial inventory and future
-historical arrivals. For a past cohort $k$ released on $[s_k,e_k)$,
+historical arrivals. For a historical interval $k$ with entry times $[s_k,e_k)$,
 let $F_k$ be its selected delay mixture. Water released at $s<0$ has age
 $-s$ at the horizon start, so the fraction still in transit is $1-F_k (-s)$:
 
@@ -649,14 +649,14 @@ $ W_r^"hist" = kappa sum_(k in cal(H)_r) R_(r k)
 
 The independent transport check evaluates inventory at later times in the
 same way, integrating the survival probability over water already released.
-Only cohorts that can still be in transit contribute. Evaluating this integral
+Only releases that can still be in transit contribute. Evaluating this integral
 directly avoids subtracting nearly equal released and arrived volumes when
 little water remains in a reach.
 
-The historical cohorts of reach $r$ form $cal(H)_r$. We assume zero entry
+The historical releases of reach $r$ form $cal(H)_r$. We assume zero entry
 before the supplied history. A reach's records already include past upstream
 contributions, so propagating them again would count the water twice. To
-restart after executing part of a schedule, we save its entry cohorts and
+restart after executing part of a schedule, we save its release intervals and
 flows as well as reservoir states and operating histories. Average arrivals
 alone cannot determine when the water still in transit will arrive.
 
@@ -682,7 +682,8 @@ $ integral_J f_r (s) dif s >= integral_J f_r^min (s) dif s, quad
 ]
 
 The supplied policy chooses the window or pointwise arrival constraint.
-Distributed arrival rates from rectangular cohorts are piecewise linear.
+Distributed travel times give piecewise-linear arrival rates for
+piecewise-constant entry flow.
 Fixed-delay streams are piecewise constant. Between combined response and
 requirement breakpoints, the difference $f_r-f_r^min$ is affine, so its
 minimum occurs at an endpoint. It is enough to check these endpoints, taking both one-sided limits at a
@@ -1004,7 +1005,7 @@ $ h_(p t)^(plus.minus) = H_("source"(p),t)
   - T_p (sum_(g in cal(G)_p) q_(g t)^(plus.minus)). $ <eq:reservehead>
 
 Every operating unit in the station participates in these power equations.
-A unit with no allocation may change its witness flow to hold nominal power
+A unit with no allocation may change its operating discharge to hold nominal power
 when another unit changes shared tailwater. Summing allocations in
 @eq:reservepoints prevents selling the same headroom in multiple groups.
 
@@ -1145,7 +1146,7 @@ by the reservoir's usable volume, so small ponds receive correspondingly small
 absolute allowances.
 
 Proposals use the input transport mesh and the same conservation equations. They freeze
-each cohort's delay mixture at the accepted trajectory's flow, or at the last
+each release's delay mixture at the accepted trajectory's flow, or at the last
 recorded reach flow before any trajectory is available. An unspecified previous
 flow uses zero. The nonlinear dispatch re-evaluates the mixture at its chosen
 flow; the frozen mixture supplies neither a physical certificate nor a bound.
@@ -1164,7 +1165,7 @@ problem. A stationary solution need not be globally optimal.
 
 == Evaluating river transport
 
-A volume or peak-flow constraint at a confluence can depend on many earlier
+A volume or peak-flow constraint at a river junction can depend on many earlier
 transport cells. We represent this dependence with two integrals on each
 control interval. Write $psi_(r j)(q)=q theta_(r j)(q)$ for the flow assigned to
 reference response $j$, and let $q_r(s)$ be the declared constant entry flow
@@ -1183,11 +1184,12 @@ $ Delta M_(r j t)^0 = kappa epsilon_m psi_(r j)(hat(R)_(r m)), quad
 
 These recurrences determine every integral value from the entry flows.
 Introducing the integrals as auxiliary variables is an exact lifting~@lifting
-of the cohort equations. A uniform delay bin gives a rectangular weight over release time for a rate
+of the interval transfer equations. A uniform delay bin gives a rectangular weight over release time for a rate
 observation and a trapezoidal weight for a volume observation. Each piece is
-affine, so differences of the two integrals evaluate it exactly. Partial
-cohorts are integrated analytically. Anchoring each control window keeps the
-accumulated integrals local to that window. Source cohorts and fixed linear
+affine, so differences of the two integrals evaluate it exactly. When an
+observation window covers only part of a release interval, that part is
+integrated analytically. Anchoring each control window keeps the
+accumulated integrals local to that window. Source releases and fixed linear
 mixtures retain direct transfer coefficients.
 
 Global search needs finite integral domains. Let $overline(psi)_(r j t)$ be the
@@ -1197,9 +1199,9 @@ of this upper bound gives
 $ 0<=M_(r j t)^0(s)<=kappa e overline(psi)_(r j t), quad
   0<=M_(r j t)^1(s)<=frac(kappa e^2,2 Delta_t) overline(psi)_(r j t). $
 
-This formulation is algebraically equivalent to the original cohort
-transfers. The entry-cohort approximation still requires independent
-refinement.
+This formulation is algebraically equivalent to the original interval transfer
+equations. The error from approximating entry discharge by cell means is still
+assessed on a finer transport grid.
 
 == Reconstructing the water trajectory
 
@@ -1223,7 +1225,7 @@ differences. A common shift in all heads leaves the flows unchanged.
 We choose one reference head for the numerical solve and keep every water
 balance. We can then shift the recovered heads to satisfy the junction
 bounds if the bounds admit such a shift.
-Replay retains the candidate's pressure reference where the equations permit
+Replay retains the solution's pressure reference where the equations permit
 this freedom. An idle committed unit can still have an operating head bound
 relative to another component, so choosing a different reference can wrongly
 make its operating point appear inadmissible. The reference does not replace
@@ -1268,7 +1270,7 @@ Distributed river mixing is refined too, including when the user supplies its
 mesh. The comparison estimates the effect of discretization for the chosen
 controls. It does not give a rigorous bound on continuous-time hydraulic error.
 
-To refine the transport cohorts for the current controls, compare cumulative
+To refine the river transport grid for the current controls, compare cumulative
 arrivals on nested meshes, using $epsilon_i$ at each receiving
 reservoir. To locate projection error, let $psi_l(q)=q theta_l(q)$ be a
 reference-weighted entry flow. In a coarse cell $K$, compare its value at the
@@ -1307,12 +1309,12 @@ $ overline(P)_(g j) = frac(sum_(k in cal(K)_j) Delta tau_k P_(g k), T_(j+1)-T_j)
 Power schedules and scheduling ramps use these interval means. Physical
 capacities apply to every hydraulic cell, and level-range restrictions include
 interior vertices. Transition and gate-motion costs are counted on operating
-decisions. River cohorts retain their release times rather than being formed
-from averaged releases.
+decisions. River routing uses each reach's release time series, including its finer
+transport intervals.
 
 Before revenue optimization, reconstruct and resolve the starting controls.
 For each represented cell, integrate two half steps from its starting storage
-and executed river history. Add the first half-step's new cohorts before taking
+and executed river history. Add the first half-step's new releases before taking
 the second. Compare their endpoint with the represented full-cell endpoint.
 Scale storage and level defects by $epsilon_i$ and $epsilon_Z$; also include
 variation of the reference-weighted release flows $psi_l(q)$. Bisect cells
@@ -1363,7 +1365,7 @@ accepted schedule if a later solve fails or exhausts its budget. The mesh stays
 fixed during each nonlinear solve.
 
 Global search retains its declared finite hydraulic model. Its preparation may
-add finer witness equations sharing the same controls, but the objective and
+add refined-grid equations sharing the same controls, but the objective and
 returned trajectory then belong to the original mesh. This requires feasibility
 on both meshes. A global bound for that model does not certify a schedule on a
 different hydraulic discretization. Transport refinement can carry into the
@@ -1549,7 +1551,7 @@ extension lets us evaluate the graph there. Its running head and efficiency
 limits are inactive, and $q=P=0$.
 
 Units with the same net-head variable and compatible table grids can share
-head weights. Each release cohort uses the same flow weights for arrivals,
+head weights. For each release interval, the same flow weights determine arrivals,
 environmental checks and terminal inventory. Channel responses use a
 piecewise-bilinear graph. The product equalities in @eq:cubic, @eq:power and
 @eq:arrival remain nonlinear.

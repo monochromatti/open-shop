@@ -15,7 +15,7 @@
     if result.solution!==nothing
         @test vec(result.solution.generator_q) ≈ [2.0,1.0] atol=1e-4
         @test validate(c,result.solution)["valid"]
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end
 
@@ -34,6 +34,6 @@ end
         @test result.solution.gate[1,1] == 1.0
         @test result.solution.river_release[1,1] ≈ 10.0 atol=1e-8
         @test result.solution.storage[1,end] ≈ 5.0-0.0036*2*10 atol=1e-9
-        @test replay_audit(c,result.solution)["valid"]
+        @test validate_replay(c,result.solution)["valid"]
     end
 end

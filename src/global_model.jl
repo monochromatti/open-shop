@@ -1,5 +1,5 @@
 # Finite exact polynomial reformulation of the dispatch model.
-# Deterministic reaches preserve rectangular cohorts exactly. Distributed,
+# Deterministic reaches preserve rectangular releases exactly. Distributed,
 # flow-dependent reaches use the existing exact quadratic transfer coefficients
 # on the scheduling grid; downstream junction mixing is a grid approximation.
 # A global bound for that formulation does not bound continuous-time mixing.

@@ -10,7 +10,7 @@ end
 
 The source schedule must pass independent validation. Reservoir states, unit
 state/dwell age and previous plant interval power are carried into the new case.
-Each river keeps original historical and executed release cohorts, without
+Each river keeps original historical and executed interval releases, without
 rebinning. Absolute times are retained. Declared arrival averaging windows must
 also have a boundary at the restart time; partial-window accounting is rejected.
 Flow-observation windows and reservoir level ranges can cross the restart;
@@ -37,10 +37,10 @@ function restart_case(c::ScheduleCase, x, time::Real)
         rule.end_time===nothing || !(rule.time<time<rule.end_time) ||
             throw(ArgumentError("restart crosses soft assessment window $(rule.name)"))
     end
-    audit=validate(c, x)
-    audit["valid"] || throw(
+    validation=validate(c, x)
+    validation["valid"] || throw(
         ArgumentError(
-            "restart source schedule fails independent validation: $(join(audit["errors"], "; "))",
+            "restart source schedule fails independent validation: $(join(validation["errors"], "; "))",
         ),
     )
     x=_schedule_input(x; case=c)
@@ -112,8 +112,8 @@ function restart_case(c::ScheduleCase, x, time::Real)
             history_grid=[Float64(time)-1.0,Float64(time)]
             history_release=[0.0]
         else
-            cohorts=routed.cohorts[i]
-            executed=release_history(cohorts.grid, cohorts.release, time)
+            release_series=routed.release_series[i]
+            executed=release_history(release_series.grid, release_series.release, time)
             history_grid=vcat(r.history_grid, executed.grid[2:end])
             history_release=vcat(r.history_release, executed.release)
         end

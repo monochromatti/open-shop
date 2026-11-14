@@ -16,7 +16,7 @@ function bulk_refined_grid(grid, indicator;existing=grid)
     sort!(unique!(vcat(grid,vertices)))
 end
 
-"""Compare two half steps with each represented cell, retaining executed cohorts.
+"""Compare two half steps with each represented cell, retaining executed releases.
 
 These local defects locate integration error without propagating an earlier
 state error through every later cell. They choose a mesh; coupled whole-horizon
@@ -41,8 +41,8 @@ function hydraulic_defects(c,x;storage_limits,level_limit,transport_limit,deadli
             if is_channel(r)
                 _river_replace(r;history_grid=[a-1,a],history_release=[0.0])
             else
-                cohort=routed.cohorts[d]
-                past=release_history(cohort.grid,cohort.release,a)
+                series=routed.release_series[d]
+                past=release_history(series.grid,series.release,a)
                 history_grid=isempty(r.history_grid) ? past.grid : vcat(r.history_grid,past.grid[2:end])
                 _river_replace(r;history_grid,history_release=vcat(r.history_release,past.release))
             end

@@ -38,7 +38,7 @@ end
         @test result["accepted"]
         if result["accepted"]
             @test all(q->19.0<q<21.0,result["solution"]["tunnel_q"][3,:])
-            @test replay_audit(c,result["solution"])["valid"]
+            @test validate_replay(c,result["solution"])["valid"]
         end
     end
 end
@@ -95,8 +95,8 @@ end
         @test solution["tunnel_opening"]==best_opening
         @test solution["objective"]≈expected[best_index].objective atol=1e-3
         @test result["global_bound"]>=expected[best_index].objective-1e-6
-        @test replay_audit(c,solution)["valid"]
-        @test result["start_audit"]["valid"]
+        @test validate_replay(c,solution)["valid"]
+        @test result["start_validation"]["valid"]
     end
     fixed_units=OpenSHOP.solve(c;initial,fixed_u=u,time_limit=20.0,relative_gap=1e-4)
     @test fixed_units["accepted"]
@@ -116,7 +116,7 @@ end
     if prepared["accepted"]
         @test prepared["solution"]["tunnel_opening"]==best_opening
         @test prepared["solution"]["objective"]≈expected[best_index].objective atol=1e-3
-        @test replay_audit(c,prepared["solution"])["valid"]
+        @test validate_replay(c,prepared["solution"])["valid"]
     end
     # An off-state zero-head reference must yield finite coefficients. Partial
     # reference dictionaries remain usable as in the prescribed-gate proposal.
@@ -135,7 +135,7 @@ end
 @testset "Gate movement costs, replay, restart and independent tampering" begin
     c=tunnel_gate_case();opening=[1.0 0.0 1.0;0.0 1.0 0.0]
     x=dispatch_from_controls(c,ones(Int,1,3),fill(5.0,1,3),zeros(0,3);tunnel_opening=opening)
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     verified=solve_verified(c;u=ones(Int,1,3),initial=x,tunnel_opening=opening,
         max_refinements=0,time_limit=10.0)
     @test verified["accepted"]
@@ -151,7 +151,7 @@ end
     @test rest["power"]≈x["power"][:,2:end] atol=1e-9
     @test x["objective"]≈first["objective"]+rest["objective"] atol=1e-9
     @test x["gate_adjustment_cost"]≈first["gate_adjustment_cost"]+rest["gate_adjustment_cost"] atol=1e-10
-    @test replay_audit(continued,rest)["valid"]
+    @test validate_replay(continued,rest)["valid"]
     bad=OpenSHOP.schedule_dict(x);bad["tunnel_opening"][1,2]=0.5
     @test !validate(c,bad)["valid"]
     bad=OpenSHOP.schedule_dict(x);bad["tunnel_opening"][:,2].=1.0
@@ -184,10 +184,10 @@ end
         @test x["validation"]["valid"]
         @test vec(x["tunnel_q"])≈expected atol=1e-8
         @test vec(x["V"])≈storage atol=1e-9
-        @test replay_audit(c,x)["valid"]
+        @test validate_replay(c,x)["valid"]
         @test abs(x["H"][1,1]-x["H"][2,1])>90.0
         b=OpenSHOP._build_global_dispatch(c;warm=x,joint=true)
-        @test OpenSHOP._lift_start!(b,c,x)["valid"]
+        @test OpenSHOP._initialize_global_start!(b,c,x)["valid"]
         local_result=solve_case(c;warm=x,tunnel_opening=opening,time_limit=10.0)
         @test local_result["validation"]["valid"]
         @test vec(local_result["tunnel_q"])≈expected atol=1e-5
@@ -211,7 +211,7 @@ end
         @test result["solution"]["tunnel_opening"]==fill(0.5,1,3)
         @test result["objective"]≈0.0 atol=1e-5
         @test all(<(0.0),result["solution"]["tunnel_q"])
-        @test replay_audit(c,result["solution"])["valid"]
+        @test validate_replay(c,result["solution"])["valid"]
     end
 end
 
@@ -254,7 +254,7 @@ end
         tunnel_opening=ones(1,3))
 end
 
-@testset "Joint gate proposal and scheduling through a loop and delayed confluence" for distributed in (false,true)
+@testset "Joint gate proposal and scheduling through a loop and delayed river junction" for distributed in (false,true)
     base=channel_network_case(;distributed)
     tunnel=tg_copy(only(base.system.tunnels);gate_positions=[0.0,0.5,1.0],
         initial_opening=0.5,gate_adjustment_cost=0.1)
@@ -263,7 +263,7 @@ end
     x=dispatch_from_controls(c,ones(Int,2,5),fill(1.0,2,5),
         [zeros(3,5);fill(0.5,1,5);zeros(1,5)];tunnel_opening=opening)
     @test x["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     @test x["terminal_transit"][5]>0.0
     proposal=OpenSHOP.propose_commitment(c;reference=x,time_limit=5.0)
     @test haskey(proposal,"u")
@@ -281,7 +281,7 @@ end
     if prepared["accepted"]
         actual=prepared.problem
         @test validate(actual,prepared["solution"])["valid"]
-        @test replay_audit(actual,prepared["solution"])["valid"]
+        @test validate_replay(actual,prepared["solution"])["valid"]
         @test haskey(prepared["solution"],"tunnel_opening")
     end
 end

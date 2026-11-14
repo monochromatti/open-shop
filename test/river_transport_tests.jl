@@ -1,4 +1,4 @@
-@testset "Transport resolution preserves control times, windows and restart cohorts" begin
+@testset "Transport resolution preserves control times, windows and restart releases" begin
     fixture=mixed_source_fixture(;distributed=true)
     base=fixture.case
     for factor in (1,3,7)
@@ -23,7 +23,7 @@
         @test rest.arrival_volume≈x.arrival_volume[:,4:end] atol=1e-9
         @test rest.terminal_transit≈x.terminal_transit atol=1e-9
         if factor==1
-            @test !replay_audit(c,x)["valid"] # Conservation alone cannot establish timing accuracy.
+            @test !validate_replay(c,x)["valid"] # Conservation alone cannot establish timing accuracy.
         end
     end
     for mesh in ([0.0,last(base.grid)],[-1.0;base.grid],[base.grid;Inf])
@@ -61,7 +61,7 @@ end
     end
 end
 
-@testset "Confluence checks retain one-sided waves and pointwise restrictions" begin
+@testset "River junction checks retain one-sided waves and pointwise restrictions" begin
     fixture=mixed_source_small_fixture(;mixed=true)
     for offset in (0.0,1000.0)
         base=fixture.case
@@ -78,29 +78,29 @@ end
         routed=OpenSHOP.routed_schedule(c,initial.river_release;generator_q=fixture.q)
         residuals=OpenSHOP.river_arrival_residuals(c,routed)
         for (d,r) in enumerate(rivers)
-            cohort=routed.cohorts[d]
-            expected=maximum(cohort.release[k]-OpenSHOP.opinterval(c,r.name,:capacity,t,r.capacity)
-                for k in eachindex(cohort.release),t in eachindex(c.prices)
-                if min(cohort.grid[k+1],c.grid[t+1])>max(cohort.grid[k],c.grid[t]);init=0.0)
+            series=routed.release_series[d]
+            expected=maximum(series.release[k]-OpenSHOP.opinterval(c,r.name,:capacity,t,r.capacity)
+                for k in eachindex(series.release),t in eachindex(c.prices)
+                if min(series.grid[k+1],c.grid[t+1])>max(series.grid[k],c.grid[t]);init=0.0)
             upstream=findall(e->e.target==r.source,rivers)
             if r.law==:junction && !isempty(upstream)
-                times=OpenSHOP.confluence_knots(c,[z.grid for z in routed.cohorts],upstream)
+                times=OpenSHOP.junction_arrival_times(c,[z.grid for z in routed.release_series],upstream)
                 for time in times
                     sides=time==first(c.grid) ? (:right,) :
                         time==last(c.grid) ? (:left,) : (:left,:right)
                     for side in sides
                         t=OpenSHOP.river_control_interval(c,time,side)
                         rate=routed.injections[d,t]+r.allocation*sum(point_arrival(
-                            rivers[i],routed.cohorts[i].grid,routed.cohorts[i].release,time;side)
+                            rivers[i],routed.release_series[i].grid,routed.release_series[i].release,time;side)
                             for i in upstream;init=0.0)
                         expected=max(expected,rate-OpenSHOP.opvalue(c,r.name,:capacity,time,r.capacity;side))
                     end
                 end
             end
             @test residuals.capacity[d]≈expected atol=1e-11
-            # This must still use the target reach's cohorts after inspecting
+            # This must still use the target reach's releases after inspecting
             # its upstream reaches, including nonzero minimum arrival laws.
-            expected_arrival=OpenSHOP.arrival_requirement_violation(c,r,cohort.grid,cohort.release)
+            expected_arrival=OpenSHOP.arrival_requirement_violation(c,r,series.grid,series.release)
             @test residuals.pointwise_arrival[d]≈expected_arrival atol=1e-11
         end
         @test maximum(residuals.capacity)>0
@@ -145,8 +145,8 @@ end
     routed=OpenSHOP.routed_schedule(base,initial.river_release;
         generator_q=initial.generator_q,tunnel_q=initial.tunnel_q)
     main=only(findall(r->r.name==:MainRiver,base.system.rivers))
-    cohort=routed.cohorts[main]
-    minimum_rate=minimum_arrival(base.system.rivers[main],cohort.grid,cohort.release)["value"]
+    series=routed.release_series[main]
+    minimum_rate=minimum_arrival(base.system.rivers[main],series.grid,series.release)["value"]
     @test minimum_rate>0.0
     rivers=[r.name==:MainRiver ? OpenSHOP._river_replace(r;arrival_policy=:pointwise,
         min_arrival=0.9minimum_rate) : r.name==:ReceiverOutlet ?
@@ -155,7 +155,7 @@ end
     c=OpenSHOP._river_replace(base;system=OpenSHOP._river_replace(base.system;rivers))
     x=dispatch_from_controls(c,fixture.u,fixture.q,fixture.gates)
     @test x.diagnostics["validation"]["valid"]
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     local_result=solve_verified(c;u=fixture.u,warm=x,time_limit=20.0,
         max_refinements=0,refine_grid=false)
     @test local_result["accepted"]
@@ -164,7 +164,7 @@ end
     @test global_result.global_certificate
     @test global_result.feasible_lower_bound>=x.objective-1e-5
     @test validate(c,global_result.solution)["valid"]
-    @test replay_audit(c,global_result.solution)["valid"]
+    @test validate_replay(c,global_result.solution)["valid"]
 end
 
 @testset "Transport acceptance checks operating peaks between control boundaries" begin
@@ -185,12 +185,12 @@ end
     # The source's triangular arrival has mean five on both control intervals,
     # yet reaches ten at their common boundary. Zero downstream delay makes the
     # coarse cumulative deliveries exact, hiding the capacity violation.
-    audit=transport_audit(c,x)
-    @test audit["converged"]
-    @test audit["cumulative_schedule_discrepancy_Mm3"]<1e-10
-    @test !audit["operating_valid"]
-    @test !audit["accepted"]
-    @test audit["violations"]["routed_release_Downstream"]>4.0
+    validation=validate_transport(c,x)
+    @test validation["converged"]
+    @test validation["cumulative_schedule_discrepancy_Mm3"]<1e-10
+    @test !validation["operating_valid"]
+    @test !validation["accepted"]
+    @test validation["violations"]["routed_release_Downstream"]>4.0
     expected=0.0036*5.5*10.0 # All water in the one-hour pulse arrives by the horizon.
     u=zeros(Int,0,2)
     local_result=solve_verified(c;u,time_limit=15.0,max_refinements=0,refine_grid=false)

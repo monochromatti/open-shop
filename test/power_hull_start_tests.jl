@@ -26,9 +26,9 @@ end
         @test seed["validation"]["valid"]
         for fixed in (false,true)
             b=OpenSHOP._build_global_dispatch(c;joint=true,fixed_u=fixed ? seed["u"] : nothing)
-            audit=OpenSHOP._lift_start!(b,c,seed)
-            @test audit["valid"]
-            @test audit["objective"]≈seed["objective"] atol=1e-6
+            validation=OpenSHOP._initialize_global_start!(b,c,seed)
+            @test validation["valid"]
+            @test validation["objective"]≈seed["objective"] atol=1e-6
         end
     end
 end

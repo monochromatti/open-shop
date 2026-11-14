@@ -1,8 +1,8 @@
 function check_reference_lift(c, seed; kwargs...)
     b=OpenSHOP._build_global_dispatch(c; kwargs...)
-    audit=OpenSHOP._lift_start!(b,c,seed)
-    @test audit["valid"]
-    @test audit["objective"]≈seed["objective"] atol=1e-6
+    validation=OpenSHOP._initialize_global_start!(b,c,seed)
+    @test validation["valid"]
+    @test validation["objective"]≈seed["objective"] atol=1e-6
     b
 end
 

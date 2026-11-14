@@ -135,7 +135,7 @@ function mixed_source_small_fixture(;mixed=false)
         reach(:ReceiverOutlet,:Receiver,:Sea,10.0,0.4,3.0;law=:controlled),
     ]
     # This fixture tests electricity revenue alone; changing river inventories
-    # are still physically conserved and audited, with zero economic water value.
+    # are still physically conserved and validated, with zero economic water value.
     rivers=[River(;Dict(f=>getfield(r,f) for f in fieldnames(River) if f!=:water_value)...,
         water_value=0.0) for r in rivers]
     operations=[series(:UpperA,:inflow,grid[1:end-1],[2.0,0.0,2.0]),
@@ -155,10 +155,10 @@ end
 
 function main()
     large=mixed_source_fixture()
-    witness=dispatch_from_controls(large.case,large.u,large.q,large.gates)
-    witness["validation"]["valid"] || error(join(witness["validation"]["errors"],"; "))
-    replay_audit(large.case,witness)["valid"] || error("network finer replay failed")
-    println("Six-reservoir mixed-source network: original and finer audits passed.")
+    reference_schedule=dispatch_from_controls(large.case,large.u,large.q,large.gates)
+    reference_schedule["validation"]["valid"] || error(join(reference_schedule["validation"]["errors"],"; "))
+    validate_replay(large.case,reference_schedule)["valid"] || error("network finer replay failed")
+    println("Six-reservoir mixed-source network: original and finer checks passed.")
     small=mixed_source_small_fixture()
     initial=dispatch_from_controls(small.case,small.u,small.q,small.gates)
     result=solve(small.case;initial,time_limit=60.0,relative_gap=1e-4)

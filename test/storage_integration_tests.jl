@@ -151,7 +151,7 @@ end
                 @test result.solution.storage≈warm.storage atol=1e-8
             end
             if result["solver"]=="SCIP"
-                @test result["start_audit"]["valid"]
+                @test result["start_validation"]["valid"]
                 @test result.global_bound===nothing || result.global_bound>=-1e-6
             end
         end

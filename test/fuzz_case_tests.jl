@@ -5,7 +5,7 @@ include("../scripts/fuzz_worker.jl")
     x=FuzzWorker.reconstruct(data)
     c=FuzzWorker.FuzzCases.restrict_case(11,data.case,x)
     x=FuzzWorker.reconstruct(merge(data,(case=c,)))
-    @test replay_audit(c,x)["valid"]
+    @test validate_replay(c,x)["valid"]
     for factor in (2,4,8)
         grid=OpenSHOP.refined_grid(c.grid;factor)
         z=simulate(c,data.q,data.gate;grid,commitment=data.u,tunnel_opening=data.opening)
@@ -16,7 +16,7 @@ include("../scripts/fuzz_worker.jl")
     refined=dispatch_from_controls(c,data.u,data.q,data.gate;grid,tunnel_opening=data.opening)
     report=Dict{String,Any}("findings"=>Any[])
     checks=FuzzWorker.check_schedule!(report,c,refined,"refined",4)
-    @test checks["audit"]["valid"]
+    @test checks["validation"]["valid"]
     @test checks["replay"]["valid"]
     @test checks["water_error_Mm3"]<1e-8
     @test isempty(report["findings"])
@@ -120,7 +120,7 @@ end
     # Running the stages in the opposite order must not call that a regression.
     r = report()
     r["stages"] = Dict("warm"=>Dict("objective"=>reference.objective+100,
-        "global_bound"=>nothing,"checks"=>Dict("audit"=>Dict("valid"=>true))))
+        "global_bound"=>nothing,"checks"=>Dict("validation"=>Dict("valid"=>true))))
     local_result = SolveResult(Dict("status"=>"LOCALLY_SOLVED","accepted"=>true,
         "solution"=>reference))
     FuzzWorker.check_result!(r,data.case,local_result,"local",reference,options)
@@ -128,12 +128,12 @@ end
     r = report()
     r["stages"] = Dict("warm"=>Dict("objective"=>reference.objective-200,
         "global_bound"=>reference.objective-100,
-        "checks"=>Dict("audit"=>Dict("valid"=>true))))
+        "checks"=>Dict("validation"=>Dict("valid"=>true))))
     FuzzWorker.check_result!(r,data.case,local_result,"local",reference,options)
     @test any(f["kind"]=="invalid_upper_bound" && f["stage"]=="warm" for f in r["findings"])
 end
 
-@testset "Campaign ledger integrates inflow changes inside a control interval" begin
+@testset "Water balance integrates inflow changes inside a control interval" begin
     c = FuzzWorker.FuzzCases.generate_case(1,"cascade","small").case
     name = first(c.system.reservoirs).name
     input = OperationalSeries(object=name,attribute=:inflow,

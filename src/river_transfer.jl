@@ -1,13 +1,13 @@
-"""One observation row: cohort indices and reference × cohort fractions."""
+"""One observation row: release indices and reference × release fractions."""
 struct RiverTransferRow
-    cohorts::Vector{Int}
+    release_indices::Vector{Int}
     fractions::Matrix{Float64}
 end
 
-"""Uniform-cohort transfer fractions in compressed column and row order.
+"""Constant-release transfer fractions in compressed column and row order.
 
-`fractions[:,p]` contains all reference curves for one nonzero arrival/cohort
-pair. Columns are release cohorts; the row index borrows the same coefficient
+`fractions[:,p]` contains all reference curves for one nonzero arrival/release
+pair. Columns are interval releases; the row index borrows the same coefficient
 buffer. Thus dispatch and chronological replay traverse only overlapping pairs
 without duplicating coefficients or introducing reference-flow variables.
 `terminal[:,j]` is the already-released fraction still in transit at the horizon.
@@ -47,14 +47,14 @@ function river_delay_support(r)
     minimum(first(c.edges) for c in r.curves),maximum(last(c.edges) for c in r.curves)
 end
 
-function cohort_fraction(r,l,a,b,s,e)
+function release_arrival_fraction(r,l,a,b,s,e)
     r.deterministic_delay===nothing &&
-        return RiverRouting.cohort_transfer_fraction(r.curves[l],a,b,s,e)
+        return RiverRouting.release_transfer_fraction(r.curves[l],a,b,s,e)
     d=r.deterministic_delay
     max(0.0,min(b,e+d)-max(a,s+d))/(e-s)
 end
 
-function cohort_transit_fraction(r,l,time,s,e)
+function release_transit_fraction(r,l,time,s,e)
     released=min(time,e)
     released<=s && return 0.0
     r.deterministic_delay===nothing &&
@@ -63,7 +63,7 @@ function cohort_transit_fraction(r,l,time,s,e)
 end
 
 # Search shifted edges directly. Inverting t=s+delay by subtraction can select
-# the wrong cohort at an atomic jump, e.g. 1.75+0.3 == 2.05 in Float64.
+# the wrong release at an atomic jump, e.g. 1.75+0.3 == 2.05 in Float64.
 function shifted_period(grid,time,delay;side=:right)
     lo,hi=0,length(grid)
     while lo<hi
@@ -97,7 +97,7 @@ function RiverTransfer(r,arrival_grid,release_grid)
         hi=min(A,searchsortedfirst(arrival_grid,e+lagmax)-1)
         for t in lo:hi
             for l in 1:J
-                coefficients[l]=cohort_fraction(r,l,arrival_grid[t],arrival_grid[t+1],s,e)
+                coefficients[l]=release_arrival_fraction(r,l,arrival_grid[t],arrival_grid[t+1],s,e)
             end
             any(!iszero,coefficients) || continue
             push!(arrival_indices,t)
@@ -105,7 +105,7 @@ function RiverTransfer(r,arrival_grid,release_grid)
             counts[t]+=1
         end
         for l in 1:J
-            terminal[l,j]=cohort_transit_fraction(r,l,last(arrival_grid),s,e)
+            terminal[l,j]=release_transit_fraction(r,l,last(arrival_grid),s,e)
         end
     end
     release_offsets[end]=length(arrival_indices)+1
@@ -131,16 +131,16 @@ function volume_transfer_row(r,grid,a,b)
     lagmin,lagmax=river_delay_support(r)
     lo=max(1,shifted_period(grid,a,lagmax))
     hi=min(length(grid)-1,shifted_period(grid,b,lagmin;side=:left))
-    cohorts=Int[];values=Float64[];J=river_curve_count(r)
+    release_indices=Int[];values=Float64[];J=river_curve_count(r)
     coefficients=zeros(J)
     for j in lo:hi
         for l in 1:J
-            coefficients[l]=cohort_fraction(r,l,a,b,grid[j],grid[j+1])
+            coefficients[l]=release_arrival_fraction(r,l,a,b,grid[j],grid[j+1])
         end
         any(!iszero,coefficients) || continue
-        push!(cohorts,j);append!(values,coefficients)
+        push!(release_indices,j);append!(values,coefficients)
     end
-    RiverTransferRow(cohorts,reshape(values,J,:))
+    RiverTransferRow(release_indices,reshape(values,J,:))
 end
 
 """Instantaneous arrival coefficients, retaining either side of atomic jumps."""
@@ -153,10 +153,10 @@ function point_transfer_row(r,grid,time;side=:right)
         max(1,shifted_period(grid,time,lagmax)),
             min(length(grid)-1,shifted_period(grid,time,lagmin;side=:left))
     else
-        cohort=shifted_period(grid,time,lagmin;side)
-        max(1,cohort),min(length(grid)-1,cohort)
+        release_interval=shifted_period(grid,time,lagmin;side)
+        max(1,release_interval),min(length(grid)-1,release_interval)
     end
-    cohorts=Int[];values=Float64[];J=river_curve_count(r)
+    release_indices=Int[];values=Float64[];J=river_curve_count(r)
     coefficients=zeros(J)
     for j in lo:hi
         s,e=grid[j],grid[j+1]
@@ -169,7 +169,7 @@ function point_transfer_row(r,grid,time;side=:right)
             end
         end
         any(!iszero,coefficients) || continue
-        push!(cohorts,j);append!(values,coefficients)
+        push!(release_indices,j);append!(values,coefficients)
     end
-    RiverTransferRow(cohorts,reshape(values,J,:))
+    RiverTransferRow(release_indices,reshape(values,J,:))
 end

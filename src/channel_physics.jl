@@ -32,7 +32,7 @@ function validate_channel(r::River, s::HydroSystem)
 end
 
 # Sign-aware domains are shared by routing and independent physics. Ordinary
-# downstream reaches retain nonnegative release and transport-cohort semantics.
+# downstream reaches retain nonnegative release and transport-release semantics.
 river_flow_lower(r, capacity, inflow=0.0) = is_channel(r) ? -capacity : inflow
 # Physical capacity checks allow solver-scale roundoff in m³/s. Keep the actual
 # flow; residual reporting measures the excess rather than clipping the water.

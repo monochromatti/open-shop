@@ -7,12 +7,14 @@ Base.@kwdef struct SoftConstraintSlack
     penalty_cost::Float64
 end
 
-"""Spinning capacity [unit, group, interval] in MW and physical discharge
-witnesses [unit, interval] in m³/s. Shortfall [group, interval] is MW.
-Witnesses are operating points at scheduled hydraulic node heads, not activated
-water trajectories. Keyword construction and reconstruction copy their inputs.
-Input allocations use operating intervals. Returned schedules repeat their
-capacity controls on hydraulic cells, with physical witnesses on those cells.
+"""Spinning reserve capacities and their operating-point discharges.
+
+`up` and `down` are [unit, group, interval] capacities in MW. `up_q` and
+`down_q` are [unit, interval] discharges in m³/s at scheduled hydraulic node
+heads. Reserve activation over time requires a separate water trajectory.
+Shortfalls are [group, interval] quantities in MW. Keyword construction and
+physical reconstruction copy their inputs. Capacity controls use operating
+intervals; returned schedules evaluate discharge on the hydraulic grid.
 """
 struct ReserveAllocation
     up::Array{Float64,3}
@@ -31,7 +33,7 @@ grid vertex; rates, heads, power and commitment have one column per interval.
 Storage and river inventory are Mm³, discharge is m³/s, head is metres and
 power is a nonnegative production/consumption magnitude in MW. All unit arrays
 follow the common `HydroSystem.generators` order; [`net_power`](@ref) supplies
-signed electrical exchange. `diagnostics` contains reporting data, not equations.
+signed electrical exchange. `diagnostics` contains solver statistics and validation results.
 `grid` may refine the case's operating grid. Adjustable controls remain held
 over each original operating interval; physical states use the recorded grid.
 """

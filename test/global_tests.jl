@@ -70,10 +70,10 @@ function analytic_global_fixture(kind)
     # Concave positive-price quadratic: endpoints and stationary point exhaust
     # the on domain. For negative prices the quadratic is convex,
     # so endpoints suffice; an unforced unit also has the isolated off choice.
-    candidates=kind==:forced_negative ? [5.0, 20.0] : [0.0, 5.0, 20.0]
-    price>0 && push!(candidates, clamp((price*k*A-0.0036*water)/(2price*k*b), 5.0, 20.0))
+    trial_flows=kind==:forced_negative ? [5.0, 20.0] : [0.0, 5.0, 20.0]
+    price>0 && push!(trial_flows, clamp((price*k*A-0.0036*water)/(2price*k*b), 5.0, 20.0))
     f(q) = price*k*q*(A-b*q)-0.0036*water*q
-    q=candidates[argmax(f.(candidates))]
+    q=trial_flows[argmax(f.(trial_flows))]
     (case = c, discharge = q, objective = f(q), on = Int(q>0))
 end
 
@@ -127,8 +127,8 @@ end
                 @test gap<=1e-3 || result["relative_gap"]<=1e-4
             end
             if initial!==nothing
-                @test result["start_audit"]["valid"]
-                @test result["start_audit"]["objective"]≈initial["objective"] atol=1e-6
+                @test result["start_validation"]["valid"]
+                @test result["start_validation"]["objective"]≈initial["objective"] atol=1e-6
             end
         end
     end
@@ -163,25 +163,25 @@ end
     c=analytic_global_fixture(:off).case
     @test_throws ArgumentError dispatch_from_controls(c,zeros(Int,1,1),fill(1e-7,1,1),zeros(0,1))
     raw=dispatch_from_controls(c,zeros(Int,1,1),zeros(1,1),zeros(0,1))
-    # Solver candidates can contain feasibility noise; public controls cannot.
+    # Solver trial_flows can contain feasibility noise; public controls cannot.
     raw["generator_q"][1]=1e-7
-    repaired,correction=OpenSHOP._reconstruct_candidate(c,raw)
+    repaired,correction=OpenSHOP._reconstruct_schedule(c,raw)
     @test repaired["generator_q"]==zeros(1,1)
     @test repaired["power"]==zeros(1,1)
     @test repaired["validation"]["valid"]
     @test correction.flow==1e-7
     raw["generator_q"][1]=1e-3
-    @test_throws ArgumentError OpenSHOP._reconstruct_candidate(c,raw)
+    @test_throws ArgumentError OpenSHOP._reconstruct_schedule(c,raw)
 end
 
 @testset "A feasible counterexample rejects a purported upper bound" begin
     fixture=analytic_global_fixture(:on)
-    candidate=dispatch_from_controls(fixture.case,ones(Int,1,1),
+    trial_solution=dispatch_from_controls(fixture.case,ones(Int,1,1),
         fill(fixture.discharge,1,1),zeros(0,1))
-    @test candidate["validation"]["valid"]
-    invalid=candidate["objective"]-1.0
+    @test trial_solution["validation"]["valid"]
+    invalid=trial_solution["objective"]-1.0
     result=Dict{String,Any}("global_bound"=>invalid)
-    OpenSHOP._set_incumbent!(result,candidate,"initial",1e-3,0.0)
+    OpenSHOP._set_incumbent!(result,trial_solution,"initial",1e-3,0.0)
     @test !result["global_certificate"]
     @test result["global_bound"]===nothing
     @test result["rejected_global_bound"]==invalid

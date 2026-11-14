@@ -162,7 +162,7 @@ function _power_hull_endpoint_weights(axis,value)
         return [1.0]
     end
     t=(value-axis[1])/(axis[2]-axis[1])
-    # Do not clip weights: inconsistent source values must fail the final audit.
+    # Do not clip weights: inconsistent source values must fail the final validation.
     [1-t,t]
 end
 

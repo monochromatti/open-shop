@@ -33,7 +33,7 @@ removing a feasible point.
 An internal connection withdraws and credits the same signed water flow.
 A plant or tunnel outfall credits its receiving river instead of its hydraulic
 head-reference node. A river's natural inflow enters that river directly;
-it is not withdrawn from reservoir storage. Zero-storage confluences allocate
+it is not withdrawn from reservoir storage. Zero-storage river junctions allocate
 upstream arrivals with prescribed shares summing to one. Local branch injections
 are added after this allocation.
 
@@ -145,7 +145,7 @@ An isolated junction component can also have an arbitrary common pressure shift.
 That shift preserves tunnel head differences, but need not preserve an idle
 unit's operating head relative to another component. `head_reference` supplies
 Newton guesses and selects this pressure reference during reconstruction.
-Validation and finer replay retain the candidate's reference. Every balance,
+Validation and finer replay retain the solution's reference. Every balance,
 hydraulic equation and absolute operating bound remains checked; supplied heads
 cannot override an anchored hydraulic solution.
 
@@ -189,13 +189,13 @@ a plant/tunnel hydraulic target must supply the actual outfall head, even when
 its water enters a separately named delayed reach. These are calibration and
 connection assumptions, not consequences of the conservation proofs.
 
-Each release cohort keeps the travel-response mixture selected by its own
+Each interval release keeps the travel-response mixture selected by its own
 release rate. A convex mixture of causal probability responses remains causal
 and volume preserving. Deterministic delays preserve source pulses through
-confluences. Distributed confluences use a separate transport mesh, with four
+river junctions. Distributed river junctions use a separate transport mesh, with four
 cells per control interval by default. `routing_grid` can supply a different mesh
-that retains every control boundary. Reservoir releases retain their original
-cohorts; downstream releases follow conservation on the transport cells.
+that retains every control boundary. Reservoir outlets retain their original
+release intervals; downstream releases follow conservation on the transport cells.
 Controls, ramps, flow costs and operating windows retain the original grid.
 This conserves volume but still approximates continuous arrival timing.
 
@@ -217,7 +217,7 @@ and finer replay checks its additional vertices. Historical windows require
 complete supplied records; no pre-horizon value is extrapolated. These window
 identities are among the [Lean statements](../test/formal/README.md), not proofs
 of the floating-point implementation.
-Reserve capacity witnesses hold scheduled hydraulic node heads fixed and do not
+Reserve capacity operating points hold scheduled hydraulic node heads fixed and do not
 certify a physically activated tunnel/river trajectory.
 
 For maximization, a genuinely feasible value `L` and an enclosing real upper
