@@ -351,6 +351,47 @@ function simulate(
     _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;transport)
 end
 
+"""Route prescribed river inputs before solving the hydraulic states.
+
+On an acyclic river network, fixed entry flows determine all downstream cohorts
+and arrivals, even with flow-dependent travel times. Return interval volumes and
+initial inventory, or `nothing` when an entry flow depends on hydraulic unknowns.
+The routing mesh and release-time mixtures are the same as in coupled stepping.
+"""
+function prescribed_river_arrivals(c,generator_q,gate,sources,routing_grid)
+    s=c.system
+    any(is_channel,s.rivers) && return nothing
+    any(e->e.discharge_river!==nothing,s.tunnels) && return nothing
+    plants=Dict(p.name=>p.discharge_river for p in s.plants)
+    any(g->g.characteristic!==nothing && plants[g.plant]!==nothing,s.generators) &&
+        return nothing
+    # A discharge curve takes precedence over :controlled and depends on head.
+    any(sources.reservoirs[d] && (r.law!=:controlled || r.discharge_curve!==nothing)
+        for (d,r) in enumerate(s.rivers)) && return nothing
+
+    D,T=length(s.rivers),length(c.prices)
+    release=zeros(D,T)
+    for (d,r) in enumerate(s.rivers),t in 1:T
+        sources.reservoirs[d] || continue
+        inflow=opinterval(c,r.name,:inflow,t,r.inflow)
+        capacity=opinterval(c,r.name,:capacity,t,r.capacity)
+        release[d,t]=inflow+river_law_value(r,0.0,gate[d,t];inflow,capacity)
+    end
+    routed=try
+        _route_network(c,release;grid=routing_grid,generator_q)
+    catch error
+        error isa Union{ArgumentError,DomainError} || rethrow()
+        # Independent routing requires physical release domains. The coupled
+        # integrator also represents invalid trial trajectories; let it retain
+        # its usual result or input error rather than failing early here.
+        return nothing
+    end
+    vertices=[searchsortedfirst(routed.grid,t) for t in c.grid]
+    arrival=[sum(view(routed.arrival_volume,d,vertices[t]:(vertices[t+1]-1)))
+        for d in 1:D,t in 1:T]
+    (;arrival,initial=copy(routed.transit[:,1]))
+end
+
 # Physical integration kernel. The public wrapper checks controls and temporal
 # operating rules. Local error estimates call this kernel from already checked
 # controls, restarting only the physical state and executed river history.
@@ -391,12 +432,17 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     !exact &&
         transport!==nothing &&
         throw(ArgumentError("compiled deterministic transport cannot serve distributed replay"))
-    mesh=exact ? nothing : DistributedRouting(nc_case;grid=river_routing_grid(c;physical_grid=grid))
-    routing_arrival=exact ? zeros(0,0) : copy(mesh.history_arrival)
+    routing_grid=exact ? nothing : river_routing_grid(c;physical_grid=grid)
+    prescribed=exact ? nothing : prescribed_river_arrivals(nc_case,gq,ga,sources,routing_grid)
+    coupled=!exact && prescribed===nothing
+    mesh=coupled ? DistributedRouting(nc_case;grid=routing_grid) : nothing
+    routing_arrival=coupled ? copy(mesh.history_arrival) : zeros(0,0)
     transfer=zeros(nd,maximum((river_curve_count(r) for r in s.rivers);init=1))
-    network=exact ? zeros(nd,nd) : nothing
+    # Prescribed arrivals need no same-step transfer. Store that zero operator
+    # diagonally rather than allocating a dense reach-by-reach matrix.
+    network=exact ? zeros(nd,nd) : coupled ? nothing : Diagonal(zeros(nd))
     sizehint!(steps,T)
-    W[:,1].=exact ? ndat.initial_transit : mesh.history_initial
+    W[:,1].=exact ? ndat.initial_transit : coupled ? mesh.history_initial : prescribed.initial
     for t in 1:T
         dt=grid[t + 1]-grid[t]
         if exact
@@ -413,6 +459,8 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
                     end
                 end
             end
+        elseif !coupled
+            A[:,t].=prescribed.arrival[:,t]
         end
         for (i, r) in enumerate(s.reservoirs)
             reservoir_inflow[i]=opaverage(c, r.name, :inflow, grid[t], grid[t + 1], r.inflow)
@@ -424,7 +472,7 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
             river_inflow[d]=opaverage(c, r.name, :inflow, grid[t], grid[t + 1], r.inflow)
             river_capacity[d]=opaverage(c, r.name, :capacity, grid[t], grid[t + 1], r.capacity)
         end
-        routing=exact ? nothing : DistributedRoutingStep(mesh,s,t,routing_arrival)
+        routing=coupled ? DistributedRoutingStep(mesh,s,t,routing_arrival) : nothing
         data=HydraulicStepData(
             s,
             @view(V[:, t]),
@@ -459,7 +507,7 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
         L[:, t].=z.river_injection
         out[t]=sum(z.boundary_net_inflow)
         A[:, t].=0.0036dt .* z.river_arrival
-        if !exact
+        if coupled
             block=mesh.vertices[t]:(mesh.vertices[t+1]-1)
             future=mesh.vertices[t+1]:(length(mesh.grid)-1)
             for (d,r) in enumerate(s.rivers)

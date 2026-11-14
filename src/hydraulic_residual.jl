@@ -2,8 +2,9 @@
 
 The unknown vector is `[Vnew; junction_head; tunnel_q; outlet_release; fixed_pump_q]`.
 Storage is in Mm³, heads in metres, rates in m³/s, and duration in hours.
-`network` is either a same-interval river transfer matrix or `nothing` for
-flow-dependent response curves. The type parameter specializes that choice.
+`network` is a same-interval river transfer matrix, or `nothing` when current
+arrivals must be evaluated from release-dependent responses. Prescribed arrivals
+use a zero transfer matrix. The type parameter specializes that choice.
 Physical curves and connectivity remain fixed; interval inflows and operating
 capacities are numerical arrays. Replay reuses topology and source indices.
 """
