@@ -5,35 +5,6 @@ Construct named objects with keyword arguments, then pass a `HydroSystem` to
 construction resolves direct river links without modifying the supplied system.
 See [input objects and units](input.md) for fields and JSON conventions.
 
-## Names in version 0.9
-
-Version 0.9 uses validation names for checks of physical equations and numerical
-accuracy. A replay means re-simulating the same controls on a finer time grid.
-Update calls and result readers as follows; the former names are removed.
-
-| Version 0.8 | Version 0.9 |
-| --- | --- |
-| `replay_audit(case, schedule)` | `validate_replay(case, schedule)` |
-| `transport_audit(case, schedule)` | `validate_transport(case, schedule)` |
-| Result key `audit` or `replay_audit` | `replay_validation` |
-| Replay field `original_audit` | `original_validation` |
-| Replay field `transport_audit` | `transport_validation` |
-| Replay field `certificate` | `validation_scope` |
-| Routing result `release_cohorts` | `release_series` |
-| Solver report `scip_diagnostics` | `solver_statistics` |
-| Solver report `discrete_candidate` | `rejected_solution` |
-| Solver report `candidate_error` | `solution_error` |
-
-Start-feasibility and reconstruction report names likewise replace `_audit`
-with `_validation`; reserve residual labels replace `_witness` with
-`_operating_point`. Physical input attributes, schedule arrays, units and
-numerical tolerances retain their definitions.
-
-`release_series` contains one discharge time series per river reach. Each entry
-has `grid` in hours and piecewise-constant `release` in m³/s. Keeping these
-release times lets routing calculate downstream arrivals without treating an
-arrival average as a new release.
-
 ## Solve and inspect
 
 ```julia
@@ -167,6 +138,9 @@ certificate. The [paper](../paper/paper.pdf) defines the model and certificate.
 
 ## Prescribed controls and replay
 
+Replay means simulating the same controls on a finer time grid to check
+numerical accuracy.
+
 ```julia
 local_result = solve_case(case; u=commitment, tunnel_opening=positions)
 schedule = dispatch_from_controls(case; commitment=commitment,
@@ -289,6 +263,11 @@ river law or its transport resolution.
 `validate_transport` separately checks timing convergence and operating arrival
 and capacity limits on the independently routed waves, including peaks between
 control boundaries. See [river networks](river-networks.md).
+
+Routing results expose `release_series`, one discharge time series per river
+reach. Each entry has `grid` in hours and piecewise-constant `release` in m³/s.
+Keeping these release times lets routing calculate downstream arrivals without
+treating an arrival average as a new release.
 
 `head(reservoir, volume)` returns the surface elevation. The interval equations
 instead use `mean_head(reservoir, before, after)`, the volume-averaged elevation

@@ -26,8 +26,10 @@ read like the physical equations and numerical methods it implements.
   be appropriate. Explain them to users rather than inventing unusual synonyms.
   Document units, array axes and time-grid conventions where they matter.
 - Keep names consistent across numerical routines, public APIs, serialized
-  results, examples, tests and the paper. Document public renames and any
-  compatibility boundary explicitly; keep aliases out of numerical kernels.
+  results, examples, tests and the paper. Document the current API directly.
+- The project has no external users yet. Make API changes directly and update
+  their uses. Do not add migration guides, deprecated aliases or compatibility
+  layers unless explicitly requested. Prefer one clear current interface.
 
 ## Numerical code
 
