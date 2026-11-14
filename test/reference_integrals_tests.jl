@@ -44,3 +44,49 @@
         @test isempty(primal_feasibility_report(model,point;atol=1e-9))
     end
 end
+
+@testset "Fixed river mixtures retain physical observations and stored expressions" begin
+    grid=[0.0,0.2,0.8,1.5,2.0]
+    base=graph_case(;grid,history=true)
+    controls=[0.0 17.0 12.0 26.0;5.0 1.0 4.0 3.0;2.0 8.0 1.0 5.0]
+    curves=[RiverRouting.DelayCurve(q,[0.1,0.5,3.0],w) for (q,w) in
+        ((0.0,[0.2,0.8]),(10.0,[0.5,0.5]),(30.0,[0.8,0.2]))]
+    for mode in (:distributed,:mixed,:atomic)
+        rivers=[begin
+            atomic=mode==:atomic || mode==:mixed && i==1
+            OpenSHOP._river_replace(r;curves=atomic ? RiverRouting.DelayCurve[] : curves,
+                deterministic_delay=atomic ? 0.35 : nothing)
+        end for (i,r) in enumerate(base.system.rivers)]
+        c=replace_graph(base;rivers)
+        expected=OpenSHOP.routed_schedule(c,controls)
+        model=Model()
+        @variable(model,q[1:3,1:4])
+        set_start_value.(q,expected.release)
+        coordinate=(r,q,i,k,period)->OpenSHOP._proposal_delay_coordinate(r,
+            expected.release_series[i].release[k])
+        routing=OpenSHOP.RiverTransport(model,c,q;coordinate)
+        OpenSHOP.start_transport!(routing)
+        arrivals=value.(start_value,routing.arrivals)
+        terminal=value.(start_value,routing.terminal)
+        for _ in 1:2, (i,r) in enumerate(rivers)
+            series=expected.release_series[i]
+            for (a,b) in ((0.0,2.0),(0.13,1.63),(8.0,9.0))
+                expression=OpenSHOP.routing_volume_expression(model,c,routing,i,a,b)
+                volume=only(OpenSHOP.route_volumes(r,[a,b],series.grid,series.release))+
+                    only(OpenSHOP.route_volumes(r,[a,b],r.history_grid,r.history_release))
+                @test value(start_value,expression)≈volume atol=1e-12
+            end
+            for time in (0.0,0.13,0.55,2.0,9.0),side in (:left,:right)
+                expression=OpenSHOP.routing_point_expression(model,c,routing,i,time;side)
+                @test value(start_value,expression)≈
+                    point_arrival(r,series.grid,series.release,time;side) atol=1e-10
+            end
+        end
+        # Observation assembly must not mutate expressions reused by balances
+        # or by the terminal water value.
+        @test value.(start_value,routing.arrivals)≈arrivals atol=1e-12
+        @test value.(start_value,routing.terminal)≈terminal atol=1e-12
+        @test arrivals≈expected.arrival_volume atol=1e-12
+        @test terminal≈expected.transit[:,end] atol=1e-12
+    end
+end

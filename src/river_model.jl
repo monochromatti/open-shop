@@ -1,3 +1,20 @@
+"""Accumulate affine river terms without copying each growing partial sum.
+
+The first addition owns its affine result. Nonlinear and quadratic terms keep
+ordinary left-to-right addition, preserving their evaluation order.
+"""
+function sum_river_terms(terms)
+    total=0.0
+    for term in terms
+        if total isa AffExpr && term isa Union{Real,VariableRef,AffExpr}
+            add_to_expression!(total,term)
+        else
+            total=total+term
+        end
+    end
+    total
+end
+
 """River equations and their transport discretization.
 
 `arrivals`, `terminal` and `initial_transit` are volumes in Mm³. Window and
@@ -49,12 +66,12 @@ function RiverTransport(m,c,release;transport=nothing,
     starts=Pair{VariableRef,Union{AffExpr,QuadExpr,NonlinearExpr}}[]
     if exact
         for i in 1:D,t in 1:T
-            arrivals[i,t]=AffExpr(nd.arrival_history[i,t])+sum(
-                v*injections[d,k] for (d,k,v) in nd.arrival_terms[i,t];init=0.0)
+            arrivals[i,t]=AffExpr(nd.arrival_history[i,t])+sum_river_terms(
+                v*injections[d,k] for (d,k,v) in nd.arrival_terms[i,t])
         end
         for i in 1:D
-            terminal[i]=AffExpr(nd.terminal_history[i])+sum(
-                v*injections[d,k] for (d,k,v) in nd.terminal_terms[i];init=0.0)
+            terminal[i]=AffExpr(nd.terminal_history[i])+sum_river_terms(
+                v*injections[d,k] for (d,k,v) in nd.terminal_terms[i])
         end
     else
         K=length(rd.grid)-1
@@ -72,7 +89,7 @@ function RiverTransport(m,c,release;transport=nothing,
                     t=rd.control[k]
                     set_upper_bound(q[k],opinterval(c,r.name,:capacity,t,r.capacity))
                     duration=rd.grid[k+1]-rd.grid[k]
-                    incoming=r.allocation*sum(fine_arrival[d,k] for d in upstream;init=0.0)
+                    incoming=r.allocation*sum_river_terms(fine_arrival[d,k] for d in upstream)
                     @constraint(m,(0.0036duration*(q[k]-injections[i,t])-incoming)/0.3==0)
                     push!(starts,q[k]=>injections[i,t]+incoming/(0.0036duration))
                 end
@@ -94,25 +111,25 @@ function RiverTransport(m,c,release;transport=nothing,
             B=rd.coefficients[i]
             for k in 1:K
                 fine_arrival[i,k]=AffExpr(rd.history_arrival[i,k])+(primitive!==nothing ?
-                    reference_arrival_volume(primitive,r,rd.grid[k],rd.grid[k+1]) : sum(
+                    reference_arrival_volume(primitive,r,rd.grid[k],rd.grid[k+1]) : sum_river_terms(
                     0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
-                    for (j,fractions) in arrival_terms(B,k);init=0.0))
+                    for (j,fractions) in arrival_terms(B,k)))
             end
             intervals=rd.interval_coefficients[i]
             for t in 1:T
                 arrivals[i,t]=AffExpr(sum(view(rd.history_arrival,i,
                     rd.vertices[t]:(rd.vertices[t+1]-1))))+(primitive!==nothing ?
-                    reference_arrival_volume(primitive,r,c.grid[t],c.grid[t+1]) : sum(
+                    reference_arrival_volume(primitive,r,c.grid[t],c.grid[t+1]) : sum_river_terms(
                     0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                         fractions;coordinate=coordinates[i][j])
-                    for (j,fractions) in arrival_terms(intervals,t);init=0.0))
+                    for (j,fractions) in arrival_terms(intervals,t)))
             end
             terminal[i]=AffExpr(rd.history_terminal[i])+(primitive!==nothing ?
-                reference_transit(primitive,r,last(c.grid)) : sum(
+                reference_transit(primitive,r,last(c.grid)) : sum_river_terms(
                 0.0036release_duration[j]*river_transfer_expression(m,r,rates[i][j],
                     view(B.terminal,:,j);coordinate=coordinates[i][j])
-                for j in eachindex(rates[i]);init=0.0))
+                for j in eachindex(rates[i])))
         end
     end
     volume_rows=Dict{Tuple{Int,Float64,Float64},RiverTransferRow}()
@@ -127,8 +144,8 @@ end
 function routing_volume_expression(m,c,routing,i,a,b)
     if routing._data isa CompiledTransport
         expression=_pulse_expression(routing._data.arrival_pulses[i],a,b)
-        return expression.history+sum(v*routing._injections[d,k]
-            for (d,k,v) in expression.terms;init=0.0)
+        return expression.history+sum_river_terms(v*routing._injections[d,k]
+            for (d,k,v) in expression.terms)
     end
     r=c.system.rivers[i]
     primitive=routing._primitives[i]
@@ -141,16 +158,16 @@ function routing_volume_expression(m,c,routing,i,a,b)
         volume_transfer_row(r,grid,a,b)
     end
     history=only(route_volumes(r,[a,b],r.history_grid,r.history_release))
-    history+sum(0.0036*(grid[k+1]-grid[k])*river_transfer_expression(m,r,routing._rates[i][k],
+    history+sum_river_terms(0.0036*(grid[k+1]-grid[k])*river_transfer_expression(m,r,routing._rates[i][k],
         view(row.fractions,:,j);coordinate=routing._coordinates[i][k])
-        for (j,k) in enumerate(row.release_indices);init=0.0)
+        for (j,k) in enumerate(row.release_indices))
 end
 
 function routing_point_expression(m,c,routing,i,time;side)
     if routing._data isa CompiledTransport
         expression=deterministic_point_data(routing._data,i,time;side)
-        return expression.history+sum(v*routing._injections[d,k]
-            for (d,k,v) in expression.terms;init=0.0)
+        return expression.history+sum_river_terms(v*routing._injections[d,k]
+            for (d,k,v) in expression.terms)
     end
     r=c.system.rivers[i]
     primitive=routing._primitives[i]
@@ -163,9 +180,9 @@ function routing_point_expression(m,c,routing,i,time;side)
         point_transfer_row(r,grid,time;side)
     end
     history=release_arrival_rate(r,r.history_grid,r.history_release,time;side)
-    history+sum(river_transfer_expression(m,r,routing._rates[i][k],
+    history+sum_river_terms(river_transfer_expression(m,r,routing._rates[i][k],
         view(row.fractions,:,j);coordinate=routing._coordinates[i][k])
-        for (j,k) in enumerate(row.release_indices);init=0.0)
+        for (j,k) in enumerate(row.release_indices))
 end
 
 function routing_arrival_knots(c,routing,i)
@@ -186,8 +203,8 @@ function constrain_river_stream_capacities!(m,c,routing)
                     time==last(c.grid) ? (:left,) : (:left,:right)
                 for side in sides
                     expression=deterministic_point_data(routing._data,i,time;side,kind=:release)
-                    rate=expression.history+sum(v*routing._injections[d,k]
-                        for (d,k,v) in expression.terms;init=0.0)
+                    rate=expression.history+sum_river_terms(v*routing._injections[d,k]
+                        for (d,k,v) in expression.terms)
                     @constraint(m,rate<=opvalue(c,r.name,:capacity,time,r.capacity;side))
                 end
             end
@@ -200,8 +217,8 @@ function constrain_river_stream_capacities!(m,c,routing)
                 time==last(c.grid) ? (:left,) : (:left,:right)
             for side in sides
                 t=river_control_interval(c,time,side)
-                rate=routing._injections[i,t]+r.allocation*sum(
-                    routing_point_expression(m,c,routing,d,time;side) for d in upstream;init=0.0)
+                rate=routing._injections[i,t]+r.allocation*sum_river_terms(
+                    routing_point_expression(m,c,routing,d,time;side) for d in upstream)
                 @constraint(m,rate<=opvalue(c,r.name,:capacity,time,r.capacity;side))
             end
         end
