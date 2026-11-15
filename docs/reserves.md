@@ -90,6 +90,11 @@ matrices are discharges in m³/s and `up_shortfall/down_shortfall` matrices
 are MW by group and interval. JSON stores capacity as one unit-by-interval
 matrix per group. Named group order follows `case.reserve_groups`.
 
+Public capacity inputs must be finite and nonnegative. At the solver boundary,
+negative roundoff of at most `1e-8` MW is projected to zero before independent
+reconstruction; larger errors are rejected. The correction is recorded and the
+rebuilt schedule must satisfy the original constraints.
+
 Prescribed capacity can be reconstructed with ordinary physical controls:
 
 ```julia

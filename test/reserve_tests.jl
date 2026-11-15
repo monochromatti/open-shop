@@ -248,6 +248,22 @@ end
     end
 end
 
+@testset "Reserve reconstruction corrects only bounded solver roundoff" begin
+    group=ReserveGroup(name=:Zero,generators=[:Unit],up_max=0.0,down_max=0.0)
+    c=spinning_case(;groups=[group])
+    u=ones(Int,1,2);q=fill(4.0,1,2)
+    raw=dispatch_from_controls(c;commitment=u,generator_q=q,gate=zeros(0,2))
+    raw.reserves.up.=-eps(Float64)
+    @test_throws ArgumentError dispatch_from_controls(c;commitment=u,generator_q=q,
+        gate=zeros(0,2),reserves=raw.reserves)
+    rebuilt,_=OpenSHOP._reconstruct_schedule(c,raw)
+    @test validate(c,rebuilt)["valid"]
+    @test all(iszero,rebuilt.reserves.up)
+    @test all(<(0.0),raw.reserves.up)
+    raw.reserves.up.=-1e-4
+    @test_throws ArgumentError OpenSHOP._reconstruct_schedule(c,raw)
+end
+
 @testset "Downward capacity reconstructs at a smooth maximum-power point" begin
     c=spinning_case()
     g=OpenSHOP._river_replace(only(c.system.generators);qmin=1.0,pmin=0.380628,
