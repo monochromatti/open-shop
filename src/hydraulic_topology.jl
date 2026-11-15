@@ -129,14 +129,18 @@ end
 
 The hydraulic quadrature holds tunnel, turbine and outlet rates over the interval.
 Routed arrivals need not be constant. Their integrated volume determines storage
-at each additional transport vertex. These rows guide dispatch; independent
+at each additional transport vertex and supplied observation time. These rows
+guide dispatch; independent
 hydraulic and transport refinement still determine numerical acceptance.
 """
-function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
+function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing;
+    observation_times=Float64[])
+    all(time->time isa Real && isfinite(time) && first(c.grid)<=time<=last(c.grid),observation_times) ||
+        throw(ArgumentError("storage observation times must lie within the scheduling horizon"))
     for (i, reservoir) in enumerate(c.system.reservoirs)
         incoming = [j for (j, enters, _) in topology.river_incidence[i] if enters]
         isempty(incoming) && continue
-        times=storage_observation_times(c,routing,incoming)
+        times=sort!(unique!(vcat(storage_observation_times(c,routing,incoming),observation_times)))
         for time in times
             time in c.grid && continue
             volume=reservoir_volume_expression(model,c,topology,V,Q,GQ,RQ,routing,i,time)

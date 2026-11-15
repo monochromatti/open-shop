@@ -40,9 +40,11 @@ On a cold start, the nonlinear routine first restores feasibility, then optimize
 revenue. Its feasible trajectory is retained if revenue optimization fails.
 A supplied `initial` must pass independent acceptance for this case; it is not
 an unchecked guess for changed inputs. All work shares `time_limit`, with
-individual solve limits set by `proposal_time_limit` and `nlp_time_limit`.
-The shared preparation budget defaults to 60 seconds; individual solve limits
-alone do not bound a sequence of distinct assignments.
+`proposal_time_limit` bounding each MILP and `nlp_time_limit` bounding the full
+continuous dispatch of each assignment, including construction, feasibility
+restoration, refinement and revenue optimization. Adding a missing restriction
+does not restart this allowance. The shared preparation budget defaults to
+60 seconds; the per-assignment allowance alone does not bound the full search.
 Unused time remains available to the full nonlinear integer search.
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary
@@ -199,6 +201,12 @@ the default bound allowance is 0.1 m³. Storage paths are also checked between
 arrival knots: affine net rates give quadratic volumes, whose extrema can be
 evaluated without additional time steps. These checks concern the declared
 held-flow quadrature; finer coupled replay remains necessary.
+An observed storage or power violation absent from the current nonlinear model
+adds a dense-path observation to the next solve. This repairs the missing
+restriction before discarding the improvement or adding another hydraulic mesh.
+In `solve_case`, `observation_times` select equipment checks and `storage_times`
+select storage-bound checks; the latter default to the same times. Adaptive
+refinement generates these two sets independently.
 
 Replay compares storage and endpoint level at common grid vertices. By default,
 each storage difference must be below both 2,000 m³ and 0.1% of the reservoir's
@@ -219,7 +227,7 @@ If transport already meets its volume tolerance, the retry adds finer hydraulic
 equations sharing the original controls. No additional control decisions are
 introduced. Revenue optimization retains the accepted transport mesh.
 
-Constant-objective feasibility solves can stop once Ipopt's unscaled constraint
+Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
 

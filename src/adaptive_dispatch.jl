@@ -425,6 +425,7 @@ function _adaptive_dispatch(
     grid=copy(c.grid)
     replay_grid=nothing
     observation_times=Float64[]
+    storage_times=Float64[]
     refinements=0
     # A supplied initial is checked as written. An unchecked start is first
     # reintegrated under the requested controls and current forecast.
@@ -456,7 +457,7 @@ function _adaptive_dispatch(
             remaining=min(time_limit,deadline-time())
             remaining>0 || break
             dispatch!==nothing && remaining<=get(dispatch,"construction_seconds",0.0) && break
-            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,observation_times,
+            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,observation_times,storage_times,
                 time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
             latest=dispatch.solution
             latest===nothing && break
@@ -478,10 +479,14 @@ function _adaptive_dispatch(
         grid=copy(resolution.grid)
         replay_grid===nothing || (replay_grid=sort!(unique!(vcat(replay_grid,grid))))
         original=latest_validation.original_validation
+        missing_storage=setdiff(get(original,"storage_path_times",Float64[]),latest.grid,storage_times)
+        missing_power=setdiff(get(original,"power_limit_times",Float64[]),latest.grid,observation_times)
+        required=!isempty(missing_storage) || !isempty(missing_power)
+        append!(storage_times,missing_storage)
         previous_observations=length(observation_times)
-        observation_times=sort!(unique!(vcat(observation_times,latest_validation.power_limit_times,
+        observation_times=sort!(unique!(vcat(observation_times,missing_power,latest_validation.power_limit_times,
             get(original,"hydraulic_event_times",Float64[]))))
-        added_observations=length(observation_times)>previous_observations
+        added_observations=length(observation_times)>previous_observations || !isempty(missing_storage)
         push!(attempts,(;
             iteration=length(attempts),intervals=length(c.prices),
             integration_intervals=length(latest.grid)-1,
@@ -508,6 +513,12 @@ function _adaptive_dispatch(
             dispatch!==nothing && !feasibility && break
             feasibility=false
         elseif grid!=latest.grid
+            feasibility=true
+        elseif required
+            # Add a missed dense-path restriction before judging the solve or
+            # refining its integration mesh. Its time is not a new control.
+            refinements<max_refinements || break
+            refinements+=1
             feasibility=true
         elseif !latest_validation.original_valid &&
                (!latest_validation.numerically_converged || refinements==max_refinements)

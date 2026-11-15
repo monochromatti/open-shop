@@ -1121,8 +1121,11 @@ assignment from the proposal model. A local failure does not prove infeasibility
 the full nonlinear model retains every permitted assignment. Preparation ends
 when accepted choices repeat, an accepted dispatch makes no gain, or the time
 budget expires. Repeated choices do not trigger another dispatch solve. This
-heuristic stopping rule gives no optimality guarantee. The best accepted
-trajectory supplies a start for the full SCIP search~@scip, which can change
+heuristic stopping rule gives no optimality guarantee.
+For each assignment, construction, feasibility restoration, refinement and
+revenue optimization share one dispatch allowance. Adding constraints does
+not restart this allowance. The best accepted trajectory supplies a start
+for the full SCIP search~@scip, which can change
 all discrete choices. The MILP objective approximates @eq:objective and supplies
 no enclosing bound.
 
@@ -1380,7 +1383,11 @@ violated in finer replay, add that replay's equations to the next nonlinear solv
 with the same control intervals. Between arrival knots, a held-flow storage path
 is quadratic. Its minimum or maximum may lie between mesh vertices. Locate these
 extrema analytically and include the time of each reservoir's largest bound
-violation in the next replay mesh. After the controls change, locate the extrema
+violation among the next solve's dense-path observations. A restriction missing
+from the current trajectory's nonlinear model is added and repaired before
+discarding that trajectory or adding another hydraulic mesh. Storage observations
+use its integrated-volume expression; power observations use stationary pressure
+states. Neither advances time. After the controls change, locate the extrema
 again. This constraint-generation step draws on the treatment of path constraints
 in semi-infinite optimal control~@potschka. It does not introduce additional
 control decisions.
