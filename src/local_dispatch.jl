@@ -38,6 +38,7 @@ function _build_dispatch(
     integral_grid = c.grid,
     grid = c.grid,
     observation_times = Float64[],
+    storage_times = observation_times,
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -328,7 +329,7 @@ function _build_dispatch(
     river_operations=constrain_river_operations!(m,operating_case,windows.river_release;
         fixed=fixed_river_on(operating_case,river_on,operating_warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
-    constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing;observation_times)
+    constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing;observation_times=storage_times)
     history_initial=routing.initial_transit
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
@@ -389,14 +390,15 @@ end
 # A second hydraulic mesh shares the requested controls. Its state variables are
 # states satisfying the finer equations, not additional scheduling decisions. The
 # objective and returned schedule still belong to the original model.
-function constrain_replay!(b,grid;warm=nothing,river_on=nothing,observation_times=Float64[])
+function constrain_replay!(b,grid;warm=nothing,river_on=nothing,
+    observation_times=Float64[],storage_times=observation_times)
     objective=objective_function(b.m)
     parent=TimeDiscretization(b.case.grid,grid)
     refined=replay_case(b.case,grid)
     operating=_river_replace(b.operating_case;routing_grid=refined.routing_grid)
     f=_build_dispatch(operating;grid,u=b.operating_u,model=b.m,prefix="replay_",
         warm,tunnel_opening=Matrix{Float64}(b.gates.opening),river_on,
-        shared_controls=b.variables,control_index=parent.interval,observation_times)
+        shared_controls=b.variables,control_index=parent.interval,observation_times,storage_times)
     if b.reserves!==nothing
         base_cells=first.(b.mesh.cells)
         fine_cells=first.(f.mesh.cells)
@@ -475,8 +477,9 @@ Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
 `nothing` if no solution exists. `accepted` means the solution passed the
 physical equations and original operating-window checks. `grid=case.grid`
 optionally supplies a finer primary hydraulic mesh. Additional
-`observation_times` constrain storage bounds and equipment limits using dense storage without changing
-energy integration. Controls retain their
+`observation_times` constrain equipment limits using dense storage without
+changing energy integration. `storage_times` constrain storage bounds at supplied
+interior times and default to `observation_times`. Controls retain their
 original intervals and the returned schedule records the physical grid.
 `replay_grid` optionally adds finer
 hydraulic equations sharing these controls; it does not change the returned
@@ -499,6 +502,7 @@ function solve_case(
     replay_grid = nothing,
     grid = c.grid,
     observation_times = Float64[],
+    storage_times = observation_times,
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -515,9 +519,9 @@ function solve_case(
         transport,
         tunnel_opening,
         river_on,
-        grid,observation_times,
+        grid,observation_times,storage_times,
     )
-    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on,observation_times)
+    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on,observation_times,storage_times)
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds
     result=Dict{String,Any}(

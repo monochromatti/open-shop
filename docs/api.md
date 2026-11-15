@@ -204,6 +204,9 @@ held-flow quadrature; finer coupled replay remains necessary.
 An observed storage or power violation absent from the current nonlinear model
 adds a dense-path observation to the next solve. This repairs the missing
 restriction before discarding the improvement or adding another hydraulic mesh.
+In `solve_case`, `observation_times` select equipment checks and `storage_times`
+select storage-bound checks; the latter default to the same times. Adaptive
+refinement generates these two sets independently.
 
 Replay compares storage and endpoint level at common grid vertices. By default,
 each storage difference must be below both 2,000 m³ and 0.1% of the reservoir's

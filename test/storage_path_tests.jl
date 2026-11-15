@@ -126,7 +126,7 @@ end
         optimal_flow=12+sqrt(2*24*1600/3600)
         critical_time=origin+(optimal_flow-12)/24
         observed=solve_case(c;u=ones(Int,1,1),time_limit=30.0,
-            observation_times=[critical_time])
+            storage_times=[critical_time])
         @test observed.accepted
         if observed.solution!==nothing
             @test only(observed.solution.generator_q)≈optimal_flow atol=0.002
