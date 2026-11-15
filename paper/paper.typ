@@ -1106,6 +1106,25 @@ constant-objective feasibility problem, stopping when unscaled constraints
 and bounds meet the primal tolerance. Revenue optimization follows independent
 acceptance; the feasible trajectory is retained if this improvement fails.
 
+Before this first accepted trajectory, the MILP minimizes changes from the
+recorded operating state:
+
+$ sum_(g,t) (s_(g t)^+ + s_(g t)^-)
+  + sum_(r,t) (a_(r t)^+ + a_(r t)^-)
+  + sum_(e,t) abs(b_(e t)-b_(e,t-1)). $
+
+The river sum includes reaches with an on/off restriction. First-interval
+differences use the recorded initial states. Constant gate changes can be
+omitted. This objective selects a starting commitment; it gives no guarantee
+of nonlinear feasibility. Once a trajectory passes independent acceptance,
+proposals use the economic objective. Schedule values always use @eq:objective.
+
+We supply first- and second-derivative callbacks for the small nonlinear
+operators, using ForwardDiff~@forwarddiff and reusable workspaces. A missing
+multivariate Hessian would otherwise force the nonlinear solver to approximate
+curvature for the whole model. At a curve knot, derivatives follow the stated
+segment convention.
+
 An accepted improvement updates the hydraulic reference and starting point of
 the next unrestricted proposal. The stated water values remain unchanged.
 If dispatch fails acceptance, the next proposal excludes its discrete assignment.
@@ -1123,7 +1142,7 @@ when accepted choices repeat, an accepted dispatch makes no gain, or the time
 budget expires. Repeated choices do not trigger another dispatch solve. This
 heuristic stopping rule gives no optimality guarantee. The best accepted
 trajectory supplies a start for the full SCIP search~@scip, which can change
-all discrete choices. The MILP objective approximates @eq:objective and supplies
+all discrete choices. The revenue MILP approximates @eq:objective and supplies
 no enclosing bound.
 
 Both preparation models also bound storage at transport vertices inside a
@@ -1380,7 +1399,11 @@ violated in finer replay, add that replay's equations to the next nonlinear solv
 with the same control intervals. Between arrival knots, a held-flow storage path
 is quadratic. Its minimum or maximum may lie between mesh vertices. Locate these
 extrema analytically and include the time of each reservoir's largest bound
-violation in the next replay mesh. After the controls change, locate the extrema
+violation among the next solve's dense-path observations. A restriction missing
+from the current trajectory's nonlinear model is added and repaired before
+discarding that trajectory or adding another hydraulic mesh. Storage observations
+use its integrated-volume expression; power observations use stationary pressure
+states. Neither advances time. After the controls change, locate the extrema
 again. This constraint-generation step draws on the treatment of path constraints
 in semi-infinite optimal control~@potschka. It does not introduce additional
 control decisions.

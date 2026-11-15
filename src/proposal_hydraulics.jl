@@ -13,7 +13,8 @@ function _proposal_reference(c, point)
         point===nothing && return _proposal_reference(c,nothing)
         release_series=all(r->r.deterministic_delay!==nothing,c.system.rivers) ? nothing :
             routed_schedule(c,point.river_release;generator_q=point.generator_q,tunnel_q=point.tunnel_q).release_series
-        return (;point.storage,point.head,point.tunnel_q,point.generator_q,point.river_release,release_series)
+        return (;point.storage,point.head,point.tunnel_q,point.tunnel_opening,
+            point.generator_q,point.river_release,release_series)
     end
     # A linearization point may prescribe only some physical quantities.
     # Missing components retain the surrogate's existing nominal defaults.
@@ -26,6 +27,7 @@ function _proposal_reference(c, point)
     (;storage=matrix("V",length(s.reservoirs),T+1),
         head=matrix("H",length(nodes(s)),T),
         tunnel_q=matrix("tunnel_q",length(s.tunnels),T),
+        tunnel_opening=matrix("tunnel_opening",length(s.tunnels),T),
         generator_q=matrix("generator_q",length(s.generators),T),
         river_release=matrix("river_release",length(s.rivers),T),release_series=nothing)
 end
@@ -84,11 +86,13 @@ function _proposal_gate_hydraulics!(m,c,V,Q,gq,u,alpha,reference_heads,gates,ref
         nominal=direct_nominal>0 ? direct_nominal : total_nominal/max(1,length(s.tunnels))
         anchor=reference.tunnel_q===nothing ? nominal :
             abs(reference.tunnel_q[i,t])
-        if (reference.tunnel_q===nothing || anchor==0) &&
+        closed_intake=direct_nominal>0 && reference.tunnel_opening!==nothing &&
+            reference.tunnel_opening[i,t]==0
+        if !closed_intake && (reference.tunnel_q===nothing || anchor==0) &&
             isfinite(reference_head[src,t]) && isfinite(reference_head[dst,t])
-            # A passive reservoir/boundary link has a physical reference flow.
-            # A unit's nominal flow can otherwise make its secant law infeasible
-            # even when the pressure difference permits flow below capacity.
+            # A passive reservoir/boundary link has a pressure-based reference.
+            # For a closed unit intake, retain the station's nominal flow:
+            # its old pressure difference belongs to the other gate configuration.
             position=length(positions)==1 ? only(positions) :
                 e.opening>0 ? e.opening : last(positions)
             hydraulic=sqrt(abs(reference_head[src,t]-reference_head[dst,t])/

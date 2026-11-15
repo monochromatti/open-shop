@@ -36,6 +36,11 @@ unrestricted. Repeated accepted choices, an accepted dispatch without a gain,
 or an exhausted shared budget end preparation. Rejected results do not replace
 the best accepted schedule.
 
+Before the first accepted schedule, the MILP minimizes unit and river-state
+transitions and tunnel-opening changes from the recorded initial state. Once
+nonlinear dispatch passes independent acceptance, proposals use the economic
+objective. Both phases retain all physical and operating restrictions.
+
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.
 A supplied `initial` must pass independent acceptance for this case; it is not
@@ -199,6 +204,9 @@ the default bound allowance is 0.1 m³. Storage paths are also checked between
 arrival knots: affine net rates give quadratic volumes, whose extrema can be
 evaluated without additional time steps. These checks concern the declared
 held-flow quadrature; finer coupled replay remains necessary.
+An observed storage or power violation absent from the current nonlinear model
+adds a dense-path observation to the next solve. This repairs the missing
+restriction before discarding the improvement or adding another hydraulic mesh.
 
 Replay compares storage and endpoint level at common grid vertices. By default,
 each storage difference must be below both 2,000 m³ and 0.1% of the reservoir's
@@ -219,7 +227,11 @@ If transport already meets its volume tolerance, the retry adds finer hydraulic
 equations sharing the original controls. No additional control decisions are
 introduced. Revenue optimization retains the accepted transport mesh.
 
-Constant-objective feasibility solves can stop once Ipopt's unscaled constraint
+Local nonlinear operators supply first and second derivatives through ForwardDiff,
+with reusable derivative workspaces. Ipopt therefore receives the sparse Hessian
+of the model, including the tabulated head and efficiency laws.
+
+Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
 

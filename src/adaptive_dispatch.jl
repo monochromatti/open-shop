@@ -478,8 +478,10 @@ function _adaptive_dispatch(
         grid=copy(resolution.grid)
         replay_grid===nothing || (replay_grid=sort!(unique!(vcat(replay_grid,grid))))
         original=latest_validation.original_validation
+        required=filter(time->!(time in latest.grid) && !(time in observation_times),
+            vcat(get(original,"storage_path_times",Float64[]),get(original,"power_limit_times",Float64[])))
         previous_observations=length(observation_times)
-        observation_times=sort!(unique!(vcat(observation_times,latest_validation.power_limit_times,
+        observation_times=sort!(unique!(vcat(observation_times,required,latest_validation.power_limit_times,
             get(original,"hydraulic_event_times",Float64[]))))
         added_observations=length(observation_times)>previous_observations
         push!(attempts,(;
@@ -508,6 +510,12 @@ function _adaptive_dispatch(
             dispatch!==nothing && !feasibility && break
             feasibility=false
         elseif grid!=latest.grid
+            feasibility=true
+        elseif !isempty(required)
+            # Add a missed dense-path restriction before judging the solve or
+            # refining its integration mesh. Its time is not a new control.
+            refinements<max_refinements || break
+            refinements+=1
             feasibility=true
         elseif !latest_validation.original_valid &&
                (!latest_validation.numerically_converged || refinements==max_refinements)

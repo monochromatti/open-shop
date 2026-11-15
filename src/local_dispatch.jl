@@ -328,7 +328,7 @@ function _build_dispatch(
     river_operations=constrain_river_operations!(m,operating_case,windows.river_release;
         fixed=fixed_river_on(operating_case,river_on,operating_warm))
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
-    constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing)
+    constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing;observation_times)
     history_initial=routing.initial_transit
     obj,penalty_cost=dispatch_objective(m,c,P,V,terminal,u,shortfall_release;
         initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
@@ -475,7 +475,7 @@ Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
 `nothing` if no solution exists. `accepted` means the solution passed the
 physical equations and original operating-window checks. `grid=case.grid`
 optionally supplies a finer primary hydraulic mesh. Additional
-`observation_times` check equipment limits using dense storage without changing
+`observation_times` constrain storage bounds and equipment limits using dense storage without changing
 energy integration. Controls retain their
 original intervals and the returned schedule records the physical grid.
 `replay_grid` optionally adds finer

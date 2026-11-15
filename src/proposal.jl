@@ -10,10 +10,14 @@ An `incumbent` schedule supplies joint discrete starts without restricting the
 permitted unit states, river states or tunnel positions. `excluded` contains
 previously unsuccessful assignments to skip in this proposal model only;
 a failed local dispatch does not prove such an assignment infeasible.
+With `feasibility_only=true`, minimize unit/river transitions and tunnel-gate
+motion instead of approximate revenue. This initializes preparation from the
+recorded operating state; it changes no physical or operating restriction.
 """
 function propose_commitment(
     c;
     reference = nothing,
+    feasibility_only = false,
     excluded = (),
     time_limit = 20.0,
     incumbent = nothing,
@@ -40,7 +44,7 @@ function propose_commitment(
     set_silent(m)
     set_attribute(m, MOI.RelativeGapTolerance(), 0.002)
     states=_joint_states!(m,c)
-    gates=_tunnel_gate_states!(m,c)
+    gates=_tunnel_gate_states!(m,c;track_changes=feasibility_only)
     u=states.u
     constrain_tunnel_switching!(m,c,gates.open,u)
     @variable(m, V[1:R, 1:(T + 1)])
@@ -282,6 +286,15 @@ function propose_commitment(
             init = 0.0,
         )
     )
+    if feasibility_only
+        # Preserve the initial operating state while finding the first water
+        # plan. Revenue proposals follow independent nonlinear acceptance.
+        changes=sum(states.su;init=0.0)+sum(states.sd;init=0.0)+
+            sum(x for x in river_operations.starts if x!==nothing;init=0.0)+
+            sum(x for x in river_operations.stops if x!==nothing;init=0.0)+
+            sum(values(gates.changes);init=0.0)
+        @objective(m,Min,changes)
+    end
     construction=time()-started
     remaining=min(time_limit-construction, deadline-time())
     remaining<=0 && return Dict{String,Any}(

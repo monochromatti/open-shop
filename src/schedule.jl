@@ -1,6 +1,7 @@
 """Schedule an input case using successive MILP proposals and nonlinear dispatch.
 
-Each accepted nonlinear improvement supplies the next proposal's hydraulic
+Before the first accepted schedule, proposals minimize operating-state changes.
+Subsequent proposals optimize approximate revenue. Each accepted nonlinear improvement supplies the next proposal's hydraulic
 reference. Stop when discrete controls repeat, an accepted dispatch fails to
 improve the best schedule, or the shared deadline expires. Cold dispatch restores
 feasibility before optimizing revenue; a failed improvement retains that
@@ -95,7 +96,8 @@ function schedule_case(
     end
     while time()<deadline
         p=propose_commitment(c;excluded,time_limit=proposal_time_limit,reference,
-            incumbent=best===nothing ? nothing : best.solution,deadline)
+            incumbent=best===nothing ? nothing : best.solution,deadline,
+            feasibility_only=best===nothing)
         push!(proposals,p)
         !haskey(p,"u") && best!==nothing && break
         # A missing MILP point is not evidence that the nonlinear problem is

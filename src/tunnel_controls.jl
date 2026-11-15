@@ -300,8 +300,9 @@ end
 Position one is implicit. Fixed, prescribed, scheduled and singleton controls
 stay numeric; a fixed trajectory introduces no gate variables. Positive costs
 use an absolute-change epigraph only when the change is an affine expression.
+`track_changes` also retains these expressions for minimum-motion initialization.
 """
-function _tunnel_gate_states!(m,c;fixed=nothing,relaxed=false)
+function _tunnel_gate_states!(m,c;fixed=nothing,relaxed=false,track_changes=false)
     fixed===nothing || (fixed=_physical_tunnel_openings(c,fixed))
     E,T=length(c.system.tunnels),length(c.prices)
     opening=Matrix{Any}(undef,E,T)
@@ -327,7 +328,7 @@ function _tunnel_gate_states!(m,c;fixed=nothing,relaxed=false)
                 open[i,t]=positions[1]>0 ? 1.0 : sum(selectors)
             end
             coefficient=opvalue(c,e.name,:gate_adjustment_cost,c.grid[t],e.gate_adjustment_cost)
-            if coefficient>0
+            if coefficient>0 || track_changes
                 difference=opening[i,t]-previous
                 if difference isa Real
                     add_to_expression!(cost,coefficient*abs(difference))

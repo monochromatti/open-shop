@@ -124,6 +124,15 @@ end
         # V(t)=2000+3600*((12-q)*t+12t²) m³ limits constant discharge to
         # q=12+sqrt(2*24*1600/3600), although endpoint bounds permit more.
         optimal_flow=12+sqrt(2*24*1600/3600)
+        critical_time=origin+(optimal_flow-12)/24
+        observed=solve_case(c;u=ones(Int,1,1),time_limit=30.0,
+            observation_times=[critical_time])
+        @test observed.accepted
+        if observed.solution!==nothing
+            @test only(observed.solution.generator_q)≈optimal_flow atol=0.002
+            @test observed.solution.grid==c.grid
+            @test validate_replay(c,observed.solution;grid=OpenSHOP.refined_grid(c.grid;factor=4))["valid"]
+        end
         result=solve_verified(c;u=ones(Int,1,1),time_limit=20.0,max_refinements=12)
         @test result["accepted"]
         if result["accepted"]
