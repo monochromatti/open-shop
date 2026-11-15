@@ -36,12 +36,6 @@ unrestricted. Repeated accepted choices, an accepted dispatch without a gain,
 or an exhausted shared budget end preparation. Rejected results do not replace
 the best accepted schedule.
 
-Before the first accepted schedule, the MILP minimizes unit and river-state
-transitions and tunnel-opening changes from the recorded initial state. Once
-nonlinear dispatch passes independent acceptance, proposals use the economic
-objective. Changing the proposal objective leaves its constraints unchanged;
-nonlinear acceptance still uses the original physical equations and restrictions.
-
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.
 A supplied `initial` must pass independent acceptance for this case; it is not
@@ -227,10 +221,6 @@ next solve starts from the latest physical trajectory on the refined mesh.
 If transport already meets its volume tolerance, the retry adds finer hydraulic
 equations sharing the original controls. No additional control decisions are
 introduced. Revenue optimization retains the accepted transport mesh.
-
-Local nonlinear operators supply first and second derivatives through ForwardDiff,
-with reusable derivative workspaces. Ipopt therefore receives the sparse Hessian
-of the model, including the tabulated head and efficiency laws.
 
 Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then

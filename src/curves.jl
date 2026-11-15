@@ -283,7 +283,7 @@ The caller must constrain and validate the physical table domain separately.
 """
 table_operator(m, c::TableCurve; name = gensym(:table)) =
     JuMP.add_nonlinear_operator(m, 1, x->table_value(c, x; extrapolation = :linear); name)
-turbine_operator(m, c::TurbineTable; name = gensym(:turbine)) = autodiff_operator(
+turbine_operator(m, c::TurbineTable; name = gensym(:turbine)) = JuMP.add_nonlinear_operator(
     m,
     2,
     (q, h)->turbine_efficiency(c, q, h; extrapolation = :linear);

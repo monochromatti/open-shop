@@ -1,17 +1,5 @@
 include("tunnel_gate_fixtures.jl")
 
-@testset "Feasibility proposals retain gates without an economic motion cost" begin
-    c=tg_flow_case(;opening=1.0,initial=0.5,cost=0.0)
-    proposal=OpenSHOP.propose_commitment(c;feasibility_only=true,time_limit=60.0)
-    @test proposal["tunnel_opening"]==fill(0.5,1,3)
-    operation=OperationalSeries(object=:GateLink,attribute=:opening,
-        times=[1.0],values=[0.0])
-    restricted=tg_copy(c;operations=[operation])
-    required=OpenSHOP.propose_commitment(restricted;feasibility_only=true,time_limit=20.0)
-    @test required["tunnel_opening"][1,2:3]==[0.0,0.0]
-    @test validate_tunnel_openings(restricted,required["tunnel_opening"])
-end
-
 # Independent storage integration, pressure loss, and chronological gate cost.
 function tg_reference(c,opening)
     T=length(c.prices)

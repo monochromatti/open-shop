@@ -129,7 +129,8 @@ end
 
 The hydraulic quadrature holds tunnel, turbine and outlet rates over the interval.
 Routed arrivals need not be constant. Their integrated volume determines storage
-at each additional transport vertex. These rows guide dispatch; independent
+at each additional transport vertex and supplied observation time. These rows
+guide dispatch; independent
 hydraulic and transport refinement still determine numerical acceptance.
 """
 function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing;

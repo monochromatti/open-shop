@@ -186,7 +186,7 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="",observ
             component in (:upper,:lower) && increasing[i] && continue
             component==:domain && first(eta_bounds[i])>=g.min_efficiency && last(eta_bounds[i])<=1.0 && continue
             component==:flow && monotone_flow[i] && continue
-            envelope=autodiff_operator(m,3,
+            envelope=add_nonlinear_operator(m,3,
                 (q,a,b)->getproperty(unit_head_envelope(g,q,a,b;pmin,pmax,qmin,qmax),component)/scale;
                 name=Symbol(prefix,"unit_head_span_",component,"_",i,"_",k))
             @constraint(m,envelope(b.GQ[i,t],heads[i,k],heads[i,k+1])<=0)

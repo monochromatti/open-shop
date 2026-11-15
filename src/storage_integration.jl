@@ -67,7 +67,7 @@ function _mean_head_operator(m,r;name)
         _,g[1],g[2]=_mean_level_data(c,a,b)
         nothing
     end
-    autodiff_operator(m,2,value,gradient;name)
+    JuMP.add_nonlinear_operator(m,2,value,gradient;name)
 end
 
 # Integral of (level-reference_head) dV. Its small values are suitable for the

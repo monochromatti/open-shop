@@ -18,28 +18,6 @@ function commitment_control_case(; grid=[0.0,0.5,1.5,2.0,3.5],
         prices=zeros(length(grid)-1),operations=operations)
 end
 
-@testset "Feasibility proposals preserve initial states before pursuing revenue" begin
-    base=commitment_control_case(;unit_initial_on=1)
-    c=OpenSHOP._river_replace(base;prices=fill(-100.0,length(base.prices)))
-    initial=OpenSHOP.propose_commitment(c;feasibility_only=true,time_limit=60.0)
-    @test initial["u"]==ones(Int,2,length(c.prices))
-    revenue=OpenSHOP.propose_commitment(c;time_limit=20.0)
-    @test revenue["u"]==zeros(Int,2,length(c.prices))
-    restriction=OperationalSeries(object=:UnitA,attribute=:maintenance,
-        times=[0.0,1.5],values=[1.0,0.0])
-    restricted=OpenSHOP._river_replace(c;operations=[restriction])
-    first_plan=OpenSHOP.propose_commitment(restricted;feasibility_only=true,time_limit=20.0)
-    @test admissible(restricted,first_plan["u"])
-    @test first_plan["u"][1,1:2]==[0,0]
-    @test all(==(1),first_plan["u"][2,:])
-    result=schedule_case(c;time_limit=60.0,nlp_time_limit=20.0)
-    @test result.accepted
-    if result.solution!==nothing
-        @test result.objective≈0.0 atol=1e-6
-        @test all(iszero,result.solution.commitment)
-    end
-end
-
 @testset "Hard commitment controls intersect rather than overwrite" begin
     maintenance=OperationalSeries(object=:UnitA,attribute=:maintenance,
         times=[0.0,1.5],values=[1.0,0.0])

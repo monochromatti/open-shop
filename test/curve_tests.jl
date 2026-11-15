@@ -1,36 +1,6 @@
 using JuMP, Ipopt, ForwardDiff
 const HC=OpenSHOP
 
-@testset "Registered nonlinear operators supply reusable second derivatives" begin
-    m=Model()
-    f(q,h)=q*h*(0.9-0.1*(q-4)^2)
-    HC.autodiff_operator(m,2,f;name=:hydraulic_work)
-    _,gradient!,hessian! = JuMP.MOI.get(backend(m),JuMP.MOI.UserDefinedFunction(:hydraulic_work,2))
-    for (q,h) in ((3.0,100.0),(5.0,80.0),(3.0,100.0))
-        gradient=zeros(2);hessian=zeros(2,2)
-        gradient!(gradient,q,h);hessian!(hessian,q,h)
-        eta=0.9-0.1*(q-4)^2
-        slope=-0.2*(q-4)
-        @test gradient≈[h*(eta+q*slope),q*eta]
-        @test hessian[1,1]≈h*(2slope-0.2q)
-        @test hessian[2,1]≈eta+q*slope
-        @test hessian[2,2]≈0.0 atol=1e-12
-    end
-    table=TableCurve([0.0,1.0,2.0,4.0],[100.0,101.0,104.0,108.0])
-    reservoir=Reservoir(name=:Table,level_curve=table,v0=1.0,vmin=0.0,vmax=4.0,water_value=0.0)
-    HC._mean_head_operator(m,reservoir;name=:mean_level)
-    _,_,mean_hessian! = JuMP.MOI.get(backend(m),JuMP.MOI.UserDefinedFunction(:mean_level,2))
-    for (a,b) in ((0.25,3.5),(3.5,0.25),(0.4,0.6),(2.2,2.2))
-        H=zeros(2,2);mean_hessian!(H,a,b)
-        step=1e-5
-        ga=(collect(HC._mean_head_partials(reservoir,a+step,b))-
-            collect(HC._mean_head_partials(reservoir,a-step,b)))/(2step)
-        gb=(collect(HC._mean_head_partials(reservoir,a,b+step))-
-            collect(HC._mean_head_partials(reservoir,a,b-step)))/(2step)
-        @test [H[1,1],H[2,1],H[2,2]]≈[ga[1],ga[2],gb[2]] atol=1e-7
-    end
-end
-
 @testset "Explicit table interpolation and domains" begin
     c=HC.TableCurve([0.0, 1.0, 3.0], [2.0, 4.0, 5.0])
     @test HC.table_value(c, 0.0)==2.0
