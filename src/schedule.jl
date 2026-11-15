@@ -9,7 +9,8 @@ MILP proposals, so another discrete choice can be tried. These exclusions
 never restrict a later global search.
 
 `time_limit` defaults to 60 seconds and is shared by construction, solves and
-refinements. The MILP/NLP limits also bound individual solves. Budgets are
+refinements. `proposal_time_limit` bounds each MILP. `nlp_time_limit` bounds
+the full dispatch of each assignment, including construction and refinement. Budgets are
 checked between phases; construction, a solver iteration or final replay can
 overrun the allowance. All work is included in elapsed time. An accepted result is feasible under
 the declared numerical checks, not a global optimality certificate. `operational_margin` optionally
@@ -113,7 +114,7 @@ function schedule_case(
             problem=best===nothing ? c : best.case
             v=_adaptive_dispatch(problem;u,tunnel_opening=opening,river_on,
                 warm=reference,max_refinements,time_limit=nlp_time_limit,
-                operational_margin,deadline,refine_grid)
+                operational_margin,deadline=min(deadline,time()+nlp_time_limit),refine_grid)
             push!(attempts,Dict("stage"=>"dispatch","accepted"=>v.accepted,
                 "seconds"=>v.total_seconds,"steps"=>_dispatch_reports(v.attempts),"u"=>copy(u),
                 "tunnel_opening"=>copy(opening),"elapsed_seconds"=>time()-started,

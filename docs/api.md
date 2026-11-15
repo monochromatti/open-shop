@@ -40,9 +40,11 @@ On a cold start, the nonlinear routine first restores feasibility, then optimize
 revenue. Its feasible trajectory is retained if revenue optimization fails.
 A supplied `initial` must pass independent acceptance for this case; it is not
 an unchecked guess for changed inputs. All work shares `time_limit`, with
-individual solve limits set by `proposal_time_limit` and `nlp_time_limit`.
-The shared preparation budget defaults to 60 seconds; individual solve limits
-alone do not bound a sequence of distinct assignments.
+`proposal_time_limit` bounding each MILP and `nlp_time_limit` bounding the full
+continuous dispatch of each assignment, including construction, feasibility
+restoration, refinement and revenue optimization. Adding a missing restriction
+does not restart this allowance. The shared preparation budget defaults to
+60 seconds; the per-assignment allowance alone does not bound the full search.
 Unused time remains available to the full nonlinear integer search.
 For a forecast update, `schedule_case(case; warm=previous_iterate)` instead
 uses an unchecked hydraulic reference and numerical starting point. The ordinary

@@ -1121,8 +1121,11 @@ assignment from the proposal model. A local failure does not prove infeasibility
 the full nonlinear model retains every permitted assignment. Preparation ends
 when accepted choices repeat, an accepted dispatch makes no gain, or the time
 budget expires. Repeated choices do not trigger another dispatch solve. This
-heuristic stopping rule gives no optimality guarantee. The best accepted
-trajectory supplies a start for the full SCIP search~@scip, which can change
+heuristic stopping rule gives no optimality guarantee.
+For each assignment, construction, feasibility restoration, refinement and
+revenue optimization share one dispatch allowance. Adding constraints does
+not restart this allowance. The best accepted trajectory supplies a start
+for the full SCIP search~@scip, which can change
 all discrete choices. The MILP objective approximates @eq:objective and supplies
 no enclosing bound.
 
