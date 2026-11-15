@@ -1,33 +1,13 @@
 # Interior power extrema occur at a data knot or a root of a quadratic.
 # Coefficients remain differentiable so operator gradients/Hessians include
-# movement of an interior stationary head. Degenerate inflections need no root.
+# movement of an interior stationary head.
 function cubic_extrema(c,a,b)
     value(h)=((c[4]*h+c[3])*h+c[2])*h+c[1]
-    T=typeof(c[1]+c[2]+c[3]+c[4]+a+b)
-    heads=T[a,b]
-    A,B,C=3c[4],2c[3],c[2]
-    function primal(x)
-        while x isa ForwardDiff.Dual
-            x=ForwardDiff.value(x)
-        end
-        x
-    end
-    if iszero(primal(A))
-        iszero(primal(B)) || push!(heads,-C/B)
-    else
-        scale=max(abs(primal(A)),abs(primal(B)),abs(primal(C)))
-        A,B,C=A/scale,B/scale,C/scale
-        discriminant=B^2-4A*C
-        if primal(discriminant)>0
-            root=-0.5*(B+(primal(B)<0 ? -sqrt(discriminant) : sqrt(discriminant)))
-            push!(heads,root/A)
-            iszero(primal(root)) || push!(heads,C/root)
-        end
-    end
+    heads=(a,b,quadratic_roots(3c[4],2c[3],c[2])...)
     minimum_value,maximum_value=value(a),value(a)
     at_minimum,at_maximum=a,a
     for h in heads
-        primal(a)<=primal(h)<=primal(b) || continue
+        a<=h<=b || continue
         p=value(h)
         if p<minimum_value
             minimum_value,at_minimum=p,h

@@ -1,3 +1,28 @@
+"""Real roots of A*x²+B*x+C, including its linear and repeated-root limits.
+
+Scale coefficients before the discriminant and recover the second root from
+its product to avoid subtractive cancellation. Keep dual coefficients intact;
+only branch decisions use their underlying real values.
+"""
+function quadratic_roots(A,B,C)
+    function primal(x)
+        while x isa ForwardDiff.Dual
+            x=ForwardDiff.value(x)
+        end
+        x
+    end
+    if iszero(primal(A))
+        return iszero(primal(B)) ? () : (-C/B,)
+    end
+    scale=max(abs(primal(A)),abs(primal(B)),abs(primal(C)))
+    A,B,C=A/scale,B/scale,C/scale
+    discriminant=B^2-4A*C
+    primal(discriminant)<0 && return ()
+    iszero(primal(discriminant)) && return (-B/(2A),)
+    root=-0.5*(B+(primal(B)<0 ? -sqrt(discriminant) : sqrt(discriminant)))
+    iszero(primal(root)) ? (root/A,) : (root/A,C/root)
+end
+
 # Polynomial coefficients and exact cubic ranges for turbine interpolation.
 function _global_polynomial_range(a, lo, hi)
     f(x)=a[1]+x*(a[2]+x*(a[3]+x*a[4]))

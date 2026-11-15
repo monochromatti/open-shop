@@ -53,13 +53,21 @@ steps. Adjustable unit flows and tunnel openings retain their control times.
 Each side of a control change has its own pressure state. Mean-step power
 continues to determine energy and the objective.
 """
-function constrain_power_observations!(b;operational_margin=0.0,prefix="")
+function constrain_power_observations!(b;operational_margin=0.0,prefix="",observation_times=Float64[])
     c,s,m=b.case,b.case.system,b.m
     topology=HydraulicTopology(s)
     nr,nj,ng,ne=length(s.reservoirs),length(s.junctions),length(s.generators),length(s.tunnels)
+    all(time->time isa Real && isfinite(time) && first(c.grid)<=time<=last(c.grid),observation_times) ||
+        throw(ArgumentError("equipment observation times must lie within the scheduling horizon"))
     ng==0 && ne==0 && return nothing
-    periods=repeat(collect(eachindex(c.prices));inner=2)
-    vertices=[vertex for t in eachindex(c.prices) for vertex in (t,t+1)]
+    periods=Int[];times=Float64[];cells=UnitRange{Int}[]
+    for t in eachindex(c.prices)
+        points=sort!(unique!(vcat(c.grid[t],
+            filter(time->c.grid[t]<time<c.grid[t+1],observation_times),c.grid[t+1])))
+        push!(cells,(length(times)+1):(length(times)+length(points)))
+        append!(times,points)
+        append!(periods,fill(t,length(points)))
+    end
     K=length(periods)
     h=@variable(m,[1:nj,1:K],base_name=prefix*"point_head")
     q=@variable(m,[1:ne,1:K],base_name=prefix*"point_tunnel_q")
@@ -76,10 +84,12 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
             set_start_value(gq[i,k],something(start_value(b.variables.gq[i,periods[k]]),0.0))
     end
     H=Matrix{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,length(topology.node_names),K)
+    storage=[reservoir_volume_expression(m,c,topology,b.V,b.Q,b.GQ,b.RQ,b.routing,i,time)
+        for i in 1:nr,time in times]
     for k in 1:K
         t=periods[k]
         for (i,r) in enumerate(s.reservoirs)
-            V=b.V[i,vertices[k]]
+            V=storage[i,k]
             op=b.unit_operators.level_ops[i]
             H[i,k]=op===nothing ? r.z0+r.slope*V+r.curvature*V^2 : op(V)
         end
@@ -116,8 +126,7 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
     pressure_system=_river_replace(s;rivers=River[],river_junctions=RiverJunction[])
     for k in 1:K
         t=periods[k]
-        volume=[r.vmax*something(start_value(b.variables.v[i,vertices[k]]),r.v0/r.vmax)
-            for (i,r) in enumerate(s.reservoirs)]
+        volume=[value(v->something(start_value(v),0.0),storage[i,k]) for i in 1:nr]
         discharge=[DISPATCH_FLOW_SCALE*something(start_value(b.variables.gq[i,t]),0.0) for i in 1:ng]
         reference=[DISPATCH_HEAD_SCALE*something(start_value(b.variables.h[i,t]),0.0)
             for i in eachindex(topology.node_names)]
@@ -150,7 +159,7 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
     # A continuous head trajectory attains every head between its endpoint
     # values. Enforce the equipment limits over that whole span, including
     # interior efficiency-table extrema, without adding integration steps.
-    for (i,g) in enumerate(s.generators),t in eachindex(c.prices)
+    for (i,g) in enumerate(s.generators),t in eachindex(c.prices),k in first(cells[t]):last(cells[t])-1
         b.u[i,t]==0 && continue
         pmin,pmax=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
             opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
@@ -161,8 +170,8 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
             component==:flow && g.turbine_table===nothing && g.characteristic===nothing && continue
             envelope=add_nonlinear_operator(m,3,
                 (q,a,b)->getproperty(unit_head_envelope(g,q,a,b;pmin,pmax,qmin,qmax),component)/scale;
-                name=Symbol(prefix,"unit_head_span_",component,"_",i,"_",t))
-            @constraint(m,envelope(b.GQ[i,t],heads[i,2t-1],heads[i,2t])<=0)
+                name=Symbol(prefix,"unit_head_span_",component,"_",i,"_",k))
+            @constraint(m,envelope(b.GQ[i,t],heads[i,k],heads[i,k+1])<=0)
         end
     end
     constrain_plant_capacities!(m,c,u,P,GQ;intervals=periods,margin=operational_margin)
@@ -177,7 +186,7 @@ It also checks each unit over the head span between its two observations.
 This remains a finite observation check, not a bound on every continuous-time
 head excursion or interior peak of total plant power.
 """
-function point_operating_residuals(c,x;tolerance=1e-4)
+function point_operating_residuals(c,x;path_data,tolerance=1e-4)
     s=c.system
     ng,ne=length(s.generators),length(s.tunnels)
     unit_power=zeros(ng);unit_q=zeros(ng);unit_domain=zeros(ng)
@@ -189,10 +198,19 @@ function point_operating_residuals(c,x;tolerance=1e-4)
     pressure_system=_river_replace(s;rivers=River[],river_junctions=RiverJunction[])
     topology=HydraulicTopology(s)
     nr=length(s.reservoirs)
-    observed_heads=fill(NaN,ng,2length(c.prices))
-    for t in eachindex(c.prices),vertex in (t,t+1)
+    observed_heads=Vector{Matrix{Float64}}(undef,length(c.prices))
+    observations=Vector{Vector{Float64}}(undef,length(c.prices))
+    for t in eachindex(c.prices)
+        observations[t]=sort!(unique!(vcat(c.grid[t],
+            filter(time->c.grid[t]<time<c.grid[t+1],path_data.crossings),c.grid[t+1])))
+        observed_heads[t]=fill(NaN,ng,length(observations[t]))
+    end
+    for t in eachindex(c.prices),(k,time) in enumerate(observations[t])
+        vertex=searchsortedfirst(c.grid,time)
+        volume=vertex<=length(c.grid) && c.grid[vertex]==time ? x.storage[:,vertex] :
+            [path(time) for path in path_data.paths]
         point=try
-            forward_step(pressure_system,view(x.storage,:,vertex),0.0,
+            forward_step(pressure_system,volume,0.0,
                 view(x.generator_q,:,t),Float64[],Float64[];
                 tunnel_opening=view(x.tunnel_opening,:,t),commitment=view(x.commitment,:,t),
                 head_reference=view(x.head,:,t))
@@ -202,10 +220,10 @@ function point_operating_residuals(c,x;tolerance=1e-4)
         end
         if point===nothing || !point.converged
             convergence=Inf
-            push!(times,c.grid[vertex])
+            push!(times,time)
             continue
         end
-        observed_heads[:,2t-1+(vertex-t)]=point.generator_head
+        observed_heads[t][:,k].=point.generator_head
         violation=0.0
         for (i,g) in enumerate(s.generators)
             u=x.commitment[i,t]
@@ -254,11 +272,11 @@ function point_operating_residuals(c,x;tolerance=1e-4)
             pressure_head[i]=max(pressure_head[i],excess)
             violation=max(violation,excess)
         end
-        violation>tolerance && push!(times,c.grid[vertex])
+        violation>tolerance && push!(times,time)
     end
-    for t in eachindex(c.prices),(i,g) in enumerate(s.generators)
+    for t in eachindex(c.prices),(i,g) in enumerate(s.generators),k in 1:length(observations[t])-1
         x.commitment[i,t]==0 && continue
-        a,b=observed_heads[i,2t-1],observed_heads[i,2t]
+        a,b=observed_heads[t][i,k],observed_heads[t][i,k+1]
         isfinite(a) && isfinite(b) || continue
         pmin=opinterval(c,g.name,:pmin,t,g.pmin)
         pmax=opinterval(c,g.name,:pmax,t,g.pmax)
@@ -280,7 +298,7 @@ function point_operating_residuals(c,x;tolerance=1e-4)
         unit_q[i]=max(unit_q[i],span.flow)
         unit_domain[i]=max(unit_domain[i],span.domain)
         if max(unit_power[i],unit_q[i],unit_domain[i])>tolerance
-            push!(times,c.grid[t],c.grid[t+1])
+            push!(times,observations[t][k],observations[t][k+1])
         end
     end
     (;unit_power,unit_q,unit_domain,plant_power,plant_q,tunnel_q,pressure_head,

@@ -69,7 +69,7 @@ end
 `put(variable,value)` also permits an validated global lift to collect assignments
 before installing them in the solver. Auxiliary curve variables are separate.
 """
-function set_dispatch_start!(variables::DispatchVariables,x,put=set_start_value)
+function set_dispatch_start!(variables::DispatchVariables,x,put=set_start_value;initialize_controls=true)
     for t in axes(x.storage,2),i in axes(x.storage,1)
         put(variables.v[i,t],x.storage[i,t]/variables.storage_scale[i])
     end
@@ -80,37 +80,46 @@ function set_dispatch_start!(variables::DispatchVariables,x,put=set_start_value)
         put(variables.q[k],x.tunnel_q[k]/DISPATCH_FLOW_SCALE)
     end
     for k in eachindex(x.generator_q)
-        put(variables.gq[k],x.generator_q[k]/DISPATCH_FLOW_SCALE)
+        initialize_controls && put(variables.gq[k],x.generator_q[k]/DISPATCH_FLOW_SCALE)
         put(variables.p[k],x.power[k]/DISPATCH_POWER_SCALE)
     end
     for k in eachindex(x.river_release)
         put(variables.rq[k],x.river_release[k]/DISPATCH_RELEASE_SCALE)
-        put(variables.a[k],x.gate[k])
+        initialize_controls && put(variables.a[k],x.gate[k])
     end
     nothing
 end
 
-"""Initialize dispatch from its physical reference or the standard on-state guess."""
-function initialize_dispatch!(variables::DispatchVariables,c,u;warm=nothing,seed=1)
+"""Initialize states and newly owned controls from a reference or on-state guess.
+
+A second hydraulic mesh owns its states but reuses the first mesh's controls.
+Its initialization must leave those shared control starts unchanged.
+"""
+function initialize_dispatch!(variables::DispatchVariables,c,u;warm=nothing,seed=1,initialize_controls=true)
     s,T=c.system,length(c.prices)
     rng=MersenneTwister(seed)
+    for (i,r) in enumerate(s.reservoirs),t in 1:T+1
+        set_start_value(variables.v[i,t],r.v0/r.vmax)
+    end
     for (i,r) in enumerate(s.reservoirs),t in 1:T
         set_start_value(variables.h[i,t],head(r,r.v0)/DISPATCH_HEAD_SCALE)
     end
     for (i,g) in enumerate(s.generators),t in 1:T
         guess=clamp((seed==1 ? 0.6 : 0.45+0.3rand(rng))*g.qmax,g.qmin,g.qmax)*u[i,t]
-        set_start_value(variables.gq[i,t],guess/DISPATCH_FLOW_SCALE)
+        (initialize_controls || g.characteristic!==nothing) &&
+            set_start_value(variables.gq[i,t],guess/DISPATCH_FLOW_SCALE)
         set_start_value(variables.p[i,t],power(g,guess,g.hbest)/DISPATCH_POWER_SCALE)
     end
     for (i,r) in enumerate(s.rivers),t in 1:T
         set_start_value(variables.rq[i,t],mean(r.history_release)/DISPATCH_RELEASE_SCALE)
-        r.law==:orifice && set_start_value(variables.a[i,t],0.5)
+        initialize_controls && r.law==:orifice && set_start_value(variables.a[i,t],0.5)
     end
     if warm!==nothing
-        set_dispatch_start!(variables,warm)
+        set_dispatch_start!(variables,warm;initialize_controls)
         for (i,g) in enumerate(s.generators),t in 1:T
-            set_start_value(variables.gq[i,t],
-                clamp(warm.generator_q[i,t],g.qmin*u[i,t],g.qmax*u[i,t])/DISPATCH_FLOW_SCALE)
+            (initialize_controls || g.characteristic!==nothing) &&
+                set_start_value(variables.gq[i,t],
+                    clamp(warm.generator_q[i,t],g.qmin*u[i,t],g.qmax*u[i,t])/DISPATCH_FLOW_SCALE)
             set_start_value(variables.p[i,t],
                 clamp(warm.power[i,t],g.pmin*u[i,t],g.pmax*u[i,t])/DISPATCH_POWER_SCALE)
         end

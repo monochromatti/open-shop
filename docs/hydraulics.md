@@ -46,8 +46,12 @@ condition for any continuous head path between the observed states.
 
 It does not cover a head excursion outside that range or every possible interior
 peak of total plant power or flow. `validate_replay` evaluates more pressure states on a
-finer hydraulic grid. Acceptance remains a numerical accuracy check, not a
-continuous-time bound. Scheduling targets and ramps still use interval means.
+finer hydraulic grid. Replay also includes predicted crossings of reservoir
+level-table knots and reservoir outlet-head floors, where a power peak can occur
+between ordinary samples. These times come from the quadratic storage paths;
+stationary pressure is evaluated at those volumes without inserting time steps.
+Crossings are recomputed after a repair. Acceptance remains a numerical accuracy check, not a continuous-time
+bound. Scheduling targets and ramps still use interval means.
 
 For prescribed-volume pressure calculations, `forward_step(..., dt=0, ...)`
 returns unchanged storage and solves the stationary pressure/flow equations.

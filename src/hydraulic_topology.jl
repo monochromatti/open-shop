@@ -104,6 +104,27 @@ function constrain_water_balance!(model, c, topology, V, Q, GQ, RQ, arrivals)
     nothing
 end
 
+"""Storage inside a hydraulic cell from held withdrawals and integrated arrivals."""
+function reservoir_volume_expression(model,c,topology,V,Q,GQ,RQ,routing,i,time)
+    t=searchsortedlast(c.grid,time)
+    time==c.grid[t] && return V[i,t]
+    reservoir=c.system.reservoirs[i]
+    incoming=[j for (j,enters,_) in topology.river_incidence[i] if enters]
+    start = c.grid[t]
+    duration = time - start
+    net = sum(sign * Q[j, t] for (j, sign) in topology.tunnel_incidence[i]; init = 0.0)
+    net += sum(sign * GQ[j, t] for (j, sign) in topology.generator_incidence[i]; init = 0.0)
+    net -= sum(RQ[j, t] for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
+    natural = opaverage(c, reservoir.name, :inflow, start, time, reservoir.inflow)
+    natural += sum(opaverage(c, c.system.rivers[j].name, :inflow,
+        start, time, c.system.rivers[j].inflow)
+        for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
+    arrivals = sum(routing_volume_expression(model, c, routing, j, start, time)
+        for j in incoming; init = 0.0)
+    volume = V[i, t] + 0.0036 * duration * (net + natural) + arrivals
+    volume
+end
+
 """Bound cumulative storage at river transport vertices inside a control interval.
 
 The hydraulic quadrature holds tunnel, turbine and outlet rates over the interval.
@@ -118,19 +139,7 @@ function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
         times=storage_observation_times(c,routing,incoming)
         for time in times
             time in c.grid && continue
-            t = searchsortedlast(c.grid, time)
-            start = c.grid[t]
-            duration = time - start
-            net = sum(sign * Q[j, t] for (j, sign) in topology.tunnel_incidence[i]; init = 0.0)
-            net += sum(sign * GQ[j, t] for (j, sign) in topology.generator_incidence[i]; init = 0.0)
-            net -= sum(RQ[j, t] for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
-            natural = opaverage(c, reservoir.name, :inflow, start, time, reservoir.inflow)
-            natural += sum(opaverage(c, c.system.rivers[j].name, :inflow,
-                start, time, c.system.rivers[j].inflow)
-                for (j, _, leaves) in topology.river_incidence[i] if leaves; init = 0.0)
-            arrivals = sum(routing_volume_expression(model, c, routing, j, start, time)
-                for j in incoming; init = 0.0)
-            volume = V[i, t] + 0.0036 * duration * (net + natural) + arrivals
+            volume=reservoir_volume_expression(model,c,topology,V,Q,GQ,RQ,routing,i,time)
             lower, upper = soft_storage_bounds(c, reservoir, time)
             @constraint(model, volume / reservoir.vmax >= lower / reservoir.vmax)
             @constraint(model, volume / reservoir.vmax <= upper / reservoir.vmax)
@@ -139,19 +148,38 @@ function constrain_storage_paths!(model, c, topology, V, Q, GQ, RQ, routing)
     nothing
 end
 
+"""Piecewise-quadratic reservoir volume under the declared held-flow quadrature.
+
+Columns contain volume and the linear/quadratic coefficients in the cell's
+normalized time coordinate. This is dense output, not a new time integration.
+"""
+struct StoragePath
+    grid::Vector{Float64}
+    coefficients::Matrix{Float64}
+end
+function (path::StoragePath)(time)
+    k=clamp(searchsortedlast(path.grid,time),1,length(path.grid)-1)
+    fraction=(time-path.grid[k])/(path.grid[k+1]-path.grid[k])
+    c=path.coefficients
+    c[1,k]+fraction*(c[2,k]+fraction*c[3,k])
+end
+
 """Worst storage-bound excess and its time for each reservoir.
 
 Between arrival and operating-data knots the net rate is affine, so storage is
 quadratic. Check its endpoints and its stationary point without time stepping.
 Each control boundary restarts from the supplied storage; ordinary balance rows
-separately check agreement with the next supplied vertex. This checks the routed
-release representation, not an exact continuous river-network solution.
+separately check agreement with the next supplied vertex. Return level-table
+and reservoir outlet-floor crossing times for replay too. Crossing times refer
+to this routed, held-flow representation, not an exact continuous solution.
 """
 function storage_path_residuals(c,x,routed)
     s=c.system
     topology=HydraulicTopology(s)
     excess=zeros(length(s.reservoirs))
     times=fill(first(c.grid),length(s.reservoirs))
+    crossings=Float64[]
+    paths=StoragePath[]
     for (i,r) in enumerate(s.reservoirs)
         incoming=[d for (d,enters,_) in topology.river_incidence[i] if enters]
         outgoing=[d for (d,_,leaves) in topology.river_incidence[i] if leaves]
@@ -168,6 +196,28 @@ function storage_path_residuals(c,x,routed)
                 rates .+= release_arrival_rates(river,river.history_grid,river.history_release,knots;side)
             end
         end
+        # Crossings of level-table knots and reservoir outlet floors are
+        # hydraulic events. The volume path is quadratic between arrival knots.
+        cuts=r.level_curve===nothing ? Float64[] : filter(v->r.vmin<v<r.vmax,r.level_curve.x)
+        for p in s.plants
+            p.target==r.name && p.outlet_head_floor!==nothing || continue
+            level=p.outlet_head_floor
+            lo,hi=r.vmin,r.vmax
+            head(r,lo)<level<head(r,hi) || continue
+            while true
+                middle=lo/2+hi/2
+                lo<middle<hi || break
+                if head(r,middle)<level
+                    lo=middle
+                else
+                    hi=middle
+                end
+            end
+            push!(cuts,lo/2+hi/2)
+        end
+        unique!(cuts)
+        coefficients=Matrix{Float64}(undef,3,length(knots)-1)
+        push!(paths,StoragePath(knots,coefficients))
         volume=x.storage[i,1]
         violation(v,t)=begin
             lower,upper=storage_bounds(c,r,t)
@@ -196,6 +246,14 @@ function storage_path_residuals(c,x,routed)
             update_maximum!(volume,a)
             update_maximum!(finish,b)
             change=after-before
+            coefficients[:,k].=(volume,0.0036duration*before,0.0036duration*change/2)
+            for cut in cuts
+                for fraction in quadratic_roots(0.0036duration*change/2,
+                    0.0036duration*before,volume-cut)
+                    0<fraction<1 || continue
+                    push!(crossings,refinement_vertex(a,b,fraction,c.grid))
+                end
+            end
             if change!=0
                 fraction=-before/change
                 if 0<fraction<1
@@ -206,5 +264,5 @@ function storage_path_residuals(c,x,routed)
             volume=finish
         end
     end
-    (;excess,times)
+    (;excess,times,paths,crossings=sort!(unique!(crossings)))
 end

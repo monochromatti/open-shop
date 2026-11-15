@@ -1328,8 +1328,13 @@ No time interpolation or additional integration step is needed for this check.
 
 This head-range condition is necessary, but does not bound a trajectory that
 turns beyond both observed heads. Plant totals can also peak between observations.
-Finer hydraulic replay checks additional pressure states; it does not constitute
-a proof of all continuous-time limits. Level-range restrictions include interior
+Replay includes predicted crossings of reservoir level-table knots and reservoir
+outlet-head floors, where power can peak between ordinary samples. Calculate
+crossing times from the represented quadratic storage paths and evaluate pressure
+at those volumes. These are additional algebraic observations, not short time
+steps. Recalculate crossings after controls change. Finer hydraulic replay
+checks additional pressure states; it does not constitute a proof of all
+continuous-time limits. Level-range restrictions include interior
 vertices. Transition and gate-motion costs are counted on operating decisions.
 River routing uses each reach's release time series, including its finer
 transport intervals.

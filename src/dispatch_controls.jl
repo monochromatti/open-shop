@@ -139,7 +139,7 @@ function _reconstruct_schedule(c, raw; transport = nothing)
     x, correction
 end
 
-"""Reuse a matching warm trajectory; reintegrate its controls on a new mesh."""
+"""Reuse a matching numerical start or interpolate it onto a new hydraulic mesh."""
 function _dispatch_start(c,u,warm;grid=c.grid)
     diagnostics=Dict{String, Any}("used"=>false)
     warm===nothing && return nothing, diagnostics
@@ -155,9 +155,31 @@ function _dispatch_start(c,u,warm;grid=c.grid)
             cells=first.(old.cells)
             q=copy(source.generator_q[:,cells])
             q[u.==0].=0.0
-            rebuilt=dispatch_from_controls(c,u,q,source.gate[:,cells];
-                grid,tunnel_opening=source.tunnel_opening[:,cells],
-                reserves=_reserve_slice(source.reserves,cells),head_reference=interval_means(old,source.head))
+            # Transfer the numerical start to the new mesh. Interpolation is
+            # an initial guess, not a physical integration or an accepted result.
+            mesh=TimeDiscretization(c.grid,grid)
+            left=clamp.(searchsortedlast.(Ref(source.grid),grid),1,length(source.grid)-1)
+            fraction=(grid.-source.grid[left])./diff(source.grid)[left]
+            volume=source.storage[:,left].*permutedims(1 .-fraction)+
+                source.storage[:,left.+1].*permutedims(fraction)
+            intervals=left[1:end-1]
+            controls=cells[mesh.interval]
+            flow=copy(source.generator_q[:,intervals])
+            for (i,g) in enumerate(c.system.generators)
+                g.characteristic===nothing && (flow[i,:]=q[i,mesh.interval])
+            end
+            heads=source.head[:,intervals]
+            for (i,r) in enumerate(c.system.reservoirs),t in eachindex(mesh.dt)
+                heads[i,t]=mean_head(r,volume[i,t],volume[i,t+1])
+            end
+            arrivals=source.arrival_volume[:,intervals].*
+                permutedims(diff(grid)./diff(source.grid)[intervals])
+            rebuilt=Schedule(copy(grid),u[:,mesh.interval],volume,heads,
+                source.tunnel_q[:,intervals],source.tunnel_opening[:,controls],flow,
+                source.power[:,intervals],source.gate[:,controls],source.river_release[:,intervals],
+                arrivals,copy(source.terminal_transit),nothing,source.objective,nothing,nothing,
+                Dict{String,Any}();reserves=_reserve_slice(source.reserves,controls))
+            diagnostics["interpolated"]=true
             diagnostics["used"]=true
             return rebuilt,diagnostics
         catch error

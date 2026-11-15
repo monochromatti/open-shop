@@ -127,3 +127,80 @@ end
         @test at_two.upper≈expected atol=1e-10
     end
 end
+
+@testset "Replay observes an outlet-floor crossing between ordinary samples" begin
+    q=2.0
+    upper=Reservoir(name=:Upper,z0=12-0.02/0.0072,slope=1/0.0072,
+        v0=0.02,vmin=0.0,vmax=0.03,water_value=0.0)
+    lower=Reservoir(name=:Lower,z0=0.0,slope=1000.0,v0=0.005,
+        vmin=0.0001,vmax=0.01,water_value=0.0)
+    capacity=0.00981*q*0.9*8.6
+    unit=Generator(name=:Unit,plant=:Plant,qmin=0.1,qmax=3.0,pmin=0.0,pmax=capacity,
+        efficiency=0.9,qcurvature=0.0,hcurvature=0.0,qbest=2.0,hbest=8.0,
+        hmin=1.0,hmax=15.0,minup=0.0,mindown=0.0,startup=0.0)
+    outlet=River(name=:Outlet,source=:Lower,target=:Sea,law=:controlled,capacity=4.0,
+        deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0)
+    system=HydroSystem(reservoirs=[upper,lower],boundaries=[Boundary(name=:Sea,head=0.0)],
+        plants=[Plant(name=:Plant,source=:Upper,target=:Lower,pmax=1.0,outlet_head_floor=2.5)],
+        generators=[unit],rivers=[outlet])
+    c=ScheduleCase(name="power peak at an outlet floor",system=system,grid=[0.0,1.0],prices=[0.0])
+    u=ones(Int,1,1)
+    x=dispatch_from_controls(c,u,fill(q,1,1),fill((q+0.004/0.0036)/4,1,1))
+    @test !validate(c,x)["valid"]
+    # Source level is 12-t; receiving level is 5-4t. The net head peaks
+    # at t=5/8, where the receiver reaches its 2.5 m outlet reference.
+    @test any(t->isapprox(t,5/8;atol=1e-12),validate(c,x)["hydraulic_event_times"])
+    replay=validate_replay(c,x;require_original=false)
+    @test !replay["physically_valid"]
+    @test replay["shortfalls"].power≈0.00981*q*0.9*(8.875-8.6) atol=1e-9
+    @test any(t->isapprox(t,5/8;atol=1e-12),replay["power_limit_times"])
+    repaired=solve_verified(c;u,warm=x,feasibility_only=true,time_limit=30.0,
+        deadline=time()+60.0,refine_grid=false)
+    @test repaired.accepted
+    if repaired.solution!==nothing
+        @test validate_replay(c,repaired.solution;
+            grid=OpenSHOP.refined_grid(repaired.solution.grid;factor=16))["valid"]
+    end
+end
+
+@testset "Quadratic crossing times retain separated, repeated and linear roots" begin
+    @test sort(collect(OpenSHOP.quadratic_roots(1.0,-3.0,-10.0)))≈[-2.0,5.0]
+    @test only(OpenSHOP.quadratic_roots(1.0,-2.0,1.0))≈1.0
+    @test only(OpenSHOP.quadratic_roots(0.0,2.0,-3.0))≈1.5
+    @test isempty(OpenSHOP.quadratic_roots(1.0,0.0,1.0))
+    @test sort(collect(OpenSHOP.quadratic_roots(1.0,-1e12,1.0)))≈[1e-12,1e12]
+end
+
+@testset "A failed finer integration retains the numerical start and its controls" begin
+    lake=Reservoir(name=:Lake,z0=0.0,slope=1000.0,v0=0.01,vmin=0.0,vmax=0.02,water_value=0.0)
+    outlet=River(name=:Outlet,source=:Lake,target=:Sea,law=:orifice,coefficient=10.0,
+        capacity=24.0,allow_dry=true,deterministic_delay=0.0,
+        curves=RiverRouting.DelayCurve[],water_value=0.0)
+    unit=Generator(name=:Unit,plant=:Plant,qmin=0.0,qmax=5.0,pmin=0.0,pmax=10.0,
+        hmin=0.0,hmax=20.0,hbest=10.0,qbest=1.0,efficiency=0.9,
+        qcurvature=0.0,hcurvature=0.0,minup=0.0,mindown=0.0,startup=0.0)
+    system=HydroSystem(reservoirs=[lake],rivers=[outlet],generators=[unit],
+        plants=[Plant(name=:Plant,source=:Lake,target=:Sea,pmax=10.0)],
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    c=ScheduleCase(name="interpolated numerical start",system=system,grid=[0.0,0.1],prices=[0.0])
+    u=ones(Int,1,1)
+    warm=dispatch_from_controls(c,u,ones(1,1),ones(1,1))
+    @test validate(c,warm)["valid"]
+    fine=[0.0,0.05,0.1]
+    # The first half-step's orifice flow exceeds 24 m³/s. The original
+    # controls need repair, but their trajectory remains a useful initial guess.
+    @test_throws ArgumentError dispatch_from_controls(c,u,ones(1,1),ones(1,1);grid=fine)
+    start,info=OpenSHOP._dispatch_start(c,u,warm;grid=fine)
+    @test start!==nothing
+    if start!==nothing
+        @test start.generator_q≈ones(1,2)
+        @test start.gate≈ones(1,2)
+        @test start.storage[1,2]≈sum(warm.storage)/2 atol=1e-12
+        @test start.storage[:,[1,end]]≈warm.storage atol=1e-12
+        @test !validate(c,start)["valid"] # An interpolation is not a solution.
+    end
+    model=OpenSHOP._build_dispatch(c;u,warm)
+    OpenSHOP.constrain_replay!(model,fine;warm)
+    @test value.(start_value,model.GQ)≈ones(1,1)
+    @test start_value.(model.variables.a)≈ones(1,1)
+end
