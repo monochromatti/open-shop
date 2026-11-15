@@ -285,7 +285,7 @@ function _global_reserve_points!(m,c,u,H,P,Q,node_bounds,plant_heads)
         known==0 && (fix(r.q[i,t,d],0;force=true);fix(r.p[i,t,d],0;force=true))
         turbine=nothing
         eta=if g.turbine_table===nothing
-            lo,hi=_global_analytic_eta_bounds(g,0.0,qmax,hlo,hhi)
+            lo,hi=polynomial_efficiency_bounds(g,0.0,qmax,hlo,hhi)
             z=@variable(m,lower_bound=lo,upper_bound=hi,base_name="reserve_eta_$(i)_$(t)_$(d)")
             @constraint(m,z==g.efficiency-g.qcurvature*((q-g.qbest)/g.qbest)^2-
                 g.hcurvature*((hd-g.hbest)/g.hbest)^2)

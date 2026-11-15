@@ -195,12 +195,7 @@ using Test
         ones(3, 8);
         grid = collect(0.0:2.0:8.0),
     )
-    @test_throws ArgumentError forward_step(
-        s,
-        [2.0, 2.0],
-        0.0,
-        Float64[],
-        ones(3),
-        zeros(3),
-    )
+    pressure=forward_step(s,[2.0,2.0],0.0,Float64[],ones(3),zeros(3))
+    @test pressure.converged
+    @test pressure.storage≈[2.0,2.0] atol=1e-12
 end

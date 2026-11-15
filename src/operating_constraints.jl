@@ -118,21 +118,21 @@ function river_initial_output(r)
     last(r.history_release),r.history_grid[end]-r.history_grid[end-1]
 end
 
-function constrain_plant_capacities!(m,c,u,P,GQ;margin=0.0)
+function constrain_plant_capacities!(m,c,u,P,GQ;margin=0.0,intervals=eachindex(c.prices))
     for p in c.system.plants
         members=findall(g->g.plant==p.name,c.system.generators)
-        total_p=[sum(P[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
-        total_q=[sum(GQ[j,t] for j in members;init=0.0) for t in eachindex(c.prices)]
-        for t in eachindex(c.prices)
-            @constraint(m,total_p[t]<=last(inset_bounds(opinterval(c,p.name,:pmin,t,p.pmin),
-                opinterval(c,p.name,:pmax,t,p.pmax),margin)))
-            pmin=opinterval(c,p.name,:pmin,t,p.pmin)
-            qmin=opinterval(c,p.name,:qmin,t,p.qmin)
+        total_p=[sum(P[j,t] for j in members;init=0.0) for t in eachindex(intervals)]
+        total_q=[sum(GQ[j,t] for j in members;init=0.0) for t in eachindex(intervals)]
+        for (t,period) in enumerate(intervals)
+            @constraint(m,total_p[t]<=last(inset_bounds(opinterval(c,p.name,:pmin,period,p.pmin),
+                opinterval(c,p.name,:pmax,period,p.pmax),margin)))
+            pmin=opinterval(c,p.name,:pmin,period,p.pmin)
+            qmin=opinterval(c,p.name,:qmin,period,p.qmin)
             for j in members
                 pmin>0 && @constraint(m,total_p[t]>=pmin*u[j,t])
                 qmin>0 && @constraint(m,total_q[t]>=qmin*u[j,t])
             end
-            qmax=optional_operation(c,p.name,:qmax,t;default=p.qmax)
+            qmax=optional_operation(c,p.name,:qmax,period;default=p.qmax)
             qmax===nothing || @constraint(m,total_q[t]<=qmax)
         end
     end

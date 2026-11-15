@@ -36,6 +36,8 @@ storage_convergence_limits(c,absolute,relative) = [min(absolute,isinf(relative) 
 
 Check finer physical replay and independent river transport. Operating data
 retain physical times; plant ramp limits retain their original decision windows.
+Outlet-floor and level-table crossings are checked using dense storage and
+stationary pressure states, without adding short integration intervals.
 
 At common vertices, each reservoir's storage difference must be at most
 `min(storage_convergence, 1e-9 + storage_relative_convergence * (vmax-vmin))`
@@ -67,6 +69,7 @@ Base.@kwdef struct ReplayResult
     transport_validation::Union{Nothing,Dict{String,Any}} = nothing
     replay_grid::Vector{Float64} = Float64[]
     constraint_times::Vector{Float64} = Float64[]
+    power_limit_times::Vector{Float64} = Float64[]
     storage_differences_Mm3::Vector{Float64} = Float64[]
     storage_convergence_tolerances_Mm3::Vector{Float64} = Float64[]
     level_differences_m::Vector{Float64} = Float64[]
@@ -224,6 +227,7 @@ function _replay(
             transport_validation=transport_check,
             replay_grid=collect(grid),
             constraint_times=fine_validation["storage_path_times"],
+            power_limit_times=fine_validation["power_limit_times"],
             storage_differences_Mm3=storage_errors,
             storage_convergence_tolerances_Mm3=storage_limits,
             level_differences_m=level_errors,
@@ -420,6 +424,7 @@ function _adaptive_dispatch(
     latest_validation=ReplayResult(errors=["dispatch deadline exhausted"])
     grid=copy(c.grid)
     replay_grid=nothing
+    observation_times=Float64[]
     refinements=0
     # A supplied initial is checked as written. An unchecked start is first
     # reintegrated under the requested controls and current forecast.
@@ -451,7 +456,7 @@ function _adaptive_dispatch(
             remaining=min(time_limit,deadline-time())
             remaining>0 || break
             dispatch!==nothing && remaining<=get(dispatch,"construction_seconds",0.0) && break
-            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,
+            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,observation_times,
                 time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
             latest=dispatch.solution
             latest===nothing && break
@@ -473,6 +478,10 @@ function _adaptive_dispatch(
         grid=copy(resolution.grid)
         replay_grid===nothing || (replay_grid=sort!(unique!(vcat(replay_grid,grid))))
         original=latest_validation.original_validation
+        previous_observations=length(observation_times)
+        observation_times=sort!(unique!(vcat(observation_times,latest_validation.power_limit_times,
+            get(original,"hydraulic_event_times",Float64[]))))
+        added_observations=length(observation_times)>previous_observations
         push!(attempts,(;
             iteration=length(attempts),intervals=length(c.prices),
             integration_intervals=length(latest.grid)-1,
@@ -510,8 +519,10 @@ function _adaptive_dispatch(
             refinements<max_refinements || break
             if !refine_grid || latest_validation.numerically_converged
                 parent=replay_grid===nothing ? grid : replay_grid
-                replay_grid=refined_grid(parent;factor=replay_factor,
-                    existing=river_routing_grid(c;physical_grid=parent))
+                replay_grid=added_observations && latest_validation.numerically_converged ?
+                    (replay_grid===nothing ? copy(latest_validation.replay_grid) : replay_grid) :
+                    refined_grid(parent;factor=replay_factor,
+                        existing=river_routing_grid(c;physical_grid=parent))
                 # A quadratic storage path can violate a bound between mesh
                 # vertices. Enforce its observed extremum in the next solve.
                 replay_grid=sort!(unique!(vcat(replay_grid,

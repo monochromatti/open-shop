@@ -37,6 +37,7 @@ function _build_dispatch(
     control_index = nothing,
     integral_grid = c.grid,
     grid = c.grid,
+    observation_times = Float64[],
 )
     starttime=time()
     isfinite(arrival_margin) && arrival_margin>=0 ||
@@ -59,8 +60,6 @@ function _build_dispatch(
     D=length(s.rivers)
     ix = topology.node_index
     dt=diff(c.grid)
-    generator_plants = s.plants[topology.generator_plant]
-    plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
     warm,warm_start=_dispatch_start(operating_case,operating_u,warm;grid=mesh.grid)
     m=model
     set_silent(m)
@@ -205,49 +204,17 @@ function _build_dispatch(
             )
         end for plant in s.plants
     )
-    for (i, g) in enumerate(s.generators), t in 1:T
-        plant=generator_plants[i]
-        totalq=sum(GQ[j, t] for j in plant_generators[plant.name])
-        tail=tailwater_ops[plant.name]===nothing ? 0.0 : tailwater_ops[plant.name](totalq)
-        op=outlet_ops[plant.name]
-        receiver=op===nothing ? H[ix[plant.target], t] :
-                 op isa Real ? op : op(H[ix[plant.target], t])
-        hd=unit_power_sign(g)*(H[ix[plant.source], t]-receiver-tail)
-        eta=characteristic_ops[i]!==nothing ? characteristic_ops[i][2](hd) : turbine_ops[i]===nothing ?
-            g.efficiency-g.qcurvature*((GQ[i, t]-g.qbest)/g.qbest)^2-g.hcurvature*(
-            (hd-g.hbest)/g.hbest
-        )^2 : turbine_ops[i](GQ[i, t], hd)
-        electrical=electrical_ops[i]===nothing ? 1.0 : electrical_ops[i](P[i, t])
-        qmin=opinterval(c, g.name, :qmin, t, g.qmin)
-        qmax=opinterval(c, g.name, :qmax, t, g.qmax)
-        pmin=opinterval(c, g.name, :pmin, t, g.pmin)
-        pmax=opinterval(c, g.name, :pmax, t, g.pmax)
-        conversion=g.mode==:pump ?
-            P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
-            P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
-        begin
-            intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
-            plo,phi=inset_bounds(pmin,pmax,operational_margin)
-            set_lower_bound(p[i, t], plo*u[i, t]/DISPATCH_POWER_SCALE)
-            set_upper_bound(p[i, t], phi*u[i, t]/DISPATCH_POWER_SCALE)
-            if u[i, t]==0
-                fix(gq[i, t], 0; force = true)
-                fix(p[i, t], 0; force = true)
-            else
-                if characteristic_ops[i]!==nothing
-                    @constraint(m,(GQ[i,t]-characteristic_ops[i][1](hd))/50==0)
-                end
-                @constraint(m, conversion/40==0)
-                @constraint(m, g.hmin<=hd<=g.hmax)
-                @constraint(m, g.min_efficiency<=eta<=1.0)
-                if g.turbine_table!==nothing
-                    qlo, qhi=turbine_flow_ops[i]
-                    @constraint(m, GQ[i, t]>=qlo(hd))
-                    @constraint(m, GQ[i, t]<=qhi(hd))
-                end
-            end
-        end
+    unit_operators=(;level_ops,turbine_ops,characteristic_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
+    for (i,g) in enumerate(s.generators),t in 1:T
+        qmin=opinterval(c,g.name,:qmin,t,g.qmin)
+        qmax=opinterval(c,g.name,:qmax,t,g.qmax)
+        pmin,pmax=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+            opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
+        intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
+        set_lower_bound(p[i,t],pmin*u[i,t]/DISPATCH_POWER_SCALE)
+        set_upper_bound(p[i,t],pmax*u[i,t]/DISPATCH_POWER_SCALE)
     end
+    constrain_unit_physics!(m,s,u,variables,unit_operators)
     reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops;operating_case)
     outlet_bounds=(;
         capacity=[opinterval(c,r.name,:capacity,t,r.capacity) for r in s.rivers,t in 1:T],
@@ -367,8 +334,15 @@ function _build_dispatch(
         initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
         operating_case,operating_u)
     reserves===nothing || (obj+=reserves.value)
-    @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
-    initialize_dispatch!(variables,c,ustart;warm,seed)
+    # Guide repair toward the supplied water plan. Keep the hard constraints
+    # and the reported economic objective unchanged.
+    distance=feasibility_only && warm!==nothing ?
+        sum(mesh.dt[t]*((GQ[i,t]-warm.generator_q[i,t])/DISPATCH_FLOW_SCALE)^2
+            for i in axes(GQ,1),t in axes(GQ,2);init=0.0)+
+        sum(mesh.dt[t]*((RQ[i,t]-warm.river_release[i,t])/DISPATCH_FLOW_SCALE)^2
+            for i in axes(RQ,1),t in axes(RQ,2);init=0.0) : 0.0
+    @objective(m, Max, feasibility_only ? -distance : obj/10000)
+    initialize_dispatch!(variables,c,ustart;warm,seed,initialize_controls=shared_controls===nothing)
     if warm!==nothing
         for (variable,value) in river_operation_start_values(river_operations,operating_case,operating_warm.river_release)
             set_start_value(variable,value)
@@ -384,8 +358,8 @@ function _build_dispatch(
             set_start_value(variable,value)
         end
     end
-    (;
-        variables,reserves,
+    b=(;
+        variables,reserves,unit_operators,
         case=c,
         operating_case,mesh,operating_u,
         m,
@@ -408,19 +382,21 @@ function _build_dispatch(
         river_operations,
         flow_integrals,level_windows,
     )
+    constrain_power_observations!(b;operational_margin,prefix,observation_times)
+    b
 end
 
 # A second hydraulic mesh shares the requested controls. Its state variables are
 # states satisfying the finer equations, not additional scheduling decisions. The
 # objective and returned schedule still belong to the original model.
-function constrain_replay!(b,grid;warm=nothing,river_on=nothing)
+function constrain_replay!(b,grid;warm=nothing,river_on=nothing,observation_times=Float64[])
     objective=objective_function(b.m)
     parent=TimeDiscretization(b.case.grid,grid)
     refined=replay_case(b.case,grid)
     operating=_river_replace(b.operating_case;routing_grid=refined.routing_grid)
     f=_build_dispatch(operating;grid,u=b.operating_u,model=b.m,prefix="replay_",
         warm,tunnel_opening=Matrix{Float64}(b.gates.opening),river_on,
-        shared_controls=b.variables,control_index=parent.interval)
+        shared_controls=b.variables,control_index=parent.interval,observation_times)
     if b.reserves!==nothing
         base_cells=first.(b.mesh.cells)
         fine_cells=first.(f.mesh.cells)
@@ -465,8 +441,9 @@ function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
         set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
         set_optimizer_attribute(m, "max_wall_time", max(0.001, time_limit))
         if feasibility_only
-            # With constant objective, any feasible point is optimal. Do not
-            # wait for barrier multipliers; check unscaled rows and bounds.
+            # Stop repair at the first feasible point. The flow-distance
+            # objective guides steps; it need not be polished to optimality.
+            # Check unscaled rows and bounds before stopping.
             lower=Float64[];upper=Float64[];violation=Float64[]
             callback=function(mode,iteration,objective,primal,args...)
                 mode==0 && primal<=1e-8 || return true
@@ -497,7 +474,9 @@ schedule by combining MILP proposals with nonlinear dispatch.
 Returns a [`SolveResult`](@ref). Its `solution` is a [`Schedule`](@ref), or
 `nothing` if no solution exists. `accepted` means the solution passed the
 physical equations and original operating-window checks. `grid=case.grid`
-optionally supplies a finer primary hydraulic mesh; controls retain their
+optionally supplies a finer primary hydraulic mesh. Additional
+`observation_times` check equipment limits using dense storage without changing
+energy integration. Controls retain their
 original intervals and the returned schedule records the physical grid.
 `replay_grid` optionally adds finer
 hydraulic equations sharing these controls; it does not change the returned
@@ -519,6 +498,7 @@ function solve_case(
     river_on = nothing,
     replay_grid = nothing,
     grid = c.grid,
+    observation_times = Float64[],
 )
     solver=string(solver)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
@@ -535,9 +515,9 @@ function solve_case(
         transport,
         tunnel_opening,
         river_on,
-        grid,
+        grid,observation_times,
     )
-    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on)
+    replay_grid===nothing || constrain_replay!(b,replay_grid;warm=_dispatch_start(c,u,warm;grid)[1],river_on,observation_times)
     construction_seconds=time()-b.starttime
     remaining=time_limit-construction_seconds
     result=Dict{String,Any}(

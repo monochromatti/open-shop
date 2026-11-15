@@ -1306,10 +1306,41 @@ on their declared windows. For example, with $cal(K)_j$ the cells of interval $j
 $ overline(P)_(g j) = frac(sum_(k in cal(K)_j) Delta tau_k P_(g k), T_(j+1)-T_j),
   quad A_(r j) = sum_(k in cal(K)_j) A_(r k). $
 
-Power schedules and scheduling ramps use these interval means. Physical
-capacities apply to every hydraulic cell, and level-range restrictions include
-interior vertices. Transition and gate-motion costs are counted on operating
-decisions. River routing uses each reach's release time series, including its finer
+Power schedules and scheduling ramps use these interval means. A capacity
+limit needs a different check: power calculated from the interval head can be
+below the limit even when instantaneous power exceeds it. At each hydraulic
+vertex, prescribe reservoir levels $Z_i(V_i)$ and solve the tunnel pressure laws,
+junction balances and unit conversion equations. Apply the unit, plant, tunnel
+and pressure bounds to these algebraic states. Each side of a control change
+uses its own controls. These observations advance no time and contribute no
+energy to the objective.
+
+Endpoint checks alone can miss an efficiency peak. During a cell, a continuous
+unit head attains every value between its two endpoint heads. With adjustable
+flow held fixed, impose the unit limits throughout this head range. For a
+fixed-speed pump, substitute its discharge characteristic instead. Within each
+efficiency-table head segment, generating shaft power is cubic at most. For
+pumping, multiplying a power bound by the positive efficiency gives a quadratic
+inequality. Evaluate these polynomials at segment endpoints and at their
+interior stationary points. The electrical generation relation $P/e(P)$ is
+strictly increasing, so its limit values give equivalent shaft-power bounds.
+No time interpolation or additional integration step is needed for this check.
+When conversion is monotone over the full declared operating range, endpoint
+inequalities already enforce the range limit. In that case, omit the redundant
+maximum operator. Efficiency and flow bounds are simplified in the same way
+when their full-range bounds or monotonicity establish the implication.
+
+This head-range condition is necessary, but does not bound a trajectory that
+turns beyond both observed heads. Plant totals can also peak between observations.
+Replay includes predicted crossings of reservoir level-table knots and reservoir
+outlet-head floors, where power can peak between ordinary samples. Calculate
+crossing times from the represented quadratic storage paths and evaluate pressure
+at those volumes. These are additional algebraic observations, not short time
+steps. Recalculate crossings after controls change. Finer hydraulic replay
+checks additional pressure states; it does not constitute a proof of all
+continuous-time limits. Level-range restrictions include interior
+vertices. Transition and gate-motion costs are counted on operating decisions.
+River routing uses each reach's release time series, including its finer
 transport intervals.
 
 Before revenue optimization, reconstruct and resolve the starting controls.
@@ -1354,17 +1385,30 @@ again. This constraint-generation step draws on the treatment of path constraint
 in semi-infinite optimal control~@potschka. It does not introduce additional
 control decisions.
 
-When refinement requires a nonlinear repair, first solve the constrained model
-with a constant objective to restore feasibility. Resume revenue optimization
-from an independently accepted trajectory. Coordinating
-feasibility restoration and mesh refinement is also central to the optimal-control
+When refinement requires a nonlinear repair, keep every physical constraint and
+guide the search toward the preceding water plan. With starting flows $q^0$ and
+$R^0$ and the common numerical discharge scale $Q_*$, use the repair objective
+
+$ sum_k Delta tau_k (sum_g ((q_(g k)-q^0_(g k))/Q_*)^2
+  + sum_r ((R_(r k)-R^0_(r k))/Q_*)^2). $
+
+This objective prefers small flow changes, rather than arbitrary feasible water
+allocations. It changes no operating limit. Without a starting trajectory, use
+a constant objective. Stop repair at the first feasible iterate; we do not claim
+to find its closest feasible point. Resume revenue optimization from an
+independently accepted trajectory. The flow-distance objective is absent from
+revenue and reported schedule values. Coordinating feasibility restoration and
+mesh refinement is also central to the optimal-control
 method of Banihashemi and Kaya~@banihashemi; here both phases use the same local
 nonlinear solver. We do not claim their convergence results for this nonconvex
 model. Recheck accuracy after controls change, and retain the best independently
 accepted schedule if a later solve fails or exhausts its budget. The mesh stays
 fixed during each nonlinear solve.
 
-Global search retains its declared finite hydraulic model. Its preparation may
+Global search retains its declared finite hydraulic model. Its cell-average
+power graph is an outer model for the additional pressure-observation and
+head-range restrictions: its upper bounds remain enclosing, while every returned
+schedule must pass the stronger physical checks. Its preparation may
 add refined-grid equations sharing the same controls, but the objective and
 returned trajectory then belong to the original mesh. This requires feasibility
 on both meshes. A global bound for that model does not certify a schedule on a

@@ -47,6 +47,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     plant_discharge_shortfall=zeros(length(c.system.plants))
     arrival_shortfall=zeros(length(c.system.rivers))
     storage_path_times=Float64[]
+    power_limit_times=Float64[]
+    hydraulic_event_times=Float64[]
     finish() = Dict(
         "valid"=>isempty(errors),
         "max_residual"=>maximum(values(residuals); init = 0.0),
@@ -56,6 +58,8 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         "terminal_tunnel_switch_obligations"=>switch_obligations,
         "permitted_penalties"=>permitted_penalties,
         "storage_path_times"=>storage_path_times,
+        "power_limit_times"=>power_limit_times,
+        "hydraulic_event_times"=>hydraulic_event_times,
         "shortfalls"=>(;unit_power=unit_power_shortfall,unit_discharge=unit_discharge_shortfall,
             plant_power=plant_power_shortfall,plant_discharge=plant_discharge_shortfall,
             arrival=arrival_shortfall),
@@ -439,6 +443,29 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     try
         routed=routed_schedule(c,RQ;transport=nd,injections)
         paths=storage_path_residuals(c,result,routed)
+        append!(hydraulic_event_times,paths.crossings)
+        points=point_operating_residuals(c,result;path_data=paths,tolerance)
+        unit_power_shortfall.=max.(unit_power_shortfall,points.unit_power)
+        unit_discharge_shortfall.=max.(unit_discharge_shortfall,points.unit_q)
+        plant_power_shortfall.=max.(plant_power_shortfall,points.plant_power)
+        plant_discharge_shortfall.=max.(plant_discharge_shortfall,points.plant_q)
+        append!(power_limit_times,points.times)
+        record("point_hydraulic_convergence",[points.convergence])
+        for (i,g) in enumerate(s.generators)
+            bound("point_unit_power_$(g.name)",[points.unit_power[i]])
+            bound("point_unit_discharge_$(g.name)",[points.unit_q[i]])
+            bound("point_unit_domain_$(g.name)",[points.unit_domain[i]])
+        end
+        for (i,p) in enumerate(s.plants)
+            bound("point_plant_power_$(p.name)",[points.plant_power[i]])
+            bound("point_plant_discharge_$(p.name)",[points.plant_q[i]])
+        end
+        for (i,e) in enumerate(s.tunnels)
+            bound("point_tunnel_capacity_$(e.name)",[points.tunnel_q[i]])
+        end
+        for (i,j) in enumerate(s.junctions)
+            bound("point_pressure_head_$(j.name)",[points.pressure_head[i]])
+        end
         for (i,residual) in enumerate(paths.excess)
             bound("storage_path_$(s.reservoirs[i].name)",[residual];atol=storage_tolerance[i])
         end

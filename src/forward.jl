@@ -7,6 +7,9 @@ arrivals are evaluated inside Newton's residual, coupled to storage and heads.
 For deterministic transport, `current_network` maps local injections to arrivals;
 upstream water entering a river junction is represented by those same source pulses.
 Operational bounds are reported, never imposed by clipping physical states.
+With `dt=0`, storage is prescribed and the stationary pressure/flow equations
+are solved at that storage. There is no reservoir balance on its instantaneous
+net flow. This evaluates equipment limits without advancing time.
 For a fixed-speed pump, optional `commitment` selects operation and its flow
 entry is a Newton guess. Without commitment, a positive entry means on and zero
 means off. The returned `generator_q` contains solved flows.
@@ -54,7 +57,7 @@ function forward_step(
     current_transfer isa AbstractMatrix && size(current_transfer, 1)==nd &&
     size(current_transfer, 2)>=maximum((length(r.curves) for r in s.rivers); init = 1) ||
         throw(DimensionMismatch("current transfer fractions"))
-    isfinite(dt) && dt>0 || throw(ArgumentError("finite positive duration required"))
+    isfinite(dt) && dt>=0 || throw(ArgumentError("finite nonnegative duration required"))
     all(>=(0), generator_q) &&
     all(x->0<=x<=1, gate) &&
     all(x->0<=x<=1, ta) &&
@@ -142,6 +145,9 @@ function _forward_step(data::HydraulicStepData; initial_guess, tolerance, max_it
             x.=initial_guess
         end
     end
+    # A zero-duration evaluation prescribes storage and solves only the
+    # instantaneous pressure/flow equations.
+    iszero(data.duration) && (x[1:nr].=Vprev)
     # q|q| has zero derivative at q=0. A zero or opposed flow guess can land
     # there during Newton. Seed those guesses from the passive pressure law;
     # retain warm flows that already have the pressure difference's direction.

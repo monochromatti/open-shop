@@ -453,7 +453,8 @@ function _solve(
                     x, correction = _reconstruct_schedule(c, raw; transport = b.transport)
                     result["control_boundary_correction"] =
                         Dict("flow" => correction.flow, "gate" => correction.gate,
-                            "tunnel_opening"=>correction.tunnel_opening)
+                            "tunnel_opening"=>correction.tunnel_opening,
+                            "reserve_power"=>correction.reserve_power)
                     if x["validation"]["valid"] &&
                        (best === nothing || x.objective > best.objective)
                         model_validation=_initialize_global_start!(b,c,x)
