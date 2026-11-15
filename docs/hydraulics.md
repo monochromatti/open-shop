@@ -27,6 +27,32 @@ energy. This is not an accuracy guarantee for coarse steps. See the
 [model validity guide](model-validity.md) for the delayed-river energy scope,
 possible overshoot and nonunique roots.
 
+## Instantaneous equipment limits
+
+Interval-average head preserves the storage work identity above. It is not the
+head to use for an instantaneous equipment limit. Local dispatch also solves
+stationary pressure states at both ends of every hydraulic cell, using reservoir
+surface elevations and that cell's controls. Unit and plant power/flow limits,
+tunnel capacities and junction head bounds apply to these states. At a control
+change, both one-sided states are checked. The observations contribute no energy
+and add no time steps.
+
+Unit power may peak inside its head range because efficiency changes with head.
+For each unit, limits are also enforced over the entire range between its two
+observed net heads. Extrema are calculated from the efficiency segments and
+polynomial stationary points. Adjustable discharge is held fixed; a fixed-speed
+pump uses its head-dependent discharge characteristic. This is a necessary
+condition for any continuous head path between the observed states.
+
+It does not cover a head excursion outside that range or every possible interior
+peak of total plant power or flow. `validate_replay` evaluates more pressure states on a
+finer hydraulic grid. Acceptance remains a numerical accuracy check, not a
+continuous-time bound. Scheduling targets and ramps still use interval means.
+
+For prescribed-volume pressure calculations, `forward_step(..., dt=0, ...)`
+returns unchanged storage and solves the stationary pressure/flow equations.
+A reservoir may have nonzero instantaneous net inflow in this calculation.
+
 ## Tunnel gates
 
 `opening`, `initial_opening` and `gate_positions` are already normalized

@@ -45,6 +45,8 @@ function HydraulicStepData(
 )
     previous_storage = Vector{Float64}(Vprev)
     duration = Float64(dt)
+    iszero(dt)==iszero(duration) ||
+        throw(ArgumentError("nonzero duration must remain nonzero in Float64"))
     discharge = Vector{Float64}(generator_q)
     commitment===nothing || (length(commitment)==length(s.generators) &&
         all(x->x==0||x==1,commitment)) || throw(ArgumentError("binary unit commitment required"))
@@ -62,8 +64,8 @@ function HydraulicStepData(
     length(tunnel_capacity) == length(s.tunnels) &&
     length(river_capacity) == length(s.rivers) ||
         throw(DimensionMismatch("hydraulic inflows and operating capacities"))
-    isfinite(duration) && duration > 0 ||
-        throw(ArgumentError("duration must remain finite and positive in Float64"))
+    isfinite(duration) && duration >= 0 ||
+        throw(ArgumentError("duration must remain finite and nonnegative in Float64"))
     all(
         A -> all(isfinite, A),
         (
@@ -297,7 +299,8 @@ function hydraulic_residual!(residual, x, data::HydraulicStepData, work::Hydraul
         1 <= target <= base && (net[target] += work.arrival[d])
     end
     for i in 1:nr
-        residual[i] = (x[i] - data.previous_storage[i]) / (0.0036 * data.duration) - net[i]
+        residual[i] = iszero(data.duration) ? x[i]-data.previous_storage[i] :
+            (x[i] - data.previous_storage[i]) / (0.0036 * data.duration) - net[i]
     end
     for i in (nr + 1):base
         residual[i] = -net[i]
@@ -341,7 +344,7 @@ requested tolerance. This allowance does not relax physical operating bounds.
 function hydraulic_converged(residual, x, data::HydraulicStepData, tolerance)
     nr = length(data.previous_storage)
     for i in eachindex(residual)
-        rounding = i <= nr ?
+        rounding = i <= nr && !iszero(data.duration) ?
             2eps(max(abs(x[i]), abs(data.previous_storage[i]))) / (0.0036 * data.duration) : 0.0
         isfinite(residual[i]) && abs(residual[i]) <= tolerance + rounding || return false
     end
@@ -374,7 +377,9 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
         ix = data.topology.node_index,
     )
     _normalize_pressure_references!(x, data.system, floating;reference=head_reference)
-    columns = isempty(floating) ? collect(eachindex(x)) : setdiff(eachindex(x), first.(floating))
+    prescribed=iszero(data.duration) ? collect(eachindex(data.previous_storage)) : Int[]
+    columns = isempty(prescribed) && isempty(floating) ? collect(eachindex(x)) :
+        setdiff(eachindex(x),prescribed,first.(floating))
     nq=length(data.previous_storage)+length(data.system.junctions)+length(data.system.tunnels)
     nonnegative=[nq+k for (k,d) in enumerate(data.active_rivers) if !is_channel(data.system.rivers[d])]
     append!(nonnegative,(nq+length(data.active_rivers)+1):length(x))
@@ -391,7 +396,7 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
     equations! = (r, z) -> hydraulic_residual!(r, z, data, dual_work)
     config = ForwardDiff.JacobianConfig(equations!, residual, x, chunk, tag)
     full_jacobian = Matrix{Float64}(undef, length(x), length(x))
-    jacobian = isempty(floating) ? full_jacobian : view(full_jacobian, :, columns)
+    jacobian = length(columns)==length(x) ? full_jacobian : view(full_jacobian, :, columns)
     iterations = 0
     for k in 1:max_iterations
         hydraulic_residual!(residual, x, data, work)

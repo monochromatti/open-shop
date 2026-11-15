@@ -1306,10 +1306,32 @@ on their declared windows. For example, with $cal(K)_j$ the cells of interval $j
 $ overline(P)_(g j) = frac(sum_(k in cal(K)_j) Delta tau_k P_(g k), T_(j+1)-T_j),
   quad A_(r j) = sum_(k in cal(K)_j) A_(r k). $
 
-Power schedules and scheduling ramps use these interval means. Physical
-capacities apply to every hydraulic cell, and level-range restrictions include
-interior vertices. Transition and gate-motion costs are counted on operating
-decisions. River routing uses each reach's release time series, including its finer
+Power schedules and scheduling ramps use these interval means. A capacity
+limit needs a different check: power calculated from the interval head can be
+below the limit even when instantaneous power exceeds it. At each hydraulic
+vertex, prescribe reservoir levels $Z_i(V_i)$ and solve the tunnel pressure laws,
+junction balances and unit conversion equations. Apply the unit, plant, tunnel
+and pressure bounds to these algebraic states. Each side of a control change
+uses its own controls. These observations advance no time and contribute no
+energy to the objective.
+
+Endpoint checks alone can miss an efficiency peak. During a cell, a continuous
+unit head attains every value between its two endpoint heads. With adjustable
+flow held fixed, impose the unit limits throughout this head range. For a
+fixed-speed pump, substitute its discharge characteristic instead. Within each
+efficiency-table head segment, generating shaft power is cubic at most. For
+pumping, multiplying a power bound by the positive efficiency gives a quadratic
+inequality. Evaluate these polynomials at segment endpoints and at their
+interior stationary points. The electrical generation relation $P/e(P)$ is
+strictly increasing, so its limit values give equivalent shaft-power bounds.
+No time interpolation or additional integration step is needed for this check.
+
+This head-range condition is necessary, but does not bound a trajectory that
+turns beyond both observed heads. Plant totals can also peak between observations.
+Finer hydraulic replay checks additional pressure states; it does not constitute
+a proof of all continuous-time limits. Level-range restrictions include interior
+vertices. Transition and gate-motion costs are counted on operating decisions.
+River routing uses each reach's release time series, including its finer
 transport intervals.
 
 Before revenue optimization, reconstruct and resolve the starting controls.
@@ -1364,7 +1386,10 @@ model. Recheck accuracy after controls change, and retain the best independently
 accepted schedule if a later solve fails or exhausts its budget. The mesh stays
 fixed during each nonlinear solve.
 
-Global search retains its declared finite hydraulic model. Its preparation may
+Global search retains its declared finite hydraulic model. Its cell-average
+power graph is an outer model for the additional pressure-observation and
+head-range restrictions: its upper bounds remain enclosing, while every returned
+schedule must pass the stronger physical checks. Its preparation may
 add refined-grid equations sharing the same controls, but the objective and
 returned trajectory then belong to the original mesh. This requires feasibility
 on both meshes. A global bound for that model does not certify a schedule on a

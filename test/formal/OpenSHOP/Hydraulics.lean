@@ -221,4 +221,40 @@ theorem wet_branch_exact (direction head wet lo hi : ℝ)
     have hh : 0 ≤ head := by linarith
     simp [he,max_eq_left hh]
 
+/-- Endpoint and mean-head power checks can all pass while interior power
+exceeds capacity. Here eta(h)=(4-h)/3 and the held hydraulic coefficient is
+109/1600 MW/m. The inequality is strict, so it is not a rounding example. -/
+theorem endpoint_and_mean_power_miss_peak :
+    let P := fun h : ℝ => (109/4800 : ℝ)*h*(4-h)
+    P 1 < 9/100 ∧ P (7/2) < 9/100 ∧ P (9/4) < 9/100 ∧ 9/100 < P 2 := by
+  norm_num
+
+/-- A continuous head path reaches every head between its endpoints. Thus a
+power bound along the path necessarily holds on that whole head span.
+No converse is claimed: the path may turn beyond its endpoint heads. -/
+theorem continuous_head_span_limit {h : ℝ → ℝ} {a b bound : ℝ}
+    (continuous : ContinuousOn h (Set.uIcc a b)) (power : ℝ → ℝ)
+    (limits : ∀ t ∈ Set.uIcc a b, power (h t) ≤ bound) :
+    ∀ z ∈ Set.uIcc (h a) (h b), power z ≤ bound := by
+  intro z hz
+  obtain ⟨t, ht, rfl⟩ := intermediate_value_uIcc continuous hz
+  exact limits t ht
+
+/-- Multiplying a pump power bound by positive conversion efficiency is exact.
+The coefficient includes both hydraulic and motor efficiency. -/
+theorem pump_power_upper_iff (work efficiency capacity : ℝ)
+    (positive : 0 < efficiency) :
+    work / efficiency ≤ capacity ↔ work - capacity * efficiency ≤ 0 := by
+  rw [div_le_iff₀ positive]
+  constructor <;> intro h <;> linarith
+
+/-- A strictly increasing electrical conversion map preserves power bounds.
+For generation the map is P/e(P), and conversion equates it to shaft power. -/
+theorem generator_power_upper_iff {conversion : ℝ → ℝ}
+    (increasing : StrictMono conversion) (power shaft capacity : ℝ)
+    (equation : conversion power = shaft) :
+    power ≤ capacity ↔ shaft ≤ conversion capacity := by
+  rw [← equation]
+  exact increasing.le_iff_le.symm
+
 end OpenSHOP

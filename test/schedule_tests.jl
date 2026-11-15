@@ -110,9 +110,9 @@ end
 @testset "Finer replay measures the power shortfall in physical units" begin
     lake=Reservoir(name=:Lake,z0=100.0,slope=1.0,v0=2.0,vmin=1.0,vmax=4.0,
         inflow=80.0,water_value=0.0)
-    # One Mm³ raises head by one metre. Storage and power rise linearly, so
-    # the last half-hour's mean power exceeds the hour's mean by gain*rise/4.
-    # No optimizer is needed to know that discrepancy.
+    # One Mm³ raises head by one metre. Storage and power rise linearly.
+    # Mean power fills the cap, but the final instantaneous power exceeds it
+    # by gain*rise/2. Both coarse validation and finer replay must detect it.
     q=2.0
     gain=0.00981*0.9*q
     rise=0.0036*(lake.inflow-q)
@@ -125,13 +125,14 @@ end
         boundaries=[Boundary(name=:Sea,head=0.0)])
     c=ScheduleCase(name="known replay shortfall",system=system,grid=[0.0,1.0],prices=[50.0])
     x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
-    @test validate(c,x)["valid"]
-    check=validate_replay(c,x)
+    @test !validate(c,x)["valid"]
+    @test only(validate(c,x)["shortfalls"].unit_power)≈gain*rise/2 atol=1e-10
+    check=validate_replay(c,x;require_original=false)
     @test !check["valid"]
-    @test check["shortfalls"].power≈gain*rise/4 atol=1e-10
+    @test check["shortfalls"].power≈gain*rise/2 atol=1e-10
     @test check["shortfalls"].arrival==0.0
     @test !validate_replay(c,x;grid=[0.0,0.5,1.5])["valid"]
-    @test_throws MethodError validate_replay(c,x;grid=Any[0.0,"midpoint",1.0])
+    @test_throws MethodError validate_replay(c,x;grid=Any[0.0,"midpoint",1.0],require_original=false)
     verified=solve_verified(c;u=x.commitment,warm=x,time_limit=10.0,
         max_refinements=1,refine_grid=false)
     @test verified["accepted"]

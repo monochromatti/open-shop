@@ -27,6 +27,7 @@ are allowed. Proof placeholders and additional axioms fail that check.
 | --- | --- | --- |
 | `OpenSHOP/Windows.lean` | Exact level-band projection; affine rolling deviation bounded by its knot values; window additivity at restart; cumulative-datum invariance | `window_constraints.jl`, `restart.jl` |
 | `OpenSHOP/Hydraulics.lean` | Internal incidence cancellation; storage plus transit conservation; river junction allocation; signed tunnel dissipation and direction split; wet/dry positive-part graph; passive channel interpolation; pointwise generation/pumping work bounds | `hydraulic_topology.jl`, `river_sources.jl`, `tunnel_physics.jl`, `channel_physics.jl`, `curve_physics.jl`, `global_model.jl` |
+| `OpenSHOP/Hydraulics.lean` | Continuous head-span necessity; endpoint/mean-power counterexample; monotone electrical and positive-efficiency pump bound transformations | `power_observations.jl`, `unit_limits.jl` |
 | `OpenSHOP/Hydraulics.lean` | Midpoint potential remainder and artificial cycle work; passive equalization overshoot; multiple roots with passive reference-dependent channels; pressure-shift invariance and bound translation | `forward.jl`, `hydraulic_residual.jl`, `pressure_references.jl` |
 | `OpenSHOP/Interpolation.lean` | Hermite coefficients; SOS2 cubic correction and product bounds; affine cell reparameterization; signed tensor-product moment; corner partition; degree-four/two Bernstein conversion and basis partitions; coefficient enclosure implication; implicit electrical-power inversion | `curves.jl`, `polynomial_tables.jl`, `tensor_tables.jl`, `power_hull.jl`, `power_bounds.jl` |
 | `OpenSHOP/Commitment.lean` | Exact binary products for signed variables; positive-power head implication and its idle counterexample; binary transition rows; river flow disjunction and rate-change epigraph; conditional gross-head limits; volume-allowance restart; storage interval propagation; signed on-head bounds; conditional objective-gap implication | `algebra.jl`, `joint_states.jl`, `global_bounds.jl`, `power_hull.jl`, `solve.jl`, `head_constraints.jl`, `river_operations.jl`, `flow_requirements.jl` |
@@ -59,3 +60,8 @@ nonuniqueness examples and the pressure-reference regression.
 new discrete gradient, including original and refined closed storage cycles.
 `../zero_minimum_tests.jl` checks that both local and global optimization retain
 an idle committed unit at negative permitted head.
+
+The head-span theorem assumes a continuous head path and a held unit conversion
+law. It proves a necessary condition, not that endpoint heads contain all
+interior heads. Polynomial root calculations, automatic derivatives and the
+complete observation builder are checked numerically, not verified by Lean.

@@ -23,6 +23,14 @@ The radius is a numerical relaxation, not a rigorous error bound for SCIP or
 for coefficient arithmetic. Returned schedules are independently reconstructed
 and checked against the original equations and operating restrictions.
 
+Local dispatch also checks prescribed-volume pressure states at both ends of
+each hydraulic cell, and unit equipment limits over the head range between
+those observations. The global cell-average power graph is an outer model for
+these additional restrictions. Its bounds remain enclosing; a returned schedule
+must pass the stronger physical checks. Neither the observations nor the
+head-range check prove that a continuous trajectory has no unobserved excursion.
+See [instantaneous equipment limits](hydraulics.md#instantaneous-equipment-limits).
+
 Input validation does not promise a nonempty feasible set. Physical limits,
 water availability and operating requirements can conflict in a particular
 case. That is different from a redundant formulation inequality incorrectly

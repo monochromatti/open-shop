@@ -59,8 +59,6 @@ function _build_dispatch(
     D=length(s.rivers)
     ix = topology.node_index
     dt=diff(c.grid)
-    generator_plants = s.plants[topology.generator_plant]
-    plant_generators = Dict(p.name => topology.plant_generators[i] for (i, p) in enumerate(s.plants))
     warm,warm_start=_dispatch_start(operating_case,operating_u,warm;grid=mesh.grid)
     m=model
     set_silent(m)
@@ -205,49 +203,8 @@ function _build_dispatch(
             )
         end for plant in s.plants
     )
-    for (i, g) in enumerate(s.generators), t in 1:T
-        plant=generator_plants[i]
-        totalq=sum(GQ[j, t] for j in plant_generators[plant.name])
-        tail=tailwater_ops[plant.name]===nothing ? 0.0 : tailwater_ops[plant.name](totalq)
-        op=outlet_ops[plant.name]
-        receiver=op===nothing ? H[ix[plant.target], t] :
-                 op isa Real ? op : op(H[ix[plant.target], t])
-        hd=unit_power_sign(g)*(H[ix[plant.source], t]-receiver-tail)
-        eta=characteristic_ops[i]!==nothing ? characteristic_ops[i][2](hd) : turbine_ops[i]===nothing ?
-            g.efficiency-g.qcurvature*((GQ[i, t]-g.qbest)/g.qbest)^2-g.hcurvature*(
-            (hd-g.hbest)/g.hbest
-        )^2 : turbine_ops[i](GQ[i, t], hd)
-        electrical=electrical_ops[i]===nothing ? 1.0 : electrical_ops[i](P[i, t])
-        qmin=opinterval(c, g.name, :qmin, t, g.qmin)
-        qmax=opinterval(c, g.name, :qmax, t, g.qmax)
-        pmin=opinterval(c, g.name, :pmin, t, g.pmin)
-        pmax=opinterval(c, g.name, :pmax, t, g.pmax)
-        conversion=g.mode==:pump ?
-            P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
-            P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
-        begin
-            intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
-            plo,phi=inset_bounds(pmin,pmax,operational_margin)
-            set_lower_bound(p[i, t], plo*u[i, t]/DISPATCH_POWER_SCALE)
-            set_upper_bound(p[i, t], phi*u[i, t]/DISPATCH_POWER_SCALE)
-            if u[i, t]==0
-                fix(gq[i, t], 0; force = true)
-                fix(p[i, t], 0; force = true)
-            else
-                if characteristic_ops[i]!==nothing
-                    @constraint(m,(GQ[i,t]-characteristic_ops[i][1](hd))/50==0)
-                end
-                @constraint(m, conversion/40==0)
-                @constraint(m, g.hmin<=hd<=g.hmax)
-                @constraint(m, g.min_efficiency<=eta<=1.0)
-                if g.turbine_table!==nothing
-                    qlo, qhi=turbine_flow_ops[i]
-                    @constraint(m, GQ[i, t]>=qlo(hd))
-                    @constraint(m, GQ[i, t]<=qhi(hd))
-                end
-            end
-        end
-    end
+    unit_operators=(;level_ops,turbine_ops,characteristic_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
+    constrain_unit_physics!(m,c,u,variables,unit_operators;operational_margin)
     reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops;operating_case)
     outlet_bounds=(;
         capacity=[opinterval(c,r.name,:capacity,t,r.capacity) for r in s.rivers,t in 1:T],
@@ -384,8 +341,8 @@ function _build_dispatch(
             set_start_value(variable,value)
         end
     end
-    (;
-        variables,reserves,
+    b=(;
+        variables,reserves,unit_operators,
         case=c,
         operating_case,mesh,operating_u,
         m,
@@ -408,6 +365,8 @@ function _build_dispatch(
         river_operations,
         flow_integrals,level_windows,
     )
+    constrain_power_observations!(b;operational_margin,prefix)
+    b
 end
 
 # A second hydraulic mesh shares the requested controls. Its state variables are
