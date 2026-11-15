@@ -1,8 +1,8 @@
 """Schedule an input case using successive MILP proposals and nonlinear dispatch.
 
 Before the first accepted schedule, proposals minimize operating-state changes.
-Subsequent proposals optimize approximate revenue. Each accepted nonlinear improvement supplies the next proposal's hydraulic
-reference. Stop when discrete controls repeat, an accepted dispatch fails to
+Subsequent proposals optimize approximate revenue. Each accepted nonlinear
+improvement supplies the next proposal's hydraulic reference. Stop when discrete controls repeat, an accepted dispatch fails to
 improve the best schedule, or the shared deadline expires. Cold dispatch restores
 feasibility before optimizing revenue; a failed improvement retains that
 feasible trajectory. Unsuccessful assignments are excluded from subsequent

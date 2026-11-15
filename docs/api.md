@@ -39,7 +39,8 @@ the best accepted schedule.
 Before the first accepted schedule, the MILP minimizes unit and river-state
 transitions and tunnel-opening changes from the recorded initial state. Once
 nonlinear dispatch passes independent acceptance, proposals use the economic
-objective. Both phases retain all physical and operating restrictions.
+objective. Changing the proposal objective leaves its constraints unchanged;
+nonlinear acceptance still uses the original physical equations and restrictions.
 
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.
