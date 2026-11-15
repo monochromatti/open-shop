@@ -1325,6 +1325,10 @@ inequality. Evaluate these polynomials at segment endpoints and at their
 interior stationary points. The electrical generation relation $P/e(P)$ is
 strictly increasing, so its limit values give equivalent shaft-power bounds.
 No time interpolation or additional integration step is needed for this check.
+When conversion is monotone over the full declared operating range, endpoint
+inequalities already enforce the range limit. In that case, omit the redundant
+maximum operator. Efficiency and flow bounds are simplified in the same way
+when their full-range bounds or monotonicity establish the implication.
 
 This head-range condition is necessary, but does not bound a trajectory that
 turns beyond both observed heads. Plant totals can also peak between observations.
@@ -1381,10 +1385,20 @@ again. This constraint-generation step draws on the treatment of path constraint
 in semi-infinite optimal control~@potschka. It does not introduce additional
 control decisions.
 
-When refinement requires a nonlinear repair, first solve the constrained model
-with a constant objective to restore feasibility. Resume revenue optimization
-from an independently accepted trajectory. Coordinating
-feasibility restoration and mesh refinement is also central to the optimal-control
+When refinement requires a nonlinear repair, keep every physical constraint and
+guide the search toward the preceding water plan. With starting flows $q^0$ and
+$R^0$ and the common numerical discharge scale $Q_*$, use the repair objective
+
+$ sum_k Delta tau_k (sum_g ((q_(g k)-q^0_(g k))/Q_*)^2
+  + sum_r ((R_(r k)-R^0_(r k))/Q_*)^2). $
+
+This objective prefers small flow changes, rather than arbitrary feasible water
+allocations. It changes no operating limit. Without a starting trajectory, use
+a constant objective. Stop repair at the first feasible iterate; we do not claim
+to find its closest feasible point. Resume revenue optimization from an
+independently accepted trajectory. The flow-distance objective is absent from
+revenue and reported schedule values. Coordinating feasibility restoration and
+mesh refinement is also central to the optimal-control
 method of Banihashemi and Kaya~@banihashemi; here both phases use the same local
 nonlinear solver. We do not claim their convergence results for this nonconvex
 model. Recheck accuracy after controls change, and retain the best independently

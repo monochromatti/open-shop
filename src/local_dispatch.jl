@@ -334,7 +334,14 @@ function _build_dispatch(
         initial_transit=history_initial,gate_cost=gates.cost,soft_cost=soft.cost,river_cost=river_operations.cost,
         operating_case,operating_u)
     reserves===nothing || (obj+=reserves.value)
-    @objective(m, Max, feasibility_only ? 0.0 : obj/10000)
+    # Guide repair toward the supplied water plan. Keep the hard constraints
+    # and the reported economic objective unchanged.
+    distance=feasibility_only && warm!==nothing ?
+        sum(mesh.dt[t]*((GQ[i,t]-warm.generator_q[i,t])/DISPATCH_FLOW_SCALE)^2
+            for i in axes(GQ,1),t in axes(GQ,2);init=0.0)+
+        sum(mesh.dt[t]*((RQ[i,t]-warm.river_release[i,t])/DISPATCH_FLOW_SCALE)^2
+            for i in axes(RQ,1),t in axes(RQ,2);init=0.0) : 0.0
+    @objective(m, Max, feasibility_only ? -distance : obj/10000)
     initialize_dispatch!(variables,c,ustart;warm,seed,initialize_controls=shared_controls===nothing)
     if warm!==nothing
         for (variable,value) in river_operation_start_values(river_operations,operating_case,operating_warm.river_release)
@@ -434,8 +441,9 @@ function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
         set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
         set_optimizer_attribute(m, "max_wall_time", max(0.001, time_limit))
         if feasibility_only
-            # With constant objective, any feasible point is optimal. Do not
-            # wait for barrier multipliers; check unscaled rows and bounds.
+            # Stop repair at the first feasible point. The flow-distance
+            # objective guides steps; it need not be polished to optimality.
+            # Check unscaled rows and bounds before stopping.
             lower=Float64[];upper=Float64[];violation=Float64[]
             callback=function(mode,iteration,objective,primal,args...)
                 mode==0 && primal<=1e-8 || return true

@@ -42,6 +42,7 @@ end
     @test envelope.at_upper≈2.0 atol=1e-12
     @test envelope.upper≈power(g,q,2.0)-g.pmax atol=1e-12
     @test envelope.upper>0
+    @test !OpenSHOP.power_increases_with_head(g)
     x=dispatch_from_controls(c,ones(Int,1,1),reshape([q],1,1),zeros(0,1))
     @test x.storage[1,end]≈0.01 atol=1e-10
     @test !validate(c,x)["valid"]
@@ -203,4 +204,18 @@ end
     OpenSHOP.constrain_replay!(model,fine;warm)
     @test value.(start_value,model.GQ)≈ones(1,1)
     @test start_value.(model.variables.a)≈ones(1,1)
+end
+
+@testset "Head monotonicity uses the entire polynomial operating range" begin
+    c=drawdown_power_case()
+    g=only(c.system.generators)
+    @test OpenSHOP.power_increases_with_head(g)
+    # Positive endpoint derivatives do not establish monotonicity for a
+    # quadratic derivative. This efficiency law has an interior negative one.
+    curved=OpenSHOP._river_replace(g;efficiency=0.2,hcurvature=-1.0,
+        hbest=2.0,hmin=0.5,hmax=3.0)
+    @test !OpenSHOP.power_increases_with_head(curved)
+    @test ForwardDiff.derivative(h->power(curved,1.0,h),0.5)>0
+    @test ForwardDiff.derivative(h->power(curved,1.0,h),3.0)>0
+    @test ForwardDiff.derivative(h->power(curved,1.0,h),4/3)<0
 end

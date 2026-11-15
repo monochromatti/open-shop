@@ -36,7 +36,7 @@ function unit_head_envelope(g,q,head_a,head_b; pmin=g.pmin,pmax=g.pmax,qmin=g.qm
     at_upper=lo;at_lower=lo
     for k in 1:length(edges)-1
         a,b=edges[k],edges[k+1]
-        middle=(a+b)/2
+        middle=a
         q0,q1=q,0.0
         if g.characteristic!==nothing
             c=g.characteristic
@@ -93,4 +93,63 @@ function unit_head_envelope(g,q,head_a,head_b; pmin=g.pmin,pmax=g.pmax,qmin=g.qm
     residual=max(upper/DISPATCH_POWER_SCALE,lower/DISPATCH_POWER_SCALE,
         domain,flow/DISPATCH_FLOW_SCALE,(g.hmin-lo)/DISPATCH_HEAD_SCALE,(hi-g.hmax)/DISPATCH_HEAD_SCALE)
     (;residual,upper,lower,domain,flow,at_upper,at_lower)
+end
+
+"""Establish increasing power in head over the full declared operating box.
+
+For generation the derivative has the sign of eta+h*eta_h; for a variable-flow
+pump it has the sign of eta-h*eta_h. Each tabulated head segment is affine in
+head and cubic at most in discharge, so its minimum is computed algebraically.
+An uncertain sign, or a fixed-speed characteristic, retains the general span
+constraints. This removes redundant inequalities without narrowing the model.
+"""
+function power_increases_with_head(g)
+    g.hmin==g.hmax && return true
+    g.characteristic!==nothing && return false
+    if g.turbine_table===nothing
+        lower=Inf;scale=1.0
+        for q in (g.qmin,clamp(g.qbest,g.qmin,g.qmax),g.qmax)
+            e0=g.efficiency-g.qcurvature*((q-g.qbest)/g.qbest)^2-g.hcurvature
+            e1=2g.hcurvature/g.hbest
+            e2=-g.hcurvature/g.hbest^2
+            polynomial=g.mode==:generate ? (e0,2e1,3e2,0.0) : (e0,0.0,-e2,0.0)
+            lower=min(lower,cubic_extrema(polynomial,g.hmin,g.hmax).minimum)
+            scale=max(scale,sum(abs,polynomial))
+        end
+        return lower>128eps(Float64)*scale
+    end
+    table=g.turbine_table
+    qs=_global_tensor_nodes(table._discharge_knots,g.qmin,g.qmax)
+    hs=_global_tensor_nodes(table.heads,g.hmin,g.hmax)
+    flows=length(qs)==1 ? [(first(qs),first(qs))] : collect(zip(qs[1:end-1],qs[2:end]))
+    for (a,b) in zip(hs[1:end-1],hs[2:end]),(lo,hi) in flows
+        j,k,_=_turbine_head_weights(table,a,:linear)
+        left=_global_column_polynomial(table,lo,hi,j)
+        slope=j==k ? ntuple(_->0.0,4) :
+            (_global_column_polynomial(table,lo,hi,k).-left)./(table.heads[k]-table.heads[j])
+        for h in (a,b)
+            coefficient=g.mode==:generate ? 2h-table.heads[j] : -table.heads[j]
+            polynomial=left.+coefficient.*slope
+            lower,_=_global_polynomial_range(polynomial,0.0,1.0)
+            lower>128eps(Float64)*max(1.0,sum(abs,polynomial)) || return false
+        end
+    end
+    true
+end
+
+function unit_efficiency_bounds(g)
+    if g.characteristic!==nothing
+        hs=vcat(g.hmin,filter(h->g.hmin<h<g.hmax,g.characteristic.heads),g.hmax)
+        return extrema(pump_efficiency(g.characteristic,h;extrapolation=:linear) for h in hs)
+    elseif g.turbine_table!==nothing
+        return turbine_efficiency_bounds(g.turbine_table,g.qmin,g.qmax,g.hmin,g.hmax)
+    end
+    polynomial_efficiency_bounds(g,g.qmin,g.qmax,g.hmin,g.hmax)
+end
+
+function discharge_envelope_monotone(g)
+    monotone(values)=all(>=(0),diff(values)) || all(<=(0),diff(values))
+    g.characteristic!==nothing && return monotone(g.characteristic.discharge)
+    g.turbine_table===nothing && return true
+    monotone(g.turbine_table.qmin) && monotone(g.turbine_table.qmax)
 end

@@ -42,7 +42,10 @@ For each unit, limits are also enforced over the entire range between its two
 observed net heads. Extrema are calculated from the efficiency segments and
 polynomial stationary points. Adjustable discharge is held fixed; a fixed-speed
 pump uses its head-dependent discharge characteristic. This is a necessary
-condition for any continuous head path between the observed states.
+condition for any continuous head path between the observed states. If the
+supplied curves are monotone over the complete permitted range, endpoint
+inequalities already enforce the corresponding span bound; redundant maximum
+operators are omitted. This does not change the feasible set.
 
 It does not cover a head excursion outside that range or every possible interior
 peak of total plant power or flow. `validate_replay` evaluates more pressure states on a

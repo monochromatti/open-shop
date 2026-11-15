@@ -3,16 +3,6 @@
 # flow-dependent reaches use the existing exact quadratic transfer coefficients
 # on the scheduling grid; downstream junction mixing is a grid approximation.
 # A global bound for that formulation does not bound continuous-time mixing.
-function _global_analytic_eta_bounds(g, qlo, qhi, hlo, hhi)
-    function contribution(coef, best, lo, hi)
-        vals=[-coef*((lo-best)/best)^2, -coef*((hi-best)/best)^2]
-        lo<=best<=hi && push!(vals, 0.0)
-        extrema(vals)
-    end
-    a, b=contribution(g.qcurvature, g.qbest, qlo, qhi)
-    c, d=contribution(g.hcurvature, g.hbest, hlo, hhi)
-    (g.efficiency+a+c, g.efficiency+b+d)
-end
 
 function _global_scaled_head_bounds(variable)
     lo,hi=is_fixed(variable) ? (fix_value(variable),fix_value(variable)) :
@@ -344,7 +334,7 @@ function _build_global_dispatch(
             characteristic=(flowgraph,etagraph)
             etagraph.y
         elseif g.turbine_table===nothing
-            emin, emax=_global_analytic_eta_bounds(g, flowmin, flowmax, hlo, hhi)
+            emin, emax=polynomial_efficiency_bounds(g, flowmin, flowmax, hlo, hhi)
             z=@variable(m, lower_bound=emin, upper_bound=emax, base_name="eta_$(i)_$(t)")
             @constraint(
                 m,

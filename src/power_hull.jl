@@ -25,7 +25,7 @@ end
 # linear, so discharge-polynomial extrema at the head knots bound the box.
 function _power_hull_eta_bounds(g,qbox,hbox)
     if g.turbine_table===nothing
-        return _power_hull_outward_bounds(_global_analytic_eta_bounds(g,qbox...,hbox...)...)
+        return _power_hull_outward_bounds(polynomial_efficiency_bounds(g,qbox...,hbox...)...)
     end
     table=g.turbine_table
     qs=_global_tensor_nodes(table._discharge_knots,qbox...)

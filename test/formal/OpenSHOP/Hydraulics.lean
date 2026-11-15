@@ -257,4 +257,14 @@ theorem generator_power_upper_iff {conversion : ℝ → ℝ}
   rw [← equation]
   exact increasing.le_iff_le.symm
 
+/-- For increasing conversion, endpoint inequalities enforce the whole head
+interval. The numerical monotonicity check is separate from this implication. -/
+theorem monotone_head_limits (power : ℝ → ℝ) (a b lower upper : ℝ)
+    (ordered : a ≤ b) (increasing : MonotoneOn power (Set.Icc a b))
+    (at_left : lower ≤ power a) (at_right : power b ≤ upper) :
+    ∀ h ∈ Set.Icc a b, lower ≤ power h ∧ power h ≤ upper := by
+  intro h hh
+  exact ⟨at_left.trans (increasing ⟨le_refl a, ordered⟩ hh hh.1),
+    (increasing hh ⟨ordered, le_refl b⟩ hh.2).trans at_right⟩
+
 end OpenSHOP

@@ -156,6 +156,22 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="",observ
     end
     u=b.u[:,periods]
     heads=constrain_unit_physics!(m,s,u,(;H,GQ,P,gq,p),b.unit_operators)
+    # Endpoint inequalities are smooth even when a fixed unit output makes
+    # both sides active. Do not turn these observation powers into fixed vars.
+    for (i,g) in enumerate(s.generators),(k,t) in enumerate(periods)
+        b.u[i,t]==0 && continue
+        lo,hi=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+            opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
+        @constraint(m,p[i,k]>=lo/DISPATCH_POWER_SCALE)
+        @constraint(m,p[i,k]<=hi/DISPATCH_POWER_SCALE)
+        if g.characteristic!==nothing
+            @constraint(m,gq[i,k]>=opinterval(c,g.name,:qmin,t,g.qmin)/DISPATCH_FLOW_SCALE)
+            @constraint(m,gq[i,k]<=opinterval(c,g.name,:qmax,t,g.qmax)/DISPATCH_FLOW_SCALE)
+        end
+    end
+    increasing=power_increases_with_head.(s.generators)
+    eta_bounds=unit_efficiency_bounds.(s.generators)
+    monotone_flow=discharge_envelope_monotone.(s.generators)
     # A continuous head trajectory attains every head between its endpoint
     # values. Enforce the equipment limits over that whole span, including
     # interior efficiency-table extrema, without adding integration steps.
@@ -167,7 +183,9 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="",observ
         qmax=opinterval(c,g.name,:qmax,t,g.qmax)
         for (component,scale) in ((:upper,DISPATCH_POWER_SCALE),(:lower,DISPATCH_POWER_SCALE),
             (:domain,1.0),(:flow,DISPATCH_FLOW_SCALE))
-            component==:flow && g.turbine_table===nothing && g.characteristic===nothing && continue
+            component in (:upper,:lower) && increasing[i] && continue
+            component==:domain && first(eta_bounds[i])>=g.min_efficiency && last(eta_bounds[i])<=1.0 && continue
+            component==:flow && monotone_flow[i] && continue
             envelope=add_nonlinear_operator(m,3,
                 (q,a,b)->getproperty(unit_head_envelope(g,q,a,b;pmin,pmax,qmin,qmax),component)/scale;
                 name=Symbol(prefix,"unit_head_span_",component,"_",i,"_",k))

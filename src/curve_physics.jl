@@ -7,6 +7,18 @@ efficiency(g::Generator, q, h; extrapolation = :linear) =
     g.characteristic!==nothing ? pump_efficiency(g.characteristic,h;extrapolation) : g.turbine_table===nothing ?
     g.efficiency-g.qcurvature*((q-g.qbest)/g.qbest)^2-g.hcurvature*((h-g.hbest)/g.hbest)^2 :
     turbine_efficiency(g.turbine_table, q, h; extrapolation)
+"""Exact bounds of the separable polynomial efficiency on a flow/head box."""
+function polynomial_efficiency_bounds(g, qlo, qhi, hlo, hhi)
+    function contribution(coef, best, lo, hi)
+        vals=[-coef*((lo-best)/best)^2, -coef*((hi-best)/best)^2]
+        lo<=best<=hi && push!(vals, 0.0)
+        extrema(vals)
+    end
+    a, b=contribution(g.qcurvature, g.qbest, qlo, qhi)
+    c, d=contribution(g.hcurvature, g.hbest, hlo, hhi)
+    (g.efficiency+a+c, g.efficiency+b+d)
+end
+
 generator_efficiency(g::Generator, p; extrapolation = :linear) =
     g.generator_efficiency_curve===nothing ? one(p) :
     table_value(g.generator_efficiency_curve, p; extrapolation)
