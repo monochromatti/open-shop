@@ -112,7 +112,7 @@ function power_increases_with_head(g)
             e0=g.efficiency-g.qcurvature*((q-g.qbest)/g.qbest)^2-g.hcurvature
             e1=2g.hcurvature/g.hbest
             e2=-g.hcurvature/g.hbest^2
-            polynomial=g.mode==:generate ? (e0,2e1,3e2,0.0) : (e0,0.0,-e2,0.0)
+            polynomial=g.mode==:generate ? (e0,2*e1,3*e2,0.0) : (e0,0.0,-e2,0.0)
             lower=min(lower,cubic_extrema(polynomial,g.hmin,g.hmax).minimum)
             scale=max(scale,sum(abs,polynomial))
         end
