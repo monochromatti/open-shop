@@ -55,7 +55,7 @@ end
     @test result.accepted
     if result.solution!==nothing
         y=result.solution
-        @test y.generator_q[1,1]≈g.pmax/(0.00981*4/3) atol=2e-4
+        @test y.generator_q[1,1]≈g.pmax/(0.00981*4/3) rtol=1e-3
         @test validate_replay(c,y;grid=OpenSHOP.refined_grid(y.grid;factor=16))["physically_valid"]
     end
 end

@@ -1,15 +1,13 @@
 """Pressure-dependent unit conversion and operating limits, in physical units."""
-function constrain_unit_physics!(m,c,u,variables,operators;
-    intervals=eachindex(c.prices),operational_margin=0.0)
+function constrain_unit_physics!(m,s,u,variables,operators)
     (;H,GQ,P,gq,p)=variables
     (;turbine_ops,characteristic_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)=operators
-    s=c.system
     topology=HydraulicTopology(s)
     ix=topology.node_index
     generator_plants=s.plants[topology.generator_plant]
     plant_generators=Dict(p.name=>topology.plant_generators[i] for (i,p) in enumerate(s.plants))
-    heads=Matrix{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,length(s.generators),length(intervals))
-    for (i, g) in enumerate(s.generators), (t,period) in enumerate(intervals)
+    heads=Matrix{Union{AffExpr,QuadExpr,NonlinearExpr}}(undef,length(s.generators),size(GQ,2))
+    for (i, g) in enumerate(s.generators), t in axes(GQ,2)
         plant=generator_plants[i]
         totalq=sum(GQ[j, t] for j in plant_generators[plant.name])
         tail=tailwater_ops[plant.name]===nothing ? 0.0 : tailwater_ops[plant.name](totalq)
@@ -23,18 +21,10 @@ function constrain_unit_physics!(m,c,u,variables,operators;
             (hd-g.hbest)/g.hbest
         )^2 : turbine_ops[i](GQ[i, t], hd)
         electrical=electrical_ops[i]===nothing ? 1.0 : electrical_ops[i](P[i, t])
-        qmin=opinterval(c, g.name, :qmin, period, g.qmin)
-        qmax=opinterval(c, g.name, :qmax, period, g.qmax)
-        pmin=opinterval(c, g.name, :pmin, period, g.pmin)
-        pmax=opinterval(c, g.name, :pmax, period, g.pmax)
         conversion=g.mode==:pump ?
             P[i,t]*eta*g.motor_efficiency-0.00981*GQ[i,t]*hd :
             P[i,t]-0.00981*GQ[i,t]*hd*eta*electrical
         begin
-            intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
-            plo,phi=inset_bounds(pmin,pmax,operational_margin)
-            set_lower_bound(p[i, t], plo*u[i, t]/DISPATCH_POWER_SCALE)
-            set_upper_bound(p[i, t], phi*u[i, t]/DISPATCH_POWER_SCALE)
             if u[i, t]==0
                 fix(gq[i, t], 0; force = true)
                 fix(p[i, t], 0; force = true)
@@ -73,6 +63,9 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
     K=length(periods)
     h=@variable(m,[1:nj,1:K],base_name=prefix*"point_head")
     q=@variable(m,[1:ne,1:K],base_name=prefix*"point_tunnel_q")
+    # Unit power bounds are imposed over the head span below. Fixing these
+    # observation powers too would duplicate equality restrictions when the
+    # unit has identical minimum and maximum power.
     p=@variable(m,[1:ng,1:K],lower_bound=0.0,base_name=prefix*"point_power")
     gq=Matrix{VariableRef}(undef,ng,K)
     for k in 1:K,(i,g) in enumerate(s.generators)
@@ -153,7 +146,7 @@ function constrain_power_observations!(b;operational_margin=0.0,prefix="")
         @constraint(m,net/50==0)
     end
     u=b.u[:,periods]
-    heads=constrain_unit_physics!(m,c,u,(;H,GQ,P,gq,p),b.unit_operators;intervals=periods,operational_margin)
+    heads=constrain_unit_physics!(m,s,u,(;H,GQ,P,gq,p),b.unit_operators)
     # A continuous head trajectory attains every head between its endpoint
     # values. Enforce the equipment limits over that whole span, including
     # interior efficiency-table extrema, without adding integration steps.

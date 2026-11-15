@@ -204,7 +204,16 @@ function _build_dispatch(
         end for plant in s.plants
     )
     unit_operators=(;level_ops,turbine_ops,characteristic_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops)
-    constrain_unit_physics!(m,c,u,variables,unit_operators;operational_margin)
+    for (i,g) in enumerate(s.generators),t in 1:T
+        qmin=opinterval(c,g.name,:qmin,t,g.qmin)
+        qmax=opinterval(c,g.name,:qmax,t,g.qmax)
+        pmin,pmax=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+            opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
+        intersect_bounds!(gq[i,t],qmin*u[i,t]/DISPATCH_FLOW_SCALE,qmax*u[i,t]/DISPATCH_FLOW_SCALE)
+        set_lower_bound(p[i,t],pmin*u[i,t]/DISPATCH_POWER_SCALE)
+        set_upper_bound(p[i,t],pmax*u[i,t]/DISPATCH_POWER_SCALE)
+    end
+    constrain_unit_physics!(m,s,u,variables,unit_operators)
     reserves=_local_reserve_points!(m,c,u,H,P,GQ,turbine_ops,electrical_ops,tailwater_ops,outlet_ops,turbine_flow_ops;operating_case)
     outlet_bounds=(;
         capacity=[opinterval(c,r.name,:capacity,t,r.capacity) for r in s.rivers,t in 1:T],

@@ -355,10 +355,10 @@ end
     b=100+0.0018*80
     q=400/(b+sqrt(b^2-4*0.0018*200))
     coarse=dispatch_from_controls(c,u,fill(q,1,1),zeros(1,1))
-    @test validate(c,coarse)["valid"]
+    @test !validate(c,coarse)["valid"]
     @test !validate_replay(c,coarse)["valid"]
     for refine_grid in (false,true)
-        result=solve_verified(c;u,initial=coarse,max_refinements=1,refine_grid,time_limit=15.0)
+        result=solve_verified(c;u,warm=coarse,max_refinements=1,refine_grid,time_limit=15.0)
         @test result["accepted"]
         @test result["case"].grid==c.grid
         @test all(t in result["solution"].grid for t in c.grid)
@@ -384,11 +384,14 @@ end
         plants=[Plant(name=:Lift,source=:Lower,target=:Upper,pmax=10.0,qmax=q)])
     c=ScheduleCase(name="discharge error only",system=system,grid=[0.0,1.0],prices=[0.0])
     x=dispatch_from_controls(c,ones(Int,1,1),fill(q,1,1),zeros(0,1))
-    @test validate(c,x)["valid"]
-    check=validate_replay(c,x)
+    # The initial characteristic flow is exactly 3 m³/s. Its instantaneous
+    # plant-capacity excess exceeds the old half-step average discrepancy.
+    @test !validate(c,x)["valid"]
+    @test only(validate(c,x)["shortfalls"].plant_discharge)≈3-q atol=1e-9
+    check=validate_replay(c,x;require_original=false)
     @test !check["valid"]
     @test check["shortfalls"].power==0.0
-    @test check["shortfalls"].discharge≈0.0021553422261328947 atol=1e-9
+    @test check["shortfalls"].discharge≈3-q atol=1e-9
 end
 
 @testset "A failed nonlinear commitment leaves other discrete choices available" begin
