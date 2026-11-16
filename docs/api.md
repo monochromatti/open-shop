@@ -256,6 +256,9 @@ available as a fallback. If the native point is unfinished, a reconstructed
 feasible plan can instead proceed directly to finer replay.
 When river on/off choices are prescribed, `validate` and `validate_replay` accept
 the same `river_on` matrix to check those choices as well as physical feasibility.
+Admission to the retained-plan cache uses the tighter primal tolerance. The
+public physical-check tolerance is unchanged; it is not an allowance to increase
+economic value at an active bound or fixed discharge schedule.
 
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor

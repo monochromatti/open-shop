@@ -508,7 +508,10 @@ function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
                 head_reference=interval_means(b.mesh,value_at.(b.H)),status="FORWARD_RECONSTRUCTED")
             if solution[]===nothing || x.objective>solution[].objective
                 checks[]+=1
-                validation=_validate_schedule(b.operating_case,x;transport,arrival_margin,
+                # Do not turn the public check's allowance into artificial
+                # revenue at an active storage, power or reserve limit.
+                validation=_validate_schedule(b.operating_case,x;transport,
+                    tolerance=DISPATCH_PRIMAL_TOLERANCE,arrival_margin,
                     operational_margin,river_on=b.river_operations.on)
                 if validation["valid"]
                     x.diagnostics["validation"]=validation

@@ -1112,7 +1112,8 @@ integrated. During revenue optimization we reconstruct these controls at each
 regular iterate and retain the highest-value trajectory that satisfies the
 original constraints and fixed discrete choices. A trajectory whose computed
 value cannot improve the retained feasible plan needs no further operating-limit
-checks. The optimizer can therefore finish at an infeasible point without losing
+checks. Admission uses the primal tolerance, so a validation allowance at a
+binding limit cannot create an apparent revenue gain. The optimizer can finish at an infeasible point without losing
 an earlier improvement. Its termination status does not establish stationarity
 of the retained trajectory.
 
