@@ -67,6 +67,17 @@ function dispatch_from_controls(
     head_reference = nothing,
     grid = c.grid,
 )
+    x,nd=_dispatch_from_controls(c,u,q,gate;status,transport,tunnel_opening,
+        reserves,head_reference,grid)
+    x.diagnostics["validation"]=validate(c,x;transport=nd)
+    x
+end
+
+# Reconstruction and its economic value precede operating-limit checks. During
+# revenue optimization, a point with lower value than a known feasible schedule
+# needs no further feasibility work. Public reconstruction always validates.
+function _dispatch_from_controls(c,u,q,gate;
+    status,transport,tunnel_opening,reserves,head_reference,grid)
     mesh=TimeDiscretization(c.grid,grid)
     physical=hydraulic_case(c,mesh.grid)
     validate_reserve_inputs(c)
@@ -98,8 +109,7 @@ function dispatch_from_controls(
         objective,adjustment_cost,req.cost,
         Dict{String,Any}("case"=>c.name,"status"=>status,"solver"=>"independent_forward");reserves)
     x=with_soft_assessment(c,x)
-    x.diagnostics["validation"]=validate(c,x;transport=nd)
-    x
+    x,nd
 end
 
 """Correct bounded solver roundoff, then independently rebuild all physical values."""

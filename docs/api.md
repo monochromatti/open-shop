@@ -38,6 +38,11 @@ the best accepted schedule.
 
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.
+Revenue solves also reconstruct the held controls of intermediate iterates.
+They retain the highest-value trajectory passing the original physical checks
+and the fixed discrete choices. An infeasible final optimizer point therefore
+does not discard an earlier feasible improvement. Finer replay still determines
+acceptance by `solve_verified` and `schedule_case`.
 A supplied `initial` must pass independent acceptance for this case; it is not
 an unchecked guess for changed inputs. All work shares `time_limit`, with
 `proposal_time_limit` bounding each MILP and `nlp_time_limit` bounding the full
@@ -238,6 +243,19 @@ of the nonlinear solve when an outlet closes.
 Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
+
+Revenue iteration reconstruction is included in the native solve's `seconds`.
+`iterate_reconstruction_seconds` reports that component, rather than additional
+elapsed time. `retained_iteration` identifies an earlier returned trajectory
+when it replaces the final point. The native `status` and iteration count still
+describe the optimizer run; they do not establish stationarity of that trajectory.
+`primal_residual` measures the native point's normalized equations and bounds.
+If it meets the primal tolerance, adaptive dispatch still uses violations at
+that final trial to add missing restrictions. A feasible earlier plan remains
+available as a fallback. If the native point is unfinished, a reconstructed
+feasible plan can instead proceed directly to finer replay.
+When river on/off choices are prescribed, `validate` and `validate_replay` accept
+the same `river_on` matrix to check those choices as well as physical feasibility.
 
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor

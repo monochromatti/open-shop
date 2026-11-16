@@ -320,15 +320,15 @@ function _global_reserve_points!(m,c,u,H,P,Q,node_bounds,plant_heads)
     (;r...,graphs)
 end
 
-function _reserve_values(c,r;operating_case=c)
+function _reserve_values(c,r,value_function=JuMP.value;operating_case=c)
     mesh=TimeDiscretization(operating_case.grid,c.grid)
     r===nothing && return nothing
-    up,down=value.(r.up),value.(r.down)
+    up,down=value_function.(r.up),value_function.(r.down)
     su=[max(0.0,opinterval(operating_case,g.name,:up_requirement,mesh.interval[t],g.up_requirement)-sum(up[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in eachindex(c.prices)]
     sd=[max(0.0,opinterval(operating_case,g.name,:down_requirement,mesh.interval[t],g.down_requirement)-sum(down[:,k,t]))
         for (k,g) in enumerate(c.reserve_groups),t in eachindex(c.prices)]
-    ReserveAllocation(up,down,value.(r.Qpoint[:,:,1]),value.(r.Qpoint[:,:,2]),su,sd)
+    ReserveAllocation(up,down,value_function.(r.Qpoint[:,:,1]),value_function.(r.Qpoint[:,:,2]),su,sd)
 end
 
 function _start_reserves!(r,c,warm)

@@ -433,12 +433,22 @@ function _reconstruct_dispatch!(c, solution::Schedule, report; transport=nothing
     solution
 end
 
+const DISPATCH_PRIMAL_TOLERANCE=1e-8
+
+function ipopt_primal_residual!(lower,upper,violation,native)
+    resize!(lower,native.n);resize!(upper,native.n);resize!(violation,native.m)
+    Ipopt.GetIpoptCurrentViolations(native,false,native.n,lower,upper,
+        C_NULL,C_NULL,C_NULL,native.m,violation,C_NULL)
+    residual=max(maximum(lower;init=0.0),maximum(upper;init=0.0),maximum(violation;init=0.0))
+    isfinite(residual) ? residual : Inf
+end
+
 function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
     solver == "Ipopt" || throw(ArgumentError("Unsupported local solver $solver"))
     set_optimizer(m, Ipopt.Optimizer)
     set_silent(m)
     if solver=="Ipopt"
-        set_optimizer_attribute(m, "tol", 1e-8)
+        set_optimizer_attribute(m, "tol", DISPATCH_PRIMAL_TOLERANCE)
         set_optimizer_attribute(m, "bound_relax_factor", 0.0)
         set_optimizer_attribute(m, "max_iter", 1000)
         set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))
@@ -449,17 +459,71 @@ function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
             # Check unscaled rows and bounds before stopping.
             lower=Float64[];upper=Float64[];violation=Float64[]
             callback=function(mode,iteration,objective,primal,args...)
-                mode==0 && primal<=1e-8 || return true
+                mode==0 && primal<=DISPATCH_PRIMAL_TOLERANCE || return true
                 native=unsafe_backend(m).inner
-                resize!(lower,native.n);resize!(upper,native.n);resize!(violation,native.m)
-                Ipopt.GetIpoptCurrentViolations(native,false,native.n,lower,upper,
-                    C_NULL,C_NULL,C_NULL,native.m,violation,C_NULL)
-                max(maximum(lower;init=0.0),maximum(upper;init=0.0),
-                    maximum(violation;init=0.0))>1e-8
+                ipopt_primal_residual!(lower,upper,violation,native)>DISPATCH_PRIMAL_TOLERANCE
             end
             MOI.set(m,Ipopt.CallbackFunction(),callback)
         end
     end
+end
+
+# An interior-point iterate need not satisfy the hydraulic equations. Its held
+# controls can nevertheless define a feasible trajectory after reconstruction.
+# Keep one best trajectory, rather than relying on the final optimizer point.
+function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
+    solution=Ref{Union{Nothing,Schedule{Matrix{Int}}}}(nothing)
+    iteration=Ref(-1)
+    seconds=Ref(0.0)
+    integrations=Ref(0)
+    checks=Ref(0)
+    primal_residual=Ref(Inf)
+    point=Float64[]
+    lower=Float64[];upper=Float64[];violation=Float64[]
+    indices=Dict{VariableRef,Int}()
+    cells=first.(b.mesh.cells)
+    commitment=Int.(b.operating_u)
+    opening=Matrix{Float64}(b.gates.opening)
+    callback=function(mode,k,args...)
+        mode==0 || return true
+        began=time()
+        if isempty(indices)
+            for variable in all_variables(b.m)
+                indices[variable]=optimizer_index(variable).value
+            end
+        end
+        native=unsafe_backend(b.m).inner
+        primal_residual[]=ipopt_primal_residual!(lower,upper,violation,native)
+        resize!(point,native.n)
+        Ipopt.GetIpoptCurrentIterate(native,false,native.n,point,C_NULL,C_NULL,native.m,C_NULL,C_NULL)
+        value_at(expression)=expression isa Real ? Float64(expression) :
+            JuMP.value(v->point[indices[v]],expression)
+        try
+            reserves=_reserve_slice(_reserve_values(b.case,b.reserves,value_at;
+                operating_case=b.operating_case),cells)
+            integrations[]+=1
+            x,transport=_dispatch_from_controls(b.operating_case,commitment,
+                value_at.(b.GQ[:,cells]),value_at.(b.variables.a[:,cells]);
+                grid=b.mesh.grid,transport=b.transport,tunnel_opening=opening,reserves,
+                head_reference=interval_means(b.mesh,value_at.(b.H)),status="FORWARD_RECONSTRUCTED")
+            if solution[]===nothing || x.objective>solution[].objective
+                checks[]+=1
+                validation=_validate_schedule(b.operating_case,x;transport,arrival_margin,
+                    operational_margin,river_on=b.river_operations.on)
+                if validation["valid"]
+                    x.diagnostics["validation"]=validation
+                    solution[]=x
+                    iteration[]=k
+                end
+            end
+        catch error
+            error isa Union{ArgumentError,DomainError} || rethrow()
+        end
+        seconds[]+=time()-began
+        true
+    end
+    MOI.set(b.m,Ipopt.CallbackFunction(),callback)
+    (;solution,iteration,seconds,integrations,checks,primal_residual)
 end
 
 """
@@ -486,8 +550,17 @@ original intervals and the returned schedule records the physical grid.
 hydraulic equations sharing these controls; it does not change the returned
 grid or objective. Use [`solve_verified`](@ref) for
 finer replay. A local optimum is not a global certificate.
+
+During revenue optimization, earlier iterates are independently reconstructed.
+The best feasible trajectory can be returned even when the final optimizer
+point is infeasible. The reported solver status describes the native solve,
+not stationarity of an earlier retained trajectory.
 """
-function solve_case(
+solve_case(c;kwargs...) = first(_solve_case(c;kwargs...))
+
+# Keep the final trial point separate from the returned feasible plan. Adaptive
+# constraint generation needs that trial when the represented NLP was solved.
+function _solve_case(
     c;
     u = ones(Int, length(c.system.generators), length(c.prices)),
     solver = "Ipopt",
@@ -543,15 +616,16 @@ function solve_case(
     )
     if remaining<=0
         result["total_seconds"]=time()-b.starttime
-        return SolveResult(result)
+        return SolveResult(result),nothing,Inf
     end
     _local_optimizer!(b.m, solver, remaining;feasibility_only)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
     if time_limit-construction_seconds<=0
         result["total_seconds"]=time()-b.starttime
-        return SolveResult(result)
+        return SolveResult(result),nothing,Inf
     end
+    retained=feasibility_only ? nothing : retain_feasible_dispatch!(b;arrival_margin,operational_margin)
     elapsed=@elapsed optimize!(b.m)
     result["status"]=string(termination_status(b.m))
     result["seconds"]=elapsed
@@ -564,7 +638,32 @@ function solve_case(
         result["validation_seconds"]=time()-validation_start
         solution=_reconstruct_dispatch!(c,solution,result; transport=b.transport)
         result["accepted"]=get(result,"forward_reconstructed",false)
+        if result["accepted"]
+            validation=_validate_schedule(c,solution;transport=b.transport,arrival_margin,
+                operational_margin,river_on=b.river_operations.on)
+            solution.diagnostics["validation"]=validation
+            result["forward_reconstruction_validation"]=validation
+            result["accepted"]=validation["valid"]
+        end
+    end
+    trial_solution=solution
+    primal_residual=retained===nothing ? Inf : retained.primal_residual[]
+    if retained!==nothing
+        result["primal_residual"]=primal_residual
+        result["iterate_reconstruction_seconds"]=retained.seconds[]
+        result["iterate_reconstructions"]=retained.integrations[]
+        result["iterate_validations"]=retained.checks[]
+        best=retained.solution[]
+        if best!==nothing && (!get(result,"accepted",false) || best.objective>solution.objective)
+            solution=best
+            result["accepted"]=true
+            result["retained_iteration"]=retained.iteration[]
+            result["forward_reconstructed"]=true
+            result["forward_reconstruction_validation"]=best.diagnostics["validation"]
+            result["forward_reconstruction_correction"]=(flow=0.0,gate=0.0,
+                tunnel_opening=0.0,reserve_power=0.0)
+        end
     end
     result["total_seconds"]=time()-b.starttime
-    SolveResult(result;solution)
+    SolveResult(result;solution),trial_solution,primal_residual
 end

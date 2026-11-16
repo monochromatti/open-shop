@@ -197,7 +197,7 @@ end
 the actual wave. `capacity` also checks river junction peaks before cell averaging.
 Channels have zero entries: their signed hydraulic laws are checked separately.
 """
-function river_arrival_residuals(c,routed)
+function river_arrival_residuals(c,routed;arrival_margin=0.0)
     D=length(c.system.rivers)
     mean_arrival=zeros(D)
     capacity=zeros(D)
@@ -245,7 +245,7 @@ function river_arrival_residuals(c,routed)
         end
         capacity[d]=capacity_error
         pointwise_arrival[d]=r.arrival_policy==:pointwise ?
-            arrival_requirement_violation(c,r,series.grid,series.release) : 0.0
+            arrival_requirement_violation(c,r,series.grid,series.release;margin=arrival_margin) : 0.0
     end
     (;mean_arrival,capacity,pointwise_arrival)
 end

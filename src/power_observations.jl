@@ -204,7 +204,7 @@ It also checks each unit over the head span between its two observations.
 This remains a finite observation check, not a bound on every continuous-time
 head excursion or interior peak of total plant power.
 """
-function point_operating_residuals(c,x;path_data,tolerance=1e-4)
+function point_operating_residuals(c,x;path_data,tolerance=1e-4,operational_margin=0.0)
     s=c.system
     ng,ne=length(s.generators),length(s.tunnels)
     unit_power=zeros(ng);unit_q=zeros(ng);unit_domain=zeros(ng)
@@ -246,8 +246,9 @@ function point_operating_residuals(c,x;path_data,tolerance=1e-4)
         for (i,g) in enumerate(s.generators)
             u=x.commitment[i,t]
             q,p=point.generator_q[i],point.power[i]
-            vp=max(0.0,opinterval(c,g.name,:pmin,t,g.pmin)*u-p,
-                p-opinterval(c,g.name,:pmax,t,g.pmax)*u)
+            lo,hi=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+                opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
+            vp=max(0.0,lo*u-p,p-hi*u)
             vq=max(0.0,opinterval(c,g.name,:qmin,t,g.qmin)*u-q,
                 q-opinterval(c,g.name,:qmax,t,g.qmax)*u)
             domain=0.0
@@ -270,7 +271,9 @@ function point_operating_residuals(c,x;path_data,tolerance=1e-4)
             on=any(x.commitment[j,t]==1 for j in members)
             power_sum=sum(point.power[j] for j in members;init=0.0)
             flow_sum=sum(point.generator_q[j] for j in members;init=0.0)
-            vp=max(0.0,power_sum-opinterval(c,p.name,:pmax,t,p.pmax),
+            upper=last(inset_bounds(opinterval(c,p.name,:pmin,t,p.pmin),
+                opinterval(c,p.name,:pmax,t,p.pmax),operational_margin))
+            vp=max(0.0,power_sum-upper,
                 opinterval(c,p.name,:pmin,t,p.pmin)*on-power_sum)
             upper=optional_operation(c,p.name,:qmax,t;default=p.qmax)
             vq=max(0.0,opinterval(c,p.name,:qmin,t,p.qmin)*on-flow_sum,
@@ -296,8 +299,8 @@ function point_operating_residuals(c,x;path_data,tolerance=1e-4)
         x.commitment[i,t]==0 && continue
         a,b=observed_heads[t][i,k],observed_heads[t][i,k+1]
         isfinite(a) && isfinite(b) || continue
-        pmin=opinterval(c,g.name,:pmin,t,g.pmin)
-        pmax=opinterval(c,g.name,:pmax,t,g.pmax)
+        pmin,pmax=inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+            opinterval(c,g.name,:pmax,t,g.pmax),operational_margin)
         qmin=opinterval(c,g.name,:qmin,t,g.qmin)
         qmax=opinterval(c,g.name,:qmax,t,g.qmax)
         span=unit_head_envelope(g,x.generator_q[i,t],a,b;pmin,pmax,qmin,qmax)

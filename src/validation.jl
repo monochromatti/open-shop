@@ -23,7 +23,10 @@ initial storage and reservoir balances use the smaller of `tolerance` Mm³ and
 arrival knots for the declared held-flow quadrature. Terminal minimum
 up/down obligations are reported for continuation rather than silently discarded.
 """
-function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing)
+function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing,river_on=nothing)
+    river_on===nothing || (size(river_on)==(length(c.system.rivers),length(c.prices)) &&
+        all(x->x===nothing || x in (0,1),river_on)) ||
+        throw(ArgumentError("river_on must match river by operating interval states"))
     schedule=try
         _schedule_input(result; case=c)
     catch error
@@ -32,10 +35,11 @@ function validate(c::ScheduleCase, result; tolerance=1e-4, transport=nothing)
             "errors"=>["missing or malformed schedule: "*sprint(showerror,error)],
             "terminal_commitment_obligations"=>Any[],"terminal_tunnel_switch_obligations"=>Any[])
     end
-    _validate_schedule(c, schedule; tolerance, transport)
+    _validate_schedule(c, schedule; tolerance, transport,river_on)
 end
 
-function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, transport=nothing)
+function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, transport=nothing,
+    arrival_margin=0.0,operational_margin=0.0,river_on=nothing)
     errors=String[]
     residuals=Dict{String,Float64}()
     obligations=Any[]
@@ -150,6 +154,15 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
     firstcell=first.(mesh.cells)
     operating_u=result.commitment[:,firstcell]
     windows=operating_window_values(mesh,result,operating_u)
+    if river_on!==nothing
+        states=river_on_schedule(operating,windows.river_release)
+        for (i,r) in enumerate(s.rivers)
+            r.min_allowed_flow===nothing && continue
+            bound("fixed_river_state_$(r.name)",
+                [abs(states[i,t]-river_on[i,t]) for t in axes(states,2)
+                    if river_on[i,t]!==nothing])
+        end
+    end
     for (name,residual) in pairs(held_control_residuals(operating,result,mesh))
         bound("held_$(name)",[residual];atol=min(tolerance,1e-6))
     end
@@ -241,11 +254,13 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
                 [GQ[i, t]-opinterval(c, g.name, :qmax, t, g.qmax)*u[i, t] for t in 1:T],
             ),
         )
+        power_bounds=[inset_bounds(opinterval(c,g.name,:pmin,t,g.pmin),
+            opinterval(c,g.name,:pmax,t,g.pmax),operational_margin) for t in 1:T]
         unit_power_shortfall[i]=bound(
             "unit_power_$(g.name)",
             vcat(
-                [opinterval(c, g.name, :pmin, t, g.pmin)*u[i, t]-P[i, t] for t in 1:T],
-                [P[i, t]-opinterval(c, g.name, :pmax, t, g.pmax)*u[i, t] for t in 1:T],
+                [first(power_bounds[t])*u[i,t]-P[i,t] for t in 1:T],
+                [P[i,t]-last(power_bounds[t])*u[i,t] for t in 1:T],
             ),
         )
         record(
@@ -318,10 +333,12 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             record("soft_penalty_cost",[(result.soft_penalty_cost-soft.cost)/max(1.0,soft.cost)])
         end
     end
-    plants=plant_operating_residuals(operating,windows;capacity=plant_capacity_residuals(c,result))
+    plants=plant_operating_residuals(operating,windows;margin=operational_margin,
+        capacity=plant_capacity_residuals(c,result;margin=operational_margin))
     plant_power_shortfall.=max.(plants.power_capacity,plants.power_ramp)
     plant_discharge_shortfall.=max.(plants.discharge_capacity,plants.discharge_ramp)
-    for (name,residual) in operating_residuals(operating,windows;plants,level_case=c,level_storage=V)
+    for (name,residual) in operating_residuals(operating,windows;plants,level_case=c,
+        level_storage=V,margin=operational_margin)
         bound(name,[residual])
     end
     for history in _plant_commitment_history(operating,operating_u)
@@ -444,7 +461,7 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
         routed=routed_schedule(c,RQ;transport=nd,injections)
         paths=storage_path_residuals(c,result,routed)
         append!(hydraulic_event_times,paths.crossings)
-        points=point_operating_residuals(c,result;path_data=paths,tolerance)
+        points=point_operating_residuals(c,result;path_data=paths,tolerance,operational_margin)
         unit_power_shortfall.=max.(unit_power_shortfall,points.unit_power)
         unit_discharge_shortfall.=max.(unit_discharge_shortfall,points.unit_q)
         plant_power_shortfall.=max.(plant_power_shortfall,points.plant_power)
@@ -470,7 +487,17 @@ function _validate_schedule(c::ScheduleCase, result::Schedule; tolerance=1e-4, t
             bound("storage_path_$(s.reservoirs[i].name)",[residual];atol=storage_tolerance[i])
         end
         append!(storage_path_times,paths.times[paths.excess .>storage_tolerance])
-        arrivals=river_arrival_residuals(c,routed)
+        arrivals=river_arrival_residuals(c,routed;arrival_margin)
+        arrival_margin>0 && bound("arrival_margin",arrivals.pointwise_arrival;
+            atol=DISPATCH_PRIMAL_TOLERANCE)
+        if operational_margin>0
+            su,sd=unit_transitions(operating,operating_u)
+            ramps=[interval_ramp_violation(operating,g,view(windows.power,i,:),g.initial_power,
+                g.initial_interval_hours,(:ramp_up,:ramp_down);su,sd,members=[i],margin=operational_margin)
+                for (i,g) in enumerate(s.generators)]
+            bound("operational_margin",vcat(unit_power_shortfall,plant_power_shortfall,ramps);
+                atol=DISPATCH_PRIMAL_TOLERANCE)
+        end
         arrival_shortfall.=max.(arrivals.mean_arrival,arrivals.pointwise_arrival)
         for (name,residual) in river_arrival_report(c,arrivals)
             bound(name,[residual])

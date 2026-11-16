@@ -113,6 +113,7 @@ function _replay(
     transport = nothing,
     error_factor = 1.0,
     require_original = true,
+    river_on = nothing,
 )
     all(x -> x isa Real && !isnan(x) && x >= 0,
         (storage_convergence, storage_relative_convergence, level_convergence,
@@ -128,7 +129,7 @@ function _replay(
         level_convergence_tolerance_m=level_convergence,
         relative_objective_convergence_tolerance=objective_convergence,
         estimated_error_factor=error_factor)
-    original=validate(c,x;transport)
+    original=validate(c,x;transport,river_on)
     if !original["valid"]
         push!(errors,"original equation validation failed")
         require_original && return ReplayResult(;errors,violations,original_validation=original,
@@ -156,7 +157,7 @@ function _replay(
         z=dispatch_from_controls(replay_input,original_u,x.generator_q[:,firstcell],
             x.gate[:,firstcell];grid,tunnel_opening=opening,
             reserves=_reserve_slice(x.reserves,firstcell),head_reference=interval_means(mesh,x.head))
-        fine_validation=z["validation"]
+        fine_validation=river_on===nothing ? z["validation"] : validate(replay_input,z;river_on)
         merge!(violations, fine_validation["residuals"])
         append!(errors, fine_validation["errors"])
         fine_shortfalls=fine_validation["shortfalls"]
@@ -290,7 +291,7 @@ end
 
 """Resolve fixed controls; return a physical failure for the next NLP to repair."""
 function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_factor,storage_limits,reconstructed,
-    storage_convergence,storage_relative_convergence,level_convergence,objective_convergence)
+    storage_convergence,storage_relative_convergence,level_convergence,objective_convergence,river_on)
     steps=Any[]
     refinements=0
     while true
@@ -299,7 +300,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
         replay_validation=_replay(c,x;grid=probe,storage_convergence,
             storage_relative_convergence,level_convergence,objective_convergence,
             error_factor=refine_grid ? replay_factor^2/(replay_factor^2-1) : 1.0,
-            require_original=!reconstructed)
+            require_original=!reconstructed,river_on)
         push!(steps,(;intervals=length(x.grid)-1,objective=x.objective,accepted=replay_validation.valid))
         original_valid=replay_validation.original_valid
         if replay_validation.valid || !reconstructed && !original_valid ||
@@ -352,7 +353,7 @@ function resolve_trajectory(c,x;max_refinements,deadline,refine_grid,replay_fact
     end
 end
 
-_adaptive_dispatch(c::ScheduleCase;kwargs...) = _adaptive_dispatch(c,solve_case;kwargs...)
+_adaptive_dispatch(c::ScheduleCase;kwargs...) = _adaptive_dispatch(c,_solve_case;kwargs...)
 
 function _adaptive_dispatch(
     c::ScheduleCase, dispatch_solver;
@@ -451,17 +452,39 @@ function _adaptive_dispatch(
         end
     end
     feasibility=feasibility_only || latest===nothing
+    if any(r->r.min_allowed_flow!==nothing,c.system.rivers)
+        reference=latest===nothing ? nothing : operating_window_values(c,latest)
+        river_on=fixed_river_on(c,river_on,reference)
+    else
+        river_on=nothing
+    end
     dispatch=nothing
     while true
         if latest===nothing
             remaining=min(time_limit,deadline-time())
             remaining>0 || break
             dispatch!==nothing && remaining<=get(dispatch,"construction_seconds",0.0) && break
-            dispatch=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,observation_times,storage_times,
+            dispatch,latest,primal_residual=dispatch_solver(c;u,solver,seed,warm,operational_margin,grid,replay_grid,observation_times,storage_times,
                 time_limit=remaining,feasibility_only=feasibility,tunnel_opening=openings,river_on)
-            latest=dispatch.solution
+            # A large NLP residual is algebraic error, not evidence that the
+            # discretization needs more restrictions. Use a reconstructed plan
+            # when available. A solved model's final trial still drives missing
+            # storage/power restrictions, even if an earlier plan was feasible.
+            if dispatch.accepted && primal_residual>DISPATCH_PRIMAL_TOLERANCE
+                latest=dispatch.solution
+            elseif dispatch.accepted && dispatch.solution!==latest
+                retained=resolve_trajectory(c,dispatch.solution;
+                    max_refinements=max_refinements-refinements,deadline,refine_grid,
+                    replay_factor,storage_limits,reconstructed=true,river_on,tolerances...)
+                refinements+=retained.refinements
+                if retained.replay_validation.valid &&
+                   (best===nothing || retained.solution.objective>best.solution.objective)
+                    best=(;case=retained.case,solution=retained.solution,
+                        replay_validation=retained.replay_validation)
+                end
+            end
             latest===nothing && break
-            if !dispatch.accepted
+            if !dispatch.accepted || latest!==dispatch.solution
                 try
                     latest,_=_reconstruct_schedule(c,latest)
                 catch error
@@ -471,7 +494,7 @@ function _adaptive_dispatch(
             end
         end
         resolution=resolve_trajectory(c,latest;max_refinements=max_refinements-refinements,
-            deadline,refine_grid,replay_factor,storage_limits,reconstructed=initial===nothing,tolerances...)
+            deadline,refine_grid,replay_factor,storage_limits,reconstructed=initial===nothing,river_on,tolerances...)
         c=resolution.case
         latest=resolution.solution
         latest_validation=resolution.replay_validation

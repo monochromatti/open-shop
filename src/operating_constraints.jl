@@ -192,7 +192,7 @@ function constrain_reservoir_ramps!(m,c,V;level=nothing)
 end
 
 function interval_ramp_violation(c,object,values,initial,historical_hours,attributes;
-    su=nothing,sd=nothing,members=Int[])
+    su=nothing,sd=nothing,members=Int[],margin=0.0)
     violation=0.0
     for t in eachindex(c.prices)
         previous=t==1 ? initial : values[t-1]
@@ -201,8 +201,8 @@ function interval_ramp_violation(c,object,values,initial,historical_hours,attrib
         up=ramp_allowance(c,object,attributes[1],a,b)
         down=ramp_allowance(c,object,attributes[2],a,b)
         ju,jd=su===nothing ? (0.0,0.0) : power_transition_allowances(c,members,t,su,sd)
-        up===nothing || (violation=max(violation,values[t]-previous-up-ju))
-        down===nothing || (violation=max(violation,previous-values[t]-down-jd))
+        up===nothing || (violation=max(violation,values[t]-previous-max(0.0,up-margin)-ju))
+        down===nothing || (violation=max(violation,previous-values[t]-max(0.0,down-margin)-jd))
     end
     violation
 end
@@ -216,7 +216,7 @@ function schedule_violation(c,object,p,q)
     violation
 end
 
-function plant_capacity_residuals(c,x)
+function plant_capacity_residuals(c,x;margin=0.0)
     u,P,GQ=x.commitment,x.power,x.generator_q
     power_capacity=zeros(length(c.system.plants))
     discharge_capacity=zeros(length(c.system.plants))
@@ -226,7 +226,9 @@ function plant_capacity_residuals(c,x)
         tq=vec(sum(GQ[members,:];dims=1))
         for t in eachindex(c.prices)
             on=any(u[j,t]==1 for j in members)
-            power_capacity[i]=max(power_capacity[i],tp[t]-opinterval(c,p.name,:pmax,t,p.pmax),
+            upper=last(inset_bounds(opinterval(c,p.name,:pmin,t,p.pmin),
+                opinterval(c,p.name,:pmax,t,p.pmax),margin))
+            power_capacity[i]=max(power_capacity[i],tp[t]-upper,
                 opinterval(c,p.name,:pmin,t,p.pmin)*on-tp[t])
             discharge_capacity[i]=max(discharge_capacity[i],opinterval(c,p.name,:qmin,t,p.qmin)*on-tq[t])
             maximum_q=optional_operation(c,p.name,:qmax,t;default=p.qmax)
@@ -241,7 +243,7 @@ end
 These use the supplied observation windows. Power capacity and ramps are in MW;
 discharge capacity and ramps are in m³/s.
 """
-function plant_operating_residuals(c,x;capacity=plant_capacity_residuals(c,x))
+function plant_operating_residuals(c,x;margin=0.0,capacity=plant_capacity_residuals(c,x;margin))
     u,P,GQ=x.commitment,x.power,x.generator_q
     n=length(c.system.plants)
     (;power_capacity,discharge_capacity)=capacity
@@ -257,7 +259,7 @@ function plant_operating_residuals(c,x;capacity=plant_capacity_residuals(c,x))
         initial_p,p_hours=plant_initial_output(c,p,members,:power)
         initial_q,q_hours=plant_initial_output(c,p,members,:discharge)
         power_ramp[i]=interval_ramp_violation(c,p,tp,initial_p,
-            p_hours,(:ramp_up,:ramp_down);su,sd,members)
+            p_hours,(:ramp_up,:ramp_down);su,sd,members,margin)
         discharge_ramp[i]=interval_ramp_violation(c,p,tq,initial_q,
             q_hours,(:discharge_ramp_up,:discharge_ramp_down))
     end
@@ -265,7 +267,7 @@ function plant_operating_residuals(c,x;capacity=plant_capacity_residuals(c,x))
 end
 
 """Diagnostic names for operating rows, evaluated from physical schedule values."""
-function operating_residuals(c,x;plants=plant_operating_residuals(c,x),
+function operating_residuals(c,x;margin=0.0,plants=plant_operating_residuals(c,x;margin),
     level_case=c,level_storage=x.storage)
     residuals=Dict{String,Float64}()
     u,P,GQ,RQ,V=x.commitment,x.power,x.generator_q,x.river_release,x.storage
@@ -274,7 +276,7 @@ function operating_residuals(c,x;plants=plant_operating_residuals(c,x),
         p,q=view(P,i,:),view(GQ,i,:)
         residuals["schedule_$(g.name)"]=schedule_violation(c,g,p,q)
         residuals["unit_ramp_$(g.name)"]=interval_ramp_violation(c,g,p,g.initial_power,
-            g.initial_interval_hours,(:ramp_up,:ramp_down);su,sd,members=[i])
+            g.initial_interval_hours,(:ramp_up,:ramp_down);su,sd,members=[i],margin)
         residuals["discharge_ramp_$(g.name)"]=interval_ramp_violation(c,g,q,g.initial_discharge,
             g.initial_interval_hours,(:discharge_ramp_up,:discharge_ramp_down))
     end

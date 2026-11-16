@@ -1106,6 +1106,23 @@ constant-objective feasibility problem, stopping when unscaled constraints
 and bounds meet the primal tolerance. Revenue optimization follows independent
 acceptance; the feasible trajectory is retained if this improvement fails.
 
+An interior-point iterate need not satisfy the hydraulic equations. Its controls
+may nevertheless produce a feasible trajectory when the states are independently
+integrated. During revenue optimization we reconstruct these controls at each
+regular iterate and retain the highest-value trajectory that satisfies the
+original constraints and fixed discrete choices. A trajectory whose computed
+value cannot improve the retained feasible plan needs no further operating-limit
+checks. The optimizer can therefore finish at an infeasible point without losing
+an earlier improvement. Its termination status does not establish stationarity
+of the retained trajectory.
+
+The final trial point still guides constraint generation once the NLP equations
+and bounds meet the primal tolerance. Physical violations at that point can
+identify missing restrictions even when an earlier feasible plan exists.
+If the NLP has not met its primal tolerance, a reconstructed feasible plan can
+instead proceed to finer replay. Keeping these two points distinct prevents
+feasible-plan retention from stopping constraint generation prematurely.
+
 The release law at a reservoir outlet has the form
 $R=I+alpha F(Z)$. Here $I>=0$ is natural river inflow, $alpha>=0$ is
 the gate fraction and $F(Z)>=0$ is full-opening discharge on the permitted
