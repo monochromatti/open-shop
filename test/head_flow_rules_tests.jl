@@ -134,7 +134,9 @@ end
         local_result=solve_case(c;river_on=reshape([1,0],1,2),warm,time_limit=20.0)
         @test local_result.accepted
         if !isapprox(local_result.solution.objective,-14.0;atol=1e-3)
-            @info "River cost optimum was missed" opening status=local_result.status release=local_result.solution.river_release diagnostics=local_result.diagnostics
+            println(stderr,"River cost optimum was missed: ",repr((;opening,
+                status=local_result.status,release=local_result.solution.river_release,
+                diagnostics=local_result.diagnostics);context=:limit=>false))
         end
         @test local_result.solution.objective≈-14.0 atol=1e-3
     end
