@@ -1115,8 +1115,9 @@ spillway with $I=0$: its law requires $R=0$, while an explicit $R>=0$ supplies a
 active restriction in the same direction. Redundant active constraints can
 make multipliers nonunique and impair interior-point iterations; related
 strict-feasibility difficulties occur even in linear programming~@im_wolkowicz.
-Zero arrival minima are omitted too, since nonnegative released water and
-transfer weights already imply them. Positive environmental requirements,
+At reservoir outlets, zero arrival minima are omitted too, since nonnegative
+released water and transfer weights already imply them. River junctions retain
+explicit nonnegativity constraints for their transport states. Positive environmental requirements,
 capacity limits and signed channel bounds remain in the model. These are
 algebraic reductions of the same physical problem.
 
