@@ -228,7 +228,13 @@ function _build_dispatch(
         for t in 1:T
             cap=outlet_bounds.capacity[i, t]
             set_upper_bound(rq[i, t], cap/DISPATCH_RELEASE_SCALE)
-            set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/DISPATCH_RELEASE_SCALE)
+            if is_channel(r) || r.law==:junction
+                set_lower_bound(rq[i,t],river_flow_lower(r,cap,opinterval(c,r.name,:inflow,t,r.inflow))/DISPATCH_RELEASE_SCALE)
+            else
+                # The outlet law already gives RQ ≥ natural inflow. Repeating
+                # this bound makes active gradients dependent at a closed outlet.
+                delete_lower_bound(rq[i,t])
+            end
             intersect_bounds!(a[i,t],outlet_bounds.gate_lower[i,t],outlet_bounds.gate_upper[i,t])
             if is_channel(r)
                 fix(a[i,t],0.0;force=true)
@@ -249,17 +255,9 @@ function _build_dispatch(
                 fix(shortfall_release[i, t], 0.0; force = true)
                 requirement>0 && @constraint(m, RQ[i, t]>=requirement)
             end
-            if r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)
-                @constraint(
-                    m,
-                    arrivals[i, t]>=0.0036*dt[t]*opinterval(
-                        c,
-                        r.name,
-                        :min_arrival,
-                        t,
-                        r.min_arrival,
-                    )
-                )
+            minimum_arrival=opinterval(c,r.name,:min_arrival,t,r.min_arrival)
+            if (r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)) && minimum_arrival>0
+                @constraint(m,arrivals[i,t]>=0.0036*dt[t]*minimum_arrival)
             end
             natural=opinterval(c,r.name,:inflow,t,r.inflow)
             outlet_release=RQ[i,t]-natural
@@ -301,9 +299,10 @@ function _build_dispatch(
         if r.arrival_policy==:interval_average && !isempty(r.arrival_window_grid)
             windows=r.arrival_window_grid
             for j in 1:(length(windows)-1)
+                minimum_arrival=opaverage(c,r.name,:min_arrival,windows[j],windows[j+1],r.min_arrival)
+                minimum_arrival>0 || continue
                 volume=routing_volume_expression(m,c,routing,i,windows[j],windows[j+1])
-                @constraint(m,volume>=0.0036*(windows[j+1]-windows[j])*opaverage(
-                    c,r.name,:min_arrival,windows[j],windows[j+1],r.min_arrival))
+                @constraint(m,volume>=0.0036*(windows[j+1]-windows[j])*minimum_arrival)
             end
         end
         if r.arrival_policy==:pointwise
@@ -311,8 +310,10 @@ function _build_dispatch(
                 sides=time==first(c.grid) ? (:right,) :
                     time==last(c.grid) ? (:left,) : (:left,:right)
                 for side in sides
+                    minimum_arrival=opvalue(c,r.name,:min_arrival,time,r.min_arrival;side)+arrival_margin
+                    minimum_arrival>0 || continue
                     rate=routing_point_expression(m,c,routing,i,time;side)
-                    @constraint(m,rate>=opvalue(c,r.name,:min_arrival,time,r.min_arrival;side)+arrival_margin)
+                    @constraint(m,rate>=minimum_arrival)
                 end
             end
         end

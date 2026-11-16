@@ -1106,6 +1106,20 @@ constant-objective feasibility problem, stopping when unscaled constraints
 and bounds meet the primal tolerance. Revenue optimization follows independent
 acceptance; the feasible trajectory is retained if this improvement fails.
 
+The release law at a reservoir outlet has the form
+$R=I+alpha F(Z)$. Here $I>=0$ is natural river inflow, $alpha>=0$ is
+the gate fraction and $F(Z)>=0$ is full-opening discharge on the permitted
+head range. It already implies $R>=I$. Local dispatch therefore omits
+this additional lower bound. To see why duplication matters, consider a dry
+spillway with $I=0$: its law requires $R=0$, while an explicit $R>=0$ supplies a second
+active restriction in the same direction. Redundant active constraints can
+make multipliers nonunique and impair interior-point iterations; related
+strict-feasibility difficulties occur even in linear programming~@im_wolkowicz.
+Zero arrival minima are omitted too, since nonnegative released water and
+transfer weights already imply them. Positive environmental requirements,
+capacity limits and signed channel bounds remain in the model. These are
+algebraic reductions of the same physical problem.
+
 An accepted improvement updates the hydraulic reference and starting point of
 the next unrestricted proposal. The stated water values remain unchanged.
 If dispatch fails acceptance, the next proposal excludes its discrete assignment.

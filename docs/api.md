@@ -227,6 +227,14 @@ If transport already meets its volume tolerance, the retry adds finer hydraulic
 equations sharing the original controls. No additional control decisions are
 introduced. Revenue optimization retains the accepted transport mesh.
 
+Local dispatch omits outlet-flow lower bounds already implied by nonnegative
+river inflow, gate position and the discharge law. It also omits zero arrival
+minima implied by nonnegative routed water. Signed level-difference channels
+retain their signed flow bounds, and river junctions retain explicit release
+lower bounds. Positive arrival requirements and all independent physical checks
+remain in force. Avoiding these repeated restrictions improves the conditioning
+of the nonlinear solve when an outlet closes.
+
 Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
