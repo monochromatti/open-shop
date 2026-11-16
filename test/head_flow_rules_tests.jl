@@ -127,12 +127,17 @@ end
         river_on=ones(Int,1,1),max_refinements=0)
     gap=dispatch_from_controls(c,zeros(Int,0,2),zeros(0,2),fill(0.1,1,2))
     @test !validate(c,gap)["valid"]
-    local_result=solve_case(c;river_on=reshape([1,0],1,2),warm=x,time_limit=20.0)
-    @test local_result.accepted
-    if !isapprox(local_result.solution.objective,-14.0;atol=1e-3)
-        @info "River cost optimum was missed" status=local_result.status release=local_result.solution.river_release diagnostics=local_result.diagnostics
+    # With this state sequence, total variation is minimized at flow 1, then
+    # zero. Reach the same analytic optimum from boundary and interior starts.
+    for opening in (0.25,0.28,0.37,0.5,0.58,0.85,1.0)
+        warm=dispatch_from_controls(c,zeros(Int,0,2),zeros(0,2),reshape([opening,0.0],1,2))
+        local_result=solve_case(c;river_on=reshape([1,0],1,2),warm,time_limit=20.0)
+        @test local_result.accepted
+        if !isapprox(local_result.solution.objective,-14.0;atol=1e-3)
+            @info "River cost optimum was missed" opening status=local_result.status release=local_result.solution.river_release diagnostics=local_result.diagnostics
+        end
+        @test local_result.solution.objective≈-14.0 atol=1e-3
     end
-    @test local_result.solution.objective≈-14.0 atol=1e-3 # Flow 1, then zero.
     global_result=OpenSHOP.solve(c;initial=x,time_limit=30.0,preparation_time_limit=0.0)
     @test global_result.accepted
     @test global_result.solution.objective≈0.0 atol=1e-3
