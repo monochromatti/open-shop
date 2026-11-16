@@ -141,4 +141,21 @@ theorem prescribed_routing_substitution {X R : Type*} (inputs : X → R)
   rw [hfixed]
   simp
 
+/-- Nonnegative released water and transfer weights already imply a zero
+arrival minimum, for either volume or instantaneous-rate observations.
+The history term is water already in transit. -/
+theorem arrival_zero_bound_redundant {I : Type*} [Fintype I]
+    (arrival history : ℝ) (weight release : I → ℝ)
+    (nonnegativeHistory : 0 ≤ history) (nonnegativeWeight : ∀ i, 0 ≤ weight i)
+    (nonnegativeRelease : ∀ i, 0 ≤ release i) :
+    (arrival = history + ∑ i, weight i * release i ∧ 0 ≤ arrival) ↔
+      arrival = history + ∑ i, weight i * release i := by
+  constructor
+  · exact And.left
+  · intro law
+    refine ⟨law, ?_⟩
+    rw [law]
+    exact add_nonneg nonnegativeHistory
+      (Finset.sum_nonneg fun i _ => mul_nonneg (nonnegativeWeight i) (nonnegativeRelease i))
+
 end OpenSHOP

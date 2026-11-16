@@ -267,4 +267,16 @@ theorem monotone_head_limits (power : ℝ → ℝ) (a b lower upper : ℝ)
   exact ⟨at_left.trans (increasing ⟨le_refl a, ordered⟩ hh hh.1),
     (increasing hh ⟨ordered, le_refl b⟩ hh.2).trans at_right⟩
 
+/-- A reservoir outlet's release law already supplies its inflow lower bound.
+The rating is nonnegative on the permitted head domain; controlled outlets use
+capacity minus inflow as their rating. No differentiability is assumed. -/
+theorem outlet_flow_bound_redundant (flow inflow opening rating : ℝ)
+    (nonnegativeOpening : 0 ≤ opening) (nonnegativeRating : 0 ≤ rating) :
+    (flow = inflow + opening * rating ∧ inflow ≤ flow) ↔
+      flow = inflow + opening * rating := by
+  constructor
+  · exact And.left
+  · intro law
+    exact ⟨law, by nlinarith [mul_nonneg nonnegativeOpening nonnegativeRating]⟩
+
 end OpenSHOP
