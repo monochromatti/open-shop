@@ -415,13 +415,13 @@ end
 
 function _reconstruct_dispatch!(c, solution::Schedule, report; transport=nothing)
     began=time()
+    report["raw_solver_validation"]=solution.diagnostics["validation"]
+    report["raw_solver_objective"]=solution.objective
     try
         repaired, correction=_reconstruct_schedule(c,solution;transport)
         report["forward_reconstruction_validation"]=repaired.diagnostics["validation"]
         report["forward_reconstruction_correction"]=correction
         if repaired.diagnostics["validation"]["valid"]
-            report["raw_solver_validation"]=solution.diagnostics["validation"]
-            report["raw_solver_objective"]=solution.objective
             report["forward_reconstructed"]=true
             solution=repaired
         end
