@@ -29,6 +29,30 @@
     end
 end
 
+@testset "Reconstruction preserves prescribed river states" begin
+    lake=Reservoir(name=:Lake,v0=2.0,vmin=1.0,vmax=3.0,z0=100.0,
+        slope=1.0,water_value=0.0)
+    river=River(name=:Outlet,source=:Lake,target=:Sea,law=:controlled,
+        capacity=2.0,min_allowed_flow=1.0,water_value=0.0,
+        deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],
+        history_grid=[-1.0,0.0],history_release=[1.5])
+    system=HydroSystem(;reservoirs=[lake],rivers=[river],
+        boundaries=[Boundary(name=:Sea,head=0.0)])
+    c=ScheduleCase(;name="fixed river state",system,grid=[0.0,1.0,2.0],prices=zeros(2))
+    u=zeros(Int,0,2)
+    on=dispatch_from_controls(c,u,zeros(0,2),fill(0.75,1,2))
+    @test validate(c,on;river_on=ones(Int,1,2))["valid"]
+    @test !validate(c,on;river_on=zeros(Int,1,2))["valid"]
+    @test validate_replay(c,on;river_on=ones(Int,1,2))["valid"]
+    @test !validate_replay(c,on;river_on=zeros(Int,1,2))["valid"]
+    result=solve_verified(c;u,warm=on,river_on=zeros(Int,1,2),time_limit=30.0)
+    @test result.accepted
+    if result.accepted
+        @test maximum(abs,result.solution.river_release)<=1e-5
+        @test validate_replay(result.problem,result.solution;river_on=zeros(Int,1,2))["valid"]
+    end
+end
+
 @testset "Retained controls include spinning capacity" begin
     c=spinning_case()
     u=ones(Int,1,2)
