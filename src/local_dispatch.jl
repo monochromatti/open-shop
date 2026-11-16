@@ -256,8 +256,7 @@ function _build_dispatch(
                 requirement>0 && @constraint(m, RQ[i, t]>=requirement)
             end
             minimum_arrival=opinterval(c,r.name,:min_arrival,t,r.min_arrival)
-            if (r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)) &&
-                (r.law==:junction || minimum_arrival>0)
+            if (r.arrival_policy==:pointwise || isempty(r.arrival_window_grid)) && minimum_arrival>0
                 @constraint(m,arrivals[i,t]>=0.0036*dt[t]*minimum_arrival)
             end
             natural=opinterval(c,r.name,:inflow,t,r.inflow)
@@ -301,7 +300,7 @@ function _build_dispatch(
             windows=r.arrival_window_grid
             for j in 1:(length(windows)-1)
                 minimum_arrival=opaverage(c,r.name,:min_arrival,windows[j],windows[j+1],r.min_arrival)
-                (r.law==:junction || minimum_arrival>0) || continue
+                minimum_arrival>0 || continue
                 volume=routing_volume_expression(m,c,routing,i,windows[j],windows[j+1])
                 @constraint(m,volume>=0.0036*(windows[j+1]-windows[j])*minimum_arrival)
             end
@@ -312,7 +311,7 @@ function _build_dispatch(
                     time==last(c.grid) ? (:left,) : (:left,:right)
                 for side in sides
                     minimum_arrival=opvalue(c,r.name,:min_arrival,time,r.min_arrival;side)+arrival_margin
-                    (r.law==:junction || minimum_arrival>0) || continue
+                    minimum_arrival>0 || continue
                     rate=routing_point_expression(m,c,routing,i,time;side)
                     @constraint(m,rate>=minimum_arrival)
                 end
