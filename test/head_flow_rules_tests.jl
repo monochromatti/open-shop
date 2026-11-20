@@ -146,6 +146,39 @@ end
     @test global_result["start_validation"]["valid"]
 end
 
+@testset "Controlled river states respect inflow and changing capacity" begin
+    c=flow_rule_case(river_kwargs=(inflow=0.5,min_allowed_flow=1.0,
+        flow_change_cost=2.0,flow_start_cost=7.0,flow_stop_cost=3.0,),
+        operations=[OperationalSeries(object=:Reach,attribute=:capacity,
+            times=[1.0],values=[2.0])])
+    u=zeros(Int,0,2)
+    grid=[0.0,0.5,1.0,2.0]
+    warm=dispatch_from_controls(c,u,zeros(0,2),fill(0.5,1,2);grid)
+    result=solve_case(c;u,grid,warm,river_on=ones(Int,1,2),time_limit=20.0)
+    @test result.accepted
+    if result.accepted
+        x=result.solution
+        @test OpenSHOP.operating_window_values(c,x).river_release≈ones(1,2) atol=1e-4
+        @test x.gate[:,[1,3]]≈reshape([1/7,1/3],1,2) atol=1e-4
+        @test x.objective≈-9.0 atol=1e-3
+        @test validate_replay(c,x;river_on=ones(Int,1,2))["valid"]
+    end
+    prescribed=OpenSHOP._river_replace(c;operations=vcat(c.operations,
+        [OperationalSeries(object=:Reach,attribute=a,times=[1.0],values=[0.5])
+            for a in (:gate_min,:gate_max)]))
+    result=solve_case(prescribed;u,grid,warm,river_on=ones(Int,1,2),time_limit=20.0)
+    @test result.accepted
+    if result.accepted
+        @test result.solution.gate[1,end]≈0.5 atol=1e-10
+        @test result.solution.objective≈-9.5 atol=1e-3
+        @test validate_replay(prescribed,result.solution;river_on=ones(Int,1,2))["valid"]
+    end
+    # Positive natural inflow makes the prescribed off state infeasible.
+    # It must not replace the requested state or relax the gate's domain.
+    impossible=solve_case(c;u,grid,warm,river_on=zeros(Int,1,2),time_limit=20.0)
+    @test !impossible.accepted
+end
+
 @testset "A river startup cost changes the preferred release schedule" begin
     rule=FlowRequirement(name=:Release,rivers=[:Reach],min_volume=0.0036)
     c=flow_rule_case(river_kwargs=(min_allowed_flow=1.0,flow_start_cost=10.0,),rules=[rule])

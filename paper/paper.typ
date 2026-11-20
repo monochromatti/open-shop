@@ -1138,10 +1138,13 @@ transfer weights already imply them. Positive environmental requirements,
 capacity limits and signed channel bounds remain in the model. These are
 algebraic reductions of the same physical problem.
 
-Interior-point iterations can produce unnecessarily large multipliers~@haeser_multipliers.
-Dividing an optimality residual by their norm can then conceal a substantial
-stationarity error. Revenue optimization uses fixed model scales for optimality
-and barrier errors, without further normalization by multiplier magnitude.
+For a head-independent controlled outlet, $R=I+F alpha$, where $F=C-I>0$
+is the remaining capacity after natural inflow.
+A prescribed river state gives a release interval $ell_R<=R<=u_R$.
+We impose the equivalent gate bounds $(ell_R-I)/F<=alpha<=(u_R-I)/F$
+directly. At zero natural inflow, an off state fixes $alpha=0$; the outlet law
+then supplies $R=0$. This removes redundant bound slacks that can otherwise
+produce unnecessarily large multipliers during interior-point iterations~@haeser_multipliers.
 
 An accepted improvement updates the hydraulic reference and starting point of
 the next unrestricted proposal. The stated water values remain unchanged.

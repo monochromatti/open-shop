@@ -244,10 +244,12 @@ Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
 
-During revenue optimization, errors use the model's numerical scaling without
-further division by constraint multiplier norms. Large, nonunique multipliers can otherwise make
-a suboptimal point satisfy a relative stopping test. Physical acceptance and its
-tolerances are unchanged.
+For a head-independent controlled outlet with capacity above natural inflow,
+prescribed river states are imposed
+directly on gate bounds through `release = inflow + (capacity - inflow) * opening`.
+An off state with zero natural inflow fixes the opening to zero. This avoids
+redundant zero-slack inequalities in the nonlinear model. Head-dependent laws
+keep their release constraints. Physical acceptance and its tolerances are unchanged.
 
 Revenue iteration reconstruction is included in the native solve's `seconds`.
 `iterate_reconstruction_seconds` reports that component, rather than additional

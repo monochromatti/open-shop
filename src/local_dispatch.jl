@@ -328,7 +328,8 @@ function _build_dispatch(
         windows.river_release,windows.arrival_volume,windows.tunnel_q)
     operating_warm=warm===nothing ? nothing : operating_window_values(operating_case,warm)
     river_operations=constrain_river_operations!(m,operating_case,windows.river_release;
-        fixed=fixed_river_on(operating_case,river_on,operating_warm))
+        fixed=fixed_river_on(operating_case,river_on,operating_warm),
+        gate=a[:,first.(mesh.cells)])
     constrain_water_balance!(m, c, topology, V, Q, GQ, RQ, arrivals)
     constrain_storage_paths!(m, c, topology, V, Q, GQ, RQ, routing;observation_times=storage_times)
     history_initial=routing.initial_transit
@@ -464,12 +465,6 @@ function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
                 ipopt_primal_residual!(lower,upper,violation,native)>DISPATCH_PRIMAL_TOLERANCE
             end
             MOI.set(m,Ipopt.CallbackFunction(),callback)
-        else
-            # Ipopt divides errors by max(s_max, mean multiplier norm)/s_max.
-            # The model already scales its variables and equations. Use unit
-            # divisors so large, nonunique multipliers cannot conceal an error.
-            set_optimizer_attribute(m, "s_max", floatmax(Float64))
-            set_optimizer_attribute(m, "mu_strategy", "adaptive")
         end
     end
 end

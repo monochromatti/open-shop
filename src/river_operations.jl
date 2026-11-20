@@ -60,7 +60,7 @@ function river_operating_cost(c,release)
     (;change,start,stop,total=change+start+stop)
 end
 
-function constrain_river_operations!(m,c,release;fixed=nothing,relaxed=false)
+function constrain_river_operations!(m,c,release;fixed=nothing,relaxed=false,gate=nothing)
     D,T=size(release)
     on=Matrix{Union{Nothing,VariableRef,Float64}}(nothing,D,T)
     starts=similar(on);fill!(starts,nothing)
@@ -75,8 +75,31 @@ function constrain_river_operations!(m,c,release;fixed=nothing,relaxed=false)
                     base_name="river_on[$i,$t]") : Float64(fixed[i,t])
                 state isa VariableRef && !relaxed && set_binary(state)
                 on[i,t]=state
-                @constraint(m,release[i,t]>=r.min_allowed_flow*state)
-                @constraint(m,release[i,t]<=opinterval(c,r.name,:capacity,t,r.capacity)*state)
+                capacity=opinterval(c,r.name,:capacity,t,r.capacity)
+                inflow=opinterval(c,r.name,:inflow,t,r.inflow)
+                outlet_capacity=capacity-inflow
+                lower,upper=r.min_allowed_flow*state,capacity*state
+                gate_bounds=nothing
+                if fixed!==nothing && gate!==nothing && r.law==:controlled &&
+                    r.discharge_curve===nothing && outlet_capacity>0
+                    # R = I + (C-I)*a: impose a prescribed release domain on its
+                    # control directly. An off state fixes a=0 when I=0.
+                    lo,hi=(lower-inflow)/outlet_capacity,(upper-inflow)/outlet_capacity
+                    a=gate[i,t]
+                    domain=is_fixed(a) ? (fix_value(a),fix_value(a)) :
+                        (has_lower_bound(a) ? lower_bound(a) : -Inf,
+                         has_upper_bound(a) ? upper_bound(a) : Inf)
+                    if isfinite(lo) && isfinite(hi) && max(lo,domain[1])<=min(hi,domain[2])
+                        gate_bounds=(lo,hi)
+                    end
+                end
+                if gate_bounds===nothing
+                    # Keep incompatible choices as an infeasible subproblem.
+                    @constraint(m,release[i,t]>=lower)
+                    @constraint(m,release[i,t]<=upper)
+                else
+                    intersect_bounds!(gate[i,t],gate_bounds...)
+                end
                 prior=t==1 ? river_flow_state(r,initial) : on[i,t-1]
                 if fixed===nothing
                     su=@variable(m,lower_bound=0.0,upper_bound=1.0,base_name="river_start[$i,$t]")
