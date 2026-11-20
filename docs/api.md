@@ -244,8 +244,8 @@ Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
 
-During revenue optimization, errors use the model's numerical scaling without further division
-by constraint multiplier norms. Large, nonunique multipliers can otherwise make
+During revenue optimization, errors use the model's numerical scaling without
+further division by constraint multiplier norms. Large, nonunique multipliers can otherwise make
 a suboptimal point satisfy a relative stopping test. Physical acceptance and its
 tolerances are unchanged.
 
