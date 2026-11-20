@@ -449,6 +449,10 @@ function _local_optimizer!(m, solver, time_limit;feasibility_only=false)
     set_silent(m)
     if solver=="Ipopt"
         set_optimizer_attribute(m, "tol", DISPATCH_PRIMAL_TOLERANCE)
+        # Ipopt divides errors by max(s_max, mean multiplier norm)/s_max.
+        # The model already scales its variables and equations. Use unit
+        # divisors so large, nonunique multipliers cannot conceal an error.
+        set_optimizer_attribute(m, "s_max", floatmax(Float64))
         set_optimizer_attribute(m, "bound_relax_factor", 0.0)
         set_optimizer_attribute(m, "max_iter", 1000)
         set_optimizer_attribute(m, "max_cpu_time", max(0.001, time_limit))

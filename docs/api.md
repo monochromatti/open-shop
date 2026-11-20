@@ -244,6 +244,11 @@ Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
 
+Optimality errors use the model's numerical scaling without further division
+by constraint multiplier norms. Large, nonunique multipliers can otherwise make
+a suboptimal point satisfy a relative stopping test. Physical acceptance and its
+tolerances are unchanged.
+
 Revenue iteration reconstruction is included in the native solve's `seconds`.
 `iterate_reconstruction_seconds` reports that component, rather than additional
 elapsed time. `retained_iteration` identifies an earlier returned trajectory
