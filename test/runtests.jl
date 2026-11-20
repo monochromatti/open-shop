@@ -119,6 +119,7 @@ include("result_api_tests.jl")
 
 include("soft_constraint_tests.jl")
 include("reserve_tests.jl")
+include("feasible_dispatch_tests.jl")
 include("river_reference_semantics_tests.jl")
 include("river_outlet_bounds_tests.jl")
 include("penalty_settings_tests.jl")

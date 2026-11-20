@@ -279,4 +279,27 @@ theorem outlet_flow_bound_redundant (flow inflow opening rating : ℝ)
   · intro law
     exact ⟨law, by nlinarith [mul_nonneg nonnegativeOpening nonnegativeRating]⟩
 
+/-- At positive remaining capacity, a prescribed release interval is exactly
+the corresponding gate interval. Capacity includes natural river inflow. -/
+theorem controlled_outlet_gate_bounds (inflow capacity opening lower upper : ℝ)
+    (remainingCapacity : inflow < capacity) :
+    (lower ≤ inflow + (capacity-inflow)*opening ∧
+      inflow + (capacity-inflow)*opening ≤ upper) ↔
+    ((lower-inflow)/(capacity-inflow) ≤ opening ∧
+      opening ≤ (upper-inflow)/(capacity-inflow)) := by
+  have positive : 0 < capacity-inflow := sub_pos.mpr remainingCapacity
+  rw [div_le_iff₀ positive, le_div_iff₀ positive]
+  constructor <;> rintro ⟨h₁,h₂⟩ <;> constructor <;> nlinarith
+
+/-- With no natural inflow and positive capacity, an off river state fixes
+the controlled opening to zero. -/
+theorem controlled_outlet_off (capacity opening : ℝ) (positive : 0 < capacity) :
+    (0 ≤ capacity*opening ∧ capacity*opening ≤ 0) ↔ opening=0 := by
+  constructor
+  · rintro ⟨lower,upper⟩
+    have zeroFlow : capacity*opening=0 := le_antisymm upper lower
+    exact (mul_eq_zero.mp zeroFlow).resolve_left (ne_of_gt positive)
+  · intro zeroOpening
+    simp [zeroOpening]
+
 end OpenSHOP

@@ -151,7 +151,7 @@ end
     worse=dispatch_from_controls(c,u,[1.0 1.0;2.5 1.5],zeros(0,2))
     @test validate(c,worse)["valid"]
     @test worse.objective<warm.objective
-    interrupted=(case;kwargs...)->SolveResult(Dict("status"=>"TIME_LIMIT");solution=worse)
+    interrupted=(case;kwargs...)->(SolveResult(Dict("status"=>"TIME_LIMIT");solution=worse),worse,Inf)
     retained=OpenSHOP._adaptive_dispatch(c,interrupted;u,warm,max_refinements=0)
     @test retained.accepted
     @test retained.solution.objective>=expected-1e-8

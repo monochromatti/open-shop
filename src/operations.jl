@@ -262,10 +262,10 @@ function operational_arrival_knots(c, r, grid)
     )
 end
 
-function arrival_requirement_violation(c, r, grid, q)
+function arrival_requirement_violation(c, r, grid, q; margin=0.0)
     maximum(
         (
-            opvalue(c, r.name, :min_arrival, t, r.min_arrival; side)-point_arrival(
+            opvalue(c, r.name, :min_arrival, t, r.min_arrival; side)+margin-point_arrival(
                 r,
                 grid,
                 q,

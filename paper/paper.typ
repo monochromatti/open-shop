@@ -1106,6 +1106,24 @@ constant-objective feasibility problem, stopping when unscaled constraints
 and bounds meet the primal tolerance. Revenue optimization follows independent
 acceptance; the feasible trajectory is retained if this improvement fails.
 
+An interior-point iterate need not satisfy the hydraulic equations. Its controls
+may nevertheless produce a feasible trajectory when the states are independently
+integrated. During revenue optimization we reconstruct these controls at each
+regular iterate and retain the highest-value trajectory that satisfies the
+original constraints and fixed discrete choices. A trajectory whose computed
+value cannot improve the retained feasible plan needs no further operating-limit
+checks. Admission uses the primal tolerance, so a validation allowance at a
+binding limit cannot create an apparent revenue gain. The optimizer can finish at an infeasible point without losing
+an earlier improvement. Its termination status does not establish stationarity
+of the retained trajectory.
+
+The final trial point still guides constraint generation once the NLP equations
+and bounds meet the primal tolerance. Physical violations at that point can
+identify missing restrictions even when an earlier feasible plan exists.
+If the NLP has not met its primal tolerance, a reconstructed feasible plan can
+instead proceed to finer replay. Keeping these two points distinct prevents
+feasible-plan retention from stopping constraint generation prematurely.
+
 The release law at a reservoir outlet has the form
 $R=I+alpha F(Z)$. Here $I>=0$ is natural river inflow, $alpha>=0$ is
 the gate fraction and $F(Z)>=0$ is full-opening discharge on the permitted
@@ -1119,6 +1137,14 @@ Zero arrival minima are omitted too, since nonnegative released water and
 transfer weights already imply them. Positive environmental requirements,
 capacity limits and signed channel bounds remain in the model. These are
 algebraic reductions of the same physical problem.
+
+For a head-independent controlled outlet, $R=I+F alpha$, where $F=C-I>0$
+is the remaining capacity after natural inflow.
+A prescribed river state gives a release interval $ell_R<=R<=u_R$.
+We impose the equivalent gate bounds $(ell_R-I)/F<=alpha<=(u_R-I)/F$
+directly. At zero natural inflow, an off state fixes $alpha=0$; the outlet law
+then supplies $R=0$. This removes redundant bound slacks that can otherwise
+produce unnecessarily large multipliers during interior-point iterations~@haeser_multipliers.
 
 An accepted improvement updates the hydraulic reference and starting point of
 the next unrestricted proposal. The stated water values remain unchanged.

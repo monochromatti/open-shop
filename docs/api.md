@@ -38,6 +38,11 @@ the best accepted schedule.
 
 On a cold start, the nonlinear routine first restores feasibility, then optimizes
 revenue. Its feasible trajectory is retained if revenue optimization fails.
+Revenue solves also reconstruct the held controls of intermediate iterates.
+They retain the highest-value trajectory passing the original physical checks
+and the fixed discrete choices. An infeasible final optimizer point therefore
+does not discard an earlier feasible improvement. Finer replay still determines
+acceptance by `solve_verified` and `schedule_case`.
 A supplied `initial` must pass independent acceptance for this case; it is not
 an unchecked guess for changed inputs. All work shares `time_limit`, with
 `proposal_time_limit` bounding each MILP and `nlp_time_limit` bounding the full
@@ -238,6 +243,29 @@ of the nonlinear solve when an outlet closes.
 Feasibility solves can stop once Ipopt's unscaled constraint
 and bound violations meet its primal tolerance. Their native status is then
 `INTERRUPTED`; independent physical validation still determines acceptance.
+
+For a head-independent controlled outlet with capacity above natural inflow,
+prescribed river states are imposed
+directly on gate bounds through `release = inflow + (capacity - inflow) * opening`.
+An off state with zero natural inflow fixes the opening to zero. This avoids
+redundant zero-slack inequalities in the nonlinear model. Head-dependent laws
+keep their release constraints. Physical acceptance and its tolerances are unchanged.
+
+Revenue iteration reconstruction is included in the native solve's `seconds`.
+`iterate_reconstruction_seconds` reports that component, rather than additional
+elapsed time. `retained_iteration` identifies an earlier returned trajectory
+when it replaces the final point. The native `status` and iteration count still
+describe the optimizer run; they do not establish stationarity of that trajectory.
+`primal_residual` measures the native point's normalized equations and bounds.
+If it meets the primal tolerance, adaptive dispatch still uses violations at
+that final trial to add missing restrictions. A feasible earlier plan remains
+available as a fallback. If the native point is unfinished, a reconstructed
+feasible plan can instead proceed directly to finer replay.
+When river on/off choices are prescribed, `validate` and `validate_replay` accept
+the same `river_on` matrix to check those choices as well as physical feasibility.
+Admission to the retained-plan cache uses the tighter primal tolerance. The
+public physical-check tolerance is unchanged; it is not an allowance to increase
+economic value at an active bound or fixed discharge schedule.
 
 A physically accepted schedule can be returned even if its stricter global-model
 start check fails. In that case it supplies neither a `feasible_lower_bound` nor
