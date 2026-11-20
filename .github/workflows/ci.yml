@@ -28,8 +28,7 @@ jobs:
       - name: Diagnose river operating costs
         run: >-
           julia --pkgimages=no --project=.
-          -e 'using Pkg; Pkg.instantiate(); using OpenSHOP, JuMP, Test;
-          include("test/head_flow_rules_tests.jl")'
+          -e 'using Pkg; Pkg.instantiate(); include(".github/river_diagnostics.jl")'
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
