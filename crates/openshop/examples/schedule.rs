@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let case: ScheduleCase = if let Some(path) = path {
         serde_json::from_reader(std::fs::File::open(path)?)?
     } else {
-        serde_json::from_str(include_str!("data/measured_cascade.json"))?
+        serde_json::from_str(include_str!("data/tabulated_cascade.json"))?
     };
     let schedule = SchedulingProblem::new(&case)?.solve(&SolveOptions {
         time_limit: seconds,

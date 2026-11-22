@@ -16,6 +16,7 @@ mod physics;
 mod river;
 mod schedule;
 mod trajectory;
+mod turbine;
 
 pub use curve::TableCurve;
 pub use model::{
@@ -25,6 +26,7 @@ pub use model::{
 pub use operation::{RampRates, UnitOperation};
 pub use schedule::SchedulingProblem;
 pub use trajectory::{Schedule, Validation};
+pub use turbine::{DischargeInterpolation, Extrapolation, TurbineOptions, TurbineTable};
 
 use serde::{Deserialize, Serialize};
 

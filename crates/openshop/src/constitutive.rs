@@ -1,9 +1,8 @@
-//! Sparse constitutive equations appended to an algebraic nonlinear model.
-//! Affine storage paths are composed with local integral derivatives. Sparse
-//! matrix coordinates and chain-rule coefficients are prepared once; callbacks
-//! only evaluate curves and accumulate into existing numeric buffers.
+//! Sparse assembly of local physical functions composed with affine inputs.
+//! Structure and chain-rule coefficients are prepared once. Evaluation only
+//! accumulates values and exact derivatives into existing numeric buffers.
 
-use crate::{Error, TableCurve, river::LinearForm};
+use crate::{Bounds, Error, TableCurve, TurbineTable, curve::Derivatives2, river::LinearForm};
 use pounce_nl::nl_reader::NlTnlp;
 use pounce_nlp::tnlp::{
     BoundsInfo, IndexStyle, IpoptCq, IpoptData, NlpInfo, Solution, SparsityRequest, StartingPoint,
@@ -18,27 +17,148 @@ pub(crate) struct StorageHeadEquation {
     pub head: usize,
     pub head_scale: f64,
 }
-struct Segment {
-    before: LinearForm,
-    after: LinearForm,
+
+pub(crate) enum PhysicalFunction {
+    StorageMean(Arc<TableCurve>),
+    TurbinePower(Arc<TurbineTable>),
+    MinimumFlow(Arc<TurbineTable>),
+    MaximumFlow(Arc<TurbineTable>),
+}
+impl PhysicalFunction {
+    fn value(&self, a: f64, b: f64) -> f64 {
+        match self {
+            Self::StorageMean(c) => c.mean_data(a, b).value,
+            Self::TurbinePower(c) => c.generation(a, b),
+            Self::MinimumFlow(c) => c.envelope_data(b, false).value,
+            Self::MaximumFlow(c) => c.envelope_data(b, true).value,
+        }
+    }
+
+    fn data(&self, a: f64, b: f64) -> Derivatives2 {
+        match self {
+            Self::StorageMean(c) => c.mean_data(a, b),
+            Self::TurbinePower(c) => c.generation_data(a, b),
+            Self::MinimumFlow(c) => c.envelope_data(b, false),
+            Self::MaximumFlow(c) => c.envelope_data(b, true),
+        }
+    }
+}
+pub(crate) struct Term {
+    pub function: PhysicalFunction,
+    pub inputs: [LinearForm; 2],
+    pub weight: f64,
+}
+/// lower <= linear(x) + Σ weight f(a(x),b(x)) <= upper.
+pub(crate) struct Equation {
+    pub linear: LinearForm,
+    pub terms: Vec<Term>,
+    pub bounds: Bounds,
+}
+impl Equation {
+    /// P(Q,H) - P = 0, Q_min(H) - Q <= 0, Q_max(H) - Q >= 0.
+    /// Inputs are in physical units; row scales normalize power and flow.
+    pub fn turbine(
+        curve: Arc<TurbineTable>,
+        flow: LinearForm,
+        head: LinearForm,
+        power: LinearForm,
+        flow_scale: f64,
+        power_scale: f64,
+    ) -> [Self; 3] {
+        [
+            (
+                PhysicalFunction::TurbinePower(curve.clone()),
+                power.scaled(-1. / power_scale),
+                1. / power_scale,
+                Bounds::new(0., 0.),
+            ),
+            (
+                PhysicalFunction::MinimumFlow(curve.clone()),
+                flow.clone().scaled(-1. / flow_scale),
+                1. / flow_scale,
+                Bounds::new(f64::NEG_INFINITY, 0.),
+            ),
+            (
+                PhysicalFunction::MaximumFlow(curve),
+                flow.clone().scaled(-1. / flow_scale),
+                1. / flow_scale,
+                Bounds::new(0., f64::INFINITY),
+            ),
+        ]
+        .map(|(function, linear, weight, bounds)| Self {
+            linear,
+            terms: vec![Term {
+                function,
+                inputs: [flow.clone(), head.clone()],
+                weight,
+            }],
+            bounds,
+        })
+    }
+}
+impl From<StorageHeadEquation> for Equation {
+    fn from(law: StorageHeadEquation) -> Self {
+        Self {
+            linear: LinearForm {
+                constant: 0.,
+                coefficients: BTreeMap::from([(law.head, -1.)]),
+            },
+            terms: law
+                .vertices
+                .windows(2)
+                .map(|w| Term {
+                    function: PhysicalFunction::StorageMean(law.curve.clone()),
+                    inputs: [w[0].1.clone(), w[1].1.clone()],
+                    weight: (w[1].0 - w[0].0) / law.head_scale,
+                })
+                .collect(),
+            bounds: Bounds::new(0., 0.),
+        }
+    }
+}
+// Contiguous sparse coefficients for repeated local evaluations. LinearForm's
+// ordered maps are used only while assembling/coalescing the equations.
+struct LinearFunction {
+    constant: f64,
+    coefficients: Vec<(usize, f64)>,
+}
+impl From<LinearForm> for LinearFunction {
+    fn from(form: LinearForm) -> Self {
+        Self {
+            constant: form.constant,
+            coefficients: form.coefficients.into_iter().collect(),
+        }
+    }
+}
+impl LinearFunction {
+    fn value(&self, x: &[f64]) -> f64 {
+        self.constant
+            + self
+                .coefficients
+                .iter()
+                .map(|&(i, a)| a * x[i])
+                .sum::<f64>()
+    }
+}
+struct PreparedTerm {
+    function: PhysicalFunction,
+    inputs: [LinearFunction; 2],
     weight: f64,
-    before_jacobian: Vec<(usize, f64)>,
-    after_jacobian: Vec<(usize, f64)>,
+    jacobian: [Vec<(usize, f64)>; 2],
     /// Sparse position and coefficients of H_aa, H_ab and H_bb.
     hessian: Vec<(usize, [f64; 3])>,
 }
-struct StorageHead {
-    curve: Arc<TableCurve>,
-    head: usize,
+struct PreparedEquation {
+    linear: LinearFunction,
+    bounds: Bounds,
     jacobian_columns: Vec<usize>,
-    head_position: usize,
-    segments: Vec<Segment>,
+    linear_jacobian: Vec<(usize, f64)>,
+    terms: Vec<PreparedTerm>,
 }
-
 pub(crate) struct Nlp {
     base: NlTnlp,
     base_info: NlpInfo,
-    laws: Vec<StorageHead>,
+    equations: Vec<PreparedEquation>,
     jacobian_size: usize,
     hessian_coordinates: Vec<(i32, i32)>,
     base_hessian_positions: Vec<usize>,
@@ -47,7 +167,7 @@ pub(crate) struct Nlp {
     final_x: Option<Vec<f64>>,
 }
 impl Nlp {
-    pub fn new(mut base: NlTnlp, laws: Vec<StorageHeadEquation>) -> Result<Self, Error> {
+    pub fn new(mut base: NlTnlp, equations: Vec<Equation>) -> Result<Self, Error> {
         let info = base
             .get_nlp_info()
             .ok_or_else(|| Error::Model("invalid nonlinear dimensions".into()))?;
@@ -76,31 +196,37 @@ impl Nlp {
         for (&r, &c) in rows.iter().zip(&cols) {
             coordinates.insert((r.max(c), r.min(c)), 0);
         }
-        for law in &laws {
-            if law.head >= info.n as usize
-                || law.vertices.len() < 2
-                || law.head_scale <= 0.
-                || !law.head_scale.is_finite()
-                || law.vertices.first().unwrap().0 != 0.
-                || law.vertices.last().unwrap().0 != 1.
-                || !law.vertices.windows(2).all(|w| w[0].0 < w[1].0)
+        for equation in &equations {
+            if equation.bounds.min.is_nan()
+                || equation.bounds.max.is_nan()
+                || equation.bounds.min > equation.bounds.max
             {
-                return Err(Error::Model("invalid storage-head integration path".into()));
+                return Err(Error::Model("invalid constitutive bounds".into()));
             }
-            for pair in law.vertices.windows(2) {
-                let mut variables: BTreeMap<_, _> = pair[0]
-                    .1
-                    .coefficients
-                    .keys()
-                    .chain(pair[1].1.coefficients.keys())
+            let forms = std::iter::once(&equation.linear)
+                .chain(equation.terms.iter().flat_map(|t| t.inputs.iter()));
+            for form in forms {
+                if !form.constant.is_finite()
+                    || form
+                        .coefficients
+                        .iter()
+                        .any(|(&i, &a)| i >= info.n as usize || !a.is_finite())
+                {
+                    return Err(Error::Model("invalid constitutive affine input".into()));
+                }
+            }
+            for term in &equation.terms {
+                if !term.weight.is_finite() {
+                    return Err(Error::Model("invalid constitutive weight".into()));
+                }
+                let variables: BTreeMap<_, _> = term
+                    .inputs
+                    .iter()
+                    .flat_map(|v| v.coefficients.keys())
                     .map(|&i| (i, ()))
                     .collect();
-                variables.remove(&law.head);
                 let vars: Vec<_> = variables.keys().copied().collect();
                 for (j, &a) in vars.iter().enumerate() {
-                    if a >= info.n as usize {
-                        return Err(Error::Model("invalid storage path variable".into()));
-                    }
                     for &b in &vars[..=j] {
                         coordinates.insert((a as i32, b as i32), 0);
                     }
@@ -117,84 +243,76 @@ impl Nlp {
             .collect();
         let mut compiled = Vec::new();
         let mut jacobian_size = info.nnz_jac_g as usize;
-        for law in laws {
-            let mut columns: BTreeMap<_, usize> = law
-                .vertices
-                .iter()
-                .flat_map(|(_, v)| v.coefficients.keys().copied())
-                .chain([law.head])
-                .map(|i| (i, 0))
+        for equation in equations {
+            let mut columns: BTreeMap<_, usize> = std::iter::once(&equation.linear)
+                .chain(equation.terms.iter().flat_map(|t| t.inputs.iter()))
+                .flat_map(|v| v.coefficients.keys())
+                .map(|&i| (i, 0))
                 .collect();
             for (k, pos) in columns.values_mut().enumerate() {
                 *pos = k;
             }
-            let mut segments = Vec::new();
-            for pair in law.vertices.windows(2) {
-                let before = pair[0].1.clone();
-                let after = pair[1].1.clone();
-                if before.coefficients.contains_key(&law.head)
-                    || after.coefficients.contains_key(&law.head)
-                {
-                    return Err(Error::Model(
-                        "storage path cannot depend on its own mean head".into(),
-                    ));
-                }
-                let weight = (pair[1].0 - pair[0].0) / law.head_scale;
-                let mut variables: BTreeMap<_, _> = before
-                    .coefficients
-                    .keys()
-                    .chain(after.coefficients.keys())
+            let mut terms = Vec::new();
+            for term in equation.terms {
+                let variables: BTreeMap<_, _> = term
+                    .inputs
+                    .iter()
+                    .flat_map(|v| v.coefficients.keys())
                     .map(|&i| (i, ()))
                     .collect();
-                variables.remove(&law.head);
                 let vars: Vec<_> = variables.keys().copied().collect();
                 let mut hessian = Vec::new();
                 for (j, &a) in vars.iter().enumerate() {
                     for &b in &vars[..=j] {
-                        let aj = before.coefficients.get(&a).copied().unwrap_or(0.);
-                        let ak = before.coefficients.get(&b).copied().unwrap_or(0.);
-                        let bj = after.coefficients.get(&a).copied().unwrap_or(0.);
-                        let bk = after.coefficients.get(&b).copied().unwrap_or(0.);
+                        let [aj, bj] = term
+                            .inputs
+                            .each_ref()
+                            .map(|v| v.coefficients.get(&a).copied().unwrap_or(0.));
+                        let [ak, bk] = term
+                            .inputs
+                            .each_ref()
+                            .map(|v| v.coefficients.get(&b).copied().unwrap_or(0.));
                         hessian.push((
                             coordinates[&(a as i32, b as i32)],
                             [
-                                weight * aj * ak,
-                                weight * (aj * bk + bj * ak),
-                                weight * bj * bk,
+                                term.weight * aj * ak,
+                                term.weight * (aj * bk + bj * ak),
+                                term.weight * bj * bk,
                             ],
                         ));
                     }
                 }
-                segments.push(Segment {
-                    before_jacobian: before
-                        .coefficients
-                        .iter()
-                        .map(|(&i, &v)| (columns[&i], weight * v))
-                        .collect(),
-                    after_jacobian: after
-                        .coefficients
-                        .iter()
-                        .map(|(&i, &v)| (columns[&i], weight * v))
-                        .collect(),
-                    before,
-                    after,
-                    weight,
+                terms.push(PreparedTerm {
+                    jacobian: term.inputs.each_ref().map(|v| {
+                        v.coefficients
+                            .iter()
+                            .map(|(&i, &a)| (columns[&i], term.weight * a))
+                            .collect()
+                    }),
+                    function: term.function,
+                    inputs: term.inputs.map(LinearFunction::from),
+                    weight: term.weight,
                     hessian,
                 });
             }
             jacobian_size += columns.len();
-            compiled.push(StorageHead {
-                curve: law.curve,
-                head: law.head,
-                head_position: columns[&law.head],
+            compiled.push(PreparedEquation {
+                linear_jacobian: equation
+                    .linear
+                    .coefficients
+                    .iter()
+                    .map(|(&i, &a)| (columns[&i], a))
+                    .collect(),
+                linear: equation.linear.into(),
+                bounds: equation.bounds,
                 jacobian_columns: columns.keys().copied().collect(),
-                segments,
+                terms,
             });
         }
         Ok(Self {
             base,
             base_info: info,
-            laws: compiled,
+            equations: compiled,
             jacobian_size,
             hessian_coordinates: coordinates.keys().copied().collect(),
             base_hessian_positions,
@@ -211,7 +329,7 @@ impl Nlp {
 impl TNLP for Nlp {
     fn get_nlp_info(&mut self) -> Option<NlpInfo> {
         Some(NlpInfo {
-            m: self.base_info.m + self.laws.len() as i32,
+            m: self.base_info.m + self.equations.len() as i32,
             nnz_jac_g: self.jacobian_size as i32,
             nnz_h_lag: self.hessian_coordinates.len() as i32,
             ..self.base_info
@@ -219,8 +337,10 @@ impl TNLP for Nlp {
     }
     fn get_bounds_info(&mut self, b: BoundsInfo<'_>) -> bool {
         let m = self.base_info.m as usize;
-        b.g_l[m..].fill(0.);
-        b.g_u[m..].fill(0.);
+        for (k, e) in self.equations.iter().enumerate() {
+            b.g_l[m + k] = e.bounds.min;
+            b.g_u[m + k] = e.bounds.max;
+        }
         self.base.get_bounds_info(BoundsInfo {
             x_l: b.x_l,
             x_u: b.x_u,
@@ -249,19 +369,14 @@ impl TNLP for Nlp {
         if !self.base.eval_g(x, new_x, &mut g[..m]) {
             return false;
         }
-        for (k, law) in self.laws.iter().enumerate() {
-            g[m + k] = law
-                .segments
-                .iter()
-                .map(|s| {
-                    s.weight
-                        * law
-                            .curve
-                            .mean_data(s.before.value(x), s.after.value(x))
-                            .value
-                })
-                .sum::<f64>()
-                - x[law.head];
+        for (k, e) in self.equations.iter().enumerate() {
+            g[m + k] = e.linear.value(x)
+                + e.terms
+                    .iter()
+                    .map(|t| {
+                        t.weight * t.function.value(t.inputs[0].value(x), t.inputs[1].value(x))
+                    })
+                    .sum::<f64>();
         }
         g.iter().all(|v| v.is_finite())
     }
@@ -279,8 +394,8 @@ impl TNLP for Nlp {
                 ) {
                     return false;
                 }
-                for (k, law) in self.laws.iter().enumerate() {
-                    for &col in &law.jacobian_columns {
+                for (k, e) in self.equations.iter().enumerate() {
+                    for &col in &e.jacobian_columns {
                         irow[nz] = self.base_info.m + k as i32;
                         jcol[nz] = col as i32;
                         nz += 1;
@@ -300,20 +415,21 @@ impl TNLP for Nlp {
                 let Some(x) = x else {
                     return false;
                 };
-                for law in &self.laws {
-                    let out = &mut values[nz..nz + law.jacobian_columns.len()];
+                for e in &self.equations {
+                    let out = &mut values[nz..nz + e.jacobian_columns.len()];
                     out.fill(0.);
-                    out[law.head_position] = -1.;
-                    for s in &law.segments {
-                        let g = law
-                            .curve
-                            .mean_data(s.before.value(x), s.after.value(x))
+                    for &(i, a) in &e.linear_jacobian {
+                        out[i] += a;
+                    }
+                    for t in &e.terms {
+                        let g = t
+                            .function
+                            .data(t.inputs[0].value(x), t.inputs[1].value(x))
                             .gradient;
-                        for &(i, a) in &s.before_jacobian {
-                            out[i] += a * g[0];
-                        }
-                        for &(i, a) in &s.after_jacobian {
-                            out[i] += a * g[1];
+                        for (input, &derivative) in t.jacobian.iter().zip(&g) {
+                            for &(i, a) in input {
+                                out[i] += a * derivative;
+                            }
                         }
                     }
                     nz += out.len();
@@ -365,14 +481,14 @@ impl TNLP for Nlp {
                 {
                     values[k] += v;
                 }
-                for (k, law) in self.laws.iter().enumerate() {
-                    for s in &law.segments {
-                        let h = law
-                            .curve
-                            .mean_data(s.before.value(x), s.after.value(x))
+                for (k, e) in self.equations.iter().enumerate() {
+                    for t in &e.terms {
+                        let h = t
+                            .function
+                            .data(t.inputs[0].value(x), t.inputs[1].value(x))
                             .hessian;
                         let multiplier = lambda[self.base_info.m as usize + k];
-                        for &(position, a) in &s.hessian {
+                        for &(position, a) in &t.hessian {
                             values[position] +=
                                 multiplier * (a[0] * h[0][0] + a[1] * h[1][0] + a[2] * h[1][1]);
                         }
@@ -398,7 +514,7 @@ impl TNLP for Nlp {
         self.base.get_objective_variables_linearity(types)
     }
     fn derivative_proofs(&mut self) -> pounce_nlp::constant_derivatives::DerivativeProofs {
-        if self.laws.is_empty() {
+        if self.equations.is_empty() {
             self.base.derivative_proofs()
         } else {
             Default::default()
@@ -502,7 +618,71 @@ mod tests {
             head: head.var_id().unwrap().index(),
             head_scale: 1.,
         };
-        let mut problem = crate::nlp::prepare(&m, vec![law]).unwrap();
+        let mut problem = crate::nlp::prepare(&m, vec![law.into()]).unwrap();
+        check_derivatives(
+            &mut problem,
+            &[[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]],
+            &[0.6, 1.3],
+        );
+    }
+    #[test]
+    fn turbine_rows_preserve_sparse_second_derivatives_with_coupled_inputs() {
+        let m = Model::new("turbine chain rule");
+        variable!(m,0.0<=a<=4.0,initial=0.2);
+        variable!(m,0.0<=b<=4.0,initial=2.4);
+        variable!(m,0.0<=power<=30.0,initial=14.0);
+        constraint!(m, a.square() + a * b <= 5.0);
+        objective!(m, Min, a.square() + b * power + power.square());
+        let curve = Arc::new(
+            TurbineTable::new(
+                vec![80., 120., 160.],
+                vec![
+                    TableCurve::new(vec![0., 6., 11., 20.], vec![0.6, 0.85, 0.9, 0.82]).unwrap(),
+                    TableCurve::new(vec![0., 7., 13., 20.], vec![0.65, 0.88, 0.92, 0.85]).unwrap(),
+                    TableCurve::new(vec![0., 4., 10., 20.], vec![0.6, 0.86, 0.94, 0.87]).unwrap(),
+                ],
+                vec![
+                    Bounds::new(2., 12.),
+                    Bounds::new(3., 15.),
+                    Bounds::new(4., 20.),
+                ],
+                crate::TurbineOptions {
+                    interpolation: crate::DischargeInterpolation::Pchip,
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        );
+        let flow = LinearForm {
+            constant: 2.,
+            coefficients: BTreeMap::from([
+                (a.var_id().unwrap().index(), 3.),
+                (b.var_id().unwrap().index(), 1.),
+            ]),
+        };
+        let head = LinearForm {
+            constant: 80.,
+            coefficients: BTreeMap::from([
+                (a.var_id().unwrap().index(), 10.),
+                (b.var_id().unwrap().index(), 3.),
+            ]),
+        };
+        let equations = Equation::turbine(
+            curve,
+            flow,
+            head,
+            LinearForm::variable(power.var_id().unwrap().index(), 10.),
+            20.,
+            10.,
+        );
+        let mut problem = crate::nlp::prepare(&m, Vec::from(equations)).unwrap();
+        check_derivatives(
+            &mut problem,
+            &[[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]],
+            &[0.6, 1.3, -0.2, 0.4],
+        );
+    }
+    fn check_derivatives(problem: &mut dyn TNLP, points: &[[f64; 3]], lambda: &[f64]) {
         let info = problem.get_nlp_info().unwrap();
         let mut hr = vec![0; info.nnz_h_lag as usize];
         let mut hc = hr.clone();
@@ -517,14 +697,13 @@ mod tests {
                 jcol: &mut hc
             }
         ));
-        for point in [[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]] {
-            let lambda = [0.6, 1.3];
+        for &point in points {
             let mut values = vec![0.; hr.len()];
             assert!(problem.eval_h(
                 Some(&point),
                 true,
                 0.7,
-                Some(&lambda),
+                Some(lambda),
                 true,
                 SparsityRequest::Values {
                     values: &mut values
@@ -567,8 +746,8 @@ mod tests {
                         .sum();
                     assert!(((gp[row] - gn[row]) / 2e-5 - expected).abs() < 1e-7);
                 }
-                let p = lagrangian_gradient(&mut problem, &plus, 0.7, &lambda);
-                let n = lagrangian_gradient(&mut problem, &minus, 0.7, &lambda);
+                let p = lagrangian_gradient(problem, &plus, 0.7, lambda);
+                let n = lagrangian_gradient(problem, &minus, 0.7, lambda);
                 for row in 0..3 {
                     assert!(
                         ((p[row] - n[row]) / 2e-5 - dense[row][column]).abs() < 1e-7,

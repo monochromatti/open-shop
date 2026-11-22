@@ -81,12 +81,63 @@ second derivatives need not exist at a knot. Selected chain-rule identities are
 checked in Lean; finite-difference tests also check the complete sparse Hessian.
 Neither establishes a global optimality proof or verifies floating-point arithmetic.
 
-`crates/openshop/examples/data/measured_cascade.json` combines measured storage curves with
-pressure loops, delayed river splits/merges, commitment and a 1000 m³ forebay:
+`crates/openshop/examples/data/tabulated_cascade.json` uses synthetic storage and turbine tables with
+pressure loops, delayed river splits/merges, commitment, power ramps and a 1000 m³
+forebay. These numbers are synthetic, not field measurements:
 
 ```sh
-cargo run -p openshop --example schedule -- crates/openshop/examples/data/measured_cascade.json 10
+cargo run -p openshop --example schedule -- crates/openshop/examples/data/tabulated_cascade.json 10
 ```
+
+## Turbine curves
+
+Use `Efficiency::constant(value)`, `Efficiency::Quadratic { ... }`, or
+`Efficiency::Table(TurbineTable::new(heads, curves, flow, options)?)`.
+`heads` are ordered net hydraulic heads in metres; each has its own original
+`TableCurve` of discharge (m³/s) against hydraulic efficiency, and a `Bounds`
+record giving its on-state discharge envelope. The curves may use different
+discharge grids. The envelope is independent of the efficiency knots and adds
+to the unit's static discharge limits.
+
+```rust,no_run
+use openshop::{Bounds, DischargeInterpolation, TableCurve, TurbineOptions, TurbineTable};
+let table = TurbineTable::new(
+    vec![80.0, 120.0],
+    vec![
+        TableCurve::new(vec![5.0, 12.0, 20.0], vec![0.82, 0.91, 0.87])?,
+        TableCurve::new(vec![5.0, 9.0, 15.0, 20.0], vec![0.83, 0.90, 0.93, 0.89])?,
+    ],
+    vec![Bounds::new(5.0, 15.0), Bounds::new(5.0, 20.0)],
+    TurbineOptions { interpolation: DischargeInterpolation::Pchip, ..Default::default() },
+)?;
+# Ok::<(), openshop::Error>(())
+```
+
+Interpolation in discharge is linear or shape-preserving cubic Hermite (PCHIP),
+with weighted harmonic interior slopes following Fritsch and Butland (1984,
+[DOI: 10.1137/0905021](https://doi.org/10.1137/0905021)). Each original curve is interpolated independently; the
+result and the discharge envelope are linear in head. No new knots are fitted.
+`table.efficiency(q, h)?` and `table.flow_limits(h)?` evaluate the declared model.
+Power always uses the actual net hydraulic head, including penstock loss.
+
+By default the data must cover the complete unit operating range. Explicit
+`Extrapolation::Linear` permits end-secant continuation in head or discharge.
+Discharge continuation uses the end secants even for PCHIP. A single reference
+head requires `head_extrapolation: Extrapolation::Constant`, declaring efficiency
+and the envelope independent of head. It does not make power independent of head.
+Preparation checks efficiency throughout the allowed rectangle, including cubic
+stationary points, and checks that discharge envelopes overlap at every head.
+Values are neither clipped nor silently repaired.
+
+Table units use net head and power unknowns with the physical equalities
+`H = H_source − H_target − loss_factor Q²` and `P = 0.00981 Q H η(Q,H)`.
+Their power limits are variable bounds and their power ramps are linear rows.
+The local turbine law supplies exact first and second derivatives using fixed-size
+`num-dual` arithmetic; sparse chain-rule maps are prepared once. The head equality
+retains the curvature of the upstream hydraulic equations. Off units have zero
+flow and power and do not impose a turbine operating-head range. Trial evaluation
+uses secant continuation to let a solver recover from violated constraints;
+returned schedules must satisfy the declared physical domains.
 
 ## Unit operation
 
@@ -134,16 +185,18 @@ File access and JSON conversion belong to the executable examples.
 Reservoir storage obeys `V_next − V = 3600 Δt (inflow + incoming − outgoing)`.
 The storage–elevation curve is quadratic or a measured piecewise-linear table.
 Its exact integral mean remains well defined when the two volumes are equal. Constant
-discharge through a unit produces `P = 0.00981 Q H η(Q,H)` MW, with quadratic
-efficiency and penstock losses. Unit commitment enforces either zero discharge
+discharge through a unit produces `P = 0.00981 Q H η(Q,H)` MW, with quadratic or tabulated
+efficiency and quadratic penstock losses. Unit commitment enforces either zero discharge
 or the stated on-state discharge, head and power ranges. Startup costs and
 terminal water values enter the revenue objective.
 
 Tunnel flow is signed. Open tunnels satisfy
 `(H_source − H_target) opening² = loss_factor Q |Q|`.
 A closed tunnel has zero flow and imposes no pressure relation. Pressure
-junctions conserve water without storage. Only junction heads are independent
-head variables; reservoir heads and unit powers are derived expressions.
+junctions conserve water without storage. Junction heads are independent
+unknowns. Tabulated reservoir mean heads and turbine net heads/powers have local
+constitutive equations; polynomial reservoir heads and quadratic turbine powers
+remain derived expressions.
 
 A fixed-delay river translates each release interval by its travel time.
 At river junctions all arrival changes are retained, including historical
@@ -163,8 +216,8 @@ stepping and finer chronological replay remain to be ported.
 
 Oximo builds the equations. The stable POUNCE expression evaluator supplies sparse
 first and second derivatives directly in memory, including constraint curvature.
-Measured storage means supply local integral derivatives through the same sparse
-nonlinear interface. Native Ipopt solves continuous dispatch. SCIP proposes on/off schedules using
+Measured storage means and turbine production supply local derivatives through
+the same sparse nonlinear interface. Native Ipopt solves continuous dispatch. SCIP proposes on/off schedules using
 linear generation estimates and the same water balances and river transport.
 Nonlinear dispatch evaluates those proposals, and search can change earlier
 commitments. The proposal objective is **not a global bound**. POUNCE's optimizer
@@ -176,7 +229,7 @@ optimality provided by the complete Julia package. A feasible result alone says
 nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
-Still to be implemented are measured turbine and gate curves, flow-dependent distributed
+Still to be implemented are gate curves, flow-dependent distributed
 river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
 positions, plant-level limits, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,

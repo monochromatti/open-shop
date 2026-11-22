@@ -120,7 +120,7 @@ pub(crate) fn evaluate(
                 .iter()
                 .enumerate()
                 .map(|(t, &q)| {
-                    u.generation(
+                    u.trial_generation(
                         q,
                         schedule.head[source][t] - schedule.head[target][t] - u.loss_factor * q * q,
                     )
@@ -381,6 +381,14 @@ fn validate(
                 if on { u.power.max } else { 0. },
                 u.power.max.max(1.),
             ));
+            if on && let crate::Efficiency::Table(table) = &u.efficiency {
+                let minimum = table.envelope_data(h, false).value;
+                let maximum = table.envelope_data(h, true).value;
+                result.operating_limits =
+                    result
+                        .operating_limits
+                        .max(violation(q, minimum, maximum, u.flow.max.max(1.)));
+            }
             if on {
                 result.operating_limits = result.operating_limits.max(violation(
                     h,

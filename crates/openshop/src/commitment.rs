@@ -153,7 +153,13 @@ pub(crate) fn propose(
                 .map_or((unit.flow.min + unit.flow.max) / 2., |p| p.unit_flow[g][t])
                 .clamp(unit.flow.min, unit.flow.max);
             let head = (head - unit.loss_factor * flow * flow).clamp(unit.head.min, unit.head.max);
-            let coefficient = 0.00981 * head * unit.efficiency.value(flow, head);
+            let coefficient = 0.00981 * head * unit.efficiency.trial_value(flow, head);
+            if let crate::Efficiency::Table(table) = &unit.efficiency {
+                let minimum = table.envelope_data(head, false).value.max(unit.flow.min);
+                let maximum = table.envelope_data(head, true).value.min(unit.flow.max);
+                constraint!(m, q[[g, t]] >= on[[g, t]] * (minimum / flow_scale));
+                constraint!(m, q[[g, t]] <= on[[g, t]] * (maximum / flow_scale));
+            }
             constraint!(m, q[[g, t]] >= on[[g, t]] * (unit.flow.min / flow_scale));
             constraint!(m, q[[g, t]] <= on[[g, t]] * (unit.flow.max / flow_scale));
             constraint!(

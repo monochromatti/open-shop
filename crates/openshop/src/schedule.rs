@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn measured_watercourse_optimizes_with_pressure_loops_river_splits_and_commitment() {
         let case: ScheduleCase =
-            serde_json::from_str(include_str!("../examples/data/measured_cascade.json")).unwrap();
+            serde_json::from_str(include_str!("../examples/data/tabulated_cascade.json")).unwrap();
         for backend in [Backend::Ipopt, Backend::Pounce] {
             let result = solve_with_backend(
                 &case,
@@ -948,6 +948,92 @@ mod tests {
     }
 
     #[test]
+    fn constant_turbine_tables_match_analytic_generation_with_changing_head_and_losses() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5, 1.5, 3.];
+        case.prices = vec![-100., 200., 100.];
+        case.commitment.insert("Unit".into(), vec![true; 3]);
+        case.system.units[0].loss_factor = 0.005;
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            case.system.units[0].efficiency = Efficiency::constant(0.9);
+            let analytic = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            let unit = &mut case.system.units[0];
+            unit.efficiency = Efficiency::Table(
+                crate::TurbineTable::new(
+                    vec![unit.head.min, unit.head.max],
+                    vec![
+                        crate::TableCurve::new(vec![5., 12., 20.], vec![0.9; 3]).unwrap(),
+                        crate::TableCurve::new(vec![5., 9., 15., 20.], vec![0.9; 4]).unwrap(),
+                    ],
+                    vec![unit.flow; 2],
+                    crate::TurbineOptions {
+                        interpolation: crate::DischargeInterpolation::Pchip,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            );
+            let tabulated = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                analytic.validation.feasible && tabulated.validation.feasible,
+                "{backend:?}: {:?}",
+                tabulated.validation
+            );
+            assert!((tabulated.objective - analytic.objective).abs() < 1e-5);
+            for (&a, &b) in analytic.unit_flow[0].iter().zip(&tabulated.unit_flow[0]) {
+                assert!((a - b).abs() < 1e-5);
+            }
+        }
+    }
+
+    #[test]
+    fn measured_turbine_envelope_and_nonlinear_power_ramp_limit_generation() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 1., 2.];
+        case.prices = vec![100.; 2];
+        case.commitment.insert("Unit".into(), vec![true; 2]);
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 120.,
+            slope: 0.,
+            curvature: 0.,
+        };
+        let unit = &mut case.system.units[0];
+        unit.efficiency = Efficiency::Table(
+            crate::TurbineTable::new(
+                vec![80., 120.],
+                vec![
+                    crate::TableCurve::new(vec![5., 12., 20.], vec![0.9; 3]).unwrap(),
+                    crate::TableCurve::new(vec![5., 9., 15., 20.], vec![0.9; 4]).unwrap(),
+                ],
+                vec![Bounds::new(5., 10.), Bounds::new(5., 20.)],
+                crate::TurbineOptions::default(),
+            )
+            .unwrap(),
+        );
+        unit.head = Bounds::new(80., 120.);
+        unit.operation.initial_on = true;
+        unit.operation.initial_power = Some(5.);
+        unit.operation.power_ramp.up = Some(3.);
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert!((result.unit_power[0][0] - 8.).abs() < 1e-5);
+            assert!((result.unit_power[0][1] - 11.).abs() < 1e-5);
+        }
+        case.system.units[0].operation.power_ramp.up = None;
+        let result = solve(&case, &SolveOptions::default()).unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        // At 100 m the linearly interpolated upper discharge is 15 m³/s.
+        assert!((result.unit_flow[0][0] - 15.).abs() < 1e-5);
+        assert!((result.unit_power[0][0] - 0.00981 * 15. * 100. * 0.9).abs() < 1e-5);
+    }
+
+    #[test]
     fn nonlinear_efficiency_can_make_partial_load_optimal() {
         let mut case = reservoir_case();
         case.system.reservoirs[0].level = StorageCurve::Polynomial {
@@ -960,7 +1046,7 @@ mod tests {
         let unit = &mut case.system.units[0];
         unit.flow = Bounds::new(5., 15.);
         unit.head = Bounds::new(90., 110.);
-        unit.efficiency = Efficiency {
+        unit.efficiency = Efficiency::Quadratic {
             peak: 0.9,
             best_flow: 10.,
             flow_curvature: 0.01,

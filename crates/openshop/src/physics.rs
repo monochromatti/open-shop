@@ -2,7 +2,6 @@
 //! Scalar arithmetic permits ordinary values and automatic derivative expressions.
 //! There is no solver state, graph preparation or I/O in these functions.
 
-use crate::Efficiency;
 use std::ops::{Add, Mul, Sub};
 
 pub(crate) trait Scalar:
@@ -37,10 +36,18 @@ pub(crate) fn polynomial_mean_level<T: Scalar>(
     (a + b) * (slope / 2.) + (a * a + a * b + b * b) * (curvature / 3.) + elevation
 }
 
-pub(crate) fn efficiency<T: Scalar>(curve: &Efficiency, flow: T, head: T) -> T {
-    let dq = flow - curve.best_flow;
-    let dh = head - curve.best_head;
-    (dq * dq) * (-curve.flow_curvature) + (dh * dh) * (-curve.head_curvature) + curve.peak
+pub(crate) fn quadratic_efficiency<T: Scalar>(
+    peak: f64,
+    best_flow: f64,
+    flow_curvature: f64,
+    best_head: f64,
+    head_curvature: f64,
+    flow: T,
+    head: T,
+) -> T {
+    let dq = flow - best_flow;
+    let dh = head - best_head;
+    (dq * dq) * (-flow_curvature) + (dh * dh) * (-head_curvature) + peak
 }
 
 pub(crate) fn generation<T: Scalar>(flow: T, head: T, efficiency: T) -> T {

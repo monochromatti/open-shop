@@ -843,6 +843,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-dual"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3277bc2cc02ea62cff7a33b0a0498e4d1a0745b2e448456c9cdb382848655f9"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -888,6 +897,7 @@ name = "openshop"
 version = "0.9.0"
 dependencies = [
  "ipopt_bindgen",
+ "num-dual",
  "oximo",
  "pounce-nl",
  "pounce-nlp",

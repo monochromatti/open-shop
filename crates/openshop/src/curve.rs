@@ -22,8 +22,8 @@ impl TryFrom<CurveData> for TableCurve {
     }
 }
 
-/// The mean and its derivatives with respect to the two interval endpoints.
-pub(crate) struct MeanValue {
+/// A scalar value and its first and second derivatives in two physical inputs.
+pub(crate) struct Derivatives2 {
     pub value: f64,
     pub gradient: [f64; 2],
     pub hessian: [[f64; 2]; 2],
@@ -86,10 +86,10 @@ impl TableCurve {
     }
     /// End-secant continuation is used only for nonlinear solver trial points.
     /// Physical bounds on the table domain are enforced by the reservoir model.
-    pub(crate) fn mean_data(&self, a: f64, b: f64) -> MeanValue {
+    pub(crate) fn mean_data(&self, a: f64, b: f64) -> Derivatives2 {
         if a > b {
             let v = self.mean_data(b, a);
-            return MeanValue {
+            return Derivatives2 {
                 value: v.value,
                 gradient: [v.gradient[1], v.gradient[0]],
                 hessian: [
@@ -102,7 +102,7 @@ impl TableCurve {
         let j = self.segment(b);
         if i == j || a == b {
             let slope = self.slope(i);
-            return MeanValue {
+            return Derivatives2 {
                 value: self.y[i] + slope * ((a - self.x[i]) + (b - self.x[i])) / 2.,
                 gradient: [slope / 2.; 2],
                 hessian: [[0.; 2]; 2],
@@ -121,7 +121,7 @@ impl TableCurve {
             left = right;
         }
         let cross = (gradient[1] - gradient[0]) / width;
-        MeanValue {
+        Derivatives2 {
             value: self.extended_value(a) + width * gradient[0],
             gradient,
             hessian: [

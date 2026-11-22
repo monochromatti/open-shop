@@ -27,18 +27,18 @@
       {
         "name": "A", "source": "Intake", "target": "Tailwater", "discharge_river": "River A",
         "flow": {"min": 8.0, "max": 30.0}, "power": {"min": 1.0, "max": 50.0}, "head": {"min": 50.0, "max": 200.0},
-        "efficiency": {"peak": 0.92, "best_flow": 25.0, "flow_curvature": 0.0003, "best_head": 140.0, "head_curvature": 0.000001},
+        "efficiency": {"kind": "quadratic","peak": 0.92, "best_flow": 25.0, "flow_curvature": 0.0003, "best_head": 140.0, "head_curvature": 0.000001},
         "loss_factor": 0.002, "operation": {"startup_cost": 100.0, "initial_on": true}
       },
       {
         "name": "B", "source": "Upper B", "target": "Tailwater", "discharge_river": "River B",
         "flow": {"min": 5.0, "max": 15.0}, "power": {"min": 1.0, "max": 25.0}, "head": {"min": 40.0, "max": 150.0},
-        "efficiency": {"peak": 0.91, "best_flow": 12.0, "flow_curvature": 0.0004}, "operation": {"startup_cost": 60.0, "initial_on": true}
+        "efficiency": {"kind": "quadratic","peak": 0.91, "best_flow": 12.0, "flow_curvature": 0.0004}, "operation": {"startup_cost": 60.0, "initial_on": true}
       },
       {
         "name": "Lower", "source": "Forebay", "target": "Sea",
         "flow": {"min": 5.0, "max": 45.0}, "power": {"min": 1.0, "max": 50.0}, "head": {"min": 70.0, "max": 100.0},
-        "efficiency": {"peak": 0.92, "best_flow": 30.0, "flow_curvature": 0.0001, "best_head": 85.0, "head_curvature": 0.00001},
+        "efficiency": {"kind": "quadratic","peak": 0.92, "best_flow": 30.0, "flow_curvature": 0.0001, "best_head": 85.0, "head_curvature": 0.00001},
         "operation": {"startup_cost": 80.0, "initial_on": true}
       }
     ],

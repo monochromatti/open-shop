@@ -36,8 +36,8 @@ cargo nextest run -p openshop
 ```
 
 The first example constructs a case with native Rust structs. The second uses
-the bundled measured-storage watercourse, with pressure loops, delayed rivers,
-splits and merges, and a 1000 m³ forebay. It also accepts a JSON case path and a
+the bundled synthetic watercourse, with storage and turbine tables, pressure loops,
+delayed rivers, splits and merges, power ramps and a 1000 m³ forebay. It also accepts a JSON case path and a
 time allowance in seconds. JSON handling belongs to the example application.
 
 Building from source requires Rust 1.98 or newer, Ipopt, SCIP and libclang. The

@@ -191,23 +191,25 @@ pub struct Tunnel {
 }
 
 /// Turbine hydraulic efficiency, before electrical conversion.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Efficiency {
-    pub peak: f64,
-    #[serde(default)]
-    pub best_flow: f64,
-    #[serde(default)]
-    pub flow_curvature: f64,
-    #[serde(default)]
-    pub best_head: f64,
-    #[serde(default)]
-    pub head_curvature: f64,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Efficiency {
+    Quadratic {
+        peak: f64,
+        #[serde(default)]
+        best_flow: f64,
+        #[serde(default)]
+        flow_curvature: f64,
+        #[serde(default)]
+        best_head: f64,
+        #[serde(default)]
+        head_curvature: f64,
+    },
+    Table(crate::TurbineTable),
 }
-
 impl Efficiency {
     pub fn constant(value: f64) -> Self {
-        Self {
+        Self::Quadratic {
             peak: value,
             best_flow: 0.,
             flow_curvature: 0.,
@@ -215,8 +217,63 @@ impl Efficiency {
             head_curvature: 0.,
         }
     }
-    pub fn value(self, flow: f64, head: f64) -> f64 {
-        crate::physics::efficiency(&self, flow, head)
+    pub fn value(&self, flow: f64, head: f64) -> Result<f64, Error> {
+        if !flow.is_finite() || !head.is_finite() {
+            return Err(Error::Input("nonfinite efficiency coordinate".into()));
+        }
+        match self {
+            Self::Quadratic { .. } => Ok(self.trial_value(flow, head)),
+            Self::Table(c) => c.efficiency(flow, head),
+        }
+    }
+    pub(crate) fn trial_value(&self, flow: f64, head: f64) -> f64 {
+        match self {
+            Self::Quadratic {
+                peak,
+                best_flow,
+                flow_curvature,
+                best_head,
+                head_curvature,
+            } => crate::physics::quadratic_efficiency(
+                *peak,
+                *best_flow,
+                *flow_curvature,
+                *best_head,
+                *head_curvature,
+                flow,
+                head,
+            ),
+            Self::Table(c) => c.trial_efficiency(flow, head),
+        }
+    }
+    fn validate_domain(&self, flow: Bounds, head: Bounds) -> Result<(), Error> {
+        match self {
+            Self::Quadratic {
+                peak,
+                best_flow,
+                flow_curvature,
+                best_head,
+                head_curvature,
+            } => {
+                if ![peak, best_flow, flow_curvature, best_head, head_curvature]
+                    .iter()
+                    .all(|v| v.is_finite())
+                    || *peak <= 0.
+                    || *peak > 1.
+                    || *flow_curvature < 0.
+                    || *head_curvature < 0.
+                    || [flow.min, flow.max].iter().any(|&q| {
+                        [head.min, head.max]
+                            .iter()
+                            .any(|&h| self.trial_value(q, h) <= 0.)
+                    })
+                {
+                    return Err(Error::Input("invalid quadratic turbine efficiency".into()));
+                }
+                Ok(())
+            }
+            Self::Table(c) => c.validate_domain(flow, head),
+        }
     }
 }
 
@@ -243,8 +300,15 @@ pub struct Unit {
 
 impl Unit {
     /// MW, with water density 1000 kg/m³ and gravity 9.81 m/s².
-    pub fn generation(&self, flow: f64, head: f64) -> f64 {
-        crate::physics::generation(flow, head, self.efficiency.value(flow, head))
+    pub fn generation(&self, flow: f64, head: f64) -> Result<f64, Error> {
+        Ok(crate::physics::generation(
+            flow,
+            head,
+            self.efficiency.value(flow, head)?,
+        ))
+    }
+    pub(crate) fn trial_generation(&self, flow: f64, head: f64) -> f64 {
+        crate::physics::generation(flow, head, self.efficiency.trial_value(flow, head))
     }
 }
 
@@ -388,37 +452,21 @@ impl ScheduleCase {
                 bounds.validate(&format!("{} {name}", u.name))?;
             }
             u.operation.validate(&u.name)?;
-            let e = u.efficiency;
             if u.flow.min < 0.
                 || u.flow.max <= 0.
                 || u.power.min < 0.
                 || u.head.min < 0.
-                || ![
-                    e.peak,
-                    e.best_flow,
-                    e.flow_curvature,
-                    e.best_head,
-                    e.head_curvature,
-                    u.loss_factor,
-                ]
-                .iter()
-                .all(|v| v.is_finite())
-                || e.peak <= 0.
-                || e.peak > 1.
-                || e.flow_curvature < 0.
-                || e.head_curvature < 0.
+                || !u.loss_factor.is_finite()
                 || u.loss_factor < 0.
-                || [u.flow.min, u.flow.max].iter().any(|&q| {
-                    [u.head.min, u.head.max]
-                        .iter()
-                        .any(|&h| e.value(q, h) <= 0.)
-                })
             {
                 return Err(Error::Input(format!(
                     "{}: invalid unit characteristic",
                     u.name
                 )));
             }
+            u.efficiency
+                .validate_domain(u.flow, u.head)
+                .map_err(|e| Error::Input(format!("{}: {e}", u.name)))?;
             let source = *nodes
                 .get(u.source.as_str())
                 .ok_or_else(|| Error::Input(format!("{}: unknown source {}", u.name, u.source)))?;

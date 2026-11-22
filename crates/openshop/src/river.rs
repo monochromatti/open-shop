@@ -14,6 +14,20 @@ pub(crate) struct LinearForm {
 }
 
 impl LinearForm {
+    pub fn variable(index: usize, coefficient: f64) -> Self {
+        Self {
+            constant: 0.,
+            coefficients: BTreeMap::from([(index, coefficient)]),
+        }
+    }
+    pub fn scaled(mut self, scale: f64) -> Self {
+        self.constant *= scale;
+        for a in self.coefficients.values_mut() {
+            *a *= scale;
+        }
+        self
+    }
+
     fn add_scaled(&mut self, other: &Self, scale: f64) {
         self.constant += scale * other.constant;
         for (&i, &a) in &other.coefficients {

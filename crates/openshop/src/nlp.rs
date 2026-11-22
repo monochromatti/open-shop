@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
-use crate::constitutive::{Nlp, StorageHeadEquation};
+use crate::constitutive::{Equation, Nlp};
 use oximo::{
     Model,
     core::{Domain, ObjectiveSense},
@@ -43,7 +43,7 @@ pub(crate) fn linear_expression<'a>(
         .fold(zero + form.constant, |sum, (&i, &a)| sum + columns[i] * a)
 }
 
-pub(crate) fn prepare(model: &Model, laws: Vec<StorageHeadEquation>) -> Result<Nlp, Error> {
+pub(crate) fn prepare(model: &Model, laws: Vec<Equation>) -> Result<Nlp, Error> {
     let variables = model.resolved_variables();
     if variables.iter().any(|v| v.domain != Domain::Real) {
         return Err(Error::Model(

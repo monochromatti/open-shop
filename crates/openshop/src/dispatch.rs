@@ -49,6 +49,21 @@ pub(crate) fn build_dispatch(
         })
         .collect();
     variable!(m,hm[k in 0..curves.len(),t in 0..nt]);
+    let mut turbine_curves = Vec::new();
+    let turbine_index: Vec<_> = s
+        .units
+        .iter()
+        .map(|u| match &u.efficiency {
+            crate::Efficiency::Table(c) => {
+                let k = turbine_curves.len();
+                turbine_curves.push(std::sync::Arc::new(c.clone()));
+                Some(k)
+            }
+            _ => None,
+        })
+        .collect();
+    variable!(m,ht[k in 0..turbine_curves.len(),t in 0..nt]);
+    variable!(m,pt[k in 0..turbine_curves.len(),t in 0..nt]);
     let mut laws = Vec::new();
     let flow_scale = s
         .units
@@ -224,12 +239,15 @@ pub(crate) fn build_dispatch(
                                 })
                                 .collect::<Result<Vec<_>, Error>>()?
                         };
-                        laws.push(crate::constitutive::StorageHeadEquation {
-                            curve: curves[k].clone(),
-                            vertices: path,
-                            head: hm[[k, t]].var_id().unwrap().index(),
-                            head_scale: 100.,
-                        });
+                        laws.push(
+                            crate::constitutive::StorageHeadEquation {
+                                curve: curves[k].clone(),
+                                vertices: path,
+                                head: hm[[k, t]].var_id().unwrap().index(),
+                                head_scale: 100.,
+                            }
+                            .into(),
+                        );
                         Expr::from(hm[[k, t]] * 100.)
                     } else {
                         // A nondecreasing curve with equal endpoint levels is constant
@@ -324,8 +342,71 @@ pub(crate) fn build_dispatch(
             }
             let flow: Expr<'_> = (q[[i, t]] * flow_scale).into();
             let net_head = head[t][source] - head[t][target] - flow.square() * u.loss_factor;
-            let eta = crate::physics::efficiency(&u.efficiency, flow, net_head);
-            let power = crate::physics::generation(flow, net_head, eta);
+            let power: Expr<'_> = match &u.efficiency {
+                crate::Efficiency::Quadratic {
+                    peak,
+                    best_flow,
+                    flow_curvature,
+                    best_head,
+                    head_curvature,
+                } => {
+                    let eta = crate::physics::quadratic_efficiency(
+                        *peak,
+                        *best_flow,
+                        *flow_curvature,
+                        *best_head,
+                        *head_curvature,
+                        flow,
+                        net_head,
+                    );
+                    crate::physics::generation(flow, net_head, eta)
+                }
+                crate::Efficiency::Table(_) => {
+                    let k = turbine_index[i].unwrap();
+                    let scale = u.power.max.max(1.);
+                    if on {
+                        m.set_bounds(ht[[k, t]], u.head.min / 100., u.head.max / 100.)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                        m.set_bounds(pt[[k, t]], u.power.min / scale, u.power.max / scale)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                        let h0 = (u.head.min + u.head.max) / 2.;
+                        let q0 = start
+                            .map_or((u.flow.min + u.flow.max) / 2., |p| p.flow[i][t])
+                            .clamp(u.flow.min, u.flow.max);
+                        m.set_initial(ht[[k, t]], h0 / 100.)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                        m.set_initial(
+                            pt[[k, t]],
+                            u.trial_generation(q0, h0).clamp(u.power.min, u.power.max) / scale,
+                        )
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                        constraint!(m, ht[[k, t]] - net_head / 100. == 0.);
+                        laws.extend(crate::constitutive::Equation::turbine(
+                            turbine_curves[k].clone(),
+                            crate::river::LinearForm::variable(
+                                q[[i, t]].var_id().unwrap().index(),
+                                flow_scale,
+                            ),
+                            crate::river::LinearForm::variable(
+                                ht[[k, t]].var_id().unwrap().index(),
+                                100.,
+                            ),
+                            crate::river::LinearForm::variable(
+                                pt[[k, t]].var_id().unwrap().index(),
+                                scale,
+                            ),
+                            flow_scale,
+                            scale,
+                        ));
+                    } else {
+                        m.fix(ht[[k, t]], 0.)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                        m.fix(pt[[k, t]], 0.)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                    }
+                    (pt[[k, t]] * scale).into()
+                }
+            };
             let (starts, stops) = u.operation.transitions(&commitment[i], t);
             let previous = if t == 0 {
                 u.operation.previous_power().map(|p| zero() + p)
@@ -350,7 +431,7 @@ pub(crate) fn build_dispatch(
                 }
             }
             powers.push(power);
-            if on {
+            if on && turbine_index[i].is_none() {
                 constraint!(
                     m,
                     name = format!("head_min[{i},{t}]"),
