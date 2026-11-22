@@ -144,11 +144,8 @@ pub struct Unit {
     /// Head loss coefficient, in metres/(m³/s)².
     #[serde(default)]
     pub loss_factor: f64,
-    /// Currency per start. The initial state is off unless prescribed below.
     #[serde(default)]
-    pub startup_cost: f64,
-    #[serde(default)]
-    pub initial_on: bool,
+    pub operation: crate::UnitOperation,
 }
 
 impl Unit {
@@ -226,6 +223,7 @@ pub(crate) struct Topology {
     pub tunnel_nodes: Vec<(usize, usize)>,
     pub tunnel_incidence: Vec<Vec<(usize, f64)>>,
     pub unit_outfalls: Vec<Option<usize>>,
+    pub unit_commitment: Vec<Vec<crate::operation::CommitmentInequality>>,
 }
 
 impl ScheduleCase {
@@ -310,6 +308,7 @@ impl ScheduleCase {
             for (name, bounds) in [("flow", u.flow), ("power", u.power), ("head", u.head)] {
                 bounds.validate(&format!("{} {name}", u.name))?;
             }
+            u.operation.validate(&u.name)?;
             let e = u.efficiency;
             if u.flow.min < 0.
                 || u.flow.max <= 0.
@@ -322,7 +321,6 @@ impl ScheduleCase {
                     e.best_head,
                     e.head_curvature,
                     u.loss_factor,
-                    u.startup_cost,
                 ]
                 .iter()
                 .all(|v| v.is_finite())
@@ -331,7 +329,6 @@ impl ScheduleCase {
                 || e.flow_curvature < 0.
                 || e.head_curvature < 0.
                 || u.loss_factor < 0.
-                || u.startup_cost < 0.
                 || [u.flow.min, u.flow.max].iter().any(|&q| {
                     [u.head.min, u.head.max]
                         .iter()
@@ -432,12 +429,37 @@ impl ScheduleCase {
             }
             tunnel_nodes.push((source, target));
         }
+        let unit_commitment: Vec<_> = s
+            .units
+            .iter()
+            .map(|u| u.operation.commitment_inequalities(&self.grid))
+            .collect();
+        for (i, u) in s.units.iter().enumerate() {
+            if let Some(on) = self.commitment.get(&u.name)
+                && unit_commitment[i].iter().any(|row| row.residual(on) > 0.)
+            {
+                return Err(Error::Input(format!(
+                    "{}: prescribed commitment violates minimum operating times",
+                    u.name
+                )));
+            }
+            if let Some(q) = u.operation.initial_flow
+                && u.operation.initial_on
+                && !u.flow.contains(q)
+            {
+                return Err(Error::Input(format!(
+                    "{}: initial discharge outside on-state range",
+                    u.name
+                )));
+            }
+        }
         Ok(Topology {
             unit_nodes,
             incidence,
             tunnel_nodes,
             tunnel_incidence,
             unit_outfalls,
+            unit_commitment,
         })
     }
     pub(crate) fn inflow(&self, r: usize, t: usize) -> f64 {

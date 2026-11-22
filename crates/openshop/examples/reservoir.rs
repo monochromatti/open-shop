@@ -34,8 +34,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             head: Bounds::new(35., 105.),
             efficiency: Efficiency::constant(0.9),
             loss_factor: 0.,
-            startup_cost: 100.,
-            initial_on: false,
+            operation: openshop::UnitOperation {
+                startup_cost: 100.,
+                ..Default::default()
+            },
         }],
         ..Default::default()
     };

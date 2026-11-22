@@ -142,14 +142,10 @@ fn objective(case: &ScheduleCase, schedule: &Schedule) -> f64 {
                 .iter()
                 .enumerate()
                 .map(|(t, &price)| {
-                    let start = schedule.commitment[i][t]
-                        && !(if t == 0 {
-                            u.initial_on
-                        } else {
-                            schedule.commitment[i][t - 1]
-                        });
+                    let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
                     price * schedule.unit_power[i][t] * (case.grid[t + 1] - case.grid[t])
-                        - if start { u.startup_cost } else { 0. }
+                        - if start { u.operation.startup_cost } else { 0. }
+                        - if stop { u.operation.shutdown_cost } else { 0. }
                 })
                 .sum::<f64>()
         })
@@ -317,6 +313,32 @@ fn validate(
         }
     }
     for (i, u) in case.system.units.iter().enumerate() {
+        for row in &topology.unit_commitment[i] {
+            result.operating_limits = result
+                .operating_limits
+                .max(row.residual(&schedule.commitment[i]).max(0.));
+        }
+        for t in 0..case.prices.len() {
+            let previous = if t == 0 {
+                u.operation.previous_flow()
+            } else {
+                Some(schedule.unit_flow[i][t - 1])
+            };
+            if let Some(previous) = previous {
+                let change = schedule.unit_flow[i][t] - previous;
+                let dt = u.operation.ramp_hours(&case.grid, t);
+                let lo = u
+                    .operation
+                    .flow_ramp
+                    .down
+                    .map_or(f64::NEG_INFINITY, |v| -v * dt);
+                let hi = u.operation.flow_ramp.up.map_or(f64::INFINITY, |v| v * dt);
+                result.operating_limits =
+                    result
+                        .operating_limits
+                        .max(violation(change, lo, hi, u.flow.max.max(1.)));
+            }
+        }
         let (a, b) = topology.unit_nodes[i];
         for t in 0..case.prices.len() {
             let on = schedule.commitment[i][t];

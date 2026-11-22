@@ -9,6 +9,7 @@ mod dispatch;
 mod model;
 mod native_ipopt;
 mod nlp;
+mod operation;
 mod physics;
 mod river;
 mod schedule;
@@ -18,6 +19,7 @@ pub use model::{
     Boundary, Bounds, Efficiency, HydroSystem, Junction, Reservoir, River, ScheduleCase,
     StorageCurve, Tunnel, Unit,
 };
+pub use operation::{RampRates, UnitOperation};
 pub use schedule::SchedulingProblem;
 pub use trajectory::{Schedule, Validation};
 

@@ -220,6 +220,21 @@ pub(crate) fn build_dispatch(
                     .clamp(lo, hi),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
+            let previous = if t == 0 {
+                u.operation.previous_flow().map(|v| zero() + v / flow_scale)
+            } else {
+                Some(q[[i, t - 1]].into())
+            };
+            if let Some(previous) = previous {
+                let change = q[[i, t]] - previous;
+                let dt = u.operation.ramp_hours(&case.grid, t);
+                if let Some(up) = u.operation.flow_ramp.up {
+                    constraint!(m, change <= up * dt / flow_scale);
+                }
+                if let Some(down) = u.operation.flow_ramp.down {
+                    constraint!(m, -change <= down * dt / flow_scale);
+                }
+            }
             let flow: Expr<'_> = (q[[i, t]] * flow_scale).into();
             let net_head = head[t][source] - head[t][target] - flow.square() * u.loss_factor;
             let eta = crate::physics::efficiency(&u.efficiency, flow, net_head);
@@ -247,15 +262,10 @@ pub(crate) fn build_dispatch(
                 );
             }
             revenue = revenue + power * (case.prices[t] * (case.grid[t + 1] - case.grid[t]));
-            if on
-                && !(if t == 0 {
-                    u.initial_on
-                } else {
-                    commitment[i][t - 1]
-                })
-            {
-                revenue = revenue - u.startup_cost;
-            }
+            let (start, stop) = u.operation.transitions(&commitment[i], t);
+            revenue = revenue
+                - if start { u.operation.startup_cost } else { 0. }
+                - if stop { u.operation.shutdown_cost } else { 0. };
         }
     }
     for (r, reservoir) in s.reservoirs.iter().enumerate() {

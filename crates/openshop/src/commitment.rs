@@ -130,6 +130,13 @@ pub(crate) fn propose(
         .collect();
     let mut revenue = zero();
     for (g, unit) in s.units.iter().enumerate() {
+        for row in &topology.unit_commitment[g] {
+            let lhs = row
+                .coefficients
+                .iter()
+                .fold(zero(), |sum, &(t, a)| sum + on[[g, t]] * a);
+            constraint!(m, lhs >= row.rhs);
+        }
         let (a, b) = topology.unit_nodes[g];
         for t in 0..nt {
             if let Some(fixed) = case.commitment.get(&unit.name) {
@@ -159,10 +166,35 @@ pub(crate) fn propose(
             if t == 0 {
                 constraint!(
                     m,
-                    start[[g, t]] >= on[[g, t]] - if unit.initial_on { 1. } else { 0. }
+                    start[[g, t]] >= on[[g, t]] - if unit.operation.initial_on { 1. } else { 0. }
                 );
             } else {
                 constraint!(m, start[[g, t]] >= on[[g, t]] - on[[g, t - 1]]);
+            }
+            let previous_on = if t == 0 {
+                zero() + if unit.operation.initial_on { 1. } else { 0. }
+            } else {
+                on[[g, t - 1]].into()
+            };
+            constraint!(m, start[[g, t]] <= on[[g, t]]);
+            constraint!(m, start[[g, t]] <= 1. - previous_on);
+            let stop = start[[g, t]] - on[[g, t]] + previous_on;
+            let previous_flow = if t == 0 {
+                unit.operation
+                    .previous_flow()
+                    .map(|v| zero() + v / flow_scale)
+            } else {
+                Some(q[[g, t - 1]].into())
+            };
+            if let Some(previous) = previous_flow {
+                let change = q[[g, t]] - previous;
+                let dt = unit.operation.ramp_hours(&case.grid, t);
+                if let Some(up) = unit.operation.flow_ramp.up {
+                    constraint!(m, change <= up * dt / flow_scale);
+                }
+                if let Some(down) = unit.operation.flow_ramp.down {
+                    constraint!(m, -change <= down * dt / flow_scale);
+                }
             }
             revenue = revenue
                 + q[[g, t]]
@@ -170,7 +202,8 @@ pub(crate) fn propose(
                         * coefficient
                         * case.prices[t]
                         * (case.grid[t + 1] - case.grid[t]))
-                - start[[g, t]] * unit.startup_cost;
+                - start[[g, t]] * unit.operation.startup_cost
+                - stop * unit.operation.shutdown_cost;
         }
     }
     for commitment in excluded {

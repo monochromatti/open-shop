@@ -252,8 +252,7 @@ mod tests {
                     head: Bounds::new(35., 105.),
                     efficiency: Efficiency::constant(0.9),
                     loss_factor: 0.,
-                    startup_cost: 0.,
-                    initial_on: false,
+                    operation: crate::UnitOperation::default(),
                 }],
                 ..Default::default()
             },
@@ -279,6 +278,102 @@ mod tests {
     fn preparation_rejects_invalid_physical_data_before_solving() {
         let mut case = reservoir_case();
         case.system.reservoirs[0].initial_storage = -1.;
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+    }
+
+    #[test]
+    fn elapsed_time_and_discharge_ramps_are_enforced_on_unequal_intervals() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5, 1.5, 3.];
+        case.prices = vec![-100., 200., 200.];
+        case.commitment.clear();
+        case.system.units[0].operation = crate::UnitOperation {
+            initial_on: true,
+            initial_duration: 0.,
+            minimum_up_time: 1.,
+            initial_flow: Some(5.),
+            initial_interval_hours: 0.5,
+            flow_ramp: crate::RampRates {
+                up: Some(2.),
+                down: Some(3.),
+            },
+            ..Default::default()
+        };
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(
+                &case,
+                &SolveOptions {
+                    time_limit: 5.,
+                    ..Default::default()
+                },
+                backend,
+            )
+            .unwrap();
+            assert!(result.validation.feasible, "{:?}", result.validation);
+            assert_eq!(result.commitment[0], vec![true, true, true]);
+            for (&q, expected) in result.unit_flow[0].iter().zip([6., 7.5, 10.]) {
+                assert!(
+                    (q - expected).abs() < 1e-4,
+                    "{backend:?}: {:?}",
+                    result.unit_flow
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_start_requires_remaining_on_through_the_minimum_up_time() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 1., 2., 3., 4.];
+        case.prices = vec![-100., 200., -100., 200.];
+        case.commitment.clear();
+        case.system.units[0].operation.minimum_up_time = 2.;
+        let result = solve(
+            &case,
+            &SolveOptions {
+                time_limit: 5.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(result.validation.feasible);
+        assert_eq!(result.commitment[0], vec![false, true, true, true]);
+        assert!((result.unit_flow[0][2] - 5.).abs() < 1e-4);
+    }
+
+    #[test]
+    fn initial_down_time_prevents_an_early_start() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5, 1.5, 3.];
+        case.prices = vec![200.; 3];
+        case.commitment.clear();
+        case.system.units[0].operation.minimum_down_time = 1.5;
+        case.system.units[0].operation.initial_duration = 0.5;
+        let result = solve(
+            &case,
+            &SolveOptions {
+                time_limit: 5.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(result.validation.feasible);
+        assert_eq!(result.commitment[0], vec![false, false, true]);
+    }
+
+    #[test]
+    fn shutdown_is_charged_once_and_prescribed_dwell_violations_are_rejected() {
+        let mut case = reservoir_case();
+        case.commitment.get_mut("Unit").unwrap()[0] = false;
+        case.system.units[0].operation.initial_on = true;
+        case.system.units[0].operation.shutdown_cost = 137.;
+        let result = solve(&case, &SolveOptions::default()).unwrap();
+        assert!(result.validation.feasible);
+        assert!((result.objective - (3000. - 137.)).abs() < 1e-6);
+        case.system.units[0].operation.minimum_up_time = 2.;
         assert!(matches!(
             SchedulingProblem::new(&case),
             Err(Error::Input(_))

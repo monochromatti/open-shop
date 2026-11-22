@@ -48,6 +48,24 @@ Cargo uses incremental compilation and modest optimization in development.
 which caches dependencies independently of the package source. Native solver
 libraries come from Nix. No nightly Rust compiler is needed.
 
+## Unit operation
+
+Each unit has a `UnitOperation` record. Its default has no minimum operating times
+or discharge ramps, zero transition costs, and an initially stopped unit. Supply
+`minimum_up_time`, `minimum_down_time` and `initial_duration` in hours. Minimum
+times are measured from control edges in physical time, including an obligation
+remaining from the initial state. The final state may carry an obligation beyond
+the modeled horizon; this is not a requirement to finish every run before the end.
+
+`flow_ramp.up` and `.down` bound changes in interval-average discharge per hour.
+They use the distance between interval midpoints, including unequal intervals.
+`initial_interval_hours` is the duration of the historical observation. An
+initially stopped unit has zero initial discharge. An initially running unit can
+supply `initial_flow`; without it, the first discharge ramp has no historical
+reference and subsequent ramps still apply. Transition costs charge each start
+and stop once. Prescribed commitments violating minimum times are rejected at
+preparation. Power ramps and plant-wide operating restrictions remain to be ported.
+
 ## Numerical structure
 
 `physics` contains scalar-generic constitutive equations used by both ordinary
@@ -107,7 +125,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 
 Still to be implemented are measured curve tables, flow-dependent distributed
 river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
-positions, plant-level limits, dwell times, ramps, time-dependent operating
+positions, plant-level limits, power ramps, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,
 including Tokke–Vinje, must exercise those capabilities before any final
 formulation or solver comparison. The small tests establish correctness of the
