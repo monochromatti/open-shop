@@ -49,7 +49,3 @@ pub(crate) fn quadratic_efficiency<T: Scalar>(
     let dh = head - best_head;
     (dq * dq) * (-flow_curvature) + (dh * dh) * (-head_curvature) + peak
 }
-
-pub(crate) fn generation<T: Scalar>(flow: T, head: T, efficiency: T) -> T {
-    flow * head * efficiency * 0.00981
-}

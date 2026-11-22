@@ -177,6 +177,9 @@ fn dispatch(
         river_arrival_volume: Vec::new(),
         river_storage: Vec::new(),
         unit_power: Vec::new(),
+        unit_head: Vec::new(),
+        plant_flow: Vec::new(),
+        plant_power: Vec::new(),
         head: Vec::new(),
         commitment,
         objective: 0.,
@@ -209,7 +212,7 @@ fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Boundary, Bounds, Efficiency, HydroSystem, Reservoir, StorageCurve, Unit};
+    use crate::{Boundary, Bounds, Efficiency, HydroSystem, Plant, Reservoir, StorageCurve, Unit};
     use std::collections::BTreeMap;
 
     fn solve(case: &ScheduleCase, options: &SolveOptions) -> Result<Schedule, Error> {
@@ -242,11 +245,14 @@ mod tests {
                     name: "Sea".into(),
                     head: 20.,
                 }],
+                plants: vec![Plant::new("Station", "Lake", "Sea")],
                 units: vec![Unit {
                     name: "Unit".into(),
-                    source: "Lake".into(),
-                    target: "Sea".into(),
-                    discharge_river: None,
+                    plant: "Station".into(),
+                    mode: crate::UnitMode::Generate,
+                    pump_characteristic: None,
+                    motor_efficiency: 1.,
+                    generator_efficiency_curve: None,
                     flow: Bounds::new(5., 20.),
                     power: Bounds::new(1., 25.),
                     head: Bounds::new(35., 105.),
@@ -743,7 +749,7 @@ mod tests {
             name: "Intake".into(),
             head: Bounds::new(25., 120.),
         });
-        case.system.units[0].source = "Intake".into();
+        case.system.plants[0].source = "Intake".into();
         case.system.units[0].head = Bounds::new(1., 120.);
         case.system.tunnels = vec![
             Tunnel {
@@ -795,12 +801,14 @@ mod tests {
             },
             water_value: 0.,
         });
-        case.system.units[0].target = "Forebay".into();
+        case.system.plants[0].target = "Forebay".into();
         case.system.units[0].head = Bounds::new(1., 120.);
         let mut downstream = case.system.units[0].clone();
         downstream.name = "Downstream".into();
-        downstream.source = "Forebay".into();
-        downstream.target = "Sea".into();
+        downstream.plant = "Downstream".into();
+        case.system
+            .plants
+            .push(Plant::new("Downstream", "Forebay", "Sea"));
         case.system.units.push(downstream);
         case.grid = vec![0., 1., 3.];
         case.prices = vec![30., 150.];
@@ -840,14 +848,15 @@ mod tests {
             name: "Tailwater".into(),
             head: 60.,
         });
-        case.system.units[0].target = "Tailwater".into();
+        case.system.plants[0].target = "Tailwater".into();
         case.system.units[0].head = Bounds::new(1., 120.);
-        case.system.units[0].discharge_river = Some("River".into());
+        case.system.plants[0].discharge_river = Some("River".into());
         let mut lower = case.system.units[0].clone();
         lower.name = "Lower".into();
-        lower.source = "Forebay".into();
-        lower.target = "Sea".into();
-        lower.discharge_river = None;
+        lower.plant = "Downstream".into();
+        case.system
+            .plants
+            .push(Plant::new("Downstream", "Forebay", "Sea"));
         case.system.units.push(lower);
         let mut river = crate::River {
             name: "River".into(),
@@ -1033,6 +1042,30 @@ mod tests {
         // At 100 m the linearly interpolated upper discharge is 15 m³/s.
         assert!((result.unit_flow[0][0] - 15.).abs() < 1e-5);
         assert!((result.unit_power[0][0] - 0.00981 * 15. * 100. * 0.9).abs() < 1e-5);
+    }
+
+    #[test]
+    fn electrical_efficiency_balance_recovers_when_a_trial_shaft_power_has_no_root() {
+        let mut case = reservoir_case();
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 120.,
+            slope: 0.,
+            curvature: 0.,
+        };
+        case.system.units[0].power = Bounds::new(1., 10.);
+        case.system.units[0].generator_efficiency_curve =
+            Some(crate::TableCurve::new(vec![0., 10.], vec![0.2, 0.9]).unwrap());
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert!((result.unit_power[0][0] - 10.).abs() < 1e-5);
+            assert!((result.unit_flow[0][0] - 10. / (0.00981 * 100. * 0.9 * 0.9)).abs() < 1e-5);
+        }
     }
 
     #[test]

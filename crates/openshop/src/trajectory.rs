@@ -11,6 +11,10 @@ pub struct Schedule {
     pub unit_flow: Vec<Vec<f64>>,
     /// Unit by control interval, MW.
     pub unit_power: Vec<Vec<f64>>,
+    /// Positive generating head or pumping lift, unit by control interval, m.
+    pub unit_head: Vec<Vec<f64>>,
+    pub plant_flow: Vec<Vec<f64>>,
+    pub plant_power: Vec<Vec<f64>>,
     pub tunnel_flow: Vec<Vec<f64>>,
     /// River by control interval. Withdrawal excludes local river inflow/outfalls.
     pub river_withdrawal: Vec<Vec<f64>>,
@@ -110,21 +114,58 @@ pub(crate) fn evaluate(
         .chain(junction_head)
         .chain(s.boundaries.iter().map(|b| vec![b.head; case.prices.len()]))
         .collect();
+    schedule.plant_flow = topology
+        .plant_units
+        .iter()
+        .map(|members| {
+            (0..case.prices.len())
+                .map(|t| members.iter().map(|&g| schedule.unit_flow[g][t]).sum())
+                .collect()
+        })
+        .collect();
+    schedule.unit_head = s
+        .units
+        .iter()
+        .enumerate()
+        .map(|(g, u)| {
+            let (source, target) = topology.unit_nodes[g];
+            let p = topology.unit_plants[g];
+            let plant = &s.plants[p];
+            (0..case.prices.len())
+                .map(|t| {
+                    let outlet = schedule.head[target][t]
+                        .max(plant.outlet_head_floor.unwrap_or(f64::NEG_INFINITY));
+                    let tailwater = plant
+                        .tailwater_curve
+                        .as_ref()
+                        .map_or(0., |c| c.extended_value(schedule.plant_flow[p][t]));
+                    (schedule.head[source][t]
+                        - outlet
+                        - tailwater
+                        - u.loss_factor * schedule.unit_flow[g][t].powi(2))
+                        * u.mode.power_sign()
+                })
+                .collect()
+        })
+        .collect();
     schedule.unit_power = s
         .units
         .iter()
         .enumerate()
-        .map(|(i, u)| {
-            let (source, target) = topology.unit_nodes[i];
-            schedule.unit_flow[i]
+        .map(|(g, u)| {
+            schedule.unit_flow[g]
                 .iter()
-                .enumerate()
-                .map(|(t, &q)| {
-                    u.trial_generation(
-                        q,
-                        schedule.head[source][t] - schedule.head[target][t] - u.loss_factor * q * q,
-                    )
-                })
+                .zip(&schedule.unit_head[g])
+                .map(|(&q, &h)| u.trial_power(q, h))
+                .collect()
+        })
+        .collect();
+    schedule.plant_power = topology
+        .plant_units
+        .iter()
+        .map(|members| {
+            (0..case.prices.len())
+                .map(|t| members.iter().map(|&g| schedule.unit_power[g][t]).sum())
                 .collect()
         })
         .collect();
@@ -145,7 +186,10 @@ fn objective(case: &ScheduleCase, schedule: &Schedule) -> f64 {
                 .enumerate()
                 .map(|(t, &price)| {
                     let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
-                    price * schedule.unit_power[i][t] * (case.grid[t + 1] - case.grid[t])
+                    price
+                        * u.mode.power_sign()
+                        * schedule.unit_power[i][t]
+                        * (case.grid[t + 1] - case.grid[t])
                         - if start { u.operation.startup_cost } else { 0. }
                         - if stop { u.operation.shutdown_cost } else { 0. }
                 })
@@ -367,12 +411,11 @@ fn validate(
                         .max(violation(change, lo, hi, u.power.max.max(1.)));
             }
         }
-        let (a, b) = topology.unit_nodes[i];
         for t in 0..case.prices.len() {
             let on = schedule.commitment[i][t];
             let q = schedule.unit_flow[i][t];
             let p = schedule.unit_power[i][t];
-            let h = schedule.head[a][t] - schedule.head[b][t] - u.loss_factor * q * q;
+            let h = schedule.unit_head[i][t];
             result.operating_limits = result.operating_limits.max(violation(
                 q,
                 if on { u.flow.min } else { 0. },
@@ -385,7 +428,15 @@ fn validate(
                 if on { u.power.max } else { 0. },
                 u.power.max.max(1.),
             ));
-            if on && let crate::Efficiency::Table(table) = &u.efficiency {
+            if on && let Some(characteristic) = &u.pump_characteristic {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((q - characteristic.trial_discharge(h)).abs() / u.flow.max.max(1.));
+            }
+            if on
+                && u.pump_characteristic.is_none()
+                && let crate::Efficiency::Table(table) = &u.efficiency
+            {
                 let minimum = table.envelope_data(h, false).value;
                 let maximum = table.envelope_data(h, true).value;
                 result.operating_limits =
@@ -403,7 +454,115 @@ fn validate(
             }
         }
     }
-    result.feasible = result.water_balance <= tolerance
+    for (i, p) in case.system.plants.iter().enumerate() {
+        let members = &topology.plant_units[i];
+        let op = &topology.plant_operation[i];
+        let on: Vec<_> = (0..case.prices.len())
+            .map(|t| members.iter().any(|&g| schedule.commitment[g][t]))
+            .collect();
+        for row in &topology.plant_commitment[i] {
+            result.operating_limits = result.operating_limits.max(row.residual(&on).max(0.));
+        }
+        let q_scale = members
+            .iter()
+            .map(|&g| case.system.units[g].flow.max)
+            .sum::<f64>()
+            .max(1.);
+        let p_scale = members
+            .iter()
+            .map(|&g| case.system.units[g].power.max)
+            .sum::<f64>()
+            .max(1.);
+        for (t, &running) in on.iter().enumerate() {
+            result.operating_limits = result.operating_limits.max(violation(
+                schedule.plant_flow[i][t],
+                if running { p.flow_min } else { 0. },
+                p.flow_max.unwrap_or(f64::INFINITY),
+                q_scale,
+            ));
+            result.operating_limits = result.operating_limits.max(violation(
+                schedule.plant_power[i][t],
+                if running { p.power_min } else { 0. },
+                p.power_max.unwrap_or(f64::INFINITY),
+                p_scale,
+            ));
+            let dt = op.ramp_hours(&case.grid, t);
+            let prior_q = if t == 0 {
+                op.previous_flow()
+            } else {
+                Some(schedule.plant_flow[i][t - 1])
+            };
+            if let Some(prior) = prior_q {
+                let change = schedule.plant_flow[i][t] - prior;
+                result.operating_limits = result.operating_limits.max(violation(
+                    change,
+                    op.flow_ramp.down.map_or(f64::NEG_INFINITY, |r| -r * dt),
+                    op.flow_ramp.up.map_or(f64::INFINITY, |r| r * dt),
+                    q_scale,
+                ));
+            }
+            let prior_p = if t == 0 {
+                op.previous_power()
+            } else {
+                Some(schedule.plant_power[i][t - 1])
+            };
+            if let Some(prior) = prior_p {
+                let jump_up: f64 = members
+                    .iter()
+                    .filter(|&&g| {
+                        case.system.units[g]
+                            .operation
+                            .transitions(&schedule.commitment[g], t)
+                            .0
+                    })
+                    .map(|&g| case.system.units[g].power.min)
+                    .sum();
+                let jump_down: f64 = members
+                    .iter()
+                    .filter(|&&g| {
+                        case.system.units[g]
+                            .operation
+                            .transitions(&schedule.commitment[g], t)
+                            .1
+                    })
+                    .map(|&g| case.system.units[g].power.min)
+                    .sum();
+                result.operating_limits = result.operating_limits.max(violation(
+                    schedule.plant_power[i][t] - prior,
+                    op.power_ramp
+                        .down
+                        .map_or(f64::NEG_INFINITY, |r| -r * dt - jump_down),
+                    op.power_ramp.up.map_or(f64::INFINITY, |r| r * dt + jump_up),
+                    p_scale,
+                ));
+            }
+        }
+    }
+    for rule in &topology.exclusions {
+        for t in 0..case.prices.len() {
+            if rule
+                .iter()
+                .filter(|group| group.iter().any(|&g| schedule.commitment[g][t]))
+                .count()
+                > 1
+            {
+                result.operating_limits = f64::INFINITY;
+            }
+        }
+    }
+    let finite = schedule
+        .storage
+        .iter()
+        .chain(&schedule.unit_flow)
+        .chain(&schedule.unit_power)
+        .chain(&schedule.unit_head)
+        .chain(&schedule.head)
+        .chain(&schedule.tunnel_flow)
+        .chain(&schedule.river_storage)
+        .chain(&schedule.river_release)
+        .all(|row| row.iter().all(|v| v.is_finite()));
+    result.feasible = finite
+        && result.water_balance <= tolerance
         && result.pressure_balance <= 100. * tolerance
         && result.operating_limits <= tolerance
         && schedule.objective.is_finite();

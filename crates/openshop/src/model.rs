@@ -281,44 +281,172 @@ impl Efficiency {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnitMode {
+    #[default]
+    Generate,
+    Pump,
+}
+impl UnitMode {
+    pub fn power_sign(self) -> f64 {
+        match self {
+            Self::Generate => 1.,
+            Self::Pump => -1.,
+        }
+    }
+}
+
+/// Common intake, outlet and operating restrictions for units at one station.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Plant {
+    pub name: String,
+    pub source: String,
+    pub target: String,
+    #[serde(default)]
+    pub discharge_river: Option<String>,
+    #[serde(default)]
+    pub flow_min: f64,
+    #[serde(default)]
+    pub flow_max: Option<f64>,
+    #[serde(default)]
+    pub power_min: f64,
+    #[serde(default)]
+    pub power_max: Option<f64>,
+    #[serde(default)]
+    pub tailwater_curve: Option<crate::TableCurve>,
+    #[serde(default)]
+    pub outlet_head_floor: Option<f64>,
+    #[serde(default)]
+    pub operation: crate::PlantOperation,
+}
+impl Plant {
+    pub fn new(
+        name: impl Into<String>,
+        source: impl Into<String>,
+        target: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            source: source.into(),
+            target: target.into(),
+            discharge_river: None,
+            flow_min: 0.,
+            flow_max: None,
+            power_min: 0.,
+            power_max: None,
+            tailwater_curve: None,
+            outlet_head_floor: None,
+            operation: Default::default(),
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommitmentExclusion {
+    pub name: String,
+    pub groups: Vec<Vec<String>>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Unit {
     pub name: String,
-    pub source: String,
-    pub target: String,
-    /// Water destination when discharge enters a river instead of the head node.
+    pub plant: String,
     #[serde(default)]
-    pub discharge_river: Option<String>,
-    /// On-state discharge, m³/s. Off-state discharge is exactly zero.
+    pub mode: UnitMode,
+    /// On-state magnitudes; pumping consumption is positive here and in results.
     pub flow: Bounds,
     pub power: Bounds,
     pub head: Bounds,
     pub efficiency: Efficiency,
-    /// Head loss coefficient, in metres/(m³/s)².
+    #[serde(default)]
+    pub pump_characteristic: Option<crate::PumpCharacteristic>,
+    #[serde(default = "one")]
+    pub motor_efficiency: f64,
+    #[serde(default)]
+    pub generator_efficiency_curve: Option<crate::TableCurve>,
     #[serde(default)]
     pub loss_factor: f64,
     #[serde(default)]
     pub operation: crate::UnitOperation,
 }
-
 impl Unit {
-    /// MW, with water density 1000 kg/m³ and gravity 9.81 m/s².
-    pub fn generation(&self, flow: f64, head: f64) -> Result<f64, Error> {
-        Ok(crate::physics::generation(
+    pub fn new(
+        name: impl Into<String>,
+        plant: impl Into<String>,
+        flow: Bounds,
+        power: Bounds,
+        head: Bounds,
+        efficiency: Efficiency,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            plant: plant.into(),
+            mode: UnitMode::Generate,
             flow,
+            power,
             head,
-            self.efficiency.value(flow, head)?,
-        ))
+            efficiency,
+            pump_characteristic: None,
+            motor_efficiency: 1.,
+            generator_efficiency_curve: None,
+            loss_factor: 0.,
+            operation: Default::default(),
+        }
     }
-    pub(crate) fn trial_generation(&self, flow: f64, head: f64) -> f64 {
-        crate::physics::generation(flow, head, self.efficiency.trial_value(flow, head))
+    /// Electrical output or consumption, MW, at discharge and net working head.
+    pub fn power(&self, flow: f64, head: f64) -> Result<f64, Error> {
+        if !flow.is_finite() || !head.is_finite() {
+            return Err(Error::Input("nonfinite power coordinates".into()));
+        }
+        if flow == 0. {
+            return Ok(0.);
+        }
+        let eta = if let Some(c) = &self.pump_characteristic {
+            c.efficiency(head)?
+        } else {
+            self.efficiency.value(flow, head)?
+        };
+        let hydraulic = 0.00981 * flow * head;
+        match self.mode {
+            UnitMode::Pump => Ok(hydraulic / (eta * self.motor_efficiency)),
+            UnitMode::Generate => match &self.generator_efficiency_curve {
+                Some(c) => crate::machine::electrical_power(c, hydraulic * eta),
+                None => Ok(hydraulic * eta),
+            },
+        }
+    }
+    pub(crate) fn trial_power(&self, flow: f64, head: f64) -> f64 {
+        if flow == 0. {
+            return 0.;
+        }
+        let eta = if let Some(c) = &self.pump_characteristic {
+            c.trial_efficiency(head)
+        } else {
+            self.efficiency.trial_value(flow, head)
+        };
+        let hydraulic = 0.00981 * flow * head;
+        match self.mode {
+            UnitMode::Pump => hydraulic / (eta * self.motor_efficiency),
+            UnitMode::Generate => self
+                .generator_efficiency_curve
+                .as_ref()
+                .map_or(hydraulic * eta, |c| {
+                    crate::machine::electrical_power(c, hydraulic * eta).unwrap_or(f64::NAN)
+                }),
+        }
     }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HydroSystem {
+    #[serde(default)]
+    pub plants: Vec<Plant>,
+    #[serde(default)]
+    pub commitment_exclusions: Vec<CommitmentExclusion>,
     pub reservoirs: Vec<Reservoir>,
     #[serde(default)]
     pub junctions: Vec<Junction>,
@@ -385,6 +513,11 @@ pub(crate) struct TunnelLaw {
 
 pub(crate) struct Topology {
     pub unit_nodes: Vec<(usize, usize)>,
+    pub unit_plants: Vec<usize>,
+    pub plant_units: Vec<Vec<usize>>,
+    pub plant_operation: Vec<crate::UnitOperation>,
+    pub plant_commitment: Vec<Vec<crate::operation::CommitmentInequality>>,
+    pub exclusions: Vec<Vec<Vec<usize>>>,
     pub incidence: Vec<Vec<(usize, f64)>>,
     pub tunnel_nodes: Vec<(usize, usize)>,
     pub tunnel_laws: Vec<TunnelLaw>,
@@ -448,6 +581,36 @@ impl ScheduleCase {
         for j in &s.junctions {
             j.head.validate(&j.name)?;
         }
+        let mut plant_names = HashMap::new();
+        let mut plant_nodes = Vec::new();
+        for (i, p) in s.plants.iter().enumerate() {
+            if p.name.is_empty() || plant_names.insert(p.name.as_str(), i).is_some() {
+                return Err(Error::Input(
+                    "plant names must be nonempty and unique".into(),
+                ));
+            }
+            let source = *nodes
+                .get(p.source.as_str())
+                .ok_or_else(|| Error::Input(format!("{}: unknown intake", p.name)))?;
+            let target = *nodes
+                .get(p.target.as_str())
+                .ok_or_else(|| Error::Input(format!("{}: unknown outlet", p.name)))?;
+            if source == target
+                || !p.flow_min.is_finite()
+                || p.flow_min < 0.
+                || !p.power_min.is_finite()
+                || p.power_min < 0.
+                || p.flow_max.is_some_and(|x| !x.is_finite() || x < p.flow_min)
+                || p.power_max
+                    .is_some_and(|x| !x.is_finite() || x < p.power_min)
+                || p.outlet_head_floor.is_some_and(|x| !x.is_finite())
+            {
+                return Err(Error::Input(format!("{}: invalid plant limits", p.name)));
+            }
+            plant_nodes.push((source, target));
+        }
+        let mut unit_plants = Vec::new();
+        let mut plant_units = vec![Vec::new(); s.plants.len()];
         let mut incidence = vec![Vec::new(); s.reservoirs.len() + s.junctions.len()];
         let mut unit_nodes = Vec::new();
         let mut unit_names = HashMap::new();
@@ -474,22 +637,25 @@ impl ScheduleCase {
                     u.name
                 )));
             }
-            u.efficiency
-                .validate_domain(u.flow, u.head)
-                .map_err(|e| Error::Input(format!("{}: {e}", u.name)))?;
-            let source = *nodes
-                .get(u.source.as_str())
-                .ok_or_else(|| Error::Input(format!("{}: unknown source {}", u.name, u.source)))?;
-            let target = *nodes
-                .get(u.target.as_str())
-                .ok_or_else(|| Error::Input(format!("{}: unknown target {}", u.name, u.target)))?;
+            if u.pump_characteristic.is_none() {
+                u.efficiency
+                    .validate_domain(u.flow, u.head)
+                    .map_err(|e| Error::Input(format!("{}: {e}", u.name)))?;
+            }
+            crate::machine::validate_unit(u)?;
+            let plant = *plant_names
+                .get(u.plant.as_str())
+                .ok_or_else(|| Error::Input(format!("{}: unknown plant {}", u.name, u.plant)))?;
+            unit_plants.push(plant);
+            plant_units[plant].push(i);
+            let (source, target) = plant_nodes[plant];
             if source == target {
                 return Err(Error::Input(format!(
                     "{}: identical source and target",
                     u.name
                 )));
             }
-            let outfall = u
+            let outfall = s.plants[plant]
                 .discharge_river
                 .as_ref()
                 .map(|name| {
@@ -511,6 +677,98 @@ impl ScheduleCase {
             }
             unit_nodes.push((source, target));
             unit_outfalls.push(outfall);
+        }
+        let mut plant_operation = Vec::new();
+        let mut plant_commitment = Vec::new();
+        for (i, p) in s.plants.iter().enumerate() {
+            if plant_units[i].is_empty() {
+                return Err(Error::Input(format!("{}: plant has no units", p.name)));
+            }
+            let members: Vec<_> = plant_units[i].iter().map(|&g| &s.units[g]).collect();
+            if members.iter().any(|g| g.mode != members[0].mode) {
+                return Err(Error::Input(format!(
+                    "{}: generating and pumping units need separate, oppositely connected plants",
+                    p.name
+                )));
+            }
+            if let Some(c) = &p.tailwater_curve {
+                let maximum: f64 = members.iter().map(|g| g.flow.max).sum();
+                if c.coordinates()[0] != 0.
+                    || *c.coordinates().last().unwrap() < maximum
+                    || c.values().iter().any(|x| *x < 0.)
+                    || c.values().windows(2).any(|w| w[1] < w[0])
+                {
+                    return Err(Error::Input(format!(
+                        "{}: tailwater must be nonnegative, nondecreasing and cover aggregate flow",
+                        p.name
+                    )));
+                }
+            }
+            let operation = p.operation.resolve(&members, &p.name)?;
+            plant_commitment.push(operation.commitment_inequalities(&self.grid));
+            plant_operation.push(operation);
+        }
+        let mut exclusions = Vec::new();
+        let mut exclusion_names = std::collections::HashSet::new();
+        for rule in &s.commitment_exclusions {
+            if rule.name.is_empty()
+                || !exclusion_names.insert(&rule.name)
+                || rule.groups.len() < 2
+                || rule.groups.iter().any(Vec::is_empty)
+            {
+                return Err(Error::Input(
+                    "mode exclusion needs a unique name and at least two nonempty groups".into(),
+                ));
+            }
+            let mut seen = std::collections::HashSet::new();
+            let mut groups = Vec::new();
+            for group in &rule.groups {
+                let mut units = Vec::new();
+                for name in group {
+                    let &g = unit_names.get(name.as_str()).ok_or_else(|| {
+                        Error::Input(format!("{}: unknown exclusion unit {name}", rule.name))
+                    })?;
+                    if !seen.insert(g) {
+                        return Err(Error::Input(format!(
+                            "{}: repeated exclusion unit",
+                            rule.name
+                        )));
+                    }
+                    units.push(g);
+                }
+                groups.push(units);
+            }
+            if groups
+                .iter()
+                .filter(|group| group.iter().any(|&g| s.units[g].operation.initial_on))
+                .count()
+                > 1
+            {
+                return Err(Error::Input(format!(
+                    "{}: initial units violate mode exclusion",
+                    rule.name
+                )));
+            }
+            for t in 0..periods {
+                if groups
+                    .iter()
+                    .filter(|group| {
+                        group.iter().any(|&g| {
+                            self.commitment
+                                .get(&s.units[g].name)
+                                .is_some_and(|on| on[t])
+                        })
+                    })
+                    .count()
+                    > 1
+                {
+                    return Err(Error::Input(format!(
+                        "{}: prescribed units violate mode exclusion",
+                        rule.name
+                    )));
+                }
+            }
+            exclusions.push(groups);
         }
         for (name, values) in &self.inflows {
             if !s.reservoirs.iter().any(|r| &r.name == name)
@@ -609,8 +867,33 @@ impl ScheduleCase {
                 )));
             }
         }
+        for (p, members) in plant_units.iter().enumerate() {
+            if members
+                .iter()
+                .all(|&g| self.commitment.contains_key(&s.units[g].name))
+            {
+                let on: Vec<_> = (0..periods)
+                    .map(|t| {
+                        members
+                            .iter()
+                            .any(|&g| self.commitment[&s.units[g].name][t])
+                    })
+                    .collect();
+                if plant_commitment[p].iter().any(|row| row.residual(&on) > 0.) {
+                    return Err(Error::Input(format!(
+                        "{}: prescribed commitment violates plant operating times",
+                        s.plants[p].name
+                    )));
+                }
+            }
+        }
         Ok(Topology {
             unit_nodes,
+            unit_plants,
+            plant_units,
+            plant_operation,
+            plant_commitment,
+            exclusions,
             incidence,
             tunnel_nodes,
             tunnel_laws,

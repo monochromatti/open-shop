@@ -30,7 +30,8 @@ pub(crate) fn propose(
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
     variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]>=0.);
     variable!(m,on[g in 0..nu,t in 0..nt],Bin);
-    variable!(m,start[g in 0..nu,t in 0..nt],Bin);
+    variable!(m,0.0<=start[g in 0..nu,t in 0..nt]<=1.0);
+    variable!(m,0.0<=plant_on[p in 0..s.plants.len(),t in 0..nt]<=1.0);
     let zero = || -> Expr<'_> { Expr::constant(v[[0, 0]].arena(), 0.).into() };
     let flow_scale = s
         .units
@@ -128,6 +129,11 @@ pub(crate) fn propose(
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
+    let mut all_power = Vec::new();
+    let mut all_flow = Vec::new();
+    let mut all_on = Vec::new();
+    let mut all_starts = Vec::new();
+    let mut all_stops = Vec::new();
     let mut revenue = zero();
     for (g, unit) in s.units.iter().enumerate() {
         for row in &topology.unit_commitment[g] {
@@ -138,22 +144,57 @@ pub(crate) fn propose(
             constraint!(m, lhs >= row.rhs);
         }
         let (a, b) = topology.unit_nodes[g];
-        let mut powers: Vec<Expr<'_>> = Vec::with_capacity(nt);
+        let mut powers = Vec::new();
+        let mut flows = Vec::new();
+        let mut states = Vec::new();
+        let mut starts = Vec::new();
+        let mut stops = Vec::new();
         for t in 0..nt {
             if let Some(fixed) = case.commitment.get(&unit.name) {
                 m.fix(on[[g, t]], if fixed[t] { 1. } else { 0. })
                     .map_err(|e| Error::Model(e.to_string()))?;
             }
-            let head = previous
-                .map_or(initial_head[a] - initial_head[b], |p| {
-                    p.head[a][t] - p.head[b][t]
+            let plant = &s.plants[topology.unit_plants[g]];
+            let total_flow = topology.plant_units[topology.unit_plants[g]]
+                .iter()
+                .map(|&j| {
+                    previous.map_or((s.units[j].flow.min + s.units[j].flow.max) / 2., |p| {
+                        p.unit_flow[j][t]
+                    })
                 })
-                .clamp(unit.head.min, unit.head.max);
+                .sum::<f64>();
+            let outlet = previous
+                .map_or(initial_head[b], |p| p.head[b][t])
+                .max(plant.outlet_head_floor.unwrap_or(f64::NEG_INFINITY));
+            let tailwater = plant
+                .tailwater_curve
+                .as_ref()
+                .map_or(0., |c| c.extended_value(total_flow));
             let flow = previous
                 .map_or((unit.flow.min + unit.flow.max) / 2., |p| p.unit_flow[g][t])
                 .clamp(unit.flow.min, unit.flow.max);
-            let head = (head - unit.loss_factor * flow * flow).clamp(unit.head.min, unit.head.max);
-            let coefficient = 0.00981 * head * unit.efficiency.trial_value(flow, head);
+            let head = ((previous.map_or(initial_head[a], |p| p.head[a][t])
+                - outlet
+                - tailwater
+                - unit.loss_factor * flow * flow)
+                * unit.mode.power_sign())
+            .clamp(unit.head.min, unit.head.max);
+            let eta = crate::machine::hydraulic_efficiency(unit, flow, head);
+            let coefficient = match unit.mode {
+                crate::UnitMode::Pump => 0.00981 * head / (eta * unit.motor_efficiency),
+                crate::UnitMode::Generate => {
+                    let p_ref = previous
+                        .map_or((unit.power.min + unit.power.max) / 2., |p| {
+                            p.unit_power[g][t]
+                        })
+                        .clamp(unit.power.min, unit.power.max);
+                    let electrical = unit
+                        .generator_efficiency_curve
+                        .as_ref()
+                        .map_or(1., |c| c.extended_value(p_ref));
+                    0.00981 * head * eta * electrical
+                }
+            };
             if let crate::Efficiency::Table(table) = &unit.efficiency {
                 let minimum = table.envelope_data(head, false).value.max(unit.flow.min);
                 let maximum = table.envelope_data(head, true).value.min(unit.flow.max);
@@ -186,54 +227,54 @@ pub(crate) fn propose(
             constraint!(m, start[[g, t]] <= on[[g, t]]);
             constraint!(m, start[[g, t]] <= 1. - previous_on);
             let stop = start[[g, t]] - on[[g, t]] + previous_on;
-            let previous_flow = if t == 0 {
-                unit.operation
-                    .previous_flow()
-                    .map(|v| zero() + v / flow_scale)
-            } else {
-                Some(q[[g, t - 1]].into())
-            };
-            if let Some(previous) = previous_flow {
-                let change = q[[g, t]] - previous;
-                let dt = unit.operation.ramp_hours(&case.grid, t);
-                if let Some(up) = unit.operation.flow_ramp.up {
-                    constraint!(m, change <= up * dt / flow_scale);
-                }
-                if let Some(down) = unit.operation.flow_ramp.down {
-                    constraint!(m, -change <= down * dt / flow_scale);
-                }
-            }
             let power: Expr<'_> = (q[[g, t]] * (flow_scale * coefficient)).into();
-            let previous = if t == 0 {
-                unit.operation.previous_power().map(|p| zero() + p)
-            } else {
-                Some(powers[t - 1])
-            };
-            if let Some(previous) = previous {
-                let dt = unit.operation.ramp_hours(&case.grid, t);
-                let scale = unit.power.max.max(1.);
-                let change = (power - previous) / scale;
-                if let Some(up) = unit.operation.power_ramp.up {
-                    constraint!(
-                        m,
-                        change <= (up * dt + start[[g, t]] * unit.power.min) / scale
-                    );
-                }
-                if let Some(down) = unit.operation.power_ramp.down {
-                    constraint!(m, -change <= (down * dt + stop * unit.power.min) / scale);
-                }
-            }
             powers.push(power);
+            flows.push((q[[g, t]] * flow_scale).into());
+            states.push(on[[g, t]].into());
+            starts.push(start[[g, t]].into());
+            stops.push(stop);
             revenue = revenue
                 + q[[g, t]]
                     * (flow_scale
                         * coefficient
+                        * unit.mode.power_sign()
                         * case.prices[t]
                         * (case.grid[t + 1] - case.grid[t]))
                 - start[[g, t]] * unit.operation.startup_cost
                 - stop * unit.operation.shutdown_cost;
         }
+        all_power.push(powers);
+        all_flow.push(flows);
+        all_on.push(states);
+        all_starts.push(starts);
+        all_stops.push(stops);
     }
+    let mut plant_states = Vec::new();
+    for (p, members) in topology.plant_units.iter().enumerate() {
+        let mut states = Vec::new();
+        for t in 0..nt {
+            let sum = members.iter().fold(zero(), |sum, &g| sum + on[[g, t]]);
+            for &g in members {
+                constraint!(m, plant_on[[p, t]] >= on[[g, t]]);
+            }
+            constraint!(m, plant_on[[p, t]] <= sum);
+            states.push(plant_on[[p, t]].into());
+        }
+        plant_states.push(states);
+    }
+    crate::operating_equations::constrain(
+        &m,
+        case,
+        topology,
+        &crate::operating_equations::OperatingExpressions {
+            power: all_power,
+            flow: all_flow,
+            on: all_on,
+            starts: all_starts,
+            stops: all_stops,
+            plant_on: plant_states,
+        },
+    );
     for commitment in excluded {
         let mut difference = zero();
         for g in 0..nu {

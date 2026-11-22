@@ -8,9 +8,11 @@ mod commitment;
 mod constitutive;
 mod curve;
 mod dispatch;
+mod machine;
 mod model;
 mod native_ipopt;
 mod nlp;
+mod operating_equations;
 mod operation;
 mod physics;
 mod river;
@@ -19,11 +21,12 @@ mod trajectory;
 mod turbine;
 
 pub use curve::TableCurve;
+pub use machine::PumpCharacteristic;
 pub use model::{
-    Boundary, Bounds, Efficiency, HydroSystem, Junction, Reservoir, River, ScheduleCase,
-    StorageCurve, Tunnel, Unit,
+    Boundary, Bounds, CommitmentExclusion, Efficiency, HydroSystem, Junction, Plant, Reservoir,
+    River, ScheduleCase, StorageCurve, Tunnel, Unit, UnitMode,
 };
-pub use operation::{RampRates, UnitOperation};
+pub use operation::{PlantOperation, RampRates, UnitOperation};
 pub use schedule::SchedulingProblem;
 pub use trajectory::{Schedule, Validation};
 pub use turbine::{DischargeInterpolation, Extrapolation, TurbineOptions, TurbineTable};

@@ -1,7 +1,7 @@
 //! Construct and optimize a watercourse using the native Rust API.
 
 use openshop::{
-    Boundary, Bounds, Efficiency, HydroSystem, Reservoir, ScheduleCase, SchedulingProblem,
+    Boundary, Bounds, Efficiency, HydroSystem, Plant, Reservoir, ScheduleCase, SchedulingProblem,
     SolveOptions, StorageCurve, Unit,
 };
 use std::collections::BTreeMap;
@@ -24,11 +24,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Sea".into(),
             head: 20.,
         }],
+        plants: vec![Plant::new("Station", "Lake", "Sea")],
         units: vec![Unit {
             name: "Station".into(),
-            source: "Lake".into(),
-            target: "Sea".into(),
-            discharge_river: None,
+            plant: "Station".into(),
+            mode: openshop::UnitMode::Generate,
+            pump_characteristic: None,
+            motor_efficiency: 1.,
+            generator_efficiency_curve: None,
             flow: Bounds::new(5., 20.),
             power: Bounds::new(1., 25.),
             head: Bounds::new(35., 105.),

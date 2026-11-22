@@ -2,7 +2,11 @@
 //! Structure and chain-rule coefficients are prepared once. Evaluation only
 //! accumulates values and exact derivatives into existing numeric buffers.
 
-use crate::{Bounds, Error, TableCurve, TurbineTable, curve::Derivatives2, river::LinearForm};
+use crate::{
+    Bounds, Error, TableCurve, TurbineTable, Unit, curve::Derivatives2, river::LinearForm,
+};
+use nalgebra::SVector;
+use num_dual::hessian;
 use pounce_nl::nl_reader::NlTnlp;
 use pounce_nlp::tnlp::{
     BoundsInfo, IndexStyle, IpoptCq, IpoptData, NlpInfo, Solution, SparsityRequest, StartingPoint,
@@ -20,32 +24,74 @@ pub(crate) struct StorageHeadEquation {
 
 pub(crate) enum PhysicalFunction {
     StorageMean(Arc<TableCurve>),
-    TurbinePower(Arc<TurbineTable>),
+    Production(Arc<Unit>),
+    Table(Arc<TableCurve>),
+    Characteristic(Arc<crate::PumpCharacteristic>),
     MinimumFlow(Arc<TurbineTable>),
     MaximumFlow(Arc<TurbineTable>),
 }
-impl PhysicalFunction {
-    fn value(&self, a: f64, b: f64) -> f64 {
-        match self {
-            Self::StorageMean(c) => c.mean_data(a, b).value,
-            Self::TurbinePower(c) => c.generation(a, b),
-            Self::MinimumFlow(c) => c.envelope_data(b, false).value,
-            Self::MaximumFlow(c) => c.envelope_data(b, true).value,
+struct Derivatives {
+    gradient: [f64; 3],
+    hessian: [[f64; 3]; 3],
+}
+impl From<Derivatives2> for Derivatives {
+    fn from(d: Derivatives2) -> Self {
+        Self {
+            gradient: [d.gradient[0], d.gradient[1], 0.],
+            hessian: [
+                [d.hessian[0][0], d.hessian[0][1], 0.],
+                [d.hessian[1][0], d.hessian[1][1], 0.],
+                [0.; 3],
+            ],
         }
     }
-
-    fn data(&self, a: f64, b: f64) -> Derivatives2 {
+}
+impl PhysicalFunction {
+    fn value(&self, x: [f64; 3]) -> f64 {
         match self {
-            Self::StorageMean(c) => c.mean_data(a, b),
-            Self::TurbinePower(c) => c.generation_data(a, b),
-            Self::MinimumFlow(c) => c.envelope_data(b, false),
-            Self::MaximumFlow(c) => c.envelope_data(b, true),
+            Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
+            Self::StorageMean(c) => c.mean_data(x[0], x[1]).value,
+            Self::Table(c) => c.extended_value(x[0]),
+            Self::Characteristic(c) => c.trial_discharge(x[1]),
+            Self::MinimumFlow(c) => c.envelope_data(x[1], false).value,
+            Self::MaximumFlow(c) => c.envelope_data(x[1], true).value,
+        }
+    }
+    fn data(&self, x: [f64; 3]) -> Derivatives {
+        match self {
+            Self::Production(u) => {
+                let (_, g, h) = hessian(
+                    |x| crate::machine::power_balance(u, x[0], x[1], x[2]),
+                    &SVector::from(x),
+                );
+                Derivatives {
+                    gradient: std::array::from_fn(|i| g[i]),
+                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
+                }
+            }
+            Self::StorageMean(c) => c.mean_data(x[0], x[1]).into(),
+            Self::Characteristic(c) => c.discharge_data(x[1]).into(),
+            Self::MinimumFlow(c) => c.envelope_data(x[1], false).into(),
+            Self::MaximumFlow(c) => c.envelope_data(x[1], true).into(),
+            Self::Table(c) => {
+                let coordinates = c.coordinates();
+                let i = coordinates
+                    .partition_point(|v| *v <= x[0])
+                    .saturating_sub(1)
+                    .min(coordinates.len() - 2);
+                let slope =
+                    (c.values()[i + 1] - c.values()[i]) / (coordinates[i + 1] - coordinates[i]);
+                Derivatives {
+                    gradient: [slope, 0., 0.],
+                    hessian: [[0.; 3]; 3],
+                }
+            }
         }
     }
 }
 pub(crate) struct Term {
     pub function: PhysicalFunction,
-    pub inputs: [LinearForm; 2],
+    pub inputs: [LinearForm; 3],
     pub weight: f64,
 }
 /// lower <= linear(x) + Σ weight f(a(x),b(x)) <= upper.
@@ -55,47 +101,55 @@ pub(crate) struct Equation {
     pub bounds: Bounds,
 }
 impl Equation {
-    /// P(Q,H) - P = 0, Q_min(H) - Q <= 0, Q_max(H) - Q >= 0.
-    /// Inputs are in physical units; row scales normalize power and flow.
-    pub fn turbine(
-        curve: Arc<TurbineTable>,
+    /// Electrical work balance and the machine's additional flow restrictions.
+    pub fn production(
+        unit: Arc<Unit>,
         flow: LinearForm,
         head: LinearForm,
         power: LinearForm,
         flow_scale: f64,
         power_scale: f64,
-    ) -> [Self; 3] {
-        [
-            (
-                PhysicalFunction::TurbinePower(curve.clone()),
-                power.scaled(-1. / power_scale),
-                1. / power_scale,
-                Bounds::new(0., 0.),
-            ),
-            (
-                PhysicalFunction::MinimumFlow(curve.clone()),
-                flow.clone().scaled(-1. / flow_scale),
-                1. / flow_scale,
-                Bounds::new(f64::NEG_INFINITY, 0.),
-            ),
-            (
-                PhysicalFunction::MaximumFlow(curve),
-                flow.clone().scaled(-1. / flow_scale),
-                1. / flow_scale,
-                Bounds::new(0., f64::INFINITY),
-            ),
-        ]
-        .map(|(function, linear, weight, bounds)| Self {
-            linear,
+    ) -> Vec<Self> {
+        let mut equations = vec![Self {
+            linear: LinearForm::default(),
             terms: vec![Term {
-                function,
-                inputs: [flow.clone(), head.clone()],
-                weight,
+                function: PhysicalFunction::Production(unit.clone()),
+                inputs: [flow.clone(), head.clone(), power],
+                weight: 1. / power_scale,
             }],
-            bounds,
-        })
+            bounds: Bounds::new(0., 0.),
+        }];
+        let mut flow_equation = |function, bounds| {
+            equations.push(Self {
+                linear: flow.clone().scaled(-1. / flow_scale),
+                terms: vec![Term {
+                    function,
+                    inputs: [flow.clone(), head.clone(), LinearForm::default()],
+                    weight: 1. / flow_scale,
+                }],
+                bounds,
+            })
+        };
+        if let Some(c) = &unit.pump_characteristic {
+            flow_equation(
+                PhysicalFunction::Characteristic(Arc::new(c.clone())),
+                Bounds::new(0., 0.),
+            );
+        } else if let crate::Efficiency::Table(c) = &unit.efficiency {
+            let c = Arc::new(c.clone());
+            flow_equation(
+                PhysicalFunction::MinimumFlow(c.clone()),
+                Bounds::new(f64::NEG_INFINITY, 0.),
+            );
+            flow_equation(
+                PhysicalFunction::MaximumFlow(c),
+                Bounds::new(0., f64::INFINITY),
+            );
+        }
+        equations
     }
 }
+
 impl From<StorageHeadEquation> for Equation {
     fn from(law: StorageHeadEquation) -> Self {
         Self {
@@ -108,7 +162,7 @@ impl From<StorageHeadEquation> for Equation {
                 .windows(2)
                 .map(|w| Term {
                     function: PhysicalFunction::StorageMean(law.curve.clone()),
-                    inputs: [w[0].1.clone(), w[1].1.clone()],
+                    inputs: [w[0].1.clone(), w[1].1.clone(), LinearForm::default()],
                     weight: (w[1].0 - w[0].0) / law.head_scale,
                 })
                 .collect(),
@@ -142,11 +196,11 @@ impl LinearFunction {
 }
 struct PreparedTerm {
     function: PhysicalFunction,
-    inputs: [LinearFunction; 2],
+    inputs: [LinearFunction; 3],
     weight: f64,
-    jacobian: [Vec<(usize, f64)>; 2],
+    jacobian: [Vec<(usize, f64)>; 3],
     /// Sparse position and coefficients of H_aa, H_ab and H_bb.
-    hessian: Vec<(usize, [f64; 3])>,
+    hessian: Vec<(usize, [f64; 6])>,
 }
 struct PreparedEquation {
     linear: LinearFunction,
@@ -264,22 +318,28 @@ impl Nlp {
                 let mut hessian = Vec::new();
                 for (j, &a) in vars.iter().enumerate() {
                     for &b in &vars[..=j] {
-                        let [aj, bj] = term
+                        let ja = term
                             .inputs
                             .each_ref()
                             .map(|v| v.coefficients.get(&a).copied().unwrap_or(0.));
-                        let [ak, bk] = term
+                        let jb = term
                             .inputs
                             .each_ref()
                             .map(|v| v.coefficients.get(&b).copied().unwrap_or(0.));
-                        hessian.push((
-                            coordinates[&(a as i32, b as i32)],
-                            [
-                                term.weight * aj * ak,
-                                term.weight * (aj * bk + bj * ak),
-                                term.weight * bj * bk,
-                            ],
-                        ));
+                        let mut weights = [0.; 6];
+                        let mut k = 0;
+                        for u in 0..3 {
+                            for v in 0..=u {
+                                weights[k] = term.weight
+                                    * if u == v {
+                                        ja[u] * jb[u]
+                                    } else {
+                                        ja[u] * jb[v] + ja[v] * jb[u]
+                                    };
+                                k += 1;
+                            }
+                        }
+                        hessian.push((coordinates[&(a as i32, b as i32)], weights));
                     }
                 }
                 terms.push(PreparedTerm {
@@ -373,9 +433,7 @@ impl TNLP for Nlp {
             g[m + k] = e.linear.value(x)
                 + e.terms
                     .iter()
-                    .map(|t| {
-                        t.weight * t.function.value(t.inputs[0].value(x), t.inputs[1].value(x))
-                    })
+                    .map(|t| t.weight * t.function.value(t.inputs.each_ref().map(|v| v.value(x))))
                     .sum::<f64>();
         }
         g.iter().all(|v| v.is_finite())
@@ -424,7 +482,7 @@ impl TNLP for Nlp {
                     for t in &e.terms {
                         let g = t
                             .function
-                            .data(t.inputs[0].value(x), t.inputs[1].value(x))
+                            .data(t.inputs.each_ref().map(|v| v.value(x)))
                             .gradient;
                         for (input, &derivative) in t.jacobian.iter().zip(&g) {
                             for &(i, a) in input {
@@ -485,12 +543,17 @@ impl TNLP for Nlp {
                     for t in &e.terms {
                         let h = t
                             .function
-                            .data(t.inputs[0].value(x), t.inputs[1].value(x))
+                            .data(t.inputs.each_ref().map(|v| v.value(x)))
                             .hessian;
                         let multiplier = lambda[self.base_info.m as usize + k];
                         for &(position, a) in &t.hessian {
-                            values[position] +=
-                                multiplier * (a[0] * h[0][0] + a[1] * h[1][0] + a[2] * h[1][1]);
+                            values[position] += multiplier
+                                * (a[0] * h[0][0]
+                                    + a[1] * h[1][0]
+                                    + a[2] * h[1][1]
+                                    + a[3] * h[2][0]
+                                    + a[4] * h[2][1]
+                                    + a[5] * h[2][2]);
                         }
                     }
                 }
@@ -667,15 +730,25 @@ mod tests {
                 (b.var_id().unwrap().index(), 3.),
             ]),
         };
-        let equations = Equation::turbine(
-            curve,
+        let mut unit = crate::Unit::new(
+            "Turbine",
+            "Station",
+            Bounds::new(0., 20.),
+            Bounds::new(0., 30.),
+            Bounds::new(80., 160.),
+            crate::Efficiency::Table((*curve).clone()),
+        );
+        unit.generator_efficiency_curve =
+            Some(TableCurve::new(vec![0., 15., 30.], vec![0.88, 0.95, 0.97]).unwrap());
+        let equations = Equation::production(
+            Arc::new(unit),
             flow,
             head,
             LinearForm::variable(power.var_id().unwrap().index(), 10.),
             20.,
             10.,
         );
-        let mut problem = crate::nlp::prepare(&m, Vec::from(equations)).unwrap();
+        let mut problem = crate::nlp::prepare(&m, equations).unwrap();
         check_derivatives(
             &mut problem,
             &[[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]],

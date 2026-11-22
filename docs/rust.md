@@ -132,8 +132,8 @@ Values are neither clipped nor silently repaired.
 Table units use net head and power unknowns with the physical equalities
 `H = H_source − H_target − loss_factor Q²` and `P = 0.00981 Q H η(Q,H)`.
 Their power limits are variable bounds and their power ramps are linear rows.
-The local turbine law supplies exact first and second derivatives using fixed-size
-`num-dual` arithmetic; sparse chain-rule maps are prepared once. The head equality
+The local machine law supplies exact first and second derivatives using fixed-size
+three-variable `num-dual` arithmetic; sparse chain-rule maps are prepared once. The head equality
 retains the curvature of the upstream hydraulic equations. Off units have zero
 flow and power and do not impose a turbine operating-head range. Trial evaluation
 uses secant continuation to let a solver recover from violated constraints;
@@ -202,8 +202,8 @@ Pressure validation reports the unscaled head error in metres, so a small openin
 cannot hide a large hydraulic error. A closed tunnel has zero flow and imposes no pressure relation. Pressure
 junctions conserve water without storage. Junction heads are independent
 unknowns. Tabulated reservoir mean heads and turbine net heads/powers have local
-constitutive equations; polynomial reservoir heads and quadratic turbine powers
-remain derived expressions.
+constitutive equations; polynomial reservoir heads remain derived expressions. All machines use the
+same net-head and electrical-power unknowns with local work balances.
 
 A fixed-delay river translates each release interval by its travel time.
 At river junctions all arrival changes are retained, including historical
@@ -237,9 +237,42 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still to be implemented are the remaining hydraulic/electrical curves, flow-dependent distributed
-river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
+river responses, adaptive hydraulics, optimized gate
 positions, plant-level limits, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,
 including Tokke–Vinje, must exercise those capabilities before any final
 formulation or solver comparison. The small tests establish correctness of the
 implemented equations; they cannot settle that comparison.
+
+
+## Plants and pumping
+
+Create a `Plant::new(name, source, target)` and attach each `Unit::new(...)` by
+its plant name. Units at a plant share intake, outlet level, optional outlet-head
+floor and a tailwater curve of aggregate discharge. Plant flow/power bounds,
+ramps and minimum operating times apply to the aggregate. A plant is on when
+any of its units is on. Initial aggregate state follows the member units; supply
+aggregate output history when their historical observation intervals differ.
+
+Set `unit.mode = UnitMode::Pump` for pumping. Water endpoints always follow
+water motion. Pump consumption and generator output are positive magnitudes in
+`unit_power` and `plant_power`; the objective subtracts pump consumption. Pump
+working head includes the elevation lift, shared tailwater and pipe losses.
+`motor_efficiency` applies to pumps. `CommitmentExclusion` permits at most one
+named group to operate, while allowing parallel units within the same group.
+
+A variable-flow pump uses `Efficiency::Quadratic` or `Efficiency::Table`.
+A fixed-speed pump instead supplies `PumpCharacteristic::new(heads, discharge,
+efficiency, head_extrapolation)`, with one discharge and efficiency at each head.
+The hydraulic solution determines its discharge; commitment decides on/off.
+The single-head policy must explicitly be `Extrapolation::Constant`.
+
+All machines satisfy local work balances. For pumping,
+`0.00981 Q H = P η_hydraulic η_motor`; for generation,
+`P = 0.00981 Q H η_hydraulic η_electrical(P)`.
+The optional `generator_efficiency_curve` maps electrical output to efficiency;
+its required shaft power must strictly increase. These equations avoid dividing
+by efficiency or inverting the electrical curve during nonlinear trial steps.
+Power limits and ramps remain bounds and linear rows. Small local Hessians
+are differentiated with fixed-size arithmetic and assembled into the sparse
+whole-system Hessian. Gate and hydraulic equations retain their own curvature.

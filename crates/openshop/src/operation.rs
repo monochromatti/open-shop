@@ -50,6 +50,108 @@ impl Default for UnitOperation {
     }
 }
 
+/// Aggregate operating history and restrictions. Initial on/off state follows
+/// the member units; explicit output history overrides their aggregate.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlantOperation {
+    pub minimum_up_time: f64,
+    pub minimum_down_time: f64,
+    pub initial_duration: Option<f64>,
+    pub initial_flow: Option<f64>,
+    pub initial_power: Option<f64>,
+    pub initial_interval_hours: f64,
+    pub flow_ramp: RampRates,
+    pub power_ramp: RampRates,
+}
+impl Default for PlantOperation {
+    fn default() -> Self {
+        Self {
+            minimum_up_time: 0.,
+            minimum_down_time: 0.,
+            initial_duration: None,
+            initial_flow: None,
+            initial_power: None,
+            initial_interval_hours: 1.,
+            flow_ramp: Default::default(),
+            power_ramp: Default::default(),
+        }
+    }
+}
+impl PlantOperation {
+    pub(crate) fn resolve(
+        &self,
+        members: &[&crate::Unit],
+        name: &str,
+    ) -> Result<UnitOperation, Error> {
+        let initial_on = members.iter().any(|g| g.operation.initial_on);
+        let duration = self.initial_duration.unwrap_or_else(|| {
+            let ages = members
+                .iter()
+                .filter(|g| g.operation.initial_on == initial_on)
+                .map(|g| g.operation.initial_duration);
+            if initial_on {
+                ages.fold(0., f64::max)
+            } else {
+                ages.fold(f64::INFINITY, f64::min)
+            }
+        });
+        let infer = |power: bool| -> Result<Option<f64>, Error> {
+            let explicit = if power {
+                self.initial_power
+            } else {
+                self.initial_flow
+            };
+            if explicit.is_some() {
+                return Ok(explicit);
+            }
+            let enabled = if power {
+                self.power_ramp.up.is_some() || self.power_ramp.down.is_some()
+            } else {
+                self.flow_ramp.up.is_some() || self.flow_ramp.down.is_some()
+            };
+            let values: Option<Vec<_>> = members
+                .iter()
+                .map(|g| {
+                    if power {
+                        g.operation.previous_power()
+                    } else {
+                        g.operation.previous_flow()
+                    }
+                })
+                .collect();
+            if let Some(values) = values {
+                if enabled
+                    && members
+                        .iter()
+                        .any(|g| g.operation.initial_interval_hours != self.initial_interval_hours)
+                {
+                    return Err(Error::Input(format!(
+                        "{name}: supply aggregate history when observation durations differ"
+                    )));
+                }
+                Ok(Some(values.iter().sum()))
+            } else {
+                Ok(None)
+            }
+        };
+        let operation = UnitOperation {
+            initial_on,
+            initial_duration: duration,
+            minimum_up_time: self.minimum_up_time,
+            minimum_down_time: self.minimum_down_time,
+            initial_flow: infer(false)?,
+            initial_power: infer(true)?,
+            initial_interval_hours: self.initial_interval_hours,
+            flow_ramp: self.flow_ramp.clone(),
+            power_ramp: self.power_ramp.clone(),
+            ..Default::default()
+        };
+        operation.validate(name)?;
+        Ok(operation)
+    }
+}
+
 /// Sum of the indexed on/off states times their coefficients must be >= rhs.
 pub(crate) struct CommitmentInequality {
     pub coefficients: Vec<(usize, f64)>,

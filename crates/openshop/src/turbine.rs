@@ -2,7 +2,7 @@
 //! Original discharge grids are retained; interpolation is linear in head.
 
 use crate::{Bounds, Error, TableCurve, curve::Derivatives2};
-use num_dual::{DualNum, second_derivative, second_partial_derivative};
+use num_dual::DualNum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -250,20 +250,6 @@ impl TurbineTable {
         let b = (h - self.data.heads[j]) / (self.data.heads[k] - self.data.heads[j]);
         left + b * (self.column(k, q) - left)
     }
-    pub(crate) fn generation<D: DualNum<Primitive = f64> + Copy>(&self, q: D, h: D) -> D {
-        q * h * self.trial_efficiency(q, h) * 0.00981
-    }
-    pub(crate) fn generation_data(&self, q: f64, h: f64) -> Derivatives2 {
-        let (value, dq, dh, cross) =
-            second_partial_derivative(|(q, h)| self.generation(q, h), (q, h));
-        let (_, _, qq) = second_derivative(|q| self.generation(q, h.into()), q);
-        let (_, _, hh) = second_derivative(|h| self.generation(q.into(), h), h);
-        Derivatives2 {
-            value,
-            gradient: [dq, dh],
-            hessian: [[qq, cross], [cross, hh]],
-        }
-    }
     pub(crate) fn envelope_data(&self, h: f64, maximum: bool) -> Derivatives2 {
         let (j, k, b) = self.head_weights(h);
         let value = |i: usize| {
@@ -376,6 +362,20 @@ impl TurbineTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use num_dual::{second_derivative, second_partial_derivative};
+    fn generation_data(t: &TurbineTable, q: f64, h: f64) -> Derivatives2 {
+        let (value, dq, dh, cross) =
+            second_partial_derivative(|(q, h)| q * h * t.trial_efficiency(q, h) * 0.00981, (q, h));
+        let (_, _, qq) =
+            second_derivative(|q| q * h * t.trial_efficiency(q, h.into()) * 0.00981, q);
+        let (_, _, hh) =
+            second_derivative(|h| h * q * t.trial_efficiency(q.into(), h) * 0.00981, h);
+        Derivatives2 {
+            value,
+            gradient: [dq, dh],
+            hessian: [[qq, cross], [cross, hh]],
+        }
+    }
     fn table(interpolation: DischargeInterpolation) -> TurbineTable {
         TurbineTable::new(
             vec![100., 200.],
@@ -433,15 +433,15 @@ mod tests {
         ] {
             let t = table(interpolation);
             for point in [[2.3, 135.], [7.2, 180.], [11., 220.], [-0.5, 80.]] {
-                let data = t.generation_data(point[0], point[1]);
+                let data = generation_data(&t, point[0], point[1]);
                 for axis in 0..2 {
                     let step = 1e-4;
                     let mut p = point;
                     let mut n = point;
                     p[axis] += step;
                     n[axis] -= step;
-                    let plus = t.generation_data(p[0], p[1]);
-                    let minus = t.generation_data(n[0], n[1]);
+                    let plus = generation_data(&t, p[0], p[1]);
+                    let minus = generation_data(&t, n[0], n[1]);
                     assert!(
                         ((plus.value - minus.value) / (2. * step) - data.gradient[axis]).abs()
                             < 1e-8
@@ -485,7 +485,7 @@ mod tests {
             t.efficiency(5., 200.).unwrap()
         );
         assert!(
-            (t.generation_data(5., 200.).value - 4. * t.generation_data(5., 50.).value).abs()
+            (generation_data(&t, 5., 200.).value - 4. * generation_data(&t, 5., 50.).value).abs()
                 < 1e-14
         );
         let serialized = serde_json::to_string(&t).unwrap();

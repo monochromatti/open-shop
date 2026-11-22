@@ -49,21 +49,16 @@ pub(crate) fn build_dispatch(
         })
         .collect();
     variable!(m,hm[k in 0..curves.len(),t in 0..nt]);
-    let mut turbine_curves = Vec::new();
-    let turbine_index: Vec<_> = s
-        .units
+    variable!(m,ht[g in 0..nu,t in 0..nt]);
+    variable!(m,pt[g in 0..nu,t in 0..nt]);
+    let machines: Vec<_> = s.units.iter().cloned().map(std::sync::Arc::new).collect();
+    let curved_plants: Vec<_> = s
+        .plants
         .iter()
-        .map(|u| match &u.efficiency {
-            crate::Efficiency::Table(c) => {
-                let k = turbine_curves.len();
-                turbine_curves.push(std::sync::Arc::new(c.clone()));
-                Some(k)
-            }
-            _ => None,
-        })
+        .enumerate()
+        .filter_map(|(i, p)| p.tailwater_curve.as_ref().map(|_| i))
         .collect();
-    variable!(m,ht[k in 0..turbine_curves.len(),t in 0..nt]);
-    variable!(m,pt[k in 0..turbine_curves.len(),t in 0..nt]);
+    variable!(m,hw[k in 0..curved_plants.len(),t in 0..nt]);
     let mut laws = Vec::new();
     let flow_scale = s
         .units
@@ -138,7 +133,7 @@ pub(crate) fn build_dispatch(
             constraint!(
                 m,
                 name = format!("water_balance[{r},{t}]"),
-                (rate - net) / flow_scale == 0.0
+                rate - net == 0.0
             );
         }
     }
@@ -306,10 +301,46 @@ pub(crate) fn build_dispatch(
             }
         }
     }
+    let mut tailwater = vec![vec![zero(); nt]; s.plants.len()];
+    for (k, &p) in curved_plants.iter().enumerate() {
+        let curve = std::sync::Arc::new(s.plants[p].tailwater_curve.as_ref().unwrap().clone());
+        for t in 0..nt {
+            let mut total = crate::river::LinearForm::default();
+            for &g in &topology.plant_units[p] {
+                total
+                    .coefficients
+                    .insert(q[[g, t]].var_id().unwrap().index(), flow_scale);
+            }
+            m.set_initial(hw[[k, t]], curve.values()[0] / 100.)
+                .map_err(|e| Error::Model(e.to_string()))?;
+            laws.push(crate::constitutive::Equation {
+                linear: crate::river::LinearForm::variable(
+                    hw[[k, t]].var_id().unwrap().index(),
+                    -1.,
+                ),
+                terms: vec![crate::constitutive::Term {
+                    function: crate::constitutive::PhysicalFunction::Table(curve.clone()),
+                    inputs: [total, Default::default(), Default::default()],
+                    weight: 1. / 100.,
+                }],
+                bounds: crate::Bounds::new(0., 0.),
+            });
+            tailwater[p][t] = (hw[[k, t]] * 100.).into();
+        }
+    }
+    let mut all_power = Vec::new();
+    let mut all_flow = Vec::new();
+    let mut all_on = Vec::new();
+    let mut all_starts = Vec::new();
+    let mut all_stops = Vec::new();
     let mut revenue = zero();
     for (i, u) in s.units.iter().enumerate() {
         let (source, target) = topology.unit_nodes[i];
-        let mut powers: Vec<Expr<'_>> = Vec::with_capacity(nt);
+        let mut powers = Vec::new();
+        let mut flows = Vec::new();
+        let mut states = Vec::new();
+        let mut starts = Vec::new();
+        let mut stops = Vec::new();
         for t in 0..nt {
             let on = commitment[i][t];
             let (lo, hi) = if on {
@@ -326,141 +357,104 @@ pub(crate) fn build_dispatch(
                     .clamp(lo, hi),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
-            let previous = if t == 0 {
-                u.operation.previous_flow().map(|v| zero() + v / flow_scale)
-            } else {
-                Some(q[[i, t - 1]].into())
-            };
-            if let Some(previous) = previous {
-                let change = q[[i, t]] - previous;
-                let dt = u.operation.ramp_hours(&case.grid, t);
-                if let Some(up) = u.operation.flow_ramp.up {
-                    constraint!(m, change <= up * dt / flow_scale);
-                }
-                if let Some(down) = u.operation.flow_ramp.down {
-                    constraint!(m, -change <= down * dt / flow_scale);
-                }
-            }
             let flow: Expr<'_> = (q[[i, t]] * flow_scale).into();
-            let net_head = head[t][source] - head[t][target] - flow.square() * u.loss_factor;
-            let power: Expr<'_> = match &u.efficiency {
-                crate::Efficiency::Quadratic {
-                    peak,
-                    best_flow,
-                    flow_curvature,
-                    best_head,
-                    head_curvature,
-                } => {
-                    let eta = crate::physics::quadratic_efficiency(
-                        *peak,
-                        *best_flow,
-                        *flow_curvature,
-                        *best_head,
-                        *head_curvature,
-                        flow,
-                        net_head,
-                    );
-                    crate::physics::generation(flow, net_head, eta)
-                }
-                crate::Efficiency::Table(_) => {
-                    let k = turbine_index[i].unwrap();
-                    let scale = u.power.max.max(1.);
-                    if on {
-                        m.set_bounds(ht[[k, t]], u.head.min / 100., u.head.max / 100.)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                        m.set_bounds(pt[[k, t]], u.power.min / scale, u.power.max / scale)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                        let h0 = (u.head.min + u.head.max) / 2.;
-                        let q0 = start
-                            .map_or((u.flow.min + u.flow.max) / 2., |p| p.flow[i][t])
-                            .clamp(u.flow.min, u.flow.max);
-                        m.set_initial(ht[[k, t]], h0 / 100.)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                        m.set_initial(
-                            pt[[k, t]],
-                            u.trial_generation(q0, h0).clamp(u.power.min, u.power.max) / scale,
-                        )
-                        .map_err(|e| Error::Model(e.to_string()))?;
-                        constraint!(m, ht[[k, t]] - net_head / 100. == 0.);
-                        laws.extend(crate::constitutive::Equation::turbine(
-                            turbine_curves[k].clone(),
-                            crate::river::LinearForm::variable(
-                                q[[i, t]].var_id().unwrap().index(),
-                                flow_scale,
-                            ),
-                            crate::river::LinearForm::variable(
-                                ht[[k, t]].var_id().unwrap().index(),
-                                100.,
-                            ),
-                            crate::river::LinearForm::variable(
-                                pt[[k, t]].var_id().unwrap().index(),
-                                scale,
-                            ),
-                            flow_scale,
-                            scale,
-                        ));
-                    } else {
-                        m.fix(ht[[k, t]], 0.)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                        m.fix(pt[[k, t]], 0.)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                    }
-                    (pt[[k, t]] * scale).into()
-                }
-            };
-            let (starts, stops) = u.operation.transitions(&commitment[i], t);
-            let previous = if t == 0 {
-                u.operation.previous_power().map(|p| zero() + p)
+            let plant = topology.unit_plants[i];
+            let p = &s.plants[plant];
+            let outlet = p.outlet_head_floor.map_or(head[t][target], |floor| {
+                (head[t][target] + floor + (head[t][target] - floor).abs()) * 0.5
+            });
+            let net_head =
+                (head[t][source] - outlet - tailwater[plant][t] - flow.square() * u.loss_factor)
+                    * u.mode.power_sign();
+            let scale = u.power.max.max(1.);
+            if on {
+                m.set_bounds(ht[[i, t]], u.head.min / 100., u.head.max / 100.)
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_bounds(pt[[i, t]], u.power.min / scale, u.power.max / scale)
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                let h0 = ((initial_head[source] - initial_head[target]) * u.mode.power_sign())
+                    .clamp(u.head.min, u.head.max);
+                let q0 = start
+                    .map_or((u.flow.min + u.flow.max) / 2., |p| p.flow[i][t])
+                    .clamp(u.flow.min, u.flow.max);
+                m.set_initial(ht[[i, t]], h0 / 100.)
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                let guess = u.trial_power(q0, h0);
+                let p0 = if guess.is_finite() {
+                    guess.clamp(u.power.min, u.power.max)
+                } else {
+                    (u.power.min + u.power.max) / 2.
+                };
+                m.set_initial(pt[[i, t]], p0 / scale)
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                constraint!(m, ht[[i, t]] - net_head / 100. == 0.);
+                laws.extend(crate::constitutive::Equation::production(
+                    machines[i].clone(),
+                    crate::river::LinearForm::variable(
+                        q[[i, t]].var_id().unwrap().index(),
+                        flow_scale,
+                    ),
+                    crate::river::LinearForm::variable(ht[[i, t]].var_id().unwrap().index(), 100.),
+                    crate::river::LinearForm::variable(pt[[i, t]].var_id().unwrap().index(), scale),
+                    flow_scale,
+                    scale,
+                ));
             } else {
-                Some(powers[t - 1])
-            };
-            if let Some(previous) = previous {
-                let dt = u.operation.ramp_hours(&case.grid, t);
-                let scale = u.power.max.max(1.);
-                let change = (power - previous) / scale;
-                if let Some(up) = u.operation.power_ramp.up {
-                    constraint!(
-                        m,
-                        change <= (up * dt + if starts { u.power.min } else { 0. }) / scale
-                    );
-                }
-                if let Some(down) = u.operation.power_ramp.down {
-                    constraint!(
-                        m,
-                        -change <= (down * dt + if stops { u.power.min } else { 0. }) / scale
-                    );
-                }
+                m.fix(ht[[i, t]], 0.)
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.fix(pt[[i, t]], 0.)
+                    .map_err(|e| Error::Model(e.to_string()))?;
             }
+            let power: Expr<'_> = (pt[[i, t]] * scale).into();
+            let (starts_now, stops_now) = u.operation.transitions(&commitment[i], t);
             powers.push(power);
-            if on && turbine_index[i].is_none() {
-                constraint!(
-                    m,
-                    name = format!("head_min[{i},{t}]"),
-                    net_head / 100. >= u.head.min / 100.
-                );
-                constraint!(
-                    m,
-                    name = format!("head_max[{i},{t}]"),
-                    net_head / 100. <= u.head.max / 100.
-                );
-                constraint!(
-                    m,
-                    name = format!("power_min[{i},{t}]"),
-                    power / u.power.max.max(1.) >= u.power.min / u.power.max.max(1.)
-                );
-                constraint!(
-                    m,
-                    name = format!("power_max[{i},{t}]"),
-                    power / u.power.max.max(1.) <= u.power.max / u.power.max.max(1.)
-                );
-            }
-            revenue = revenue + power * (case.prices[t] * (case.grid[t + 1] - case.grid[t]));
+            flows.push(flow);
+            states.push(zero() + if on { 1. } else { 0. });
+            starts.push(zero() + if starts_now { 1. } else { 0. });
+            stops.push(zero() + if stops_now { 1. } else { 0. });
+            revenue = revenue
+                + power
+                    * (u.mode.power_sign() * case.prices[t] * (case.grid[t + 1] - case.grid[t]));
             let (start, stop) = u.operation.transitions(&commitment[i], t);
             revenue = revenue
                 - if start { u.operation.startup_cost } else { 0. }
                 - if stop { u.operation.shutdown_cost } else { 0. };
         }
+        all_power.push(powers);
+        all_flow.push(flows);
+        all_on.push(states);
+        all_starts.push(starts);
+        all_stops.push(stops);
     }
+    let plant_on: Vec<Vec<_>> = topology
+        .plant_units
+        .iter()
+        .map(|members| {
+            (0..nt)
+                .map(|t| {
+                    zero()
+                        + if members.iter().any(|&g| commitment[g][t]) {
+                            1.
+                        } else {
+                            0.
+                        }
+                })
+                .collect()
+        })
+        .collect();
+    crate::operating_equations::constrain(
+        &m,
+        case,
+        topology,
+        &crate::operating_equations::OperatingExpressions {
+            power: all_power,
+            flow: all_flow,
+            on: all_on,
+            starts: all_starts,
+            stops: all_stops,
+            plant_on,
+        },
+    );
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
         revenue = revenue
             + (v[[r, nt]] * (reservoir.storage.max - reservoir.storage.min)

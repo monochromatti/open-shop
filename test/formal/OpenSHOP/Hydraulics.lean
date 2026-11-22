@@ -81,6 +81,36 @@ theorem tunnel_dissipation (resistance q dh : ℝ) (hr : 0 ≤ resistance)
       _ = resistance * |q| ^ 3 := by rw [hsq]; ring
   exact ⟨heq, heq ▸ mul_nonneg hr (pow_nonneg (abs_nonneg q) 3)⟩
 
+/-- The work balance for a pump is the reciprocal-efficiency formula on its
+physical domain. The balance itself needs no division at numerical trial points. -/
+theorem pumping_work_balance (work power efficiency motor : ℝ)
+    (he : 0 < efficiency) (hm : 0 < motor) :
+    work = power * efficiency * motor ↔
+      power = work / (efficiency * motor) := by
+  have hn : efficiency * motor ≠ 0 := ne_of_gt (mul_pos he hm)
+  constructor
+  · intro h
+    apply (eq_div_iff hn).mpr
+    nlinarith [h]
+  · intro h
+    have hmul := (eq_div_iff hn).mp h
+    nlinarith
+
+/-- On a linear electrical-efficiency segment, the work equation has this
+unique root when the denominator is positive. -/
+theorem electrical_conversion_root (shaft intercept slope power : ℝ)
+    (hd : 0 < 1 - shaft * slope) :
+    power = shaft * (intercept + slope * power) ↔
+      power = shaft * intercept / (1 - shaft * slope) := by
+  have hn : 1 - shaft * slope ≠ 0 := ne_of_gt hd
+  constructor
+  · intro h
+    apply (eq_div_iff hn).mpr
+    nlinarith [h]
+  · intro h
+    have hmul := (eq_div_iff hn).mp h
+    nlinarith
+
 /-- A monotone delta-head curve through zero cannot send water uphill. -/
 theorem channel_dissipation (flow : ℝ → ℝ) (monotone : Monotone flow)
     (atZero : flow 0 = 0) (dh : ℝ) : 0 ≤ dh * flow dh := by
