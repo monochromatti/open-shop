@@ -38,7 +38,8 @@ if schedule.validation.feasible {
 
 `crates/openshop/examples/reservoir.rs` constructs and solves a case entirely
 in Rust. The `schedule` example reads JSON at the application boundary; JSON
-parsing is not a library dependency. Serialization derives on data structs do
+parsing stays in the example; `serde_json` is only a direct development dependency
+of OpenSHOP. Serialization derives on data structs do
 not perform I/O. The Rust API is a primary interface, not an implementation
 detail behind a Python client. Python development is out of scope.
 
