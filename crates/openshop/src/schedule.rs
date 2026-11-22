@@ -753,6 +753,7 @@ mod tests {
                 capacity: 20.,
                 loss_factor: 0.1,
                 opening: 1.,
+                gate_loss_factor_curve: None,
             },
             Tunnel {
                 name: "Parallel".into(),
@@ -761,6 +762,7 @@ mod tests {
                 capacity: 20.,
                 loss_factor: 0.4,
                 opening: 1.,
+                gate_loss_factor_curve: None,
             },
         ];
         for backend in [Backend::Ipopt, Backend::Pounce] {
@@ -1066,6 +1068,122 @@ mod tests {
     }
 
     #[test]
+    fn partial_tunnel_openings_and_gate_resistance_match_hand_calculated_flows() {
+        let mut case = reservoir_case();
+        case.commitment.insert("Unit".into(), vec![false]);
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 120.,
+            slope: 0.,
+            curvature: 0.,
+        };
+        case.system.tunnels = vec![crate::Tunnel {
+            name: "Gate".into(),
+            source: "Lake".into(),
+            target: "Sea".into(),
+            capacity: 50.,
+            loss_factor: 1.,
+            opening: 0.25,
+            gate_loss_factor_curve: None,
+        }];
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            for tabulated in [false, true] {
+                case.system.tunnels[0].gate_loss_factor_curve = if tabulated {
+                    Some(crate::TableCurve::new(vec![0., 0.25, 1.], vec![30., 15., 0.]).unwrap())
+                } else {
+                    None
+                };
+                for reverse in [false, true] {
+                    let tunnel = &mut case.system.tunnels[0];
+                    tunnel.source = if reverse { "Sea" } else { "Lake" }.into();
+                    tunnel.target = if reverse { "Lake" } else { "Sea" }.into();
+                    let result =
+                        solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+                    assert!(
+                        result.validation.feasible,
+                        "{backend:?}: {:?}",
+                        result.validation
+                    );
+                    // No table: .25 * 100 = Q². Table: 100 = (1 + 15) Q².
+                    let magnitude = if tabulated { 2.5 } else { 5. };
+                    let signed = if reverse { -magnitude } else { magnitude };
+                    assert!((result.tunnel_flow[0][0] - signed).abs() < 1e-6);
+                    assert!((result.storage[0][1] - (3e6 - 3600. * magnitude)).abs() < 0.01);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_small_opening_does_not_hide_pressure_errors_in_validation() {
+        let mut case = reservoir_case();
+        case.commitment.insert("Unit".into(), vec![false]);
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 120.,
+            slope: 0.,
+            curvature: 0.,
+        };
+        case.system.tunnels = vec![crate::Tunnel {
+            name: "Gate".into(),
+            source: "Lake".into(),
+            target: "Sea".into(),
+            capacity: 50.,
+            loss_factor: 1.,
+            opening: 1e-4,
+            gate_loss_factor_curve: None,
+        }];
+        let problem = SchedulingProblem::new(&case).unwrap();
+        let mut result = problem.solve(&SolveOptions::default()).unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        result.tunnel_flow[0][0] += 1e-5;
+        result.storage[0][1] -= 3600. * 1e-5;
+        let checked = crate::trajectory::evaluate(
+            &case,
+            &problem.topology,
+            &problem.routing,
+            result,
+            vec![],
+            1e-7,
+        );
+        assert!(!checked.validation.feasible);
+        assert!(checked.validation.water_balance < 1e-8);
+        assert!(checked.validation.pressure_balance > 0.01);
+    }
+
+    #[test]
+    fn closed_gates_ignore_the_pressure_law_even_with_zero_added_resistance() {
+        let mut case = reservoir_case();
+        case.system.tunnels = vec![crate::Tunnel {
+            name: "Closed".into(),
+            source: "Lake".into(),
+            target: "Sea".into(),
+            capacity: 0.,
+            loss_factor: 1.,
+            opening: 0.,
+            gate_loss_factor_curve: Some(
+                crate::TableCurve::new(vec![0., 1.], vec![0., 0.]).unwrap(),
+            ),
+        }];
+        let result = solve(&case, &SolveOptions::default()).unwrap();
+        assert!(result.validation.feasible);
+        assert_eq!(result.tunnel_flow[0][0], 0.);
+        assert!(result.head[0][0] - result.head[1][0] > 70.);
+        case.system.tunnels[0].gate_loss_factor_curve =
+            Some(crate::TableCurve::new(vec![0., 1.], vec![-1., 0.]).unwrap());
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+        case.system.tunnels[0].gate_loss_factor_curve =
+            Some(crate::TableCurve::new(vec![0.1, 1.], vec![2., 0.]).unwrap());
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+    }
+
+    #[test]
     fn a_closed_tunnel_disconnects_pressure_without_equating_heads() {
         let mut case = reservoir_case();
         case.system.tunnels.push(crate::Tunnel {
@@ -1075,6 +1193,7 @@ mod tests {
             capacity: 50.,
             loss_factor: 0.01,
             opening: 0.,
+            gate_loss_factor_curve: None,
         });
         let result = solve(&case, &SolveOptions::default()).unwrap();
         assert!(result.validation.feasible);

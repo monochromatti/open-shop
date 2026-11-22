@@ -103,7 +103,19 @@
         "target": "Intake",
         "capacity": 35.0,
         "loss_factor": 0.015,
-        "opening": 1.0
+        "opening": 0.5,
+        "gate_loss_factor_curve": {
+          "x": [
+            0.0,
+            0.5,
+            1.0
+          ],
+          "y": [
+            0.2,
+            0.03,
+            0.0
+          ]
+        }
       },
       {
         "name": "Parallel",

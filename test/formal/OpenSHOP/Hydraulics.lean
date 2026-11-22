@@ -1,7 +1,7 @@
 import Mathlib
 
 /-! Real-arithmetic identities for the declared discrete hydraulic model.
-These theorems do not verify the Julia program or floating-point evaluation. -/
+These theorems do not verify program implementations or floating-point evaluation. -/
 namespace OpenSHOP
 
 /-- Every signed internal edge credits exactly the water it withdraws. -/
@@ -33,6 +33,40 @@ theorem junction_allocation {B : Type*} [Fintype B]
     (share localWater : B → ℝ) (upstream : ℝ) (shares : ∑ b, share b = 1) :
     ∑ b, (localWater b + share b * upstream) = (∑ b, localWater b) + upstream := by
   rw [Finset.sum_add_distrib, ← Finset.sum_mul, shares, one_mul]
+
+/-- A positive opening multiplies head, equivalently dividing the resistance.
+The closed-gate case is deliberately excluded. -/
+theorem tunnel_opening_head_form (opening resistance dh q : ℝ)
+    (ho : 0 < opening) :
+    opening * dh - resistance * q * |q| = 0 ↔
+      dh = (resistance / opening) * q * |q| := by
+  have hn : opening ≠ 0 := ne_of_gt ho
+  constructor
+  · intro h
+    calc
+      dh = (resistance * q * |q|) / opening :=
+        (eq_div_iff hn).mpr (by nlinarith [h])
+      _ = (resistance / opening) * q * |q| := by ring
+  · intro h
+    have hdiv : dh = (resistance * q * |q|) / opening := by
+      rw [h]
+      ring
+    have hmul := (eq_div_iff hn).mp hdiv
+    nlinarith
+
+/-- Dividing the scaled pressure residual by a positive head multiplier reports
+head error in metres, without hiding errors at small openings. -/
+theorem tunnel_pressure_error (opening resistance dh q : ℝ)
+    (ho : 0 < opening) :
+    abs (opening * dh - resistance * q * |q|) / opening =
+      abs (dh - (resistance / opening) * q * |q|) := by
+  calc
+    abs (opening * dh - resistance * q * |q|) / opening =
+        abs ((opening * dh - resistance * q * |q|) / opening) := by
+      rw [abs_div, abs_of_pos ho]
+    _ = abs (dh - (resistance / opening) * q * |q|) := by
+      congr 1
+      field_simp [ne_of_gt ho]
 
 /-- A passive open tunnel dissipates hydraulic work for either flow direction.
 A closed gate instead imposes q=0 and need not impose equality of heads. -/

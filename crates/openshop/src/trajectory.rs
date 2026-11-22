@@ -290,15 +290,19 @@ fn validate(
         }
     }
     for (e, tunnel) in case.system.tunnels.iter().enumerate() {
+        let law = &topology.tunnel_laws[e];
         for t in 0..case.prices.len() {
             let (a, b) = topology.tunnel_nodes[e];
             let q = schedule.tunnel_flow[e][t];
             let error = if tunnel.opening == 0. {
-                q.abs()
+                // Flow is checked by its zero-capacity bound below; closed gates
+                // impose no pressure law.
+                0.
             } else {
-                ((schedule.head[a][t] - schedule.head[b][t]) * tunnel.opening.powi(2)
-                    - tunnel.loss_factor * q * q.abs())
+                ((schedule.head[a][t] - schedule.head[b][t]) * law.head_factor
+                    - law.resistance * q * q.abs())
                 .abs()
+                    / law.head_factor
             };
             result.pressure_balance = result.pressure_balance.max(error);
             let capacity = if tunnel.opening == 0. {

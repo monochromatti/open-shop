@@ -277,7 +277,8 @@ pub(crate) fn build_dispatch(
     for (e, tunnel) in s.tunnels.iter().enumerate() {
         let (source, target) = topology.tunnel_nodes[e];
         let dh = initial_head[source] - initial_head[target];
-        let guess = dh.signum() * (dh.abs() / tunnel.loss_factor).sqrt() * tunnel.opening;
+        let law = &topology.tunnel_laws[e];
+        let guess = dh.signum() * (law.head_factor * dh.abs() / law.resistance).sqrt();
         for t in 0..nt {
             let capacity = if tunnel.opening == 0. {
                 0.
@@ -295,8 +296,8 @@ pub(crate) fn build_dispatch(
             .map_err(|e| Error::Model(e.to_string()))?;
             if tunnel.opening > 0. {
                 let flow = qt[[e, t]] * flow_scale;
-                let pressure = (head[t][source] - head[t][target]) * tunnel.opening.powi(2)
-                    - flow * flow.abs() * tunnel.loss_factor;
+                let pressure = (head[t][source] - head[t][target]) * law.head_factor
+                    - flow * flow.abs() * law.resistance;
                 constraint!(
                     m,
                     name = format!("pressure_loss[{e},{t}]"),

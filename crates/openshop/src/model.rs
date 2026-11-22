@@ -187,7 +187,11 @@ pub struct Tunnel {
     pub target: String,
     pub capacity: f64,
     pub loss_factor: f64,
+    /// Head multiplier in [0,1] when no gate-loss curve is supplied.
     pub opening: f64,
+    /// Additional signed-flow resistance as a function of gate position.
+    #[serde(default)]
+    pub gate_loss_factor_curve: Option<crate::TableCurve>,
 }
 
 /// Turbine hydraulic efficiency, before electrical conversion.
@@ -374,10 +378,16 @@ pub struct ScheduleCase {
     pub commitment: BTreeMap<String, Vec<bool>>,
 }
 
+pub(crate) struct TunnelLaw {
+    pub head_factor: f64,
+    pub resistance: f64,
+}
+
 pub(crate) struct Topology {
     pub unit_nodes: Vec<(usize, usize)>,
     pub incidence: Vec<Vec<(usize, f64)>>,
     pub tunnel_nodes: Vec<(usize, usize)>,
+    pub tunnel_laws: Vec<TunnelLaw>,
     pub tunnel_incidence: Vec<Vec<(usize, f64)>>,
     pub unit_outfalls: Vec<Option<usize>>,
     pub unit_commitment: Vec<Vec<crate::operation::CommitmentInequality>>,
@@ -520,13 +530,14 @@ impl ScheduleCase {
             }
         }
         let mut tunnel_nodes = Vec::new();
+        let mut tunnel_laws = Vec::new();
         let mut tunnel_incidence = vec![Vec::new(); incidence.len()];
         let mut tunnel_names = HashMap::new();
         for (i, tunnel) in s.tunnels.iter().enumerate() {
             if tunnel.name.is_empty()
                 || tunnel_names.insert(tunnel.name.as_str(), i).is_some()
                 || !tunnel.capacity.is_finite()
-                || tunnel.capacity <= 0.
+                || tunnel.capacity < 0.
                 || !tunnel.loss_factor.is_finite()
                 || tunnel.loss_factor <= 0.
                 || !tunnel.opening.is_finite()
@@ -537,6 +548,33 @@ impl ScheduleCase {
                     tunnel.name
                 )));
             }
+            if let Some(curve) = &tunnel.gate_loss_factor_curve
+                && (curve.coordinates()[0] > 0.
+                    || *curve.coordinates().last().unwrap() < 1.
+                    || curve.values().iter().any(|v| *v < 0.))
+            {
+                return Err(Error::Input(format!(
+                    "{}: gate resistance table must cover [0,1] and be nonnegative",
+                    tunnel.name
+                )));
+            }
+            let (head_factor, resistance) = if tunnel.opening == 0. {
+                (0., tunnel.loss_factor)
+            } else if let Some(curve) = &tunnel.gate_loss_factor_curve {
+                (1., tunnel.loss_factor + curve.value(tunnel.opening)?)
+            } else {
+                (tunnel.opening, tunnel.loss_factor)
+            };
+            if !resistance.is_finite() {
+                return Err(Error::Input(format!(
+                    "{}: nonfinite total tunnel resistance",
+                    tunnel.name
+                )));
+            }
+            tunnel_laws.push(TunnelLaw {
+                head_factor,
+                resistance,
+            });
             let source = *nodes
                 .get(tunnel.source.as_str())
                 .ok_or_else(|| Error::Input(format!("{}: unknown source", tunnel.name)))?;
@@ -575,6 +613,7 @@ impl ScheduleCase {
             unit_nodes,
             incidence,
             tunnel_nodes,
+            tunnel_laws,
             tunnel_incidence,
             unit_outfalls,
             unit_commitment,

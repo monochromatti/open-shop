@@ -191,8 +191,15 @@ or the stated on-state discharge, head and power ranges. Startup costs and
 terminal water values enter the revenue objective.
 
 Tunnel flow is signed. Open tunnels satisfy
-`(H_source − H_target) opening² = loss_factor Q |Q|`.
-A closed tunnel has zero flow and imposes no pressure relation. Pressure
+`(H_source − H_target) opening = loss_factor Q |Q|` without a gate-loss curve.
+`opening` is a head multiplier in this empirical law; it is not an area fraction.
+With `gate_loss_factor_curve`, the law is
+`H_source − H_target = (loss_factor + G(opening)) Q |Q|`.
+The supplied table adds resistance in s²/m⁵, must cover positions [0,1], and must
+have nonnegative finite values. Preparation evaluates the prescribed position
+once; no gate-table lookup occurs in nonlinear callbacks.
+Pressure validation reports the unscaled head error in metres, so a small opening
+cannot hide a large hydraulic error. A closed tunnel has zero flow and imposes no pressure relation. Pressure
 junctions conserve water without storage. Junction heads are independent
 unknowns. Tabulated reservoir mean heads and turbine net heads/powers have local
 constitutive equations; polynomial reservoir heads and quadratic turbine powers
@@ -229,7 +236,7 @@ optimality provided by the complete Julia package. A feasible result alone says
 nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
-Still to be implemented are gate curves, flow-dependent distributed
+Still to be implemented are the remaining hydraulic/electrical curves, flow-dependent distributed
 river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
 positions, plant-level limits, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,
