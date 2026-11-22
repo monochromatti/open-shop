@@ -11,7 +11,7 @@ its algebraic formulation and solution method. The editable source is
 
 A [Rust implementation](docs/rust.md) is under development alongside the Julia
 package. Its first connected optimization includes pressure loops, unit commitment,
-fixed-delay river splits and merges, and a Python interface. It does not yet cover
+fixed-delay river splits and merges, with a native Rust API. It does not yet cover
 the complete model described below or in the paper. Julia remains the reference
 until the replacement and comparisons are complete.
 

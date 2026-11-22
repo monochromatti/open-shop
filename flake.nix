@@ -24,16 +24,11 @@
     in {
     paper = pkgs.mkShell { packages = [ pkgs.typst pkgs.gnumake ]; };
     rust = let r = rust system; in r.pkgs.mkShell (r.native // {
-      packages = [ r.toolchain r.pkgs.cargo-nextest r.pkgs.maturin
-        (r.pkgs.python3.withPackages (ps: [ ps.numpy ps.pytest ps.pip ])) ]
-        ++ r.pkgs.lib.optionals r.pkgs.stdenv.hostPlatform.isLinux [ r.pkgs.patchelf ];
+      packages = [ r.toolchain r.pkgs.cargo-nextest ];
       RAYON_NUM_THREADS = "1";
       OMP_NUM_THREADS = "1";
       OPENBLAS_NUM_THREADS = "1";
       RUSTUP_TOOLCHAIN = "${r.toolchain}";
-    } // r.pkgs.lib.optionalAttrs r.pkgs.stdenv.hostPlatform.isDarwin {
-      # Maturin follows transitive solver dependencies when repairing wheels.
-      DYLD_LIBRARY_PATH = r.pkgs.lib.makeLibraryPath [ r.pkgs.gfortran.cc.lib ];
     });
     default = pkgs.mkShell {
       packages = [ pkgs.julia-bin (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];

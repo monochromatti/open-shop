@@ -2,9 +2,9 @@ name: Rust
 on:
   push:
     branches: [main]
-    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'python/**', 'pyproject.toml', 'examples/rust/**', '.github/workflows/rust.yml']
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'examples/rust/**', '.github/workflows/rust.yml']
   pull_request:
-    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'python/**', 'pyproject.toml', 'examples/rust/**', '.github/workflows/rust.yml']
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'examples/rust/**', '.github/workflows/rust.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,11 +33,7 @@ jobs:
         run: nix develop .#rust -c cargo clippy --workspace --all-targets -- -D warnings
       - name: Physical and derivative tests
         run: nix develop .#rust -c cargo nextest run -p openshop
+      - name: Native Rust API
+        run: nix develop .#rust -c cargo run -p openshop --example reservoir
       - name: Connected watercourse
         run: nix develop .#rust -c cargo run -p openshop --example schedule -- examples/rust/cascade.json 10 > "$RUNNER_TEMP/schedule.json"
-      - name: Build Python wheel
-        run: nix develop .#rust -c maturin build --profile dev --interpreter python3 --auditwheel repair --out target/wheels
-      - name: Install Python wheel
-        run: nix develop .#rust -c python3 -m pip install --no-deps --target target/python --upgrade target/wheels/openshop-*.whl
-      - name: Python behavior tests
-        run: nix develop .#rust -c env -u DYLD_LIBRARY_PATH -u LD_LIBRARY_PATH PYTHONPATH=target/python python3 -m pytest -q python/tests

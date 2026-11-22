@@ -1,6 +1,6 @@
 //! Optimize a JSON watercourse and write its schedule to standard output.
 
-use openshop::{ScheduleCase, SolveOptions, solve};
+use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
@@ -13,13 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .transpose()?
         .unwrap_or(10.);
     let case: ScheduleCase = serde_json::from_reader(std::fs::File::open(path)?)?;
-    let schedule = solve(
-        &case,
-        &SolveOptions {
-            time_limit: seconds,
-            ..Default::default()
-        },
-    )?;
+    let schedule = SchedulingProblem::new(&case)?.solve(&SolveOptions {
+        time_limit: seconds,
+        ..Default::default()
+    })?;
     println!("{}", serde_json::to_string_pretty(&schedule)?);
     if !schedule.validation.feasible {
         return Err("no physically feasible schedule was found".into());

@@ -5,17 +5,21 @@
 //! internally; returned schedules use the input units.
 
 mod commitment;
+mod dispatch;
 mod model;
 mod native_ipopt;
 mod nlp;
+mod physics;
 mod river;
 mod schedule;
+mod trajectory;
 
 pub use model::{
     Boundary, Bounds, Efficiency, HydroSystem, Junction, Reservoir, River, ScheduleCase,
     StorageCurve, Tunnel, Unit,
 };
-pub use schedule::{Schedule, Validation, solve};
+pub use schedule::SchedulingProblem;
+pub use trajectory::{Schedule, Validation};
 
 use serde::{Deserialize, Serialize};
 

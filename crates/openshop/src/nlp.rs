@@ -31,6 +31,17 @@ pub(crate) struct NlpSolution {
     pub iterations: usize,
 }
 
+/// Convert a prepared sparse linear form at the equation-assembly boundary.
+pub(crate) fn linear_expression<'a>(
+    form: &crate::river::LinearForm,
+    columns: &[oximo::expr::Expr<'a>],
+    zero: oximo::expr::Expr<'a>,
+) -> oximo::expr::Expr<'a> {
+    form.coefficients
+        .iter()
+        .fold(zero + form.constant, |sum, (&i, &a)| sum + columns[i] * a)
+}
+
 pub(crate) fn prepare(model: &Model) -> Result<NlTnlp, Error> {
     let variables = model.resolved_variables();
     if variables.iter().any(|v| v.domain != Domain::Real) {

@@ -1,6 +1,6 @@
 # Rust development
 
-The Rust library and Python extension are being developed alongside the Julia
+The Rust library is being developed alongside the Julia
 package. They use the same physical units except that Rust storage and river
 inventory are in **m³**, rather than Julia's Mm³. The JSON schemas differ.
 The Rust code does not yet implement the complete model in the paper.
@@ -17,9 +17,30 @@ The example has two headwater stations, a pressure loop, rivers that merge and
 split, and a downstream station with a 1000 m³ forebay. The final argument is the
 optimization time allowance in seconds. Output is JSON in physical units.
 
-For Rust applications, deserialize a `ScheduleCase` or construct its public input
-structs, then call `openshop::solve(&case, &options)`. Collection order determines
-result axes. Names identify connections; input objects are never mutated.
+Construct a `ScheduleCase` with native Rust structs and prepare a
+`SchedulingProblem::new(&case)`. Preparation validates data and resolves network
+incidence and transport once. Call `problem.solve(&options)` to optimize; the
+prepared problem can be reused for another solve. It borrows immutable inputs,
+so Rust prevents the inputs changing while its numerical structure is in use.
+Collection order determines result axes. Names identify connections.
+
+```rust,no_run
+use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};
+fn optimize(case: &ScheduleCase) -> Result<(), openshop::Error> {
+let problem = SchedulingProblem::new(case)?;
+let schedule = problem.solve(&SolveOptions::default())?;
+if schedule.validation.feasible {
+    println!("Revenue: {}", schedule.objective);
+}
+    Ok(())
+}
+```
+
+`crates/openshop/examples/reservoir.rs` constructs and solves a case entirely
+in Rust. The `schedule` example reads JSON at the application boundary; JSON
+parsing is not a library dependency. Serialization derives on data structs do
+not perform I/O. The Rust API is a primary interface, not an implementation
+detail behind a Python client. Python development is out of scope.
 
 The development shell pins Rust, rust-analyzer, Clippy, nextest, Ipopt and SCIP.
 Cargo uses incremental compilation and modest optimization in development.
@@ -27,38 +48,16 @@ Cargo uses incremental compilation and modest optimization in development.
 which caches dependencies independently of the package source. Native solver
 libraries come from Nix. No nightly Rust compiler is needed.
 
-## Python
+## Numerical structure
 
-Build a wheel containing the extension and native solver libraries:
-
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-maturin build --profile dev --interpreter .venv/bin/python --auditwheel repair --out target/wheels
-python -m pip install target/wheels/openshop-*.whl
-python -m pip install pytest
-python -m pytest python/tests
-```
-
-The wheel targets the Python version and operating system used to build it.
-These are local development wheels, not published cross-platform releases.
-Linux wheel repair also requires `patchelf`, included in the Nix shell.
-
-```python
-import json
-from openshop import solve
-
-with open("examples/rust/cascade.json") as source:
-    case = json.load(source)
-result = solve(case, time_limit=10.0)
-if result["validation"]["feasible"]:
-    print(result["objective"], result["unit_power"])
-```
-
-The extension copies Python inputs into owned Rust data and releases the Python
-interpreter lock during optimization. Invalid input raises `ValueError`; model
-construction and solver-interface failures raise `RuntimeError`. A solve that
-returns an unfinished or infeasible point sets `validation.feasible` to false.
+`physics` contains scalar-generic constitutive equations used by both ordinary
+evaluation and automatic derivative expressions. `model` defines physical inputs
+and validates their domains. `river` prepares
+conservative transport maps. `dispatch` assembles the nonlinear equations, while
+`trajectory` evaluates physical states, revenue and residuals without invoking a
+solver. `schedule` coordinates discrete proposals and nonlinear solves. Native
+solver ownership, callbacks and mutable workspaces stay in their adapters.
+File access and JSON conversion belong to the executable examples.
 
 ## Equations and current coverage
 

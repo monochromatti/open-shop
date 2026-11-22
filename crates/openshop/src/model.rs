@@ -49,9 +49,7 @@ impl StorageCurve {
     /// Exact integral mean, including the equal-volume limit. This head makes
     /// the storage step conserve potential energy without subtracting cubics.
     pub fn mean_level(self, before: f64, after: f64) -> f64 {
-        let a = before - self.reference_volume;
-        let b = after - self.reference_volume;
-        self.elevation + self.slope * (a + b) / 2.0 + self.curvature * (a * a + a * b + b * b) / 3.0
+        crate::physics::mean_level(&self, before, after)
     }
     /// Integral of level from reference_volume, in m⁴.
     pub fn potential(self, volume: f64) -> f64 {
@@ -125,9 +123,7 @@ impl Efficiency {
         }
     }
     pub fn value(self, flow: f64, head: f64) -> f64 {
-        self.peak
-            - self.flow_curvature * (flow - self.best_flow).powi(2)
-            - self.head_curvature * (head - self.best_head).powi(2)
+        crate::physics::efficiency(&self, flow, head)
     }
 }
 
@@ -158,7 +154,7 @@ pub struct Unit {
 impl Unit {
     /// MW, with water density 1000 kg/m³ and gravity 9.81 m/s².
     pub fn generation(&self, flow: f64, head: f64) -> f64 {
-        0.00981 * flow * head * self.efficiency.value(flow, head)
+        crate::physics::generation(flow, head, self.efficiency.value(flow, head))
     }
 }
 

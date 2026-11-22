@@ -54,7 +54,7 @@ pub(crate) fn propose(
     }
     for (i, series) in routing.releases.iter().enumerate() {
         for rate in &series.rates {
-            let release = rate.expression(&river_columns, zero());
+            let release = crate::nlp::linear_expression(rate, &river_columns, zero());
             constraint!(m, release / flow_scale <= s.rivers[i].capacity / flow_scale);
         }
     }
@@ -84,7 +84,12 @@ pub(crate) fn propose(
             for &(e, sign) in &topology.tunnel_incidence[r] {
                 net = net + qt[[e, t]] * (sign * flow_scale);
             }
-            net = net + routing.reservoir_net[r][t].expression(&river_columns, zero());
+            net = net
+                + crate::nlp::linear_expression(
+                    &routing.reservoir_net[r][t],
+                    &river_columns,
+                    zero(),
+                );
             constraint!(
                 m,
                 (v[[r, t + 1]] - v[[r, t]]) * (range / (3600. * (case.grid[t + 1] - case.grid[t])))
@@ -96,7 +101,7 @@ pub(crate) fn propose(
                 if *fraction > 0. && *fraction < 1. {
                     let volume = v[[r, t]] * (1. - fraction)
                         + v[[r, t + 1]] * *fraction
-                        + correction.expression(&river_columns, zero()) / range;
+                        + crate::nlp::linear_expression(correction, &river_columns, zero()) / range;
                     constraint!(m, volume >= 0.);
                     constraint!(m, volume <= 1.);
                 }
@@ -189,7 +194,8 @@ pub(crate) fn propose(
     }
     for (r, river) in s.rivers.iter().enumerate() {
         revenue = revenue
-            + routing.inventory[r][nt].expression(&river_columns, zero()) * river.water_value;
+            + crate::nlp::linear_expression(&routing.inventory[r][nt], &river_columns, zero())
+                * river.water_value;
     }
     objective!(m, Max, revenue / 1000.);
     let options = ScipOptions::default()

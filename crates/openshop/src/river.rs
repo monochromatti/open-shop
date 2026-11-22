@@ -28,15 +28,6 @@ impl LinearForm {
                 .map(|(&i, &a)| a * x[i])
                 .sum::<f64>()
     }
-    pub fn expression<'a>(
-        &self,
-        columns: &[oximo::expr::Expr<'a>],
-        zero: oximo::expr::Expr<'a>,
-    ) -> oximo::expr::Expr<'a> {
-        self.coefficients
-            .iter()
-            .fold(zero + self.constant, |sum, (&i, &a)| sum + columns[i] * a)
-    }
 }
 
 #[derive(Clone, Debug)]
