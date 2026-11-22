@@ -7,6 +7,7 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
+use crate::constitutive::{Nlp, StorageHeadEquation};
 use oximo::{
     Model,
     core::{Domain, ObjectiveSense},
@@ -42,7 +43,7 @@ pub(crate) fn linear_expression<'a>(
         .fold(zero + form.constant, |sum, (&i, &a)| sum + columns[i] * a)
 }
 
-pub(crate) fn prepare(model: &Model) -> Result<NlTnlp, Error> {
+pub(crate) fn prepare(model: &Model, laws: Vec<StorageHeadEquation>) -> Result<Nlp, Error> {
     let variables = model.resolved_variables();
     if variables.iter().any(|v| v.domain != Domain::Real) {
         return Err(Error::Model(
@@ -97,7 +98,7 @@ pub(crate) fn prepare(model: &Model) -> Result<NlTnlp, Error> {
         problem.obj_nonlinear = NlBody::Tree(Expr::Const(0.0));
         problem.obj_constant = linear.constant;
     }
-    NlTnlp::try_new(problem).map_err(Error::Model)
+    Nlp::new(NlTnlp::try_new(problem).map_err(Error::Model)?, laws)
 }
 
 fn lower(arena: &ExprArena, id: ExprId, memo: &mut [Option<Arc<Expr>>]) -> Result<Expr, Error> {
@@ -190,7 +191,7 @@ fn lower(arena: &ExprArena, id: ExprId, memo: &mut [Option<Arc<Expr>>]) -> Resul
 }
 
 pub(crate) fn solve(
-    mut problem: NlTnlp,
+    mut problem: Nlp,
     options: &SolveOptions,
     backend: Backend,
 ) -> Result<NlpSolution, Error> {
@@ -249,7 +250,7 @@ mod tests {
         constraint!(m, pressure, q * q.abs() + h.square() <= 5.0);
         constraint!(m, conservation, 2.0 * q - h + 3.0 == 0.0);
         objective!(m, Min, q.square() * h + q.exp());
-        let mut evaluator = prepare(&m).unwrap();
+        let mut evaluator = prepare(&m, Vec::new()).unwrap();
         let info = evaluator.get_nlp_info().unwrap();
         let mut rows = vec![0; info.nnz_jac_g as usize];
         let mut cols = rows.clone();
@@ -330,7 +331,7 @@ mod tests {
                 .max(oximo::expr::Expr::constant(x.arena(), 0.))
                 .square()
         );
-        let mut evaluator = prepare(&m).unwrap();
+        let mut evaluator = prepare(&m, Vec::new()).unwrap();
         for (x, expected_value, expected_gradient) in [(0.5, 0., 0.), (2., 1., 2.), (0.25, 0., 0.)]
         {
             assert!((evaluator.eval_f(&[x], true).unwrap() - expected_value).abs() < 1e-12);

@@ -2,7 +2,7 @@
 //! Scalar arithmetic permits ordinary values and automatic derivative expressions.
 //! There is no solver state, graph preparation or I/O in these functions.
 
-use crate::{Efficiency, StorageCurve};
+use crate::Efficiency;
 use std::ops::{Add, Mul, Sub};
 
 pub(crate) trait Scalar:
@@ -24,12 +24,17 @@ impl<T> Scalar for T where
 {
 }
 
-pub(crate) fn mean_level<T: Scalar>(curve: &StorageCurve, before: T, after: T) -> T {
-    let a = before - curve.reference_volume;
-    let b = after - curve.reference_volume;
-    (a + b) * (curve.slope / 2.)
-        + (a * a + a * b + b * b) * (curve.curvature / 3.)
-        + curve.elevation
+pub(crate) fn polynomial_mean_level<T: Scalar>(
+    reference_volume: f64,
+    elevation: f64,
+    slope: f64,
+    curvature: f64,
+    before: T,
+    after: T,
+) -> T {
+    let a = before - reference_volume;
+    let b = after - reference_volume;
+    (a + b) * (slope / 2.) + (a * a + a * b + b * b) * (curvature / 3.) + elevation
 }
 
 pub(crate) fn efficiency<T: Scalar>(curve: &Efficiency, flow: T, head: T) -> T {

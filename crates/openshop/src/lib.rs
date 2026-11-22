@@ -5,6 +5,8 @@
 //! internally; returned schedules use the input units.
 
 mod commitment;
+mod constitutive;
+mod curve;
 mod dispatch;
 mod model;
 mod native_ipopt;
@@ -15,6 +17,7 @@ mod river;
 mod schedule;
 mod trajectory;
 
+pub use curve::TableCurve;
 pub use model::{
     Boundary, Bounds, Efficiency, HydroSystem, Junction, Reservoir, River, ScheduleCase,
     StorageCurve, Tunnel, Unit,

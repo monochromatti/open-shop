@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Lake".into(),
             storage: Bounds::new(1e6, 4e6),
             initial_storage: 3e6,
-            level: StorageCurve {
+            level: StorageCurve::Polynomial {
                 reference_volume: 0.,
                 elevation: 40.,
                 slope: 20e-6,

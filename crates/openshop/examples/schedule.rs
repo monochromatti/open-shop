@@ -4,15 +4,17 @@ use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
-    let path = arguments
-        .next()
-        .unwrap_or_else(|| "examples/rust/cascade.json".into());
+    let path = arguments.next();
     let seconds = arguments
         .next()
         .map(|s| s.parse())
         .transpose()?
         .unwrap_or(10.);
-    let case: ScheduleCase = serde_json::from_reader(std::fs::File::open(path)?)?;
+    let case: ScheduleCase = if let Some(path) = path {
+        serde_json::from_reader(std::fs::File::open(path)?)?
+    } else {
+        serde_json::from_str(include_str!("data/measured_cascade.json"))?
+    };
     let schedule = SchedulingProblem::new(&case)?.solve(&SolveOptions {
         time_limit: seconds,
         ..Default::default()

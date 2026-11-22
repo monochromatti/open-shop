@@ -72,7 +72,8 @@ read like the physical equations and numerical methods it implements.
   `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check`.
   Exercise both native Rust construction and external-data examples.
 - If formal statements change, build `test/formal` with `lake build --wfail`
-  and run `lake env lean CheckAxioms.lean`. State proof assumptions and limits.
+  and run `lake env lean CheckAxioms.lean` (use `nix develop .#formal` if needed).
+  State proof assumptions and limits.
 - Update examples and documentation with public API changes. Keep the paper's
   terminology aligned with the implementation, while preserving its equations
   and the meaning of cited research.

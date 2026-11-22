@@ -8,7 +8,7 @@ use oximo::{
 };
 
 pub(crate) struct Dispatch {
-    pub problem: pounce_nl::nl_reader::NlTnlp,
+    pub problem: crate::constitutive::Nlp,
     pub storage: Vec<Vec<VarId>>,
     pub flow: Vec<Vec<VarId>>,
     pub tunnel_flow: Vec<Vec<VarId>>,
@@ -32,6 +32,24 @@ pub(crate) fn build_dispatch(
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
     variable!(m,hj[j in 0..s.junctions.len(),t in 0..nt]);
     variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]>=0.);
+    let mut curves = Vec::new();
+    let table_index: Vec<_> = s
+        .reservoirs
+        .iter()
+        .map(|r| {
+            if let crate::StorageCurve::Table(curve) = &r.level
+                && r.level.trial_level(r.storage.min) != r.level.trial_level(r.storage.max)
+            {
+                let index = curves.len();
+                curves.push(std::sync::Arc::new(curve.clone()));
+                Some(index)
+            } else {
+                None
+            }
+        })
+        .collect();
+    variable!(m,hm[k in 0..curves.len(),t in 0..nt]);
+    let mut laws = Vec::new();
     let flow_scale = s
         .units
         .iter()
@@ -135,7 +153,7 @@ pub(crate) fn build_dispatch(
         let mut values: Vec<Expr<'_>> = Vec::new();
         for (r, reservoir) in s.reservoirs.iter().enumerate() {
             let range = reservoir.storage.max - reservoir.storage.min;
-            let c = reservoir.level;
+            let c = &reservoir.level;
             let mut vertices = Vec::new();
             for (fraction, correction) in &routing.storage_shape[r][t] {
                 let volume = v[[r, t]] * (1. - fraction)
@@ -147,11 +165,79 @@ pub(crate) fn build_dispatch(
                 }
                 vertices.push((*fraction, volume * range + reservoir.storage.min));
             }
-            let mut level = zero();
-            for w in vertices.windows(2) {
-                let (a, b) = (w[0].1, w[1].1);
-                level = level + crate::physics::mean_level(&c, a, b) * (w[1].0 - w[0].0);
-            }
+            let level = match c {
+                crate::StorageCurve::Polynomial {
+                    reference_volume,
+                    elevation,
+                    slope,
+                    curvature,
+                } => {
+                    let mut level = zero();
+                    for w in vertices.windows(2) {
+                        level = level
+                            + crate::physics::polynomial_mean_level(
+                                *reference_volume,
+                                *elevation,
+                                *slope,
+                                *curvature,
+                                w[0].1,
+                                w[1].1,
+                            ) * (w[1].0 - w[0].0);
+                    }
+                    level
+                }
+                crate::StorageCurve::Table(_) => {
+                    let lo = c.trial_level(reservoir.storage.min);
+                    let hi = c.trial_level(reservoir.storage.max);
+                    if let Some(k) = table_index[r] {
+                        m.set_bounds(hm[[k, t]], lo / 100., hi / 100.)
+                            .map_err(|e| Error::Model(e.to_string()))?;
+                        let (before, after) = start.map_or(
+                            (reservoir.initial_storage, reservoir.initial_storage),
+                            |p| (p.storage[r][t], p.storage[r][t + 1]),
+                        );
+                        m.set_initial(
+                            hm[[k, t]],
+                            c.trial_mean_level(before, after).clamp(lo, hi) / 100.,
+                        )
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                        let path = {
+                            let arena = m.arena();
+                            vertices
+                                .iter()
+                                .map(|(fraction, volume)| {
+                                    let linear = oximo::expr::extract_linear(&arena, volume.id())
+                                        .ok_or_else(|| {
+                                        Error::Model("storage path must be affine".into())
+                                    })?;
+                                    Ok((
+                                        *fraction,
+                                        crate::river::LinearForm {
+                                            constant: linear.constant,
+                                            coefficients: linear
+                                                .coeffs
+                                                .iter()
+                                                .map(|(v, c)| (v.index(), *c))
+                                                .collect(),
+                                        },
+                                    ))
+                                })
+                                .collect::<Result<Vec<_>, Error>>()?
+                        };
+                        laws.push(crate::constitutive::StorageHeadEquation {
+                            curve: curves[k].clone(),
+                            vertices: path,
+                            head: hm[[k, t]].var_id().unwrap().index(),
+                            head_scale: 100.,
+                        });
+                        Expr::from(hm[[k, t]] * 100.)
+                    } else {
+                        // A nondecreasing curve with equal endpoint levels is constant
+                        // throughout the allowed storage range; no unknown head is needed.
+                        zero() + lo
+                    }
+                }
+            };
             values.push(level);
         }
         values.extend(
@@ -166,7 +252,7 @@ pub(crate) fn build_dispatch(
     let initial_head: Vec<_> = s
         .reservoirs
         .iter()
-        .map(|r| r.level.level(r.initial_storage))
+        .map(|r| r.level.trial_level(r.initial_storage))
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
@@ -296,7 +382,7 @@ pub(crate) fn build_dispatch(
         .map(|r| (0..nt).map(|t| qr[[r, t]].var_id().unwrap()).collect())
         .collect();
     Ok(Dispatch {
-        problem: nlp::prepare(&m)?,
+        problem: nlp::prepare(&m, laws)?,
         storage,
         flow,
         tunnel_flow,

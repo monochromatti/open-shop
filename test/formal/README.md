@@ -65,3 +65,10 @@ The head-span theorem assumes a continuous head path and a held unit conversion
 law. It proves a necessary condition, not that endpoint heads contain all
 interior heads. Polynomial root calculations, automatic derivatives and the
 complete observation builder are checked numerically, not verified by Lean.
+
+The Rust measured-curve implementation also uses the integral-mean and local
+Hessian pullback identities in `Integration.lean`. The curvature formulas assume
+a nonzero interval width and the stated first-partial identities; they do not
+assert differentiability at curve knots. The pullback assumes a supplied symmetric
+local Hessian and checks its affine-composition coefficients in real arithmetic.
+These statements do not verify Rust code, floating-point arithmetic or a solver.

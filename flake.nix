@@ -22,6 +22,7 @@
     devShells = nixpkgs.lib.genAttrs systems (system: let
       pkgs = import nixpkgs { inherit system; };
     in {
+    formal = pkgs.mkShell { packages = [ pkgs.elan ]; };
     paper = pkgs.mkShell { packages = [ pkgs.typst pkgs.gnumake ]; };
     rust = let r = rust system; in r.pkgs.mkShell (r.native // {
       packages = [ r.toolchain r.pkgs.cargo-nextest ];
@@ -41,7 +42,12 @@
     }; });
     packages = nixpkgs.lib.genAttrs systems (system: let
       r = rust system;
-      src = r.craneLib.cleanCargoSource ./.;
+      src = r.pkgs.lib.cleanSourceWith {
+        src = ./.;
+        filter = path: type: r.craneLib.filterCargoSources path type
+          || (r.pkgs.lib.hasSuffix ".json" path
+            && r.pkgs.lib.hasInfix "/crates/openshop/examples/data/" path);
+      };
       common = r.native // {
         inherit src;
         pname = "openshop";
@@ -49,7 +55,9 @@
         strictDeps = true;
         cargoExtraArgs = "-p openshop";
       };
-      cargoArtifacts = r.craneLib.buildDepsOnly common;
+      cargoArtifacts = r.craneLib.buildDepsOnly (common // {
+        src = r.craneLib.cleanCargoSource ./.;
+      });
     in {
       openshop = r.craneLib.buildPackage (common // { inherit cargoArtifacts; });
     });

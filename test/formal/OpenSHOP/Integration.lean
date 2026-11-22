@@ -131,4 +131,38 @@ theorem closed_network_energy {N E : Type*}
   rw [weighted_incidence]
   exact neg_nonpos.mpr (Finset.sum_nonneg fun e _ => passive e)
 
+/-- Chain-rule coefficients for composing a two-input constitutive function
+with affine storage paths. The supplied Hessian is a hypothesis; this does not
+assert differentiability at a measured curve's knots or verify floating point. -/
+theorem constitutive_hessian_pullback
+    (aa ab bb aj ak bj bk u v : ℝ) :
+    aa * (aj*u+ak*v)^2 + 2*ab*(aj*u+ak*v)*(bj*u+bk*v) + bb*(bj*u+bk*v)^2 =
+      (aa*aj^2+2*ab*aj*bj+bb*bj^2)*u^2 +
+      2*(aa*aj*ak+ab*(aj*bk+bj*ak)+bb*bj*bk)*u*v +
+      (aa*ak^2+2*ab*ak*bk+bb*bk^2)*v^2 := by ring
+
+/-- Differentiating the first integral-mean partial gives the implemented
+same-endpoint curvature, assuming its first-partial identity and nonzero width. -/
+theorem integral_mean_curvature_before (width mean head g slope : ℝ)
+    (hw : width ≠ 0) (hg : mean-head = g*width) :
+    ((g-slope)*width+(mean-head))/(width*width) = (2*g-slope)/width := by
+  rw [hg]
+  field_simp [hw]
+  ring
+
+/-- The analogous curvature at the other endpoint. -/
+theorem integral_mean_curvature_after (width mean head g slope : ℝ)
+    (hw : width ≠ 0) (hg : head-mean = g*width) :
+    ((slope-g)*width-(head-mean))/(width*width) = (slope-2*g)/width := by
+  rw [hg]
+  field_simp [hw]
+  ring
+
+/-- The mixed partial follows from the two first-partial identities. -/
+theorem integral_mean_curvature_mixed (width mean head ga gb : ℝ)
+    (hw : width ≠ 0) (hg : mean-head = ga*width) :
+    (gb*width-(mean-head))/(width*width) = (gb-ga)/width := by
+  rw [hg]
+  field_simp [hw]
+
 end OpenSHOP

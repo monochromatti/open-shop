@@ -10,7 +10,7 @@ The Rust code does not yet implement the complete model in the paper.
 ```sh
 nix develop .#rust
 cargo nextest run -p openshop
-cargo run -p openshop --example schedule -- examples/rust/cascade.json 10
+cargo run -p openshop --example schedule -- crates/openshop/examples/data/cascade.json 10
 ```
 
 The example has two headwater stations, a pressure loop, rivers that merge and
@@ -48,6 +48,45 @@ Cargo uses incremental compilation and modest optimization in development.
 which caches dependencies independently of the package source. Native solver
 libraries come from Nix. No nightly Rust compiler is needed.
 
+## Storage curves
+
+Use `StorageCurve::Polynomial { reference_volume, elevation, slope, curvature }`
+for an analytic relationship, or `StorageCurve::Table(TableCurve::new(x, y)?)`
+for measured storage/elevation pairs. Storage coordinates are m³ and elevations
+are metres. Tables retain the supplied knots and linear segments: there is no
+fitting or smoothing. Input data must be finite, ordered, nondecreasing in level,
+and cover the complete allowed reservoir volume range.
+
+`curve.level(volume)?`, `curve.mean_level(before, after)?` and
+`curve.potential(volume)?` evaluate the physical relationship. Table lookups reject
+coordinates outside the measured domain. The integral mean is computed cell by
+cell using weighted slopes; it does not divide by a zero volume change or subtract
+nearby cubic potentials. The potential primitive is in m⁴; multiplying its change
+by water density and gravity gives the potential-energy change in joules.
+
+The nonlinear model uses one mean-head equation per interval for each nonconstant
+measured curve. The equation integrates every segment of the reservoir's actual
+piecewise-linear storage path, including changes caused by river arrivals.
+Its first and second derivatives are assembled locally through the affine storage
+paths. Sparse structure and chain-rule coefficients are prepared once, and numeric
+callbacks reuse their buffers. Polynomial heads remain direct expressions.
+A table constant over its operating range needs no head unknown.
+
+Trial points use end-secant continuation to let a solver recover from violated
+constraints; storage bounds and the measured domain are still enforced and
+validated. At knots, derivatives use the right segment except at the final knot.
+These are piecewise derivatives: the table is not smoothed, and classical
+second derivatives need not exist at a knot. Selected chain-rule identities are
+checked in Lean; finite-difference tests also check the complete sparse Hessian.
+Neither establishes a global optimality proof or verifies floating-point arithmetic.
+
+`crates/openshop/examples/data/measured_cascade.json` combines measured storage curves with
+pressure loops, delayed river splits/merges, commitment and a 1000 m³ forebay:
+
+```sh
+cargo run -p openshop --example schedule -- crates/openshop/examples/data/measured_cascade.json 10
+```
+
 ## Unit operation
 
 Each unit has a `UnitOperation` record. Its default has no minimum operating times
@@ -80,8 +119,8 @@ File access and JSON conversion belong to the executable examples.
 ## Equations and current coverage
 
 Reservoir storage obeys `V_next − V = 3600 Δt (inflow + incoming − outgoing)`.
-The storage–elevation curve is quadratic. Its integral mean has a polynomial
-expression that remains well defined when the two volumes are equal. Constant
+The storage–elevation curve is quadratic or a measured piecewise-linear table.
+Its exact integral mean remains well defined when the two volumes are equal. Constant
 discharge through a unit produces `P = 0.00981 Q H η(Q,H)` MW, with quadratic
 efficiency and penstock losses. Unit commitment enforces either zero discharge
 or the stated on-state discharge, head and power ranges. Startup costs and
@@ -111,7 +150,8 @@ stepping and finer chronological replay remain to be ported.
 
 Oximo builds the equations. The stable POUNCE expression evaluator supplies sparse
 first and second derivatives directly in memory, including constraint curvature.
-Native Ipopt solves continuous dispatch. SCIP proposes on/off schedules using
+Measured storage means supply local integral derivatives through the same sparse
+nonlinear interface. Native Ipopt solves continuous dispatch. SCIP proposes on/off schedules using
 linear generation estimates and the same water balances and river transport.
 Nonlinear dispatch evaluates those proposals, and search can change earlier
 commitments. The proposal objective is **not a global bound**. POUNCE's optimizer
@@ -123,7 +163,7 @@ optimality provided by the complete Julia package. A feasible result alone says
 nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
-Still to be implemented are measured curve tables, flow-dependent distributed
+Still to be implemented are measured turbine and gate curves, flow-dependent distributed
 river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
 positions, plant-level limits, power ramps, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,

@@ -382,7 +382,7 @@ mod tests {
                     name: "Lake".into(),
                     storage: Bounds::new(0., 1e6),
                     initial_storage: 5e5,
-                    level: StorageCurve {
+                    level: StorageCurve::Polynomial {
                         reference_volume: 0.,
                         elevation: 100.,
                         slope: 0.,

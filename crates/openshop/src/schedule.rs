@@ -230,7 +230,7 @@ mod tests {
                     name: "Lake".into(),
                     storage: Bounds::new(1e6, 4e6),
                     initial_storage: 3e6,
-                    level: StorageCurve {
+                    level: StorageCurve::Polynomial {
                         reference_volume: 0.,
                         elevation: 40.,
                         slope: 20e-6,
@@ -381,6 +381,161 @@ mod tests {
     }
 
     #[test]
+    fn measured_storage_curve_optimizes_across_a_knot_with_exact_energy() {
+        let mut case = reservoir_case();
+        case.system.reservoirs[0].level = StorageCurve::Table(
+            crate::TableCurve::new(vec![1e6, 2_950_000., 3e6, 4e6], vec![60., 99., 102., 110.])
+                .unwrap(),
+        );
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert!((result.unit_flow[0][0] - 20.).abs() < 1e-5);
+            let mean = (22000. * (98.56 + 99.) / 2. + 50000. * (99. + 102.) / 2.) / 72000.;
+            let expected = 100. * 0.00981 * 20. * 0.9 * (mean - 20.) + 2928.;
+            assert!((result.head[0][0] - mean).abs() < 1e-6);
+            assert!(
+                (result.objective - expected).abs() < 0.01,
+                "{backend:?}: {} vs {expected}",
+                result.objective
+            );
+            let after = result.storage[0][1];
+            let curve = &case.system.reservoirs[0].level;
+            let potential_change = curve.potential(3e6).unwrap() - curve.potential(after).unwrap();
+            assert!((potential_change - (3e6 - after) * result.head[0][0]).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn measured_storage_curve_handles_no_volume_change_at_a_knot() {
+        let mut case = reservoir_case();
+        case.system.reservoirs[0].level = StorageCurve::Table(
+            crate::TableCurve::new(vec![1e6, 3e6, 4e6], vec![60., 100., 105.]).unwrap(),
+        );
+        case.commitment.get_mut("Unit").unwrap()[0] = false;
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert!((result.storage[0][1] - 3e6).abs() < 0.001);
+            assert!((result.head[0][0] - 100.).abs() < 1e-8);
+        }
+    }
+
+    #[test]
+    fn measured_forebay_curve_integrates_the_complete_delayed_storage_path() {
+        let mut case = delayed_forebay_case();
+        case.system.reservoirs[1].level = StorageCurve::Table(
+            crate::TableCurve::new(vec![0., 400., 600., 1000.], vec![45., 48., 51., 55.]).unwrap(),
+        );
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            let middle =
+                result.storage[1][1] + 1800. * (result.unit_flow[0][0] - result.unit_flow[1][1]);
+            assert!((-0.01..=1000.01).contains(&middle));
+            let curve = &case.system.reservoirs[1].level;
+            let mean = |a: f64, b: f64| {
+                if a == b {
+                    return curve.trial_level(a);
+                }
+                let (lo, hi) = (a.min(b), a.max(b));
+                let mut knots = vec![lo];
+                knots.extend([400., 600.].into_iter().filter(|&v| lo < v && v < hi));
+                knots.push(hi);
+                knots
+                    .windows(2)
+                    .map(|w| {
+                        (w[1] - w[0]) * (curve.trial_level(w[0]) + curve.trial_level(w[1])) / 2.
+                    })
+                    .sum::<f64>()
+                    / (hi - lo)
+            };
+            let expected =
+                0.5 * (mean(result.storage[1][1], middle) + mean(middle, result.storage[1][2]));
+            assert!((result.head[1][1] - expected).abs() < 1e-7);
+        }
+    }
+
+    #[test]
+    fn storage_tables_must_be_monotone_and_cover_the_operating_domain() {
+        let mut case = reservoir_case();
+        case.system.reservoirs[0].level =
+            StorageCurve::Table(crate::TableCurve::new(vec![2e6, 4e6], vec![60., 100.]).unwrap());
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+        case.system.reservoirs[0].level =
+            StorageCurve::Table(crate::TableCurve::new(vec![1e6, 4e6], vec![100., 60.]).unwrap());
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+    }
+
+    #[test]
+    fn measured_watercourse_optimizes_with_pressure_loops_river_splits_and_commitment() {
+        let case: ScheduleCase =
+            serde_json::from_str(include_str!("../examples/data/measured_cascade.json")).unwrap();
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(
+                &case,
+                &SolveOptions {
+                    time_limit: 5.,
+                    ..Default::default()
+                },
+                backend,
+            )
+            .unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            // Count every parcel once: in a reservoir or in transit through a reach.
+            for t in 0..case.prices.len() {
+                let seconds = 3600. * (case.grid[t + 1] - case.grid[t]);
+                let stored: f64 = result.storage.iter().map(|row| row[t + 1] - row[t]).sum();
+                let in_transit: f64 = result
+                    .river_storage
+                    .iter()
+                    .map(|row| row[t + 1] - row[t])
+                    .sum();
+                let natural: f64 = case.inflows.values().map(|row| row[t]).sum();
+                let exported = result.unit_flow[2][t];
+                assert!((stored + in_transit - seconds * (natural - exported)).abs() < 0.01);
+            }
+        }
+    }
+
+    #[test]
+    fn a_table_flat_over_the_operating_range_has_the_correct_constant_head() {
+        let mut case = reservoir_case();
+        case.system.reservoirs[0].level = StorageCurve::Table(
+            crate::TableCurve::new(vec![0., 1e6, 4e6, 5e6], vec![50., 100., 100., 110.]).unwrap(),
+        );
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(result.validation.feasible);
+            assert_eq!(result.head[0][0], 100.);
+            assert!((result.unit_flow[0][0] - 20.).abs() < 1e-5);
+            assert!((result.objective - (100. * 0.00981 * 20. * 80. * 0.9 + 2928.)).abs() < 0.01);
+        }
+    }
+
+    #[test]
     fn complete_reservoir_optimization() {
         for backend in [Backend::Ipopt, Backend::Pounce] {
             let case = reservoir_case();
@@ -420,20 +575,20 @@ mod tests {
 
     #[test]
     fn storage_head_is_energy_consistent_even_for_equal_volumes() {
-        let c = StorageCurve {
+        let c = StorageCurve::Polynomial {
             reference_volume: 1e6,
             elevation: 75.,
             slope: 2e-5,
             curvature: 1e-11,
         };
         for (a, b) in [(1e6, 2e6), (2e6, 1e6), (1e6, 1e6), (1e6, 1e6 + 1e-5)] {
-            let mean = c.mean_level(a, b);
+            let mean = c.mean_level(a, b).unwrap();
             assert!(mean.is_finite());
             if a == b {
-                assert_eq!(mean, c.level(a));
+                assert_eq!(mean, c.level(a).unwrap());
             } else {
                 assert!(
-                    ((b - a) * mean - (c.potential(b) - c.potential(a))).abs()
+                    ((b - a) * mean - (c.potential(b).unwrap() - c.potential(a).unwrap())).abs()
                         < 1e-7 * (1. + ((b - a) * mean).abs())
                 );
             }
@@ -517,7 +672,7 @@ mod tests {
             name: "Forebay".into(),
             storage: Bounds::new(0., 1000.),
             initial_storage: 500.,
-            level: StorageCurve {
+            level: StorageCurve::Polynomial {
                 reference_volume: 0.,
                 elevation: 45.,
                 slope: 0.01,
@@ -558,7 +713,7 @@ mod tests {
             name: "Forebay".into(),
             storage: Bounds::new(0., 1000.),
             initial_storage: 500.,
-            level: StorageCurve {
+            level: StorageCurve::Polynomial {
                 reference_volume: 0.,
                 elevation: 45.,
                 slope: 0.01,
@@ -682,7 +837,7 @@ mod tests {
     #[test]
     fn nonlinear_efficiency_can_make_partial_load_optimal() {
         let mut case = reservoir_case();
-        case.system.reservoirs[0].level = StorageCurve {
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
             reference_volume: 0.,
             elevation: 120.,
             slope: 0.,

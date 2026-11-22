@@ -124,7 +124,7 @@ pub(crate) fn propose(
     let initial_head: Vec<_> = s
         .reservoirs
         .iter()
-        .map(|r| r.level.level(r.initial_storage))
+        .map(|r| r.level.trial_level(r.initial_storage))
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();

@@ -4,17 +4,17 @@
       {
         "name": "Upper A", "storage": {"min": 3000000.0, "max": 6000000.0},
         "initial_storage": 5000000.0, "water_value": 0.005,
-        "level": {"reference_volume": 5000000.0, "elevation": 500.0, "slope": 0.00002, "curvature": 0.000000000001}
+        "level": {"kind": "polynomial", "reference_volume": 5000000.0, "elevation": 500.0, "slope": 0.00002, "curvature": 0.000000000001}
       },
       {
         "name": "Upper B", "storage": {"min": 1000000.0, "max": 4000000.0},
         "initial_storage": 3000000.0, "water_value": 0.004,
-        "level": {"reference_volume": 3000000.0, "elevation": 450.0, "slope": 0.000025, "curvature": 0.0}
+        "level": {"kind": "polynomial", "reference_volume": 3000000.0, "elevation": 450.0, "slope": 0.000025, "curvature": 0.0}
       },
       {
         "name": "Forebay", "storage": {"min": 0.0, "max": 1000.0},
         "initial_storage": 500.0,
-        "level": {"reference_volume": 0.0, "elevation": 100.0, "slope": 0.01, "curvature": 0.0}
+        "level": {"kind": "polynomial", "reference_volume": 0.0, "elevation": 100.0, "slope": 0.01, "curvature": 0.0}
       }
     ],
     "junctions": [{"name": "Intake", "head": {"min": 350.0, "max": 550.0}}],

@@ -30,31 +30,124 @@ impl Bounds {
     }
 }
 
-/// z(V) = elevation + slope (V-reference_volume) + curvature (V-reference_volume)².
-/// Volume is m³ and elevation is metres.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StorageCurve {
-    pub reference_volume: f64,
-    pub elevation: f64,
-    pub slope: f64,
-    pub curvature: f64,
+/// Reservoir elevation in metres as a function of storage in m³.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum StorageCurve {
+    Polynomial {
+        reference_volume: f64,
+        elevation: f64,
+        slope: f64,
+        curvature: f64,
+    },
+    Table(crate::TableCurve),
 }
-
 impl StorageCurve {
-    pub fn level(self, volume: f64) -> f64 {
-        let v = volume - self.reference_volume;
-        self.elevation + self.slope * v + self.curvature * v * v
+    pub fn level(&self, volume: f64) -> Result<f64, Error> {
+        if let Self::Table(c) = self {
+            return c.value(volume);
+        }
+        let value = self.trial_level(volume);
+        if !volume.is_finite() || !value.is_finite() {
+            return Err(Error::Input("nonfinite level coordinate or value".into()));
+        }
+        Ok(value)
     }
-    /// Exact integral mean, including the equal-volume limit. This head makes
-    /// the storage step conserve potential energy without subtracting cubics.
-    pub fn mean_level(self, before: f64, after: f64) -> f64 {
-        crate::physics::mean_level(&self, before, after)
+    pub(crate) fn trial_level(&self, volume: f64) -> f64 {
+        match self {
+            Self::Polynomial {
+                reference_volume,
+                elevation,
+                slope,
+                curvature,
+            } => {
+                let v = volume - reference_volume;
+                elevation + slope * v + curvature * v * v
+            }
+            Self::Table(c) => c.extended_value(volume),
+        }
     }
-    /// Integral of level from reference_volume, in m⁴.
-    pub fn potential(self, volume: f64) -> f64 {
-        let v = volume - self.reference_volume;
-        self.elevation * v + self.slope * v * v / 2.0 + self.curvature * v * v * v / 3.0
+    /// Exact integral mean, symmetric and well-defined at equal volumes.
+    pub fn mean_level(&self, before: f64, after: f64) -> Result<f64, Error> {
+        if let Self::Table(c) = self {
+            return c.mean_value(before, after);
+        }
+        let value = self.trial_mean_level(before, after);
+        if !before.is_finite() || !after.is_finite() || !value.is_finite() {
+            return Err(Error::Input(
+                "nonfinite mean-level coordinate or value".into(),
+            ));
+        }
+        Ok(value)
+    }
+    pub(crate) fn trial_mean_level(&self, before: f64, after: f64) -> f64 {
+        match self {
+            Self::Polynomial {
+                reference_volume,
+                elevation,
+                slope,
+                curvature,
+            } => crate::physics::polynomial_mean_level(
+                *reference_volume,
+                *elevation,
+                *slope,
+                *curvature,
+                before,
+                after,
+            ),
+            Self::Table(c) => c.mean_data(before, after).value,
+        }
+    }
+    /// Integral of level from the polynomial reference or first table coordinate, m⁴.
+    pub fn potential(&self, volume: f64) -> Result<f64, Error> {
+        self.level(volume)?;
+        Ok(match self {
+            Self::Polynomial {
+                reference_volume,
+                elevation,
+                slope,
+                curvature,
+            } => {
+                let v = volume - reference_volume;
+                elevation * v + slope * v * v / 2. + curvature * v * v * v / 3.
+            }
+            Self::Table(c) => {
+                c.mean_value(c.coordinates()[0], volume)? * (volume - c.coordinates()[0])
+            }
+        })
+    }
+    fn validate(&self, bounds: Bounds, name: &str) -> Result<(), Error> {
+        let valid = match self {
+            Self::Polynomial {
+                reference_volume,
+                elevation,
+                slope,
+                curvature,
+            } => {
+                [reference_volume, elevation, slope, curvature]
+                    .iter()
+                    .all(|v| v.is_finite())
+                    && [bounds.min, bounds.max].iter().all(|v| {
+                        let derivative = slope + 2. * curvature * (v - reference_volume);
+                        derivative.is_finite() && derivative >= 0.
+                    })
+            }
+            Self::Table(c) => {
+                c.coordinates()[0] <= bounds.min
+                    && bounds.max <= c.coordinates()[c.coordinates().len() - 1]
+                    && c.values().windows(2).all(|w| w[1] >= w[0])
+            }
+        };
+        if !valid
+            || ![bounds.min, bounds.max]
+                .iter()
+                .all(|&v| self.level(v).is_ok())
+        {
+            return Err(Error::Input(format!(
+                "{name}: storage level curve must cover storage bounds and be finite and nondecreasing"
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -263,28 +356,14 @@ impl ScheduleCase {
         }
         for r in &s.reservoirs {
             r.storage.validate(&r.name)?;
-            let c = r.level;
+            r.level.validate(r.storage, &r.name)?;
             if r.storage.min < 0.
                 || r.storage.max <= r.storage.min
                 || !r.storage.contains(r.initial_storage)
-                || ![
-                    c.reference_volume,
-                    c.elevation,
-                    c.slope,
-                    c.curvature,
-                    r.water_value,
-                ]
-                .iter()
-                .all(|v| v.is_finite())
-                || [r.storage.min, r.storage.max]
-                    .iter()
-                    .any(|v| c.slope + 2. * c.curvature * (v - c.reference_volume) < 0.)
-                || ![c.level(r.storage.min), c.level(r.storage.max)]
-                    .iter()
-                    .all(|v| v.is_finite())
+                || !r.water_value.is_finite()
             {
                 return Err(Error::Input(format!(
-                    "{}: invalid storage, level curve or initial state",
+                    "{}: invalid storage or initial state",
                     r.name
                 )));
             }

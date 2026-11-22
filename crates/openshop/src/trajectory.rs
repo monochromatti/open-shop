@@ -100,7 +100,9 @@ pub(crate) fn evaluate(
                         .collect();
                     vertices
                         .windows(2)
-                        .map(|w| (w[1].0 - w[0].0) * reservoir.level.mean_level(w[0].1, w[1].1))
+                        .map(|w| {
+                            (w[1].0 - w[0].0) * reservoir.level.trial_mean_level(w[0].1, w[1].1)
+                        })
                         .sum()
                 })
                 .collect()

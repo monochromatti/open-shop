@@ -2,9 +2,9 @@ name: Rust
 on:
   push:
     branches: [main]
-    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'examples/rust/**', '.github/workflows/rust.yml']
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', '.github/workflows/rust.yml']
   pull_request:
-    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', 'examples/rust/**', '.github/workflows/rust.yml']
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', '.github/workflows/rust.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,4 +36,4 @@ jobs:
       - name: Native Rust API
         run: nix develop .#rust -c cargo run -p openshop --example reservoir
       - name: Connected watercourse
-        run: nix develop .#rust -c cargo run -p openshop --example schedule -- examples/rust/cascade.json 10 > "$RUNNER_TEMP/schedule.json"
+        run: nix develop .#rust -c cargo run -p openshop --example schedule -- crates/openshop/examples/data/cascade.json 10 > "$RUNNER_TEMP/schedule.json"
