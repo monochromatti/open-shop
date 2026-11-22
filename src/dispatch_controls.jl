@@ -78,6 +78,33 @@ end
 # needs no further feasibility work. Public reconstruction always validates.
 function _dispatch_from_controls(c,u,q,gate;
     status,transport,tunnel_opening,reserves,head_reference,grid)
+    data=DispatchReconstruction(c,u;grid,transport,tunnel_opening)
+    _dispatch_from_controls(data,q,gate;status,reserves,head_reference)
+end
+
+"""Fixed physical data for repeated integration of a commitment's controls.
+
+This data belongs to one case, hydraulic grid, unit commitment and tunnel gate
+schedule. River controls, unit discharges and hydraulic states remain variable.
+"""
+struct DispatchReconstruction{U,S,D}
+    case::ScheduleCase
+    mesh::TimeDiscretization
+    physical::ScheduleCase
+    commitment::U
+    opening::Matrix{Float64}
+    topology::HydraulicTopology
+    sources::S
+    active_rivers::Vector{Int}
+    river_order::Vector{Int}
+    transport::D
+    routing_case::ScheduleCase
+    control_intervals::Vector{Int}
+    transition_cost::Float64
+    adjustment_cost::Float64
+end
+
+function DispatchReconstruction(c,u;grid=c.grid,transport=nothing,tunnel_opening=nothing)
     mesh=TimeDiscretization(c.grid,grid)
     physical=hydraulic_case(c,mesh.grid)
     validate_reserve_inputs(c)
@@ -88,17 +115,54 @@ function _dispatch_from_controls(c,u,q,gate;
         _transport_data(physical,transport) : nothing
     nd===nothing && transport!==nothing && throw(ArgumentError(
         "compiled deterministic transport cannot serve distributed reconstruction"))
-    z=simulate(c,q,gate;grid=mesh.grid,transport=nd,tunnel_opening=opening,commitment=u,head_reference)
+    s=c.system
+    validate_unit_modes(s)
+    validate_soft_constraints(c)
+    validate_delay_curves(s)
+    validate_river_allocations(s)
+    validate_curve_data(s)
+    indices=[min(searchsortedlast(c.grid,(mesh.grid[t]+mesh.grid[t+1])/2),length(c.prices))
+        for t in eachindex(mesh.dt)]
+    routing_case=_river_replace(c;grid=copy(mesh.grid),prices=zeros(length(mesh.dt)))
+    DispatchReconstruction(c,mesh,physical,copy(u),opening,HydraulicTopology(s),
+        river_source_indices(s),findall(r->r.law!=:junction,s.rivers),
+        _forward_river_order(s),nd,routing_case,indices,
+        transition_costs(c,u),tunnel_adjustment_cost(c,opening))
+end
+
+function _dispatch_from_controls(data::DispatchReconstruction,q,gate;
+    status="FORWARD_RECONSTRUCTED",reserves=nothing,head_reference=nothing)
+    c,mesh,physical=data.case,data.mesh,data.physical
+    u,opening,nd=data.commitment,data.opening,data.transport
+    size(q)==(length(c.system.generators),length(c.prices)) &&
+        size(gate)==(length(c.system.rivers),length(c.prices)) ||
+        throw(DimensionMismatch("schedule dimensions"))
+    all(>=(0),q) && all(x->0<=x<=1,gate) ||
+        throw(ArgumentError("invalid generator discharges or river gates"))
+    reference=if head_reference===nothing
+        nothing
+    else
+        head_reference isa AbstractMatrix &&
+            size(head_reference)==(length(data.topology.node_names),length(c.prices)) ||
+            throw(DimensionMismatch("head reference must be node by control interval"))
+        converted=Matrix{Float64}(head_reference)
+        all(isfinite,converted) || throw(ArgumentError("head reference must remain finite in Float64"))
+        converted
+    end
+    z=_simulate_hydraulics(c,q,gate,u,opening,reference,mesh.grid;
+        transport=nd,topology=data.topology,sources=data.sources,
+        active_rivers=data.active_rivers,river_order=data.river_order,
+        routing_case=data.routing_case,indices=data.control_intervals)
     z.converged || throw(ArgumentError("forward reconstruction did not converge"))
     held_u=u[:,mesh.interval]
     windows=operating_window_values(mesh,z,u)
     req=release_requirements(physical,z.river_release)
-    adjustment_cost=tunnel_adjustment_cost(c,opening)
+    adjustment_cost=data.adjustment_cost
     reserves=reserves===nothing ? _zero_reserves(physical,z.generator_q;operating_case=c) :
         reserve_operating_points(physical,_reserve_slice(_reserve_input(reserves,length(c.prices)),mesh.interval),held_u,z;operating_case=c)
     objective=sum(physical.prices[k]*mesh.dt[k]*unit_power_sign(g)*z.power[j,k]
         for (j,g) in enumerate(c.system.generators),k in eachindex(mesh.dt);init=0.0) -
-        transition_costs(c,u)-req.cost-adjustment_cost-river_operating_cost(c,windows.river_release).total +
+        data.transition_cost-req.cost-adjustment_cost-river_operating_cost(c,windows.river_release).total +
         sum(r.water_value*(z.storage[i,end]-r.v0)
             for (i,r) in enumerate(c.system.reservoirs);init=0.0) +
         sum(r.water_value*(z.transit[i,end]-z.transit[i,1])

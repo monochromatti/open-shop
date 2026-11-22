@@ -485,6 +485,8 @@ function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
     cells=first.(b.mesh.cells)
     commitment=Int.(b.operating_u)
     opening=Matrix{Float64}(b.gates.opening)
+    reconstruction=DispatchReconstruction(b.operating_case,commitment;
+        grid=b.mesh.grid,transport=b.transport,tunnel_opening=opening)
     callback=function(mode,k,args...)
         mode==0 || return true
         began=time()
@@ -503,9 +505,9 @@ function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
             reserves=_reserve_slice(_reserve_values(b.case,b.reserves,value_at;
                 operating_case=b.operating_case),cells)
             integrations[]+=1
-            x,transport=_dispatch_from_controls(b.operating_case,commitment,
+            x,transport=_dispatch_from_controls(reconstruction,
                 value_at.(b.GQ[:,cells]),value_at.(b.variables.a[:,cells]);
-                grid=b.mesh.grid,transport=b.transport,tunnel_opening=opening,reserves,
+                reserves,
                 head_reference=interval_means(b.mesh,value_at.(b.H)),status="FORWARD_RECONSTRUCTED")
             if solution[]===nothing || x.objective>solution[].objective
                 checks[]+=1
