@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let system = HydroSystem {
         reservoirs: vec![Reservoir {
+            operation: Default::default(),
             name: "Lake".into(),
             storage: Bounds::new(1e6, 4e6),
             initial_storage: 3e6,
@@ -45,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     let case = ScheduleCase {
+        operations: Vec::new(),
         system,
         grid: vec![0., 1., 2.],
         prices: vec![-100., 150.],

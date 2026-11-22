@@ -157,6 +157,8 @@ pub struct Reservoir {
     pub name: String,
     pub storage: Bounds,
     pub initial_storage: f64,
+    #[serde(default)]
+    pub operation: crate::ReservoirOperation,
     pub level: StorageCurve,
     /// Terminal marginal value, in currency/m³.
     #[serde(default)]
@@ -493,6 +495,8 @@ fn one() -> f64 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleCase {
+    #[serde(default)]
+    pub operations: Vec<crate::OperationalSeries>,
     pub system: HydroSystem,
     /// Control-interval boundaries, hours. Durations may differ.
     pub grid: Vec<f64>,
@@ -506,11 +510,6 @@ pub struct ScheduleCase {
     pub commitment: BTreeMap<String, Vec<bool>>,
 }
 
-pub(crate) struct TunnelLaw {
-    pub head_factor: f64,
-    pub resistance: f64,
-}
-
 pub(crate) struct Topology {
     pub unit_nodes: Vec<(usize, usize)>,
     pub unit_plants: Vec<usize>,
@@ -520,7 +519,6 @@ pub(crate) struct Topology {
     pub exclusions: Vec<Vec<Vec<usize>>>,
     pub incidence: Vec<Vec<(usize, f64)>>,
     pub tunnel_nodes: Vec<(usize, usize)>,
-    pub tunnel_laws: Vec<TunnelLaw>,
     pub tunnel_incidence: Vec<Vec<(usize, f64)>>,
     pub unit_outfalls: Vec<Option<usize>>,
     pub unit_commitment: Vec<Vec<crate::operation::CommitmentInequality>>,
@@ -788,7 +786,6 @@ impl ScheduleCase {
             }
         }
         let mut tunnel_nodes = Vec::new();
-        let mut tunnel_laws = Vec::new();
         let mut tunnel_incidence = vec![Vec::new(); incidence.len()];
         let mut tunnel_names = HashMap::new();
         for (i, tunnel) in s.tunnels.iter().enumerate() {
@@ -816,23 +813,6 @@ impl ScheduleCase {
                     tunnel.name
                 )));
             }
-            let (head_factor, resistance) = if tunnel.opening == 0. {
-                (0., tunnel.loss_factor)
-            } else if let Some(curve) = &tunnel.gate_loss_factor_curve {
-                (1., tunnel.loss_factor + curve.value(tunnel.opening)?)
-            } else {
-                (tunnel.opening, tunnel.loss_factor)
-            };
-            if !resistance.is_finite() {
-                return Err(Error::Input(format!(
-                    "{}: nonfinite total tunnel resistance",
-                    tunnel.name
-                )));
-            }
-            tunnel_laws.push(TunnelLaw {
-                head_factor,
-                resistance,
-            });
             let source = *nodes
                 .get(tunnel.source.as_str())
                 .ok_or_else(|| Error::Input(format!("{}: unknown source", tunnel.name)))?;
@@ -896,7 +876,6 @@ impl ScheduleCase {
             exclusions,
             incidence,
             tunnel_nodes,
-            tunnel_laws,
             tunnel_incidence,
             unit_outfalls,
             unit_commitment,

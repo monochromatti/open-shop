@@ -18,6 +18,7 @@ pub(crate) fn propose(
     case: &ScheduleCase,
     topology: &Topology,
     routing: &Routing,
+    operating: &crate::operating_data::OperatingData,
     previous: Option<&Schedule>,
     excluded: &[Vec<Vec<bool>>],
     seconds: f64,
@@ -48,23 +49,31 @@ pub(crate) fn propose(
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
-            m.set_bounds(qr[[k, t]], 0., s.rivers[e].capacity / flow_scale)
+            m.set_bounds(qr[[k, t]], 0., operating.river_capacity[e][t] / flow_scale)
                 .map_err(|e| Error::Model(e.to_string()))?;
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
     for (i, series) in routing.releases.iter().enumerate() {
-        for rate in &series.rates {
+        for (k, rate) in series.rates.iter().enumerate() {
+            let period = case
+                .grid
+                .partition_point(|time| *time <= series.grid[k])
+                .saturating_sub(1)
+                .min(nt - 1);
             let release = crate::nlp::linear_expression(rate, &river_columns, zero());
-            constraint!(m, release / flow_scale <= s.rivers[i].capacity / flow_scale);
+            constraint!(
+                m,
+                release / flow_scale <= operating.river_capacity[i][period] / flow_scale
+            );
         }
     }
-    for (e, tunnel) in s.tunnels.iter().enumerate() {
+    for e in 0..s.tunnels.len() {
         for t in 0..nt {
-            let capacity = if tunnel.opening == 0. {
+            let capacity = if operating.tunnels[e][t].opening == 0. {
                 0.
             } else {
-                tunnel.capacity / flow_scale
+                operating.tunnels[e][t].capacity / flow_scale
             };
             m.set_bounds(qt[[e, t]], -capacity, capacity)
                 .map_err(|e| Error::Model(e.to_string()))?;
@@ -72,13 +81,28 @@ pub(crate) fn propose(
     }
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
         let range = reservoir.storage.max - reservoir.storage.min;
+        for (t, bounds) in operating.reservoirs[r].storage.iter().enumerate() {
+            m.set_bounds(
+                v[[r, t]],
+                (bounds.min - reservoir.storage.min) / range,
+                (bounds.max - reservoir.storage.min) / range,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
+        }
         m.fix(
             v[[r, 0]],
             (reservoir.initial_storage - reservoir.storage.min) / range,
         )
         .map_err(|e| Error::Model(e.to_string()))?;
         for t in 0..nt {
-            let mut net = zero() + case.inflow(r, t);
+            let change = (v[[r, t + 1]] - v[[r, t]]) * range;
+            if let Some(up) = operating.reservoirs[r].volume_change[t].up {
+                constraint!(m, change <= up);
+            }
+            if let Some(down) = operating.reservoirs[r].volume_change[t].down {
+                constraint!(m, -change <= down);
+            }
+            let mut net = zero() + operating.reservoirs[r].inflow[t];
             for &(g, sign) in &topology.incidence[r] {
                 net = net + q[[g, t]] * (sign * flow_scale);
             }
@@ -103,8 +127,20 @@ pub(crate) fn propose(
                     let volume = v[[r, t]] * (1. - fraction)
                         + v[[r, t + 1]] * *fraction
                         + crate::nlp::linear_expression(correction, &river_columns, zero()) / range;
-                    constraint!(m, volume >= 0.);
-                    constraint!(m, volume <= 1.);
+                    constraint!(
+                        m,
+                        volume
+                            >= (operating.reservoirs[r].interval_storage[t].min
+                                - reservoir.storage.min)
+                                / range
+                    );
+                    constraint!(
+                        m,
+                        volume
+                            <= (operating.reservoirs[r].interval_storage[t].max
+                                - reservoir.storage.min)
+                                / range
+                    );
                 }
             }
         }
@@ -150,6 +186,7 @@ pub(crate) fn propose(
         let mut starts = Vec::new();
         let mut stops = Vec::new();
         for t in 0..nt {
+            let limits = &operating.units[g][t];
             if let Some(fixed) = case.commitment.get(&unit.name) {
                 m.fix(on[[g, t]], if fixed[t] { 1. } else { 0. })
                     .map_err(|e| Error::Model(e.to_string()))?;
@@ -201,15 +238,15 @@ pub(crate) fn propose(
                 constraint!(m, q[[g, t]] >= on[[g, t]] * (minimum / flow_scale));
                 constraint!(m, q[[g, t]] <= on[[g, t]] * (maximum / flow_scale));
             }
-            constraint!(m, q[[g, t]] >= on[[g, t]] * (unit.flow.min / flow_scale));
-            constraint!(m, q[[g, t]] <= on[[g, t]] * (unit.flow.max / flow_scale));
+            constraint!(m, q[[g, t]] >= on[[g, t]] * (limits.flow.min / flow_scale));
+            constraint!(m, q[[g, t]] <= on[[g, t]] * (limits.flow.max / flow_scale));
             constraint!(
                 m,
-                q[[g, t]] * (flow_scale * coefficient) >= on[[g, t]] * unit.power.min
+                q[[g, t]] * (flow_scale * coefficient) >= on[[g, t]] * limits.power.min
             );
             constraint!(
                 m,
-                q[[g, t]] * (flow_scale * coefficient) <= on[[g, t]] * unit.power.max
+                q[[g, t]] * (flow_scale * coefficient) <= on[[g, t]] * limits.power.max
             );
             if t == 0 {
                 constraint!(
@@ -240,8 +277,8 @@ pub(crate) fn propose(
                         * unit.mode.power_sign()
                         * case.prices[t]
                         * (case.grid[t + 1] - case.grid[t]))
-                - start[[g, t]] * unit.operation.startup_cost
-                - stop * unit.operation.shutdown_cost;
+                - start[[g, t]] * limits.startup_cost
+                - stop * limits.shutdown_cost;
         }
         all_power.push(powers);
         all_flow.push(flows);
@@ -266,6 +303,7 @@ pub(crate) fn propose(
         &m,
         case,
         topology,
+        operating,
         &crate::operating_equations::OperatingExpressions {
             power: all_power,
             flow: all_flow,
@@ -299,6 +337,17 @@ pub(crate) fn propose(
             + crate::nlp::linear_expression(&routing.inventory[r][nt], &river_columns, zero())
                 * river.water_value;
     }
+    let initial_value: f64 = s
+        .reservoirs
+        .iter()
+        .map(|r| r.initial_storage * r.water_value)
+        .sum::<f64>()
+        + s.rivers
+            .iter()
+            .enumerate()
+            .map(|(i, r)| routing.inventory[i][0].constant * r.water_value)
+            .sum::<f64>();
+    revenue = revenue - initial_value;
     objective!(m, Max, revenue / 1000.);
     let options = ScipOptions::default()
         .time_limit(Duration::from_secs_f64(seconds))

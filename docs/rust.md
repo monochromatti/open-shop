@@ -150,10 +150,9 @@ the modeled horizon; this is not a requirement to finish every run before the en
 
 `flow_ramp.up` and `.down` bound changes in interval-average discharge per hour.
 They use the distance between interval midpoints, including unequal intervals.
-`initial_interval_hours` is the duration of the historical observation. An
-initially stopped unit has zero initial discharge. An initially running unit can
-supply `initial_flow`; without it, the first discharge ramp has no historical
-reference and subsequent ramps still apply. Transition costs charge each start
+`initial_interval_hours` is the duration of the historical observation. Supply `initial_flow` for a historical interval average; an observation for a
+stopped unit must be zero. Without an observation, the first discharge ramp has
+no historical reference and subsequent ramps still apply. Transition costs charge each start
 and stop once. Prescribed commitments violating minimum times are rejected at
 preparation.
 
@@ -162,12 +161,12 @@ using the calculated nonlinear power. Starting permits an additional increase
 of `power.min`; stopping permits the corresponding decrease. In symbols,
 `P_t − P_prev ≤ up Δτ + P_min start` and
 `P_prev − P_t ≤ down Δτ + P_min stop`, where `Δτ` is midpoint spacing.
-Discharge ramps have no additional transition allowance. An initially running
-unit can supply `initial_power`; omitting it leaves only the first power ramp
-without a historical reference. A stopped unit has zero historical power.
+Discharge ramps have no additional transition allowance. Supply `initial_power` for a historical average; omitting it leaves the first
+power ramp without a historical reference. A supplied observation for a stopped
+unit must be zero.
 Historical flow and power need not lie in the new horizon's operating range;
-the ramp equations determine whether the transition is possible. Plant-wide
-operating restrictions remain to be ported.
+the ramp equations determine whether the transition is possible. Plant-wide restrictions use the same operating equations on aggregate flow and
+power.
 
 ## Numerical structure
 
@@ -187,8 +186,8 @@ The storage–elevation curve is quadratic or a measured piecewise-linear table.
 Its exact integral mean remains well defined when the two volumes are equal. Constant
 discharge through a unit produces `P = 0.00981 Q H η(Q,H)` MW, with quadratic or tabulated
 efficiency and quadratic penstock losses. Unit commitment enforces either zero discharge
-or the stated on-state discharge, head and power ranges. Startup costs and
-terminal water values enter the revenue objective.
+or the stated on-state discharge, head and power ranges. Startup costs and changes in stored and in-transit water value enter the revenue
+objective. Initial inventory value is subtracted, matching the Julia convention.
 
 Tunnel flow is signed. Open tunnels satisfy
 `(H_source − H_target) opening = loss_factor Q |Q|` without a gate-loss curve.
@@ -236,13 +235,14 @@ optimality provided by the complete Julia package. A feasible result alone says
 nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
-Still to be implemented are the remaining hydraulic/electrical curves, flow-dependent distributed
-river responses, adaptive hydraulics, optimized gate
-positions, plant-level limits, time-dependent operating
-restrictions, restart, rolling horizons and global bounds. Full watercourses,
-including Tokke–Vinje, must exercise those capabilities before any final
-formulation or solver comparison. The small tests establish correctness of the
-implemented equations; they cannot settle that comparison.
+Still required are flow-dependent distributed river responses, outlet laws and
+instantaneous level-difference channels, adaptive hydraulic integration and
+independent replay, optimized tunnel gates and interlocks, gross-head limits,
+observation windows, soft constraints and reserves, restart/rolling horizons and
+global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
+those capabilities before the Rust implementation can replace Julia. Small
+examples establish correctness of their equations; they cannot settle the final
+speed and solution comparison.
 
 
 ## Plants and pumping
@@ -276,3 +276,29 @@ by efficiency or inverting the electrical curve during nonlinear trial steps.
 Power limits and ramps remain bounds and linear rows. Small local Hessians
 are differentiated with fixed-size arithmetic and assembled into the sparse
 whole-system Hessian. Gate and hydraulic equations retain their own curvature.
+
+
+## Time-dependent operating inputs
+
+`ScheduleCase::operations` holds `OperationalSeries` records. An explicit
+`Object::Unit`, `Object::Plant`, `Object::Reservoir`, `Object::Tunnel` or
+`Object::River` reference identifies its target. `Attribute` names the physical
+quantity. Times are absolute hours, values are held until the next knot, and
+static data apply before the first knot. The control grid must include every
+operating change inside the horizon. Series may retain data outside the horizon.
+
+Preparation resolves these records into numerical arrays. Bounds can tighten
+the static domain; they cannot extend a physical curve's domain. Unit/plant
+inputs include production and discharge bounds/schedules, maintenance, forced
+on/off states, costs and directional ramps. Reservoir inputs include inflows,
+storage bounds and volume/level ramps. Tunnel openings and capacities, and river
+inflows/capacities, can also vary in time. Continuous reservoir storage satisfies
+both sides of a bound change at a scheduling vertex. Level ramps use actual
+vertex levels, not interval mean levels.
+
+A rate limit is integrated over the distance between observation midpoints.
+If part of that interval is unrestricted, the comparison stays unrestricted.
+The first comparison needs a supplied historical interval average. Plant flow
+and power can inherit unit observations when their intervals match; explicit
+aggregate observations use the plant's declared interval. Numerical evaluation
+uses the prepared arrays without name lookup or input interpretation.

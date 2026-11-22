@@ -12,6 +12,7 @@ mod machine;
 mod model;
 mod native_ipopt;
 mod nlp;
+mod operating_data;
 mod operating_equations;
 mod operation;
 mod physics;
@@ -26,6 +27,7 @@ pub use model::{
     Boundary, Bounds, CommitmentExclusion, Efficiency, HydroSystem, Junction, Plant, Reservoir,
     River, ScheduleCase, StorageCurve, Tunnel, Unit, UnitMode,
 };
+pub use operating_data::{Attribute, Object, OperationalSeries, ReservoirOperation};
 pub use operation::{PlantOperation, RampRates, UnitOperation};
 pub use schedule::SchedulingProblem;
 pub use trajectory::{Schedule, Validation};

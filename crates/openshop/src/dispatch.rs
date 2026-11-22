@@ -21,6 +21,7 @@ pub(crate) fn build_dispatch(
     case: &ScheduleCase,
     topology: &Topology,
     routing: &Routing,
+    operating: &crate::operating_data::OperatingData,
     commitment: &[Vec<bool>],
     start: Option<&crate::commitment::Proposal>,
 ) -> Result<Dispatch, Error> {
@@ -59,6 +60,24 @@ pub(crate) fn build_dispatch(
         .filter_map(|(i, p)| p.tailwater_curve.as_ref().map(|_| i))
         .collect();
     variable!(m,hw[k in 0..curved_plants.len(),t in 0..nt]);
+    let level_reservoirs: Vec<_> = s
+        .reservoirs
+        .iter()
+        .enumerate()
+        .filter_map(|(r, reservoir)| {
+            if matches!(reservoir.level, crate::StorageCurve::Table(_))
+                && operating.reservoirs[r]
+                    .level_change
+                    .iter()
+                    .any(|c| c.up.is_some() || c.down.is_some())
+            {
+                Some(r)
+            } else {
+                None
+            }
+        })
+        .collect();
+    variable!(m,hv[k in 0..level_reservoirs.len(),t in 0..nt+1]);
     let mut laws = Vec::new();
     let flow_scale = s
         .units
@@ -76,22 +95,30 @@ pub(crate) fn build_dispatch(
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
-            m.set_bounds(qr[[k, t]], 0., s.rivers[e].capacity / flow_scale)
+            m.set_bounds(qr[[k, t]], 0., operating.river_capacity[e][t] / flow_scale)
                 .map_err(|e| Error::Model(e.to_string()))?;
             m.set_initial(
                 qr[[k, t]],
                 start
                     .map_or(0., |p| p.river_withdrawal[e][t] / flow_scale)
-                    .clamp(0., s.rivers[e].capacity / flow_scale),
+                    .clamp(0., operating.river_capacity[e][t] / flow_scale),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
     for (i, series) in routing.releases.iter().enumerate() {
-        for rate in &series.rates {
+        for (k, rate) in series.rates.iter().enumerate() {
+            let period = case
+                .grid
+                .partition_point(|time| *time <= series.grid[k])
+                .saturating_sub(1)
+                .min(nt - 1);
             let release = crate::nlp::linear_expression(rate, &river_columns, zero());
-            constraint!(m, release / flow_scale <= s.rivers[i].capacity / flow_scale);
+            constraint!(
+                m,
+                release / flow_scale <= operating.river_capacity[i][period] / flow_scale
+            );
         }
     }
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
@@ -101,6 +128,14 @@ pub(crate) fn build_dispatch(
                 "{}: positive storage range required",
                 reservoir.name
             )));
+        }
+        for (t, bounds) in operating.reservoirs[r].storage.iter().enumerate() {
+            m.set_bounds(
+                v[[r, t]],
+                (bounds.min - reservoir.storage.min) / range,
+                (bounds.max - reservoir.storage.min) / range,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
         }
         let initial = (reservoir.initial_storage - reservoir.storage.min) / range;
         m.fix(v[[r, 0]], initial)
@@ -115,7 +150,14 @@ pub(crate) fn build_dispatch(
                 .map_err(|e| Error::Model(e.to_string()))?;
         }
         for t in 0..nt {
-            let mut net = zero() + case.inflow(r, t);
+            let change = (v[[r, t + 1]] - v[[r, t]]) * range;
+            if let Some(up) = operating.reservoirs[r].volume_change[t].up {
+                constraint!(m, change <= up);
+            }
+            if let Some(down) = operating.reservoirs[r].volume_change[t].down {
+                constraint!(m, -change <= down);
+            }
+            let mut net = zero() + operating.reservoirs[r].inflow[t];
             for &(u, sign) in &topology.incidence[r] {
                 net = net + q[[u, t]] * (sign * flow_scale);
             }
@@ -135,6 +177,78 @@ pub(crate) fn build_dispatch(
                 name = format!("water_balance[{r},{t}]"),
                 rate - net == 0.0
             );
+        }
+    }
+    for (r, reservoir) in s.reservoirs.iter().enumerate() {
+        if !operating.reservoirs[r]
+            .level_change
+            .iter()
+            .any(|c| c.up.is_some() || c.down.is_some())
+        {
+            continue;
+        }
+        let range = reservoir.storage.max - reservoir.storage.min;
+        let mut levels: Vec<Expr<'_>> = Vec::new();
+        for t in 0..=nt {
+            let volume: Expr<'_> = (v[[r, t]] * range + reservoir.storage.min).into();
+            let level = match &reservoir.level {
+                crate::StorageCurve::Polynomial {
+                    reference_volume,
+                    elevation,
+                    slope,
+                    curvature,
+                } => crate::physics::polynomial_mean_level(
+                    *reference_volume,
+                    *elevation,
+                    *slope,
+                    *curvature,
+                    volume,
+                    volume,
+                ),
+                crate::StorageCurve::Table(c) => {
+                    let k = level_reservoirs.iter().position(|&i| i == r).unwrap();
+                    m.set_initial(
+                        hv[[k, t]],
+                        reservoir.level.trial_level(reservoir.initial_storage) / 100.,
+                    )
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                    laws.push(crate::constitutive::Equation {
+                        linear: crate::river::LinearForm::variable(
+                            hv[[k, t]].var_id().unwrap().index(),
+                            -1.,
+                        ),
+                        terms: vec![crate::constitutive::Term {
+                            function: crate::constitutive::PhysicalFunction::Table(
+                                std::sync::Arc::new(c.clone()),
+                            ),
+                            inputs: [
+                                crate::river::LinearForm {
+                                    constant: reservoir.storage.min,
+                                    coefficients: std::collections::BTreeMap::from([(
+                                        v[[r, t]].var_id().unwrap().index(),
+                                        range,
+                                    )]),
+                                },
+                                Default::default(),
+                                Default::default(),
+                            ],
+                            weight: 1. / 100.,
+                        }],
+                        bounds: crate::Bounds::new(0., 0.),
+                    });
+                    (hv[[k, t]] * 100.).into()
+                }
+            };
+            levels.push(level);
+        }
+        for t in 0..nt {
+            let change = (levels[t + 1] - levels[t]) / 100.;
+            if let Some(up) = operating.reservoirs[r].level_change[t].up {
+                constraint!(m, change <= up / 100.);
+            }
+            if let Some(down) = operating.reservoirs[r].level_change[t].down {
+                constraint!(m, -change <= down / 100.);
+            }
         }
     }
     for (j, junction) in s.junctions.iter().enumerate() {
@@ -170,8 +284,20 @@ pub(crate) fn build_dispatch(
                     + v[[r, t + 1]] * *fraction
                     + crate::nlp::linear_expression(correction, &river_columns, zero()) / range;
                 if *fraction > 0. && *fraction < 1. {
-                    constraint!(m, volume >= 0.);
-                    constraint!(m, volume <= 1.);
+                    constraint!(
+                        m,
+                        volume
+                            >= (operating.reservoirs[r].interval_storage[t].min
+                                - reservoir.storage.min)
+                                / range
+                    );
+                    constraint!(
+                        m,
+                        volume
+                            <= (operating.reservoirs[r].interval_storage[t].max
+                                - reservoir.storage.min)
+                                / range
+                    );
                 }
                 vertices.push((*fraction, volume * range + reservoir.storage.min));
             }
@@ -269,16 +395,16 @@ pub(crate) fn build_dispatch(
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
-    for (e, tunnel) in s.tunnels.iter().enumerate() {
+    for e in 0..s.tunnels.len() {
         let (source, target) = topology.tunnel_nodes[e];
         let dh = initial_head[source] - initial_head[target];
-        let law = &topology.tunnel_laws[e];
-        let guess = dh.signum() * (law.head_factor * dh.abs() / law.resistance).sqrt();
         for t in 0..nt {
-            let capacity = if tunnel.opening == 0. {
+            let law = &operating.tunnels[e][t];
+            let guess = dh.signum() * (law.head_factor * dh.abs() / law.resistance).sqrt();
+            let capacity = if law.opening == 0. {
                 0.
             } else {
-                tunnel.capacity / flow_scale
+                law.capacity / flow_scale
             };
             m.set_bounds(qt[[e, t]], -capacity, capacity)
                 .map_err(|e| Error::Model(e.to_string()))?;
@@ -289,7 +415,7 @@ pub(crate) fn build_dispatch(
                     .clamp(-capacity, capacity),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
-            if tunnel.opening > 0. {
+            if law.opening > 0. {
                 let flow = qt[[e, t]] * flow_scale;
                 let pressure = (head[t][source] - head[t][target]) * law.head_factor
                     - flow * flow.abs() * law.resistance;
@@ -342,9 +468,10 @@ pub(crate) fn build_dispatch(
         let mut starts = Vec::new();
         let mut stops = Vec::new();
         for t in 0..nt {
+            let limits = &operating.units[i][t];
             let on = commitment[i][t];
             let (lo, hi) = if on {
-                (u.flow.min / flow_scale, u.flow.max / flow_scale)
+                (limits.flow.min / flow_scale, limits.flow.max / flow_scale)
             } else {
                 (0., 0.)
             };
@@ -370,8 +497,12 @@ pub(crate) fn build_dispatch(
             if on {
                 m.set_bounds(ht[[i, t]], u.head.min / 100., u.head.max / 100.)
                     .map_err(|e| Error::Model(e.to_string()))?;
-                m.set_bounds(pt[[i, t]], u.power.min / scale, u.power.max / scale)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_bounds(
+                    pt[[i, t]],
+                    limits.power.min / scale,
+                    limits.power.max / scale,
+                )
+                .map_err(|e| Error::Model(e.to_string()))?;
                 let h0 = ((initial_head[source] - initial_head[target]) * u.mode.power_sign())
                     .clamp(u.head.min, u.head.max);
                 let q0 = start
@@ -381,7 +512,7 @@ pub(crate) fn build_dispatch(
                     .map_err(|e| Error::Model(e.to_string()))?;
                 let guess = u.trial_power(q0, h0);
                 let p0 = if guess.is_finite() {
-                    guess.clamp(u.power.min, u.power.max)
+                    guess.clamp(limits.power.min, limits.power.max)
                 } else {
                     (u.power.min + u.power.max) / 2.
                 };
@@ -417,8 +548,8 @@ pub(crate) fn build_dispatch(
                     * (u.mode.power_sign() * case.prices[t] * (case.grid[t + 1] - case.grid[t]));
             let (start, stop) = u.operation.transitions(&commitment[i], t);
             revenue = revenue
-                - if start { u.operation.startup_cost } else { 0. }
-                - if stop { u.operation.shutdown_cost } else { 0. };
+                - if start { limits.startup_cost } else { 0. }
+                - if stop { limits.shutdown_cost } else { 0. };
         }
         all_power.push(powers);
         all_flow.push(flows);
@@ -446,6 +577,7 @@ pub(crate) fn build_dispatch(
         &m,
         case,
         topology,
+        operating,
         &crate::operating_equations::OperatingExpressions {
             power: all_power,
             flow: all_flow,
@@ -466,6 +598,17 @@ pub(crate) fn build_dispatch(
             + crate::nlp::linear_expression(&routing.inventory[r][nt], &river_columns, zero())
                 * river.water_value;
     }
+    let initial_value: f64 = s
+        .reservoirs
+        .iter()
+        .map(|r| r.initial_storage * r.water_value)
+        .sum::<f64>()
+        + s.rivers
+            .iter()
+            .enumerate()
+            .map(|(i, r)| routing.inventory[i][0].constant * r.water_value)
+            .sum::<f64>();
+    revenue = revenue - initial_value;
     objective!(m, Max, revenue / 1000.);
     let storage = (0..nr)
         .map(|r| (0..=nt).map(|t| v[[r, t]].var_id().unwrap()).collect())

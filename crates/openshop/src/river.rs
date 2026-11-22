@@ -89,7 +89,11 @@ pub(crate) struct Routing {
 }
 
 impl Routing {
-    pub fn new(case: &ScheduleCase, topology: &Topology) -> Result<Self, Error> {
+    pub fn new(
+        case: &ScheduleCase,
+        topology: &Topology,
+        operating: &crate::operating_data::OperatingData,
+    ) -> Result<Self, Error> {
         let s = &case.system;
         let nt = case.prices.len();
         let (start, end) = (case.grid[0], case.grid[nt]);
@@ -197,7 +201,7 @@ impl Routing {
         for (i, r) in s.rivers.iter().enumerate() {
             if outlet_index[i].is_none()
                 && upstream[i].is_empty()
-                && r.inflow == 0.
+                && operating.river_inflow[i].iter().all(|q| *q == 0.)
                 && !topology.unit_outfalls.contains(&Some(i))
             {
                 return Err(Error::Input(format!(
@@ -247,7 +251,7 @@ impl Routing {
                     let time = w[0] + (w[1] - w[0]) / 2.;
                     let t = case.grid.partition_point(|&v| v <= time) - 1;
                     let mut rate = LinearForm {
-                        constant: river.inflow,
+                        constant: operating.river_inflow[i][t],
                         ..Default::default()
                     };
                     if let Some(k) = outlet_index[i] {
@@ -391,8 +395,10 @@ mod tests {
     }
     fn case(rivers: Vec<River>) -> ScheduleCase {
         ScheduleCase {
+            operations: Default::default(),
             system: HydroSystem {
                 reservoirs: vec![Reservoir {
+                    operation: Default::default(),
                     name: "Lake".into(),
                     storage: Bounds::new(0., 1e6),
                     initial_storage: 5e5,
@@ -424,7 +430,12 @@ mod tests {
         river.history_grid = vec![-1., 0.];
         river.history_release = vec![2.];
         let case = case(vec![river]);
-        let routing = Routing::new(&case, &case.topology().unwrap()).unwrap();
+        let routing = Routing::new(
+            &case,
+            &case.topology().unwrap(),
+            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
+        )
+        .unwrap();
         let flow = [4., 8., 0.];
         let arrivals: Vec<_> = routing.arrivals[0]
             .iter()
@@ -454,7 +465,12 @@ mod tests {
             reach("Combined", "Merge", "Fork", 0.),
             reach("B", "Lake", "Merge", 0.75),
         ]);
-        let routing = Routing::new(&case, &case.topology().unwrap()).unwrap();
+        let routing = Routing::new(
+            &case,
+            &case.topology().unwrap(),
+            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
+        )
+        .unwrap();
         let flow = [4., 0., 8., 0., 6., 0.];
         let merged = &routing.releases[3];
         for (time, expected) in [(0.6, 4.), (0.9, 0.), (1.4, 6.), (2., 14.)] {
@@ -480,7 +496,12 @@ mod tests {
         a.allocation = 0.4;
         let case = case(vec![a]);
         assert!(matches!(
-            Routing::new(&case, &case.topology().unwrap()),
+            Routing::new(
+                &case,
+                &case.topology().unwrap(),
+                &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap())
+                    .unwrap()
+            ),
             Err(Error::Input(_))
         ));
         let case = super::tests::case(vec![
@@ -488,7 +509,12 @@ mod tests {
             reach("B", "Two", "One", 1.),
         ]);
         assert!(matches!(
-            Routing::new(&case, &case.topology().unwrap()),
+            Routing::new(
+                &case,
+                &case.topology().unwrap(),
+                &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap())
+                    .unwrap()
+            ),
             Err(Error::Input(_))
         ));
     }
@@ -499,7 +525,12 @@ mod tests {
             reach("Return", "Bend", "Lake", 0.),
             reach("Outlet", "Lake", "Bend", 0.),
         ]);
-        let routing = Routing::new(&case, &case.topology().unwrap()).unwrap();
+        let routing = Routing::new(
+            &case,
+            &case.topology().unwrap(),
+            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
+        )
+        .unwrap();
         for row in &routing.reservoir_net[0] {
             assert!(row.value(&[4., 7., 2.]).abs() < 1e-12);
         }

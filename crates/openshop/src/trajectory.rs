@@ -32,6 +32,32 @@ pub struct Schedule {
     pub validation: Validation,
 }
 
+impl Schedule {
+    /// Production minus pumping consumption, MW, in control-interval order.
+    pub fn net_power(&self, case: &ScheduleCase) -> Result<Vec<f64>, crate::Error> {
+        if self.unit_power.len() != case.system.units.len()
+            || self
+                .unit_power
+                .iter()
+                .any(|row| row.len() != case.prices.len())
+        {
+            return Err(crate::Error::Input(
+                "unit power axes do not match the case".into(),
+            ));
+        }
+        Ok((0..case.prices.len())
+            .map(|t| {
+                case.system
+                    .units
+                    .iter()
+                    .enumerate()
+                    .map(|(g, u)| u.mode.power_sign() * self.unit_power[g][t])
+                    .sum()
+            })
+            .collect())
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Validation {
     pub feasible: bool,
@@ -47,6 +73,7 @@ pub(crate) fn evaluate(
     case: &ScheduleCase,
     topology: &Topology,
     routing: &Routing,
+    operating: &crate::operating_data::OperatingData,
     mut schedule: Schedule,
     junction_head: Vec<Vec<f64>>,
     tolerance: f64,
@@ -169,12 +196,16 @@ pub(crate) fn evaluate(
                 .collect()
         })
         .collect();
-    schedule.objective = objective(case, &schedule);
-    schedule.validation = validate(case, topology, routing, &schedule, tolerance);
+    schedule.objective = objective(case, &schedule, operating);
+    schedule.validation = validate(case, topology, routing, operating, &schedule, tolerance);
     schedule
 }
 
-fn objective(case: &ScheduleCase, schedule: &Schedule) -> f64 {
+fn objective(
+    case: &ScheduleCase,
+    schedule: &Schedule,
+    operating: &crate::operating_data::OperatingData,
+) -> f64 {
     let revenue = case
         .system
         .units
@@ -190,8 +221,16 @@ fn objective(case: &ScheduleCase, schedule: &Schedule) -> f64 {
                         * u.mode.power_sign()
                         * schedule.unit_power[i][t]
                         * (case.grid[t + 1] - case.grid[t])
-                        - if start { u.operation.startup_cost } else { 0. }
-                        - if stop { u.operation.shutdown_cost } else { 0. }
+                        - if start {
+                            operating.units[i][t].startup_cost
+                        } else {
+                            0.
+                        }
+                        - if stop {
+                            operating.units[i][t].shutdown_cost
+                        } else {
+                            0.
+                        }
                 })
                 .sum::<f64>()
         })
@@ -202,14 +241,19 @@ fn objective(case: &ScheduleCase, schedule: &Schedule) -> f64 {
             .rivers
             .iter()
             .enumerate()
-            .map(|(r, river)| river.water_value * schedule.river_storage[r][case.prices.len()])
+            .map(|(r, river)| {
+                river.water_value
+                    * (schedule.river_storage[r][case.prices.len()] - schedule.river_storage[r][0])
+            })
             .sum::<f64>()
         + case
             .system
             .reservoirs
             .iter()
             .enumerate()
-            .map(|(r, res)| res.water_value * schedule.storage[r][case.prices.len()])
+            .map(|(r, res)| {
+                res.water_value * (schedule.storage[r][case.prices.len()] - res.initial_storage)
+            })
             .sum::<f64>()
 }
 
@@ -217,6 +261,7 @@ fn validate(
     case: &ScheduleCase,
     topology: &Topology,
     routing: &Routing,
+    operating: &crate::operating_data::OperatingData,
     schedule: &Schedule,
     tolerance: f64,
 ) -> Validation {
@@ -244,11 +289,16 @@ fn validate(
         )
         .collect();
     for (r, series) in routing.releases.iter().enumerate() {
-        for rate in &series.rates {
+        for (k, rate) in series.rates.iter().enumerate() {
+            let period = case
+                .grid
+                .partition_point(|time| *time <= series.grid[k])
+                .saturating_sub(1)
+                .min(case.prices.len() - 1);
             result.operating_limits = result.operating_limits.max(violation(
                 rate.value(&columns),
                 0.,
-                case.system.rivers[r].capacity,
+                operating.river_capacity[r][period],
                 case.system.rivers[r].capacity.max(1.),
             ));
         }
@@ -270,12 +320,31 @@ fn validate(
         result.operating_limits = result
             .operating_limits
             .max((schedule.storage[r][0] - reservoir.initial_storage).abs() / scale);
-        for &volume in &schedule.storage[r] {
+        for (t, &volume) in schedule.storage[r].iter().enumerate() {
             result.operating_limits = result.operating_limits.max(violation(
                 volume,
-                reservoir.storage.min,
-                reservoir.storage.max,
+                operating.reservoirs[r].storage[t].min,
+                operating.reservoirs[r].storage[t].max,
                 scale,
+            ));
+        }
+        for t in 0..case.prices.len() {
+            let volume = operating.reservoirs[r].volume_change[t];
+            let level = operating.reservoirs[r].level_change[t];
+            let dv = schedule.storage[r][t + 1] - schedule.storage[r][t];
+            let dz = reservoir.level.trial_level(schedule.storage[r][t + 1])
+                - reservoir.level.trial_level(schedule.storage[r][t]);
+            result.operating_limits = result.operating_limits.max(violation(
+                dv,
+                volume.down.map_or(f64::NEG_INFINITY, |x| -x),
+                volume.up.unwrap_or(f64::INFINITY),
+                scale,
+            ));
+            result.operating_limits = result.operating_limits.max(violation(
+                dz,
+                level.down.map_or(f64::NEG_INFINITY, |x| -x),
+                level.up.unwrap_or(f64::INFINITY),
+                100.,
             ));
         }
         for (t, vertices) in routing.storage_shape[r].iter().enumerate() {
@@ -285,14 +354,14 @@ fn validate(
                     + c.value(&columns);
                 result.operating_limits = result.operating_limits.max(violation(
                     volume,
-                    reservoir.storage.min,
-                    reservoir.storage.max,
+                    operating.reservoirs[r].interval_storage[t].min,
+                    operating.reservoirs[r].interval_storage[t].max,
                     scale,
                 ));
             }
         }
         for t in 0..case.prices.len() {
-            let net = case.inflow(r, t)
+            let net = operating.reservoirs[r].inflow[t]
                 + routing.reservoir_net[r][t].value(&columns)
                 + topology.incidence[r]
                     .iter()
@@ -334,11 +403,11 @@ fn validate(
         }
     }
     for (e, tunnel) in case.system.tunnels.iter().enumerate() {
-        let law = &topology.tunnel_laws[e];
         for t in 0..case.prices.len() {
+            let law = &operating.tunnels[e][t];
             let (a, b) = topology.tunnel_nodes[e];
             let q = schedule.tunnel_flow[e][t];
-            let error = if tunnel.opening == 0. {
+            let error = if law.opening == 0. {
                 // Flow is checked by its zero-capacity bound below; closed gates
                 // impose no pressure law.
                 0.
@@ -349,11 +418,7 @@ fn validate(
                     / law.head_factor
             };
             result.pressure_balance = result.pressure_balance.max(error);
-            let capacity = if tunnel.opening == 0. {
-                0.
-            } else {
-                tunnel.capacity
-            };
+            let capacity = if law.opening == 0. { 0. } else { law.capacity };
             result.operating_limits = result.operating_limits.max(violation(
                 q,
                 -capacity,
@@ -369,63 +434,71 @@ fn validate(
                 .max(row.residual(&schedule.commitment[i]).max(0.));
         }
         for t in 0..case.prices.len() {
-            let previous = if t == 0 {
+            let limits = &operating.units[i][t];
+            let previous_q = if t == 0 {
                 u.operation.previous_flow()
             } else {
                 Some(schedule.unit_flow[i][t - 1])
             };
-            if let Some(previous) = previous {
-                let change = schedule.unit_flow[i][t] - previous;
-                let dt = u.operation.ramp_hours(&case.grid, t);
-                let lo = u
-                    .operation
-                    .flow_ramp
-                    .down
-                    .map_or(f64::NEG_INFINITY, |v| -v * dt);
-                let hi = u.operation.flow_ramp.up.map_or(f64::INFINITY, |v| v * dt);
-                result.operating_limits =
-                    result
-                        .operating_limits
-                        .max(violation(change, lo, hi, u.flow.max.max(1.)));
+            if let Some(previous) = previous_q {
+                result.operating_limits = result.operating_limits.max(violation(
+                    schedule.unit_flow[i][t] - previous,
+                    limits.flow_change.down.map_or(f64::NEG_INFINITY, |x| -x),
+                    limits.flow_change.up.unwrap_or(f64::INFINITY),
+                    u.flow.max.max(1.),
+                ));
             }
-        }
-        for t in 0..case.prices.len() {
-            let previous = if t == 0 {
+            let previous_p = if t == 0 {
                 u.operation.previous_power()
             } else {
                 Some(schedule.unit_power[i][t - 1])
             };
-            if let Some(previous) = previous {
+            if let Some(previous) = previous_p {
                 let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
-                let dt = u.operation.ramp_hours(&case.grid, t);
-                let lo = u.operation.power_ramp.down.map_or(f64::NEG_INFINITY, |v| {
-                    -v * dt - if stop { u.power.min } else { 0. }
-                });
-                let hi = u.operation.power_ramp.up.map_or(f64::INFINITY, |v| {
-                    v * dt + if start { u.power.min } else { 0. }
-                });
-                let change = schedule.unit_power[i][t] - previous;
-                result.operating_limits =
-                    result
-                        .operating_limits
-                        .max(violation(change, lo, hi, u.power.max.max(1.)));
+                result.operating_limits = result.operating_limits.max(violation(
+                    schedule.unit_power[i][t] - previous,
+                    limits.power_change.down.map_or(f64::NEG_INFINITY, |x| {
+                        -x - if stop { limits.stopping_power_min } else { 0. }
+                    }),
+                    limits.power_change.up.map_or(f64::INFINITY, |x| {
+                        x + if start { limits.power.min } else { 0. }
+                    }),
+                    u.power.max.max(1.),
+                ));
+            }
+            if limits
+                .forced
+                .is_some_and(|state| state != schedule.commitment[i][t])
+            {
+                result.operating_limits = f64::INFINITY;
+            }
+            if let Some(p) = limits.fixed_power {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((schedule.unit_power[i][t] - p).abs() / u.power.max.max(1.));
+            }
+            if let Some(q) = limits.fixed_flow {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((schedule.unit_flow[i][t] - q).abs() / u.flow.max.max(1.));
             }
         }
         for t in 0..case.prices.len() {
+            let limits = &operating.units[i][t];
             let on = schedule.commitment[i][t];
             let q = schedule.unit_flow[i][t];
             let p = schedule.unit_power[i][t];
             let h = schedule.unit_head[i][t];
             result.operating_limits = result.operating_limits.max(violation(
                 q,
-                if on { u.flow.min } else { 0. },
-                if on { u.flow.max } else { 0. },
+                if on { limits.flow.min } else { 0. },
+                if on { limits.flow.max } else { 0. },
                 u.flow.max.max(1.),
             ));
             result.operating_limits = result.operating_limits.max(violation(
                 p,
-                if on { u.power.min } else { 0. },
-                if on { u.power.max } else { 0. },
+                if on { limits.power.min } else { 0. },
+                if on { limits.power.max } else { 0. },
                 u.power.max.max(1.),
             ));
             if on && let Some(characteristic) = &u.pump_characteristic {
@@ -454,9 +527,8 @@ fn validate(
             }
         }
     }
-    for (i, p) in case.system.plants.iter().enumerate() {
+    for i in 0..case.system.plants.len() {
         let members = &topology.plant_units[i];
-        let op = &topology.plant_operation[i];
         let on: Vec<_> = (0..case.prices.len())
             .map(|t| members.iter().any(|&g| schedule.commitment[g][t]))
             .collect();
@@ -474,21 +546,34 @@ fn validate(
             .sum::<f64>()
             .max(1.);
         for (t, &running) in on.iter().enumerate() {
+            let limits = &operating.plants[i][t];
+            if limits.forced.is_some_and(|state| state != running) {
+                result.operating_limits = f64::INFINITY;
+            }
+            if let Some(p) = limits.fixed_power {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((schedule.plant_power[i][t] - p).abs() / p_scale);
+            }
+            if let Some(q) = limits.fixed_flow {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((schedule.plant_flow[i][t] - q).abs() / q_scale);
+            }
             result.operating_limits = result.operating_limits.max(violation(
                 schedule.plant_flow[i][t],
-                if running { p.flow_min } else { 0. },
-                p.flow_max.unwrap_or(f64::INFINITY),
+                if running { limits.flow.min } else { 0. },
+                limits.flow.max,
                 q_scale,
             ));
             result.operating_limits = result.operating_limits.max(violation(
                 schedule.plant_power[i][t],
-                if running { p.power_min } else { 0. },
-                p.power_max.unwrap_or(f64::INFINITY),
+                if running { limits.power.min } else { 0. },
+                limits.power.max,
                 p_scale,
             ));
-            let dt = op.ramp_hours(&case.grid, t);
             let prior_q = if t == 0 {
-                op.previous_flow()
+                operating.plant_initial_flow[i]
             } else {
                 Some(schedule.plant_flow[i][t - 1])
             };
@@ -496,13 +581,13 @@ fn validate(
                 let change = schedule.plant_flow[i][t] - prior;
                 result.operating_limits = result.operating_limits.max(violation(
                     change,
-                    op.flow_ramp.down.map_or(f64::NEG_INFINITY, |r| -r * dt),
-                    op.flow_ramp.up.map_or(f64::INFINITY, |r| r * dt),
+                    limits.flow_change.down.map_or(f64::NEG_INFINITY, |x| -x),
+                    limits.flow_change.up.unwrap_or(f64::INFINITY),
                     q_scale,
                 ));
             }
             let prior_p = if t == 0 {
-                op.previous_power()
+                operating.plant_initial_power[i]
             } else {
                 Some(schedule.plant_power[i][t - 1])
             };
@@ -515,7 +600,7 @@ fn validate(
                             .transitions(&schedule.commitment[g], t)
                             .0
                     })
-                    .map(|&g| case.system.units[g].power.min)
+                    .map(|&g| operating.units[g][t].power.min)
                     .sum();
                 let jump_down: f64 = members
                     .iter()
@@ -525,14 +610,18 @@ fn validate(
                             .transitions(&schedule.commitment[g], t)
                             .1
                     })
-                    .map(|&g| case.system.units[g].power.min)
+                    .map(|&g| operating.units[g][t].stopping_power_min)
                     .sum();
                 result.operating_limits = result.operating_limits.max(violation(
                     schedule.plant_power[i][t] - prior,
-                    op.power_ramp
+                    limits
+                        .power_change
                         .down
-                        .map_or(f64::NEG_INFINITY, |r| -r * dt - jump_down),
-                    op.power_ramp.up.map_or(f64::INFINITY, |r| r * dt + jump_up),
+                        .map_or(f64::NEG_INFINITY, |x| -x - jump_down),
+                    limits
+                        .power_change
+                        .up
+                        .map_or(f64::INFINITY, |x| x + jump_up),
                     p_scale,
                 ));
             }

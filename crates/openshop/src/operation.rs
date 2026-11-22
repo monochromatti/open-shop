@@ -96,52 +96,13 @@ impl PlantOperation {
                 ages.fold(f64::INFINITY, f64::min)
             }
         });
-        let infer = |power: bool| -> Result<Option<f64>, Error> {
-            let explicit = if power {
-                self.initial_power
-            } else {
-                self.initial_flow
-            };
-            if explicit.is_some() {
-                return Ok(explicit);
-            }
-            let enabled = if power {
-                self.power_ramp.up.is_some() || self.power_ramp.down.is_some()
-            } else {
-                self.flow_ramp.up.is_some() || self.flow_ramp.down.is_some()
-            };
-            let values: Option<Vec<_>> = members
-                .iter()
-                .map(|g| {
-                    if power {
-                        g.operation.previous_power()
-                    } else {
-                        g.operation.previous_flow()
-                    }
-                })
-                .collect();
-            if let Some(values) = values {
-                if enabled
-                    && members
-                        .iter()
-                        .any(|g| g.operation.initial_interval_hours != self.initial_interval_hours)
-                {
-                    return Err(Error::Input(format!(
-                        "{name}: supply aggregate history when observation durations differ"
-                    )));
-                }
-                Ok(Some(values.iter().sum()))
-            } else {
-                Ok(None)
-            }
-        };
         let operation = UnitOperation {
             initial_on,
             initial_duration: duration,
             minimum_up_time: self.minimum_up_time,
             minimum_down_time: self.minimum_down_time,
-            initial_flow: infer(false)?,
-            initial_power: infer(true)?,
+            initial_flow: self.initial_flow,
+            initial_power: self.initial_power,
             initial_interval_hours: self.initial_interval_hours,
             flow_ramp: self.flow_ramp.clone(),
             power_ramp: self.power_ramp.clone(),
@@ -243,26 +204,10 @@ impl UnitOperation {
         rows
     }
     pub(crate) fn previous_power(&self) -> Option<f64> {
-        if self.initial_on {
-            self.initial_power
-        } else {
-            Some(0.)
-        }
+        self.initial_power
     }
     pub(crate) fn previous_flow(&self) -> Option<f64> {
-        if self.initial_on {
-            self.initial_flow
-        } else {
-            Some(0.)
-        }
-    }
-    pub(crate) fn ramp_hours(&self, grid: &[f64], t: usize) -> f64 {
-        let previous = if t == 0 {
-            self.initial_interval_hours
-        } else {
-            grid[t] - grid[t - 1]
-        };
-        (previous + (grid[t + 1] - grid[t])) / 2.
+        self.initial_flow
     }
     pub(crate) fn transitions(&self, on: &[bool], t: usize) -> (bool, bool) {
         let previous = if t == 0 { self.initial_on } else { on[t - 1] };

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 fn pumped_case() -> ScheduleCase {
     let reservoirs = vec![
         Reservoir {
+            operation: Default::default(),
             name: "Upper".into(),
             storage: Bounds::new(1e6, 20e6),
             initial_storage: 5e6,
@@ -16,6 +17,7 @@ fn pumped_case() -> ScheduleCase {
             water_value: 0.018,
         },
         Reservoir {
+            operation: Default::default(),
             name: "Lower".into(),
             storage: Bounds::new(1e6, 20e6),
             initial_storage: 15e6,
@@ -49,6 +51,7 @@ fn pumped_case() -> ScheduleCase {
     pump.motor_efficiency = 0.96;
     pump.operation.startup_cost = 10.;
     ScheduleCase {
+        operations: Default::default(),
         system: HydroSystem {
             reservoirs,
             plants: vec![
@@ -88,7 +91,7 @@ fn pumped_cycle_conserves_water_and_pays_for_electrical_input() {
         );
         assert!((result.storage[0][t] + result.storage[1][t] - 20e6).abs() < 1e-5);
     }
-    let mut value = 105000. - 20.;
+    let mut value = -20.;
     let mut produced = 0.;
     let mut consumed = 0.;
     for t in 0..4 {
@@ -111,6 +114,8 @@ fn pumped_cycle_conserves_water_and_pays_for_electrical_input() {
         }
     }
     assert!(produced < consumed);
+    let net = result.net_power(&case).unwrap();
+    assert!(net[0] < 0. && net[2] > 0.);
     assert!((result.objective - value).abs() < 1e-5);
 }
 #[test]

@@ -19,17 +19,20 @@ pub struct SchedulingProblem<'a> {
     case: &'a ScheduleCase,
     topology: Topology,
     routing: Routing,
+    operating: crate::operating_data::OperatingData,
 }
 
 impl<'a> SchedulingProblem<'a> {
     /// Validate inputs and prepare network incidence and transport once.
     pub fn new(case: &'a ScheduleCase) -> Result<Self, Error> {
         let topology = case.topology()?;
-        let routing = Routing::new(case, &topology)?;
+        let operating = crate::operating_data::OperatingData::new(case, &topology)?;
+        let routing = Routing::new(case, &topology, &operating)?;
         Ok(Self {
             case,
             topology,
             routing,
+            operating,
         })
     }
     pub fn case(&self) -> &ScheduleCase {
@@ -52,7 +55,7 @@ impl<'a> SchedulingProblem<'a> {
                 .iter()
                 .map(|u| case.commitment[&u.name].clone())
                 .collect();
-            return dispatch(case, topology, routing, commitment, None, options, backend);
+            return self.dispatch(commitment, None, options, backend);
         }
         let started = Instant::now();
         let mut excluded = Vec::new();
@@ -64,6 +67,7 @@ impl<'a> SchedulingProblem<'a> {
                 case,
                 topology,
                 routing,
+                &self.operating,
                 best.as_ref(),
                 &excluded,
                 remaining.min(options.time_limit / 4.),
@@ -79,15 +83,7 @@ impl<'a> SchedulingProblem<'a> {
                 break;
             }
             budget.max_iterations = options.max_iterations.min(200);
-            let result = dispatch(
-                case,
-                topology,
-                routing,
-                proposal.on.clone(),
-                Some(&proposal),
-                &budget,
-                backend,
-            )?;
+            let result = self.dispatch(proposal.on.clone(), Some(&proposal), &budget, backend)?;
             if result.validation.feasible
                 && best.as_ref().is_none_or(|p| result.objective > p.objective)
             {
@@ -111,15 +107,8 @@ impl<'a> SchedulingProblem<'a> {
             };
             let mut budget = options.clone();
             budget.time_limit = remaining;
-            let refined = dispatch(
-                case,
-                topology,
-                routing,
-                result.commitment.clone(),
-                Some(&start),
-                &budget,
-                backend,
-            )?;
+            let refined =
+                self.dispatch(result.commitment.clone(), Some(&start), &budget, backend)?;
             if refined.validation.feasible && refined.objective >= result.objective {
                 return Ok(refined);
             }
@@ -128,85 +117,88 @@ impl<'a> SchedulingProblem<'a> {
     }
 }
 
-fn dispatch(
-    case: &ScheduleCase,
-    topology: &Topology,
-    routing: &Routing,
-    commitment: Vec<Vec<bool>>,
-    start: Option<&crate::commitment::Proposal>,
-    options: &SolveOptions,
-    backend: Backend,
-) -> Result<Schedule, Error> {
-    let dispatch = build_dispatch(case, topology, routing, &commitment, start)?;
-    let point = nlp::solve(dispatch.problem, options, backend)?;
-    let storage = dispatch
-        .storage
-        .iter()
-        .enumerate()
-        .map(|(r, row)| {
-            let bounds = case.system.reservoirs[r].storage;
-            row.iter()
-                .map(|i| bounds.min + (bounds.max - bounds.min) * point.x[i.index()])
-                .collect()
-        })
-        .collect();
-    let unit_flow = dispatch
-        .flow
-        .iter()
-        .map(|row| {
-            row.iter()
-                .map(|i| dispatch.flow_scale * point.x[i.index()])
-                .collect()
-        })
-        .collect();
-    let tunnel_flow = dispatch
-        .tunnel_flow
-        .iter()
-        .map(|row| {
-            row.iter()
-                .map(|i| dispatch.flow_scale * point.x[i.index()])
-                .collect()
-        })
-        .collect();
-    let mut schedule = Schedule {
-        storage,
-        unit_flow,
-        tunnel_flow,
-        river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
-        river_release: Vec::new(),
-        river_arrival_volume: Vec::new(),
-        river_storage: Vec::new(),
-        unit_power: Vec::new(),
-        unit_head: Vec::new(),
-        plant_flow: Vec::new(),
-        plant_power: Vec::new(),
-        head: Vec::new(),
-        commitment,
-        objective: 0.,
-        solver_status: point.status,
-        iterations: point.iterations,
-        validation: Validation::default(),
-    };
-    for (k, &river) in routing.outlets.iter().enumerate() {
-        schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
+impl SchedulingProblem<'_> {
+    fn dispatch(
+        &self,
+        commitment: Vec<Vec<bool>>,
+        start: Option<&crate::commitment::Proposal>,
+        options: &SolveOptions,
+        backend: Backend,
+    ) -> Result<Schedule, Error> {
+        let (case, topology, routing, operating) =
+            (self.case, &self.topology, &self.routing, &self.operating);
+        let dispatch = build_dispatch(case, topology, routing, operating, &commitment, start)?;
+        let point = nlp::solve(dispatch.problem, options, backend)?;
+        let storage = dispatch
+            .storage
             .iter()
-            .map(|i| dispatch.flow_scale * point.x[i.index()])
+            .enumerate()
+            .map(|(r, row)| {
+                let bounds = case.system.reservoirs[r].storage;
+                row.iter()
+                    .map(|i| bounds.min + (bounds.max - bounds.min) * point.x[i.index()])
+                    .collect()
+            })
             .collect();
+        let unit_flow = dispatch
+            .flow
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|i| dispatch.flow_scale * point.x[i.index()])
+                    .collect()
+            })
+            .collect();
+        let tunnel_flow = dispatch
+            .tunnel_flow
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|i| dispatch.flow_scale * point.x[i.index()])
+                    .collect()
+            })
+            .collect();
+        let mut schedule = Schedule {
+            storage,
+            unit_flow,
+            tunnel_flow,
+            river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
+            river_release: Vec::new(),
+            river_arrival_volume: Vec::new(),
+            river_storage: Vec::new(),
+            unit_power: Vec::new(),
+            unit_head: Vec::new(),
+            plant_flow: Vec::new(),
+            plant_power: Vec::new(),
+            head: Vec::new(),
+            commitment,
+            objective: 0.,
+            solver_status: point.status,
+            iterations: point.iterations,
+            validation: Validation::default(),
+        };
+        for (k, &river) in routing.outlets.iter().enumerate() {
+            schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
+                .iter()
+                .map(|i| dispatch.flow_scale * point.x[i.index()])
+                .collect();
+        }
+        let junction_head = dispatch
+            .junction_head
+            .iter()
+            .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
+            .collect();
+        let schedule = crate::trajectory::evaluate(
+            case,
+            topology,
+            routing,
+            operating,
+            schedule,
+            junction_head,
+            options.tolerance.max(1e-7),
+        );
+        Ok(schedule)
     }
-    let junction_head = dispatch
-        .junction_head
-        .iter()
-        .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
-        .collect();
-    let schedule = crate::trajectory::evaluate(
-        case,
-        topology,
-        routing,
-        schedule,
-        junction_head,
-        options.tolerance.max(1e-7),
-    );
-    Ok(schedule)
 }
 
 #[cfg(test)]
@@ -228,8 +220,10 @@ mod tests {
 
     fn reservoir_case() -> ScheduleCase {
         ScheduleCase {
+            operations: Default::default(),
             system: HydroSystem {
                 reservoirs: vec![Reservoir {
+                    operation: Default::default(),
                     name: "Lake".into(),
                     storage: Bounds::new(1e6, 4e6),
                     initial_storage: 3e6,
@@ -491,7 +485,7 @@ mod tests {
         case.system.units[0].operation.shutdown_cost = 137.;
         let result = solve(&case, &SolveOptions::default()).unwrap();
         assert!(result.validation.feasible);
-        assert!((result.objective - (3000. - 137.)).abs() < 1e-6);
+        assert!((result.objective - (-137.)).abs() < 1e-6);
         case.system.units[0].operation.minimum_up_time = 2.;
         assert!(matches!(
             SchedulingProblem::new(&case),
@@ -515,7 +509,7 @@ mod tests {
             );
             assert!((result.unit_flow[0][0] - 20.).abs() < 1e-5);
             let mean = (22000. * (98.56 + 99.) / 2. + 50000. * (99. + 102.) / 2.) / 72000.;
-            let expected = 100. * 0.00981 * 20. * 0.9 * (mean - 20.) + 2928.;
+            let expected = 100. * 0.00981 * 20. * 0.9 * (mean - 20.) - 72.;
             assert!((result.head[0][0] - mean).abs() < 1e-6);
             assert!(
                 (result.objective - expected).abs() < 0.01,
@@ -650,7 +644,7 @@ mod tests {
             assert!(result.validation.feasible);
             assert_eq!(result.head[0][0], 100.);
             assert!((result.unit_flow[0][0] - 20.).abs() < 1e-5);
-            assert!((result.objective - (100. * 0.00981 * 20. * 80. * 0.9 + 2928.)).abs() < 0.01);
+            assert!((result.objective - (100. * 0.00981 * 20. * 80. * 0.9 - 72.)).abs() < 0.01);
         }
     }
 
@@ -672,7 +666,7 @@ mod tests {
             assert!((result.storage[0][1] - 2_928_000.).abs() < 0.05);
             let expected_power =
                 0.00981 * 20. * 0.9 * (40. + 20e-6 * (3e6 + 2_928_000.) / 2. - 20.);
-            let expected = 100. * expected_power + 0.001 * 2_928_000.;
+            let expected = 100. * expected_power + 0.001 * (2_928_000. - 3e6);
             assert!(
                 (result.objective - expected).abs() < 0.01,
                 "{backend:?}: {} vs {expected}",
@@ -790,6 +784,7 @@ mod tests {
     fn small_reservoir_couples_two_plants_without_small_time_steps() {
         let mut case = reservoir_case();
         case.system.reservoirs.push(Reservoir {
+            operation: Default::default(),
             name: "Forebay".into(),
             storage: Bounds::new(0., 1000.),
             initial_storage: 500.,
@@ -833,6 +828,7 @@ mod tests {
     fn delayed_forebay_case() -> ScheduleCase {
         let mut case = reservoir_case();
         case.system.reservoirs.push(Reservoir {
+            operation: Default::default(),
             name: "Forebay".into(),
             storage: Bounds::new(0., 1000.),
             initial_storage: 500.,
@@ -1175,6 +1171,7 @@ mod tests {
             &case,
             &problem.topology,
             &problem.routing,
+            &problem.operating,
             result,
             vec![],
             1e-7,

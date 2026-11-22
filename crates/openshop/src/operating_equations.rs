@@ -15,6 +15,7 @@ pub(crate) fn constrain(
     m: &Model,
     case: &ScheduleCase,
     topology: &Topology,
+    operating: &crate::operating_data::OperatingData,
     variables: &OperatingExpressions<'_>,
 ) {
     let OperatingExpressions {
@@ -31,7 +32,16 @@ pub(crate) fn constrain(
         let scale_p = u.power.max.max(1.);
         let zero = power[g][0] * 0.;
         for t in 0..nt {
-            let dt = u.operation.ramp_hours(&case.grid, t);
+            let limits = &operating.units[g][t];
+            if let Some(fixed) = limits.forced {
+                constraint!(m, on[g][t] == if fixed { 1. } else { 0. });
+            }
+            if let Some(p) = limits.fixed_power {
+                constraint!(m, power[g][t] / scale_p == p / scale_p);
+            }
+            if let Some(q) = limits.fixed_flow {
+                constraint!(m, flow[g][t] / scale_q == q / scale_q);
+            }
             let prior_q = if t == 0 {
                 u.operation.previous_flow().map(|q| zero + q)
             } else {
@@ -39,11 +49,11 @@ pub(crate) fn constrain(
             };
             if let Some(prior) = prior_q {
                 let change = (flow[g][t] - prior) / scale_q;
-                if let Some(up) = u.operation.flow_ramp.up {
-                    constraint!(m, change <= up * dt / scale_q);
+                if let Some(up) = limits.flow_change.up {
+                    constraint!(m, change <= up / scale_q);
                 }
-                if let Some(down) = u.operation.flow_ramp.down {
-                    constraint!(m, -change <= down * dt / scale_q);
+                if let Some(down) = limits.flow_change.down {
+                    constraint!(m, -change <= down / scale_q);
                 }
             }
             let prior_p = if t == 0 {
@@ -53,16 +63,16 @@ pub(crate) fn constrain(
             };
             if let Some(prior) = prior_p {
                 let change = (power[g][t] - prior) / scale_p;
-                if let Some(up) = u.operation.power_ramp.up {
+                if let Some(up) = limits.power_change.up {
                     constraint!(
                         m,
-                        change <= (up * dt + starts[g][t] * u.power.min) / scale_p
+                        change <= (up + starts[g][t] * limits.power.min) / scale_p
                     );
                 }
-                if let Some(down) = u.operation.power_ramp.down {
+                if let Some(down) = limits.power_change.down {
                     constraint!(
                         m,
-                        -change <= (down * dt + stops[g][t] * u.power.min) / scale_p
+                        -change <= (down + stops[g][t] * limits.stopping_power_min) / scale_p
                     );
                 }
             }
@@ -77,7 +87,6 @@ pub(crate) fn constrain(
         let total_p: Vec<_> = (0..nt)
             .map(|t| members.iter().fold(zero, |sum, &g| sum + power[g][t]))
             .collect();
-        let operation = &topology.plant_operation[i];
         let scale_q = p
             .flow_max
             .unwrap_or_else(|| members.iter().map(|&g| case.system.units[g].flow.max).sum())
@@ -99,53 +108,63 @@ pub(crate) fn constrain(
             constraint!(m, lhs >= row.rhs);
         }
         for t in 0..nt {
+            let limits = &operating.plants[i][t];
+            if let Some(fixed) = limits.forced {
+                constraint!(m, plant_on[i][t] == if fixed { 1. } else { 0. });
+            }
+            if let Some(p) = limits.fixed_power {
+                constraint!(m, total_p[t] / scale_p == p / scale_p);
+            }
+            if let Some(q) = limits.fixed_flow {
+                constraint!(m, total_q[t] / scale_q == q / scale_q);
+            }
             constraint!(
                 m,
-                total_q[t] / scale_q >= plant_on[i][t] * (p.flow_min / scale_q)
+                total_q[t] / scale_q >= plant_on[i][t] * (limits.flow.min / scale_q)
             );
             constraint!(
                 m,
-                total_p[t] / scale_p >= plant_on[i][t] * (p.power_min / scale_p)
+                total_p[t] / scale_p >= plant_on[i][t] * (limits.power.min / scale_p)
             );
-            if let Some(hi) = p.flow_max {
+            if let Some(hi) = Some(limits.flow.max) {
                 constraint!(m, total_q[t] / scale_q <= hi / scale_q);
             }
-            if let Some(hi) = p.power_max {
+            if let Some(hi) = Some(limits.power.max) {
                 constraint!(m, total_p[t] / scale_p <= hi / scale_p);
             }
-            let dt = operation.ramp_hours(&case.grid, t);
+
             let prior_q = if t == 0 {
-                operation.previous_flow().map(|q| zero + q)
+                operating.plant_initial_flow[i].map(|q| zero + q)
             } else {
                 Some(total_q[t - 1])
             };
             if let Some(prior) = prior_q {
                 let change = (total_q[t] - prior) / scale_q;
-                if let Some(up) = operation.flow_ramp.up {
-                    constraint!(m, change <= up * dt / scale_q);
+                if let Some(up) = limits.flow_change.up {
+                    constraint!(m, change <= up / scale_q);
                 }
-                if let Some(down) = operation.flow_ramp.down {
-                    constraint!(m, -change <= down * dt / scale_q);
+                if let Some(down) = limits.flow_change.down {
+                    constraint!(m, -change <= down / scale_q);
                 }
             }
             let prior_p = if t == 0 {
-                operation.previous_power().map(|v| zero + v)
+                operating.plant_initial_power[i].map(|v| zero + v)
             } else {
                 Some(total_p[t - 1])
             };
             if let Some(prior) = prior_p {
                 let change = (total_p[t] - prior) / scale_p;
                 let jump_up = members.iter().fold(zero, |sum, &g| {
-                    sum + starts[g][t] * case.system.units[g].power.min
+                    sum + starts[g][t] * operating.units[g][t].power.min
                 });
                 let jump_down = members.iter().fold(zero, |sum, &g| {
-                    sum + stops[g][t] * case.system.units[g].power.min
+                    sum + stops[g][t] * operating.units[g][t].stopping_power_min
                 });
-                if let Some(up) = operation.power_ramp.up {
-                    constraint!(m, change <= (up * dt + jump_up) / scale_p);
+                if let Some(up) = limits.power_change.up {
+                    constraint!(m, change <= (up + jump_up) / scale_p);
                 }
-                if let Some(down) = operation.power_ramp.down {
-                    constraint!(m, -change <= (down * dt + jump_down) / scale_p);
+                if let Some(down) = limits.power_change.down {
+                    constraint!(m, -change <= (down + jump_down) / scale_p);
                 }
             }
         }
