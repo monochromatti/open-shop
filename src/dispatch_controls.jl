@@ -121,7 +121,7 @@ function DispatchReconstruction(c,u;grid=c.grid,transport=nothing,tunnel_opening
     validate_delay_curves(s)
     validate_river_allocations(s)
     validate_curve_data(s)
-    indices=[min(searchsortedlast(c.grid,(mesh.grid[t]+mesh.grid[t+1])/2),length(c.prices))
+    indices=[min(searchsortedlast(c.grid,(mesh.grid[t]+mesh.grid[t+1])/2),length(c.grid)-1)
         for t in eachindex(mesh.dt)]
     routing_case=_river_replace(c;grid=copy(mesh.grid),prices=zeros(length(mesh.dt)))
     DispatchReconstruction(c,mesh,physical,copy(u),opening,HydraulicTopology(s),
@@ -134,8 +134,8 @@ function _dispatch_from_controls(data::DispatchReconstruction,q,gate;
     status="FORWARD_RECONSTRUCTED",reserves=nothing,head_reference=nothing)
     c,mesh,physical=data.case,data.mesh,data.physical
     u,opening,nd=data.commitment,data.opening,data.transport
-    size(q)==(length(c.system.generators),length(c.prices)) &&
-        size(gate)==(length(c.system.rivers),length(c.prices)) ||
+    size(q)==(length(c.system.generators),length(c.grid)-1) &&
+        size(gate)==(length(c.system.rivers),length(c.grid)-1) ||
         throw(DimensionMismatch("schedule dimensions"))
     all(>=(0),q) && all(x->0<=x<=1,gate) ||
         throw(ArgumentError("invalid generator discharges or river gates"))
