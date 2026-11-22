@@ -10,10 +10,9 @@ end
 
 # Keep this independent of restart/serialization so graph compilation remains
 # available during input construction.
-function _river_replace(x; kwargs...)
-    values=Dict(f=>getfield(x, f) for f in fieldnames(typeof(x)))
-    merge!(values, Dict(kwargs))
-    typeof(x)(; values...)
+function _river_replace(x::T; kwargs...) where {T}
+    fields=NamedTuple{fieldnames(T)}(ntuple(i->getfield(x,i),Val(fieldcount(T))))
+    T(; fields...,kwargs...)
 end
 
 """Compile reach connections to private zero-storage river nodes.

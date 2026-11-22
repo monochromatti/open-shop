@@ -1,3 +1,16 @@
+@testset "A fixed pressure reference cannot conceal missing water" begin
+    system=HydroSystem(junctions=[Junction(name=:Intake)],
+        river_junctions=[RiverJunction(name=:Upstream)],
+        rivers=[River(name=:Inflow,source=:Upstream,target=:Intake,capacity=2.0,
+            deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0)])
+    for arrival in (0.0,1.0)
+        point=forward_step(system,Float64[],0.0,Float64[],[0.0],[arrival];
+            head_reference=[100.0])
+        @test point.converged==iszero(arrival)
+        @test point.residual≈arrival atol=1e-12
+    end
+end
+
 @testset "Short steps respect the resolution of each reservoir's storage" begin
     for volume in (1e-5, 600.0), dt in (1.0, 1e-7)
         inflow = 2.3

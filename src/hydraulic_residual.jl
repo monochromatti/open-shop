@@ -364,12 +364,6 @@ every original equation. Storage, head and operational capacities are not clippe
 function solve_hydraulics!(x, data::HydraulicStepData, work; tolerance, max_iterations,
     head_reference=nothing)
     isempty(x) && return 0
-    solve_hydraulics!(x, data, work, ForwardDiff.Chunk(x); tolerance, max_iterations,
-        head_reference)
-end
-
-function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.Chunk{N};
-    tolerance, max_iterations, head_reference=nothing) where {N}
     floating = _floating_pressure_components(
         data.system,
         data.opening,
@@ -380,6 +374,13 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
     prescribed=iszero(data.duration) ? collect(eachindex(data.previous_storage)) : Int[]
     columns = isempty(prescribed) && isempty(floating) ? collect(eachindex(x)) :
         setdiff(eachindex(x),prescribed,first.(floating))
+    isempty(columns) && return 0
+    solve_hydraulics!(x,data,work,ForwardDiff.Chunk(view(x,columns));
+        columns,floating,tolerance,max_iterations,head_reference)
+end
+
+function solve_hydraulics!(x,data::HydraulicStepData,work,chunk::ForwardDiff.Chunk{N};
+    columns,floating,tolerance,max_iterations,head_reference=nothing) where {N}
     nq=length(data.previous_storage)+length(data.system.junctions)+length(data.system.tunnels)
     nonnegative=[nq+k for (k,d) in enumerate(data.active_rivers) if !is_channel(data.system.rivers[d])]
     append!(nonnegative,(nq+length(data.active_rivers)+1):length(x))
@@ -389,19 +390,29 @@ function solve_hydraulics!(x, data::HydraulicStepData, work, chunk::ForwardDiff.
     residual, plus, trial, step = (similar(x) for _ in 1:4)
     hydraulic_residual!(residual, x, data, work)
     hydraulic_converged(residual, x, data, tolerance) && return 0
-    # An operation tag gives the scratch arrays a concrete dual-number type
-    # before the residual closure is constructed. Reuse all derivative buffers.
+    # Differentiate F(x_fixed + P*z) only in the free coordinates z. This gives
+    # the same Jacobian columns as differentiating the full state and selecting
+    # columns afterward, while retaining every physical residual row. Fixed
+    # coordinates stay constant throughout this Newton solve.
     tag = ForwardDiff.Tag((hydraulic_residual!,), eltype(x))
-    dual_work = HydraulicWorkspace(data, ForwardDiff.Dual{typeof(tag),eltype(x),N})
-    equations! = (r, z) -> hydraulic_residual!(r, z, data, dual_work)
-    config = ForwardDiff.JacobianConfig(equations!, residual, x, chunk, tag)
-    full_jacobian = Matrix{Float64}(undef, length(x), length(x))
-    jacobian = length(columns)==length(x) ? full_jacobian : view(full_jacobian, :, columns)
+    dual_type=ForwardDiff.Dual{typeof(tag),eltype(x),N}
+    dual_work = HydraulicWorkspace(data,dual_type)
+    dual_state=Vector{dual_type}(x)
+    free=x[columns]
+    equations! = function(r,z)
+        for (k,i) in enumerate(columns)
+            dual_state[i]=z[k]
+        end
+        hydraulic_residual!(r,dual_state,data,dual_work)
+    end
+    config = ForwardDiff.JacobianConfig(equations!, residual, free, chunk, tag)
+    jacobian = Matrix{Float64}(undef,length(x),length(columns))
     iterations = 0
     for k in 1:max_iterations
         hydraulic_residual!(residual, x, data, work)
         hydraulic_converged(residual, x, data, tolerance) && break
-        ForwardDiff.jacobian!(full_jacobian, equations!, residual, x, config)
+        free .= view(x,columns)
+        ForwardDiff.jacobian!(jacobian,equations!,residual,free,config)
         direction = try
             -(qr(jacobian, ColumnNorm()) \ residual)
         catch error
