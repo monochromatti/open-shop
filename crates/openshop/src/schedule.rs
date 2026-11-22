@@ -1106,6 +1106,8 @@ mod tests {
                 (-0.01..=1000.01).contains(&middle),
                 "{backend:?}: middle storage {middle}"
             );
+            let mean_volume = (result.storage[1][1] + 2. * middle + result.storage[1][2]) / 4.;
+            assert!((result.head[1][1] - (45. + 0.01 * mean_volume)).abs() < 1e-8);
             for t in 0..case.prices.len() {
                 let seconds = 3600. * (case.grid[t + 1] - case.grid[t]);
                 let change = result.river_arrival_volume[0][t] - seconds * result.unit_flow[1][t];

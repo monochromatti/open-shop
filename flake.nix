@@ -13,9 +13,8 @@
       toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
       native = {
-        nativeBuildInputs = [ pkgs.pkg-config ];
+        nativeBuildInputs = [ pkgs.pkg-config pkgs.rustPlatform.bindgenHook ];
         buildInputs = [ pkgs.ipopt pkgs.scipopt-scip ];
-        LIBCLANG_PATH = "${pkgs.lib.getLib pkgs.llvmPackages.libclang}/lib";
         SCIPOPTDIR = "${pkgs.scipopt-scip}";
       };
     in { inherit pkgs toolchain craneLib native; };
