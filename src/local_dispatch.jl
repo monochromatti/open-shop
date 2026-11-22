@@ -485,8 +485,6 @@ function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
     cells=first.(b.mesh.cells)
     commitment=Int.(b.operating_u)
     opening=Matrix{Float64}(b.gates.opening)
-    reconstruction=DispatchReconstruction(b.operating_case,commitment;
-        grid=b.mesh.grid,transport=b.transport,tunnel_opening=opening)
     callback=function(mode,k,args...)
         mode==0 || return true
         began=time()
@@ -505,9 +503,9 @@ function retain_feasible_dispatch!(b;arrival_margin=0.0,operational_margin=0.0)
             reserves=_reserve_slice(_reserve_values(b.case,b.reserves,value_at;
                 operating_case=b.operating_case),cells)
             integrations[]+=1
-            x,transport=_dispatch_from_controls(reconstruction,
+            x,transport=_dispatch_from_controls(b.operating_case,commitment,
                 value_at.(b.GQ[:,cells]),value_at.(b.variables.a[:,cells]);
-                reserves,
+                grid=b.mesh.grid,transport=b.transport,tunnel_opening=opening,reserves,
                 head_reference=interval_means(b.mesh,value_at.(b.H)),status="FORWARD_RECONSTRUCTED")
             if solution[]===nothing || x.objective>solution[].objective
                 checks[]+=1
@@ -625,14 +623,13 @@ function _solve_case(
         return SolveResult(result),nothing,Inf
     end
     _local_optimizer!(b.m, solver, remaining;feasibility_only)
-    retained=feasibility_only ? nothing : retain_feasible_dispatch!(b;arrival_margin,operational_margin)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
     if time_limit-construction_seconds<=0
         result["total_seconds"]=time()-b.starttime
         return SolveResult(result),nothing,Inf
     end
-    set_optimizer_attribute(b.m,"max_cpu_time",max(0.001,time_limit-construction_seconds))
+    retained=feasibility_only ? nothing : retain_feasible_dispatch!(b;arrival_margin,operational_margin)
     elapsed=@elapsed optimize!(b.m)
     result["status"]=string(termination_status(b.m))
     result["seconds"]=elapsed

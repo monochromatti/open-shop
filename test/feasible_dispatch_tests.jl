@@ -11,14 +11,6 @@
         grid=[0.0,1.0,2.0],prices=[20.0,80.0])
     u=ones(Int,1,2)
     warm=dispatch_from_controls(c,u,fill(2.5,1,2),zeros(0,2))
-    # Repeated integration changes the controls while preserving each returned
-    # trajectory. Fixed preparation must not retain an earlier flow or state.
-    reconstruction=OpenSHOP.DispatchReconstruction(c,u)
-    low,_=OpenSHOP._dispatch_from_controls(reconstruction,fill(2.5,1,2),zeros(0,2))
-    high,_=OpenSHOP._dispatch_from_controls(reconstruction,fill(3.5,1,2),zeros(0,2))
-    @test low.storage≈reshape([2.0,1.991,1.982],1,3) atol=1e-12
-    @test high.storage≈reshape([2.0,1.9874,1.9748],1,3) atol=1e-12
-    @test validate(c,low)["valid"] && validate(c,high)["valid"]
     b=OpenSHOP._build_dispatch(c;u,warm)
     OpenSHOP._local_optimizer!(b.m,"Ipopt",30.0)
     # A short solve must still preserve the physical starting plan. Neither

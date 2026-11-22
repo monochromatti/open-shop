@@ -405,13 +405,11 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     transport=nothing,topology=HydraulicTopology(c.system),
     sources=river_source_indices(c.system),
     active_rivers=findall(r->r.law!=:junction,c.system.rivers),
-    river_order=_forward_river_order(c.system),
-    routing_case=_river_replace(c;grid=Float64.(grid),prices=zeros(length(grid)-1)),
-    indices=[min(searchsortedlast(c.grid,(grid[t]+grid[t+1])/2),length(c.grid)-1)
-        for t in 1:length(grid)-1])
+    river_order=_forward_river_order(c.system))
     s=c.system
     ng,nd=length(s.generators),length(s.rivers)
     T=length(grid)-1
+    indices=[min(searchsortedlast(c.grid, (grid[t]+grid[t + 1])/2), length(c.grid)-1) for t in 1:T]
     gq=Float64.(generator_q[:, indices])
     all(isfinite,gq) && all(iszero(generator_q[i,indices[t]])==iszero(gq[i,t])
         for i in 1:ng,t in 1:T) || throw(ArgumentError(
@@ -435,7 +433,7 @@ function _simulate_hydraulics(c,generator_q,gate,state,opening,reference,grid;
     tunnel_capacity=zeros(length(s.tunnels))
     river_capacity=zeros(nd)
     exact=all(r.deterministic_delay!==nothing for r in s.rivers)
-    nc_case=routing_case
+    nc_case=_river_replace(c; grid = Float64.(grid), prices = zeros(T))
     ndat=exact ? _transport_data(nc_case, transport) : nothing
     !exact &&
         transport!==nothing &&
