@@ -1,4 +1,4 @@
-//! Unit commitment and interval-average discharge restrictions in physical time.
+//! Unit commitment and interval-average flow and power restrictions in physical time.
 
 use crate::Error;
 use serde::{Deserialize, Serialize};
@@ -23,9 +23,14 @@ pub struct UnitOperation {
     pub shutdown_cost: f64,
     /// Previous interval-average discharge, m³/s. An initially off unit has zero flow.
     pub initial_flow: Option<f64>,
+    /// Previous interval-average generation, MW. An initially off unit has zero power.
+    pub initial_power: Option<f64>,
+    /// Duration of the preceding observation interval, hours.
     pub initial_interval_hours: f64,
     /// Restrictions on changes between interval-average discharges, (m³/s)/hour.
     pub flow_ramp: RampRates,
+    /// MW/hour, with minimum-power startup/shutdown allowances.
+    pub power_ramp: RampRates,
 }
 impl Default for UnitOperation {
     fn default() -> Self {
@@ -37,8 +42,10 @@ impl Default for UnitOperation {
             startup_cost: 0.,
             shutdown_cost: 0.,
             initial_flow: None,
+            initial_power: None,
             initial_interval_hours: 1.,
             flow_ramp: RampRates::default(),
+            power_ramp: RampRates::default(),
         }
     }
 }
@@ -74,10 +81,15 @@ impl UnitOperation {
             || !self
                 .initial_flow
                 .iter()
+                .chain(self.initial_power.iter())
+                .chain(self.power_ramp.up.iter())
+                .chain(self.power_ramp.down.iter())
                 .chain(self.flow_ramp.up.iter())
                 .chain(self.flow_ramp.down.iter())
                 .all(|v| v.is_finite() && *v >= 0.)
-            || (!self.initial_on && self.initial_flow.is_some_and(|q| q != 0.))
+            || (!self.initial_on
+                && (self.initial_flow.is_some_and(|q| q != 0.)
+                    || self.initial_power.is_some_and(|p| p != 0.)))
         {
             return Err(Error::Input(format!(
                 "{name}: invalid unit operating restrictions or initial state"
@@ -127,6 +139,13 @@ impl UnitOperation {
             }
         }
         rows
+    }
+    pub(crate) fn previous_power(&self) -> Option<f64> {
+        if self.initial_on {
+            self.initial_power
+        } else {
+            Some(0.)
+        }
     }
     pub(crate) fn previous_flow(&self) -> Option<f64> {
         if self.initial_on {

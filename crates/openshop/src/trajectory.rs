@@ -341,6 +341,28 @@ fn validate(
                         .max(violation(change, lo, hi, u.flow.max.max(1.)));
             }
         }
+        for t in 0..case.prices.len() {
+            let previous = if t == 0 {
+                u.operation.previous_power()
+            } else {
+                Some(schedule.unit_power[i][t - 1])
+            };
+            if let Some(previous) = previous {
+                let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
+                let dt = u.operation.ramp_hours(&case.grid, t);
+                let lo = u.operation.power_ramp.down.map_or(f64::NEG_INFINITY, |v| {
+                    -v * dt - if stop { u.power.min } else { 0. }
+                });
+                let hi = u.operation.power_ramp.up.map_or(f64::INFINITY, |v| {
+                    v * dt + if start { u.power.min } else { 0. }
+                });
+                let change = schedule.unit_power[i][t] - previous;
+                result.operating_limits =
+                    result
+                        .operating_limits
+                        .max(violation(change, lo, hi, u.power.max.max(1.)));
+            }
+        }
         let (a, b) = topology.unit_nodes[i];
         for t in 0..case.prices.len() {
             let on = schedule.commitment[i][t];

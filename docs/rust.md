@@ -91,7 +91,7 @@ cargo run -p openshop --example schedule -- crates/openshop/examples/data/measur
 ## Unit operation
 
 Each unit has a `UnitOperation` record. Its default has no minimum operating times
-or discharge ramps, zero transition costs, and an initially stopped unit. Supply
+or ramps, zero transition costs, and an initially stopped unit. Supply
 `minimum_up_time`, `minimum_down_time` and `initial_duration` in hours. Minimum
 times are measured from control edges in physical time, including an obligation
 remaining from the initial state. The final state may carry an obligation beyond
@@ -104,7 +104,19 @@ initially stopped unit has zero initial discharge. An initially running unit can
 supply `initial_flow`; without it, the first discharge ramp has no historical
 reference and subsequent ramps still apply. Transition costs charge each start
 and stop once. Prescribed commitments violating minimum times are rejected at
-preparation. Power ramps and plant-wide operating restrictions remain to be ported.
+preparation.
+
+`power_ramp.up` and `.down` similarly bound changes in generation, in MW/hour,
+using the calculated nonlinear power. Starting permits an additional increase
+of `power.min`; stopping permits the corresponding decrease. In symbols,
+`P_t − P_prev ≤ up Δτ + P_min start` and
+`P_prev − P_t ≤ down Δτ + P_min stop`, where `Δτ` is midpoint spacing.
+Discharge ramps have no additional transition allowance. An initially running
+unit can supply `initial_power`; omitting it leaves only the first power ramp
+without a historical reference. A stopped unit has zero historical power.
+Historical flow and power need not lie in the new horizon's operating range;
+the ramp equations determine whether the transition is possible. Plant-wide
+operating restrictions remain to be ported.
 
 ## Numerical structure
 
@@ -166,7 +178,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 
 Still to be implemented are measured turbine and gate curves, flow-dependent distributed
 river responses, adaptive hydraulics, pumps and reversible modes, optimized gate
-positions, plant-level limits, power ramps, time-dependent operating
+positions, plant-level limits, time-dependent operating
 restrictions, restart, rolling horizons and global bounds. Full watercourses,
 including Tokke–Vinje, must exercise those capabilities before any final
 formulation or solver comparison. The small tests establish correctness of the

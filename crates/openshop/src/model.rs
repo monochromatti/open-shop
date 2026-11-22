@@ -522,15 +522,6 @@ impl ScheduleCase {
                     u.name
                 )));
             }
-            if let Some(q) = u.operation.initial_flow
-                && u.operation.initial_on
-                && !u.flow.contains(q)
-            {
-                return Err(Error::Input(format!(
-                    "{}: initial discharge outside on-state range",
-                    u.name
-                )));
-            }
         }
         Ok(Topology {
             unit_nodes,

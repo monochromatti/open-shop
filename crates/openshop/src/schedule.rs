@@ -325,6 +325,119 @@ mod tests {
     }
 
     #[test]
+    fn power_ramps_use_nonlinear_generation_and_unequal_interval_midpoints() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5, 1.5, 3.];
+        case.prices = vec![200.; 3];
+        case.commitment.clear();
+        case.system.units[0].operation = crate::UnitOperation {
+            initial_on: true,
+            minimum_up_time: 3.,
+            initial_power: Some(5.),
+            initial_interval_hours: 0.5,
+            power_ramp: crate::RampRates {
+                up: Some(2.),
+                down: Some(3.),
+            },
+            ..Default::default()
+        };
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(
+                &case,
+                &SolveOptions {
+                    time_limit: 5.,
+                    ..Default::default()
+                },
+                backend,
+            )
+            .unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert_eq!(result.commitment[0], vec![true; 3]);
+            for (&power, expected) in result.unit_power[0].iter().zip([6., 7.5, 10.]) {
+                assert!(
+                    (power - expected).abs() < 1e-4,
+                    "{backend:?}: {:?}",
+                    result.unit_power
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn minimum_power_is_allowed_at_startup_and_shutdown_with_zero_normal_ramp() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 1., 2.];
+        case.prices = vec![200., -100.];
+        case.commitment.insert("Unit".into(), vec![true, false]);
+        case.system.reservoirs[0].level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 120.,
+            slope: 0.,
+            curvature: 0.,
+        };
+        let unit = &mut case.system.units[0];
+        unit.flow.min = 1.;
+        unit.power.min = 0.00981 * 100. * 0.9;
+        unit.operation.power_ramp = crate::RampRates {
+            up: Some(0.),
+            down: Some(0.),
+        };
+        let minimum_power = unit.power.min;
+        for backend in [Backend::Ipopt, Backend::Pounce] {
+            let result = solve_with_backend(&case, &SolveOptions::default(), backend).unwrap();
+            assert!(
+                result.validation.feasible,
+                "{backend:?}: {:?}",
+                result.validation
+            );
+            assert!((result.unit_power[0][0] - minimum_power).abs() < 1e-6);
+            assert!((result.unit_flow[0][0] - 1.).abs() < 1e-6);
+            assert_eq!(result.unit_power[0][1], 0.);
+        }
+    }
+
+    #[test]
+    fn historical_output_can_exceed_new_limits_but_transition_must_obey_ramps() {
+        let mut case = reservoir_case();
+        let unit = &mut case.system.units[0];
+        unit.power.max = 8.;
+        unit.operation = crate::UnitOperation {
+            initial_on: true,
+            initial_flow: Some(25.),
+            initial_power: Some(15.),
+            flow_ramp: crate::RampRates {
+                down: Some(20.),
+                ..Default::default()
+            },
+            power_ramp: crate::RampRates {
+                down: Some(7.),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let result = solve(&case, &SolveOptions::default()).unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        assert!((result.unit_power[0][0] - 8.).abs() < 1e-5);
+        case.system.units[0].operation.power_ramp.down = Some(6.);
+        let result = solve(&case, &SolveOptions::default()).unwrap();
+        assert!(!result.validation.feasible);
+    }
+
+    #[test]
+    fn a_stopped_unit_cannot_supply_nonzero_historical_generation() {
+        let mut case = reservoir_case();
+        case.system.units[0].operation.initial_power = Some(1.);
+        assert!(matches!(
+            SchedulingProblem::new(&case),
+            Err(Error::Input(_))
+        ));
+    }
+
+    #[test]
     fn a_start_requires_remaining_on_through_the_minimum_up_time() {
         let mut case = reservoir_case();
         case.grid = vec![0., 1., 2., 3., 4.];

@@ -138,6 +138,7 @@ pub(crate) fn propose(
             constraint!(m, lhs >= row.rhs);
         }
         let (a, b) = topology.unit_nodes[g];
+        let mut powers: Vec<Expr<'_>> = Vec::with_capacity(nt);
         for t in 0..nt {
             if let Some(fixed) = case.commitment.get(&unit.name) {
                 m.fix(on[[g, t]], if fixed[t] { 1. } else { 0. })
@@ -196,6 +197,27 @@ pub(crate) fn propose(
                     constraint!(m, -change <= down * dt / flow_scale);
                 }
             }
+            let power: Expr<'_> = (q[[g, t]] * (flow_scale * coefficient)).into();
+            let previous = if t == 0 {
+                unit.operation.previous_power().map(|p| zero() + p)
+            } else {
+                Some(powers[t - 1])
+            };
+            if let Some(previous) = previous {
+                let dt = unit.operation.ramp_hours(&case.grid, t);
+                let scale = unit.power.max.max(1.);
+                let change = (power - previous) / scale;
+                if let Some(up) = unit.operation.power_ramp.up {
+                    constraint!(
+                        m,
+                        change <= (up * dt + start[[g, t]] * unit.power.min) / scale
+                    );
+                }
+                if let Some(down) = unit.operation.power_ramp.down {
+                    constraint!(m, -change <= (down * dt + stop * unit.power.min) / scale);
+                }
+            }
+            powers.push(power);
             revenue = revenue
                 + q[[g, t]]
                     * (flow_scale

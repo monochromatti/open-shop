@@ -290,6 +290,7 @@ pub(crate) fn build_dispatch(
     let mut revenue = zero();
     for (i, u) in s.units.iter().enumerate() {
         let (source, target) = topology.unit_nodes[i];
+        let mut powers: Vec<Expr<'_>> = Vec::with_capacity(nt);
         for t in 0..nt {
             let on = commitment[i][t];
             let (lo, hi) = if on {
@@ -325,6 +326,30 @@ pub(crate) fn build_dispatch(
             let net_head = head[t][source] - head[t][target] - flow.square() * u.loss_factor;
             let eta = crate::physics::efficiency(&u.efficiency, flow, net_head);
             let power = crate::physics::generation(flow, net_head, eta);
+            let (starts, stops) = u.operation.transitions(&commitment[i], t);
+            let previous = if t == 0 {
+                u.operation.previous_power().map(|p| zero() + p)
+            } else {
+                Some(powers[t - 1])
+            };
+            if let Some(previous) = previous {
+                let dt = u.operation.ramp_hours(&case.grid, t);
+                let scale = u.power.max.max(1.);
+                let change = (power - previous) / scale;
+                if let Some(up) = u.operation.power_ramp.up {
+                    constraint!(
+                        m,
+                        change <= (up * dt + if starts { u.power.min } else { 0. }) / scale
+                    );
+                }
+                if let Some(down) = u.operation.power_ramp.down {
+                    constraint!(
+                        m,
+                        -change <= (down * dt + if stops { u.power.min } else { 0. }) / scale
+                    );
+                }
+            }
+            powers.push(power);
             if on {
                 constraint!(
                     m,
