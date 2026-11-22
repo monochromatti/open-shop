@@ -625,13 +625,14 @@ function _solve_case(
         return SolveResult(result),nothing,Inf
     end
     _local_optimizer!(b.m, solver, remaining;feasibility_only)
+    retained=feasibility_only ? nothing : retain_feasible_dispatch!(b;arrival_margin,operational_margin)
     construction_seconds=time()-b.starttime
     result["construction_seconds"]=construction_seconds
     if time_limit-construction_seconds<=0
         result["total_seconds"]=time()-b.starttime
         return SolveResult(result),nothing,Inf
     end
-    retained=feasibility_only ? nothing : retain_feasible_dispatch!(b;arrival_margin,operational_margin)
+    set_optimizer_attribute(b.m,"max_cpu_time",max(0.001,time_limit-construction_seconds))
     elapsed=@elapsed optimize!(b.m)
     result["status"]=string(termination_status(b.m))
     result["seconds"]=elapsed
