@@ -32,6 +32,20 @@ pub(crate) struct NlpSolution {
     pub iterations: usize,
 }
 
+/// Extract affine physical inputs for a local constitutive equation.
+pub(crate) fn linear_form(
+    model: &Model,
+    expression: oximo::expr::Expr<'_>,
+) -> Result<crate::river::LinearForm, Error> {
+    let arena = model.arena();
+    let linear = extract_linear(&arena, expression.id())
+        .ok_or_else(|| Error::Model("local physical input must be affine".into()))?;
+    Ok(crate::river::LinearForm {
+        constant: linear.constant,
+        coefficients: linear.coeffs.iter().map(|(i, c)| (i.index(), *c)).collect(),
+    })
+}
+
 /// Convert a prepared sparse linear form at the equation-assembly boundary.
 pub(crate) fn linear_expression<'a>(
     form: &crate::river::LinearForm,

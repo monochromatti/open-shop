@@ -29,7 +29,8 @@ pub(crate) fn propose(
     variable!(m,0.0<=v[r in 0..nr,t in 0..nt+1]<=1.0);
     variable!(m,q[g in 0..nu,t in 0..nt]>=0.0);
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
-    variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]>=0.);
+    variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]);
+    variable!(m,0.<=ga[e in 0..routing.outlets.len(),t in 0..nt]<=1.);
     variable!(m,on[g in 0..nu,t in 0..nt],Bin);
     variable!(m,0.0<=start[g in 0..nu,t in 0..nt]<=1.0);
     variable!(m,0.0<=plant_on[p in 0..s.plants.len(),t in 0..nt]<=1.0);
@@ -49,8 +50,17 @@ pub(crate) fn propose(
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
-            m.set_bounds(qr[[k, t]], 0., operating.river_capacity[e][t] / flow_scale)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            let lower = if s.rivers[e].law.is_delta() {
+                -operating.river_capacity[e][t] / flow_scale
+            } else {
+                0.
+            };
+            m.set_bounds(
+                qr[[k, t]],
+                lower,
+                operating.river_capacity[e][t] / flow_scale,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
@@ -165,6 +175,85 @@ pub(crate) fn propose(
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
+    // Tangent hydraulic laws guide integer proposals. Nonlinear dispatch
+    // subsequently enforces the original equations, not these tangents.
+    let mut mean_head = vec![vec![zero(); nr]; nt];
+    let mut reference_head = vec![vec![0.; nr]; nt];
+    for (r, reservoir) in s.reservoirs.iter().enumerate() {
+        let range = reservoir.storage.max - reservoir.storage.min;
+        for t in 0..nt {
+            let (a, b) = previous.map_or(
+                (reservoir.initial_storage, reservoir.initial_storage),
+                |p| (p.storage[r][t], p.storage[r][t + 1]),
+            );
+            let d = reservoir.level.mean_data(a, b);
+            reference_head[t][r] = d.value;
+            mean_head[t][r] = zero()
+                + d.value
+                + (v[[r, t]] * range + reservoir.storage.min - a) * d.gradient[0]
+                + (v[[r, t + 1]] * range + reservoir.storage.min - b) * d.gradient[1];
+        }
+    }
+    for (k, &e) in routing.outlets.iter().enumerate() {
+        let river = &s.rivers[e];
+        let source = s
+            .reservoirs
+            .iter()
+            .position(|r| r.name == river.source)
+            .unwrap();
+        for t in 0..nt {
+            let gate = operating.river_gate[e][t];
+            m.set_bounds(ga[[k, t]], gate.min, gate.max)
+                .map_err(|e| Error::Model(e.to_string()))?;
+            let h0 = reference_head[t][source];
+            let h = mean_head[t][source];
+            let flow: Expr<'_> = match &river.law {
+                crate::RiverLaw::Delta { curve, reference } => {
+                    let target = s
+                        .reservoirs
+                        .iter()
+                        .position(|r| r.name == river.target)
+                        .unwrap();
+                    let other0 = reference_head[t][target];
+                    let other = mean_head[t][target];
+                    let (ref0, href) = match reference {
+                        crate::ReferenceLevel::Upstream => (h0, h),
+                        crate::ReferenceLevel::Downstream => (other0, other),
+                    };
+                    let d = curve.data(h0 - other0, ref0);
+                    m.fix(ga[[k, t]], 0.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                    zero()
+                        + d.value
+                        + (h - other - (h0 - other0)) * d.gradient[0]
+                        + (href - ref0) * d.gradient[1]
+                }
+                _ => {
+                    let coefficient = river.law.outlet_flow(
+                        h0,
+                        1.,
+                        operating.river_capacity[e][t],
+                        operating.river_inflow[e][t],
+                    )?;
+                    let slope = match &river.law {
+                        crate::RiverLaw::Orifice {
+                            coefficient, crest, ..
+                        } if h0 > *crest => coefficient / (2. * (h0 - crest).sqrt()),
+                        crate::RiverLaw::Weir {
+                            coefficient, crest, ..
+                        } if h0 > *crest => 1.5 * coefficient * (h0 - crest).sqrt(),
+                        crate::RiverLaw::Level { curve } => {
+                            curve.mean_data(h0, h0).gradient.iter().sum()
+                        }
+                        _ => 0.,
+                    };
+                    let g0 = previous.map_or((gate.min + gate.max) / 2., |p| p.river_opening[e][t]);
+                    ga[[k, t]] * coefficient + (h - h0) * (slope * g0)
+                }
+            };
+            constraint!(m, qr[[k, t]] - flow / flow_scale == 0.);
+        }
+    }
     let mut all_power = Vec::new();
     let mut all_flow = Vec::new();
     let mut all_on = Vec::new();

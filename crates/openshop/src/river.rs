@@ -137,6 +137,7 @@ impl Routing {
                     r.name
                 )));
             }
+            r.law.validate(r, s)?;
             let empty = r.history_grid.is_empty() && r.history_release.is_empty();
             if !empty
                 && (r.history_grid.len() != r.history_release.len() + 1
@@ -381,6 +382,8 @@ mod tests {
 
     fn reach(name: &str, source: &str, target: &str, delay: f64) -> River {
         River {
+            law: Default::default(),
+            gate: Bounds::new(0., 1.),
             name: name.into(),
             source: source.into(),
             target: target.into(),

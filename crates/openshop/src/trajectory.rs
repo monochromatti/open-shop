@@ -18,6 +18,8 @@ pub struct Schedule {
     pub tunnel_flow: Vec<Vec<f64>>,
     /// River by control interval. Withdrawal excludes local river inflow/outfalls.
     pub river_withdrawal: Vec<Vec<f64>>,
+    /// Reservoir outlet gate fraction, river by control interval; zero for signed channels and river junctions.
+    pub river_opening: Vec<Vec<f64>>,
     pub river_release: Vec<Vec<f64>>,
     /// Downstream arrival volume, m³, by river and control interval.
     pub river_arrival_volume: Vec<Vec<f64>>,
@@ -297,7 +299,11 @@ fn validate(
                 .min(case.prices.len() - 1);
             result.operating_limits = result.operating_limits.max(violation(
                 rate.value(&columns),
-                0.,
+                if case.system.rivers[r].law.is_delta() {
+                    -operating.river_capacity[r][period]
+                } else {
+                    0.
+                },
                 operating.river_capacity[r][period],
                 case.system.rivers[r].capacity.max(1.),
             ));
@@ -313,6 +319,55 @@ fn validate(
             } else {
                 f64::INFINITY
             });
+        }
+    }
+    for &e in &routing.outlets {
+        let river = &case.system.rivers[e];
+        let source = case
+            .system
+            .reservoirs
+            .iter()
+            .position(|r| r.name == river.source)
+            .unwrap();
+        for t in 0..case.prices.len() {
+            let h = schedule.head[source][t];
+            let gate = schedule.river_opening[e][t];
+            let expected = match &river.law {
+                crate::RiverLaw::Delta { curve, reference } => {
+                    let target = case
+                        .system
+                        .reservoirs
+                        .iter()
+                        .position(|r| r.name == river.target)
+                        .unwrap();
+                    let other = schedule.head[target][t];
+                    curve.extended_value(
+                        h - other,
+                        match reference {
+                            crate::ReferenceLevel::Upstream => h,
+                            crate::ReferenceLevel::Downstream => other,
+                        },
+                    )
+                }
+                _ => river
+                    .law
+                    .outlet_flow(
+                        h,
+                        gate.clamp(0., 1.),
+                        operating.river_capacity[e][t],
+                        operating.river_inflow[e][t],
+                    )
+                    .unwrap_or(f64::INFINITY),
+            };
+            result.water_balance = result
+                .water_balance
+                .max((schedule.river_withdrawal[e][t] - expected).abs());
+            if !river.law.is_delta() {
+                let limits = operating.river_gate[e][t];
+                result.operating_limits = result
+                    .operating_limits
+                    .max(violation(gate, limits.min, limits.max, 1.));
+            }
         }
     }
     for (r, reservoir) in case.system.reservoirs.iter().enumerate() {
@@ -649,6 +704,7 @@ fn validate(
         .chain(&schedule.tunnel_flow)
         .chain(&schedule.river_storage)
         .chain(&schedule.river_release)
+        .chain(&schedule.river_opening)
         .all(|row| row.iter().all(|v| v.is_finite()));
     result.feasible = finite
         && result.water_balance <= tolerance

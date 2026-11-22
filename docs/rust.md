@@ -302,3 +302,26 @@ The first comparison needs a supplied historical interval average. Plant flow
 and power can inherit unit observations when their intervals match; explicit
 aggregate observations use the plant's declared interval. Numerical evaluation
 uses the prepared arrays without name lookup or input interpretation.
+
+## Reservoir outlets and level-difference channels
+
+`River::law` selects a physical outlet: `Controlled`, `Orifice`, `Weir`,
+`Level`, or `Delta`. Ordinary outlets optimize a gate fraction held over each
+control interval. `River::gate` and time-dependent `GateMin`/`GateMax` bound
+that fraction. A weir has no gate control. Natural inflow enters after the
+reservoir withdrawal and is included in downstream routing and capacity checks.
+
+Orifices satisfy `Q = C a sqrt(max(H − crest, 0))`; weirs satisfy
+`Q = C max(H − crest, 0)^(3/2)`. Possible drying requires `allow_dry`.
+The nonlinear equations use the square root of wet depth as an unknown rather
+than differentiating a square root at zero. A `Level` table supplies full-open
+discharge as a nonnegative, nondecreasing function of reservoir mean head.
+
+`LevelFlowCurve::new(reference_levels, curves)` defines a passive signed channel
+response. Each curve maps upstream minus downstream level to discharge and
+must be nondecreasing and contain `(0, 0)`. Curves are interpolated in either
+upstream or downstream reference level; outside that reference range the nearest
+curve applies. Channel equations extend each delta-level curve by its end
+secants, while raw `value` lookups reject delta levels outside the supplied
+domain. A channel connects two reservoirs immediately, with signed discharge,
+zero delay, and no gate, natural inflow or historical inventory.

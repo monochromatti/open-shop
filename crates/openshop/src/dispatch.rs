@@ -13,6 +13,7 @@ pub(crate) struct Dispatch {
     pub flow: Vec<Vec<VarId>>,
     pub tunnel_flow: Vec<Vec<VarId>>,
     pub river_withdrawal: Vec<Vec<VarId>>,
+    pub river_opening: Vec<Vec<VarId>>,
     pub junction_head: Vec<Vec<VarId>>,
     pub flow_scale: f64,
 }
@@ -32,17 +33,16 @@ pub(crate) fn build_dispatch(
     variable!(m,q[u in 0..nu,t in 0..nt] >= 0.0);
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
     variable!(m,hj[j in 0..s.junctions.len(),t in 0..nt]);
-    variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]>=0.);
+    variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]);
+    variable!(m,0.<=ga[e in 0..routing.outlets.len(),t in 0..nt]<=1.);
     let mut curves = Vec::new();
-    let table_index: Vec<_> = s
+    let curve_index: Vec<_> = s
         .reservoirs
         .iter()
         .map(|r| {
-            if let crate::StorageCurve::Table(curve) = &r.level
-                && r.level.trial_level(r.storage.min) != r.level.trial_level(r.storage.max)
-            {
+            if r.level.trial_level(r.storage.min) != r.level.trial_level(r.storage.max) {
                 let index = curves.len();
-                curves.push(std::sync::Arc::new(curve.clone()));
+                curves.push(std::sync::Arc::new(r.level.clone()));
                 Some(index)
             } else {
                 None
@@ -95,13 +95,22 @@ pub(crate) fn build_dispatch(
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
-            m.set_bounds(qr[[k, t]], 0., operating.river_capacity[e][t] / flow_scale)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            let lower = if s.rivers[e].law.is_delta() {
+                -operating.river_capacity[e][t] / flow_scale
+            } else {
+                0.
+            };
+            m.set_bounds(
+                qr[[k, t]],
+                lower,
+                operating.river_capacity[e][t] / flow_scale,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
             m.set_initial(
                 qr[[k, t]],
                 start
                     .map_or(0., |p| p.river_withdrawal[e][t] / flow_scale)
-                    .clamp(0., operating.river_capacity[e][t] / flow_scale),
+                    .clamp(lower, operating.river_capacity[e][t] / flow_scale),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
@@ -301,80 +310,58 @@ pub(crate) fn build_dispatch(
                 }
                 vertices.push((*fraction, volume * range + reservoir.storage.min));
             }
-            let level = match c {
-                crate::StorageCurve::Polynomial {
-                    reference_volume,
-                    elevation,
-                    slope,
-                    curvature,
-                } => {
-                    let mut level = zero();
-                    for w in vertices.windows(2) {
-                        level = level
-                            + crate::physics::polynomial_mean_level(
-                                *reference_volume,
-                                *elevation,
-                                *slope,
-                                *curvature,
-                                w[0].1,
-                                w[1].1,
-                            ) * (w[1].0 - w[0].0);
-                    }
-                    level
-                }
-                crate::StorageCurve::Table(_) => {
-                    let lo = c.trial_level(reservoir.storage.min);
-                    let hi = c.trial_level(reservoir.storage.max);
-                    if let Some(k) = table_index[r] {
-                        m.set_bounds(hm[[k, t]], lo / 100., hi / 100.)
-                            .map_err(|e| Error::Model(e.to_string()))?;
-                        let (before, after) = start.map_or(
-                            (reservoir.initial_storage, reservoir.initial_storage),
-                            |p| (p.storage[r][t], p.storage[r][t + 1]),
-                        );
-                        m.set_initial(
-                            hm[[k, t]],
-                            c.trial_mean_level(before, after).clamp(lo, hi) / 100.,
-                        )
+            let level = {
+                let lo = c.trial_level(reservoir.storage.min);
+                let hi = c.trial_level(reservoir.storage.max);
+                if let Some(k) = curve_index[r] {
+                    m.set_bounds(hm[[k, t]], lo / 100., hi / 100.)
                         .map_err(|e| Error::Model(e.to_string()))?;
-                        let path = {
-                            let arena = m.arena();
-                            vertices
-                                .iter()
-                                .map(|(fraction, volume)| {
-                                    let linear = oximo::expr::extract_linear(&arena, volume.id())
-                                        .ok_or_else(|| {
+                    let (before, after) = start.map_or(
+                        (reservoir.initial_storage, reservoir.initial_storage),
+                        |p| (p.storage[r][t], p.storage[r][t + 1]),
+                    );
+                    m.set_initial(
+                        hm[[k, t]],
+                        c.trial_mean_level(before, after).clamp(lo, hi) / 100.,
+                    )
+                    .map_err(|e| Error::Model(e.to_string()))?;
+                    let path = {
+                        let arena = m.arena();
+                        vertices
+                            .iter()
+                            .map(|(fraction, volume)| {
+                                let linear = oximo::expr::extract_linear(&arena, volume.id())
+                                    .ok_or_else(|| {
                                         Error::Model("storage path must be affine".into())
                                     })?;
-                                    Ok((
-                                        *fraction,
-                                        crate::river::LinearForm {
-                                            constant: linear.constant,
-                                            coefficients: linear
-                                                .coeffs
-                                                .iter()
-                                                .map(|(v, c)| (v.index(), *c))
-                                                .collect(),
-                                        },
-                                    ))
-                                })
-                                .collect::<Result<Vec<_>, Error>>()?
-                        };
-                        laws.push(
-                            crate::constitutive::StorageHeadEquation {
-                                curve: curves[k].clone(),
-                                vertices: path,
-                                head: hm[[k, t]].var_id().unwrap().index(),
-                                head_scale: 100.,
-                            }
-                            .into(),
-                        );
-                        Expr::from(hm[[k, t]] * 100.)
-                    } else {
-                        // A nondecreasing curve with equal endpoint levels is constant
-                        // throughout the allowed storage range; no unknown head is needed.
-                        zero() + lo
-                    }
+                                Ok((
+                                    *fraction,
+                                    crate::river::LinearForm {
+                                        constant: linear.constant,
+                                        coefficients: linear
+                                            .coeffs
+                                            .iter()
+                                            .map(|(v, c)| (v.index(), *c))
+                                            .collect(),
+                                    },
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, Error>>()?
+                    };
+                    laws.push(
+                        crate::constitutive::StorageHeadEquation {
+                            curve: curves[k].clone(),
+                            vertices: path,
+                            head: hm[[k, t]].var_id().unwrap().index(),
+                            head_scale: 100.,
+                        }
+                        .into(),
+                    );
+                    Expr::from(hm[[k, t]] * 100.)
+                } else {
+                    // A nondecreasing curve with equal endpoint levels is constant
+                    // throughout the allowed storage range; no unknown head is needed.
+                    zero() + lo
                 }
             };
             values.push(level);
@@ -387,6 +374,131 @@ pub(crate) fn build_dispatch(
         );
         values.extend(s.boundaries.iter().map(|b| zero() + b.head));
         head.push(values);
+    }
+    // Reservoir outlet laws share the same interval mean heads as machines
+    // and tunnels. Square-root lifts keep wet outlet derivatives finite.
+    variable!(m,root[k in 0..routing.outlets.len(),t in 0..nt]>=0.);
+    for (k, &e) in routing.outlets.iter().enumerate() {
+        let river = &s.rivers[e];
+        let source = s
+            .reservoirs
+            .iter()
+            .position(|r| r.name == river.source)
+            .unwrap();
+        for t in 0..nt {
+            let gate = operating.river_gate[e][t];
+            m.set_bounds(ga[[k, t]], gate.min, gate.max)
+                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_initial(ga[[k, t]], (gate.min + gate.max) / 2.)
+                .map_err(|e| Error::Model(e.to_string()))?;
+            let h = head[t][source];
+            let withdrawal = qr[[k, t]] * flow_scale;
+            match &river.law {
+                crate::RiverLaw::Controlled => {
+                    constraint!(
+                        m,
+                        withdrawal
+                            - ga[[k, t]]
+                                * (operating.river_capacity[e][t] - operating.river_inflow[e][t])
+                            == 0.
+                    );
+                    m.fix(root[[k, t]], 0.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                }
+                crate::RiverLaw::Delta { curve, reference } => {
+                    let target = s
+                        .reservoirs
+                        .iter()
+                        .position(|r| r.name == river.target)
+                        .unwrap();
+                    let href = match reference {
+                        crate::ReferenceLevel::Upstream => h,
+                        crate::ReferenceLevel::Downstream => head[t][target],
+                    };
+                    laws.push(crate::constitutive::Equation {
+                        linear: crate::river::LinearForm::variable(
+                            qr[[k, t]].var_id().unwrap().index(),
+                            -flow_scale,
+                        ),
+                        terms: vec![crate::constitutive::Term {
+                            function: crate::constitutive::PhysicalFunction::LevelFlow(
+                                std::sync::Arc::new(curve.clone()),
+                            ),
+                            inputs: [
+                                nlp::linear_form(&m, h - head[t][target])?,
+                                nlp::linear_form(&m, href)?,
+                                Default::default(),
+                            ],
+                            weight: 1.,
+                        }],
+                        bounds: crate::Bounds::new(0., 0.),
+                    });
+                    m.fix(ga[[k, t]], 0.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(root[[k, t]], 0.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                }
+                crate::RiverLaw::Level { curve } => {
+                    laws.push(crate::constitutive::Equation {
+                        linear: crate::river::LinearForm::variable(
+                            qr[[k, t]].var_id().unwrap().index(),
+                            -flow_scale,
+                        ),
+                        terms: vec![crate::constitutive::Term {
+                            function: crate::constitutive::PhysicalFunction::OutletTable(
+                                std::sync::Arc::new(curve.clone()),
+                            ),
+                            inputs: [
+                                nlp::linear_form(&m, h)?,
+                                nlp::linear_form(&m, ga[[k, t]].into())?,
+                                Default::default(),
+                            ],
+                            weight: 1.,
+                        }],
+                        bounds: crate::Bounds::new(0., 0.),
+                    });
+                    m.fix(root[[k, t]], 0.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                }
+                crate::RiverLaw::Orifice {
+                    coefficient,
+                    crest,
+                    allow_dry,
+                }
+                | crate::RiverLaw::Weir {
+                    coefficient,
+                    crest,
+                    allow_dry,
+                } => {
+                    let reservoir = &s.reservoirs[source];
+                    let lo = (reservoir.level.trial_level(reservoir.storage.min) - crest)
+                        .max(0.)
+                        .sqrt();
+                    let hi = (reservoir.level.trial_level(reservoir.storage.max) - crest)
+                        .max(0.)
+                        .sqrt();
+                    m.set_bounds(root[[k, t]], lo, hi)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_initial(root[[k, t]], (lo + hi) / 2.)
+                        .map_err(|e| Error::Model(e.to_string()))?;
+                    let depth = h - *crest;
+                    let wet_depth = if *allow_dry {
+                        (depth + depth.abs()) * 0.5
+                    } else {
+                        depth
+                    };
+                    if lo < hi {
+                        constraint!(m, (root[[k, t]].square() - wet_depth) / 100. == 0.);
+                    }
+                    let discharge: Expr<'_> = if matches!(river.law, crate::RiverLaw::Weir { .. }) {
+                        ((root[[k, t]] * root[[k, t]] * root[[k, t]]) * *coefficient).into()
+                    } else {
+                        (root[[k, t]] * ga[[k, t]] * *coefficient).into()
+                    };
+                    constraint!(m, withdrawal - discharge == 0.);
+                }
+            }
+        }
     }
     let initial_head: Vec<_> = s
         .reservoirs
@@ -632,6 +744,9 @@ pub(crate) fn build_dispatch(
         tunnel_flow,
         junction_head,
         river_withdrawal,
+        river_opening: (0..routing.outlets.len())
+            .map(|k| (0..nt).map(|t| ga[[k, t]].var_id().unwrap()).collect())
+            .collect(),
         flow_scale,
     })
 }

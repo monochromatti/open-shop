@@ -15,7 +15,7 @@ use pounce_nlp::tnlp::{
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) struct StorageHeadEquation {
-    pub curve: Arc<TableCurve>,
+    pub curve: Arc<crate::StorageCurve>,
     /// Fractional time and affine physical volume (m³), including both endpoints.
     pub vertices: Vec<(f64, LinearForm)>,
     pub head: usize,
@@ -23,9 +23,11 @@ pub(crate) struct StorageHeadEquation {
 }
 
 pub(crate) enum PhysicalFunction {
-    StorageMean(Arc<TableCurve>),
+    StorageMean(Arc<crate::StorageCurve>),
     Production(Arc<Unit>),
     Table(Arc<TableCurve>),
+    LevelFlow(Arc<crate::LevelFlowCurve>),
+    OutletTable(Arc<TableCurve>),
     Characteristic(Arc<crate::PumpCharacteristic>),
     MinimumFlow(Arc<TurbineTable>),
     MaximumFlow(Arc<TurbineTable>),
@@ -47,11 +49,16 @@ impl From<Derivatives2> for Derivatives {
     }
 }
 impl PhysicalFunction {
+    fn is_linear(&self) -> bool {
+        matches!(self,Self::StorageMean(c) if matches!(&**c,crate::StorageCurve::Polynomial{curvature,..} if *curvature==0.))
+    }
     fn value(&self, x: [f64; 3]) -> f64 {
         match self {
             Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
             Self::StorageMean(c) => c.mean_data(x[0], x[1]).value,
             Self::Table(c) => c.extended_value(x[0]),
+            Self::LevelFlow(c) => c.extended_value(x[0], x[1]),
+            Self::OutletTable(c) => c.extended_value(x[0]) * x[1],
             Self::Characteristic(c) => c.trial_discharge(x[1]),
             Self::MinimumFlow(c) => c.envelope_data(x[1], false).value,
             Self::MaximumFlow(c) => c.envelope_data(x[1], true).value,
@@ -73,6 +80,17 @@ impl PhysicalFunction {
             Self::Characteristic(c) => c.discharge_data(x[1]).into(),
             Self::MinimumFlow(c) => c.envelope_data(x[1], false).into(),
             Self::MaximumFlow(c) => c.envelope_data(x[1], true).into(),
+            Self::LevelFlow(c) => c.data(x[0], x[1]).into(),
+            Self::OutletTable(c) => {
+                let (_, g, h) = hessian(
+                    |x| crate::machine::table_value(c, x[0]) * x[1],
+                    &SVector::from(x),
+                );
+                Derivatives {
+                    gradient: std::array::from_fn(|i| g[i]),
+                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
+                }
+            }
             Self::Table(c) => {
                 let coordinates = c.coordinates();
                 let i = coordinates
@@ -273,6 +291,9 @@ impl Nlp {
                 if !term.weight.is_finite() {
                     return Err(Error::Model("invalid constitutive weight".into()));
                 }
+                if term.function.is_linear() {
+                    continue;
+                }
                 let variables: BTreeMap<_, _> = term
                     .inputs
                     .iter()
@@ -316,30 +337,32 @@ impl Nlp {
                     .collect();
                 let vars: Vec<_> = variables.keys().copied().collect();
                 let mut hessian = Vec::new();
-                for (j, &a) in vars.iter().enumerate() {
-                    for &b in &vars[..=j] {
-                        let ja = term
-                            .inputs
-                            .each_ref()
-                            .map(|v| v.coefficients.get(&a).copied().unwrap_or(0.));
-                        let jb = term
-                            .inputs
-                            .each_ref()
-                            .map(|v| v.coefficients.get(&b).copied().unwrap_or(0.));
-                        let mut weights = [0.; 6];
-                        let mut k = 0;
-                        for u in 0..3 {
-                            for v in 0..=u {
-                                weights[k] = term.weight
-                                    * if u == v {
-                                        ja[u] * jb[u]
-                                    } else {
-                                        ja[u] * jb[v] + ja[v] * jb[u]
-                                    };
-                                k += 1;
+                if !term.function.is_linear() {
+                    for (j, &a) in vars.iter().enumerate() {
+                        for &b in &vars[..=j] {
+                            let ja = term
+                                .inputs
+                                .each_ref()
+                                .map(|v| v.coefficients.get(&a).copied().unwrap_or(0.));
+                            let jb = term
+                                .inputs
+                                .each_ref()
+                                .map(|v| v.coefficients.get(&b).copied().unwrap_or(0.));
+                            let mut weights = [0.; 6];
+                            let mut k = 0;
+                            for u in 0..3 {
+                                for v in 0..=u {
+                                    weights[k] = term.weight
+                                        * if u == v {
+                                            ja[u] * jb[u]
+                                        } else {
+                                            ja[u] * jb[v] + ja[v] * jb[u]
+                                        };
+                                    k += 1;
+                                }
                             }
+                            hessian.push((coordinates[&(a as i32, b as i32)], weights));
                         }
-                        hessian.push((coordinates[&(a as i32, b as i32)], weights));
                     }
                 }
                 terms.push(PreparedTerm {
@@ -541,6 +564,9 @@ impl TNLP for Nlp {
                 }
                 for (k, e) in self.equations.iter().enumerate() {
                     for t in &e.terms {
+                        if t.hessian.is_empty() {
+                            continue;
+                        }
                         let h = t
                             .function
                             .data(t.inputs.each_ref().map(|v| v.value(x)))
@@ -567,7 +593,13 @@ impl TNLP for Nlp {
         if !self.base.get_constraints_linearity(&mut types[..m]) {
             return false;
         }
-        types[m..].fill(pounce_nlp::tnlp::Linearity::NonLinear);
+        for (kind, equation) in types[m..].iter_mut().zip(&self.equations) {
+            *kind = if equation.terms.iter().all(|t| t.function.is_linear()) {
+                pounce_nlp::tnlp::Linearity::Linear
+            } else {
+                pounce_nlp::tnlp::Linearity::NonLinear
+            };
+        }
         true
     }
     fn get_objective_variables_linearity(
@@ -652,9 +684,9 @@ mod tests {
         let ai = a.var_id().unwrap().index();
         let bi = b.var_id().unwrap().index();
         let law = StorageHeadEquation {
-            curve: Arc::new(
+            curve: Arc::new(crate::StorageCurve::Table(
                 TableCurve::new(vec![0., 1., 3., 4.], vec![10., 12., 20., 21.]).unwrap(),
-            ),
+            )),
             vertices: vec![
                 (
                     0.,

@@ -19,7 +19,7 @@ impl Bounds {
     pub fn contains(self, value: f64) -> bool {
         value.is_finite() && self.min <= value && value <= self.max
     }
-    fn validate(self, name: &str) -> Result<(), Error> {
+    pub(crate) fn validate(self, name: &str) -> Result<(), Error> {
         if self.min.is_finite() && self.max.is_finite() && self.min <= self.max {
             Ok(())
         } else {
@@ -96,6 +96,31 @@ impl StorageCurve {
                 after,
             ),
             Self::Table(c) => c.mean_data(before, after).value,
+        }
+    }
+    pub(crate) fn mean_data(&self, before: f64, after: f64) -> crate::curve::Derivatives2 {
+        match self {
+            Self::Table(c) => c.mean_data(before, after),
+            Self::Polynomial {
+                reference_volume,
+                slope,
+                curvature,
+                ..
+            } => {
+                let a = before - reference_volume;
+                let b = after - reference_volume;
+                crate::curve::Derivatives2 {
+                    value: self.trial_mean_level(before, after),
+                    gradient: [
+                        slope / 2. + curvature * (2. * a + b) / 3.,
+                        slope / 2. + curvature * (a + 2. * b) / 3.,
+                    ],
+                    hessian: [
+                        [2. * curvature / 3., curvature / 3.],
+                        [curvature / 3., 2. * curvature / 3.],
+                    ],
+                }
+            }
         }
     }
     /// Integral of level from the polynomial reference or first table coordinate, m⁴.
@@ -468,6 +493,10 @@ pub struct HydroSystem {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct River {
+    #[serde(default)]
+    pub law: crate::RiverLaw,
+    #[serde(default = "gate_range")]
+    pub gate: Bounds,
     pub name: String,
     pub source: String,
     pub target: String,
@@ -486,6 +515,10 @@ pub struct River {
     pub history_grid: Vec<f64>,
     #[serde(default)]
     pub history_release: Vec<f64>,
+}
+
+fn gate_range() -> Bounds {
+    Bounds::new(0., 1.)
 }
 
 fn one() -> f64 {

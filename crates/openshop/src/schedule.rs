@@ -163,6 +163,7 @@ impl SchedulingProblem<'_> {
             unit_flow,
             tunnel_flow,
             river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
+            river_opening: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
             river_release: Vec::new(),
             river_arrival_volume: Vec::new(),
             river_storage: Vec::new(),
@@ -178,6 +179,10 @@ impl SchedulingProblem<'_> {
             validation: Validation::default(),
         };
         for (k, &river) in routing.outlets.iter().enumerate() {
+            schedule.river_opening[river] = dispatch.river_opening[k]
+                .iter()
+                .map(|i| point.x[i.index()])
+                .collect();
             schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
                 .iter()
                 .map(|i| dispatch.flow_scale * point.x[i.index()])
@@ -855,6 +860,8 @@ mod tests {
             .push(Plant::new("Downstream", "Forebay", "Sea"));
         case.system.units.push(lower);
         let mut river = crate::River {
+            law: Default::default(),
+            gate: Bounds::new(0., 1.),
             name: "River".into(),
             source: "Outfall".into(),
             target: "Forebay".into(),
