@@ -9,6 +9,12 @@ The [paper](paper/paper.pdf) states the complete physical and operational model,
 its algebraic formulation and solution method. The editable source is
 [paper/paper.typ](paper/paper.typ).
 
+A [Rust implementation](docs/rust.md) is under development alongside the Julia
+package. Its first connected optimization includes pressure loops, unit commitment,
+fixed-delay river splits and merges, and a Python interface. It does not yet cover
+the complete model described below or in the paper. Julia remains the reference
+until the replacement and comparisons are complete.
+
 ## Installation
 
 ```julia

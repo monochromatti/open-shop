@@ -7,3 +7,6 @@ examples/tokke_vinje/generated/
 .DS_Store
 
 __pycache__/
+
+/target/
+/.venv/

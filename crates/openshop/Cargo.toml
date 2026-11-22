@@ -1,0 +1,23 @@
+[package]
+name = "openshop"
+description = "Nonlinear hydropower scheduling on connected watercourses"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+oximo.workspace = true
+pounce-nl.workspace = true
+pounce-nlp.workspace = true
+ipopt_bindgen.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+pounce-rs.workspace = true
+
+[lints]
+workspace = true

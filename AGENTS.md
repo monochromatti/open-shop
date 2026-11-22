@@ -45,6 +45,11 @@ read like the physical equations and numerical methods it implements.
 - Use idiomatic Julia arrays, views, in-place operations and structured linear
   algebra where they improve clarity and measured performance. Preserve the
   distinction between control intervals, hydraulic steps and transport cells.
+- In Rust, assemble topology and derivative structure once, use owned contiguous
+  buffers, and keep allocation out of repeated numerical evaluations. Keep unsafe
+  code at documented native-library boundaries. Keep the Julia reference runnable
+  until the Rust implementation covers the complete model; small examples cannot
+  establish that a solver or formulation is superior.
 - A terminology refactor must preserve equations, tolerances, solver settings,
   physical units and numerical behavior. Avoid combining it with algorithm changes.
 
@@ -56,6 +61,9 @@ read like the physical equations and numerical methods it implements.
 - Run the relevant Julia tests and the complete suite for changes spanning
   numerical modules. The normal package command is
   `./scripts/julia.sh -e 'using Pkg; Pkg.test()'`.
+- For Rust changes, use `nix develop .#rust`; run `cargo nextest run -p openshop`,
+  `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check`.
+  Verify Python changes with a repaired wheel and the Python behavior tests.
 - If formal statements change, build `test/formal` with `lake build --wfail`
   and run `lake env lean CheckAxioms.lean`. State proof assumptions and limits.
 - Update examples and documentation with public API changes. Keep the paper's
