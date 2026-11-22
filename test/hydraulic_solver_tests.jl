@@ -1,15 +1,13 @@
 @testset "A fixed pressure reference cannot conceal missing water" begin
-    unit=Generator(name=:Unit,plant=:Station,qmin=0.0,qmax=2.0,
-        pmin=0.0,pmax=5.0,hmin=0.0,hmax=200.0,hbest=100.0,
-        qcurvature=0.0,hcurvature=0.0)
     system=HydroSystem(junctions=[Junction(name=:Intake)],
-        boundaries=[Boundary(name=:Sea,head=0.0)],generators=[unit],
-        plants=[Plant(name=:Station,source=:Intake,target=:Sea,pmax=5.0)])
-    for q in (0.0,1.0)
-        point=forward_step(system,Float64[],0.0,[q],Float64[],Float64[];
-            commitment=[Int(q>0)],head_reference=[100.0,0.0])
-        @test point.converged==iszero(q)
-        @test point.residual≈q atol=1e-12
+        river_junctions=[RiverJunction(name=:Upstream)],
+        rivers=[River(name=:Inflow,source=:Upstream,target=:Intake,capacity=2.0,
+            deterministic_delay=0.0,curves=RiverRouting.DelayCurve[],water_value=0.0)])
+    for arrival in (0.0,1.0)
+        point=forward_step(system,Float64[],0.0,Float64[],[0.0],[arrival];
+            head_reference=[100.0])
+        @test point.converged==iszero(arrival)
+        @test point.residual≈arrival atol=1e-12
     end
 end
 
