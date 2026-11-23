@@ -119,15 +119,13 @@ pub(crate) fn build_dispatch(
                 qr[[k, t]],
                 lower,
                 operating.river_capacity[e][t] / river_scale[e],
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             m.set_initial(
                 qr[[k, t]],
                 start
                     .map_or(0., |p| p.river_withdrawal[e][t] / river_scale[e])
                     .clamp(lower, operating.river_capacity[e][t] / river_scale[e]),
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             river_columns.push(Expr::from(qr[[k, t]] * river_scale[e]));
         }
     }
@@ -150,8 +148,7 @@ pub(crate) fn build_dispatch(
         let q0 = e.flow.value(&reference_columns);
         let value = e.fraction.data(q0).value;
         reference_columns.push(value);
-        m.set_initial(rf[[k]], value / flow_scale)
-            .map_err(|e| Error::Model(e.to_string()))?;
+        m.set_initial(rf[[k]], value / flow_scale)?;
         let input = nlp::linear_expression(&e.flow, &river_columns, zero());
         laws.push(crate::constitutive::Equation {
             linear: crate::river::LinearForm::variable(
@@ -199,20 +196,17 @@ pub(crate) fn build_dispatch(
                 v[[r, t]],
                 (bounds.min - reservoir.storage.min) / range,
                 (bounds.max - reservoir.storage.min) / range,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
         }
         let initial = (reservoir.initial_storage - reservoir.storage.min) / range;
-        m.fix(v[[r, 0]], initial)
-            .map_err(|e| Error::Model(e.to_string()))?;
+        m.fix(v[[r, 0]], initial)?;
         for t in 0..=nt {
             let guess = start
                 .map_or(initial, |p| {
                     (p.storage[r][t] - reservoir.storage.min) / range
                 })
                 .clamp(0., 1.);
-            m.set_initial(v[[r, t]], guess)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_initial(v[[r, t]], guess)?;
         }
         for t in 0..nt {
             let change = (v[[r, t + 1]] - v[[r, t]]) * range;
@@ -275,8 +269,7 @@ pub(crate) fn build_dispatch(
                     m.set_initial(
                         hv[[k, t]],
                         reservoir.level.trial_level(reservoir.initial_storage) / 100.,
-                    )
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                    )?;
                     laws.push(crate::constitutive::Equation {
                         linear: crate::river::LinearForm::variable(
                             hv[[k, t]].var_id().unwrap().index(),
@@ -323,8 +316,7 @@ pub(crate) fn build_dispatch(
                 hj[[j, t]],
                 junction.head.min / 100.,
                 junction.head.max / 100.,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             m.set_initial(
                 hj[[j, t]],
                 start
@@ -333,8 +325,7 @@ pub(crate) fn build_dispatch(
                     })
                     .clamp(junction.head.min, junction.head.max)
                     / 100.,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             let mut net = zero();
             for &(u, sign) in &topology.incidence[node] {
                 net = net + q[[u, t]] * (sign * unit_scale[u]);
@@ -382,8 +373,7 @@ pub(crate) fn build_dispatch(
                 let lo = c.trial_level(reservoir.storage.min);
                 let hi = c.trial_level(reservoir.storage.max);
                 if let Some(k) = curve_index[r] {
-                    m.set_bounds(hm[[k, t]], lo / 100., hi / 100.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_bounds(hm[[k, t]], lo / 100., hi / 100.)?;
                     let (before, after) = start.map_or(
                         (reservoir.initial_storage, reservoir.initial_storage),
                         |p| (p.storage[r][t], p.storage[r][t + 1]),
@@ -394,8 +384,7 @@ pub(crate) fn build_dispatch(
                             .map_or(c.trial_mean_level(before, after), |p| p.head[r][t])
                             .clamp(lo, hi)
                             / 100.,
-                    )
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                    )?;
                     let path = {
                         let arena = m.arena();
                         vertices
@@ -458,15 +447,13 @@ pub(crate) fn build_dispatch(
             .unwrap();
         for t in 0..nt {
             let gate = operating.river_gate[e][t];
-            m.set_bounds(ga[[k, t]], gate.min, gate.max)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_bounds(ga[[k, t]], gate.min, gate.max)?;
             m.set_initial(
                 ga[[k, t]],
                 start
                     .map_or((gate.min + gate.max) / 2., |p| p.river_opening[e][t])
                     .clamp(gate.min, gate.max),
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             let h = head[t][source];
             let withdrawal = qr[[k, t]] * river_scale[e];
             match &river.law {
@@ -478,8 +465,7 @@ pub(crate) fn build_dispatch(
                                 * (operating.river_capacity[e][t] - operating.river_inflow[e][t])
                             == 0.
                     );
-                    m.fix(root[[k, t]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(root[[k, t]], 0.)?;
                 }
                 crate::RiverLaw::Delta { curve, reference } => {
                     let target = s
@@ -509,10 +495,8 @@ pub(crate) fn build_dispatch(
                         }],
                         bounds: crate::Bounds::new(0., 0.),
                     });
-                    m.fix(ga[[k, t]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
-                    m.fix(root[[k, t]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(ga[[k, t]], 0.)?;
+                    m.fix(root[[k, t]], 0.)?;
                 }
                 crate::RiverLaw::Level { curve } => {
                     laws.push(crate::constitutive::Equation {
@@ -533,8 +517,7 @@ pub(crate) fn build_dispatch(
                         }],
                         bounds: crate::Bounds::new(0., 0.),
                     });
-                    m.fix(root[[k, t]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(root[[k, t]], 0.)?;
                 }
                 crate::RiverLaw::Orifice {
                     coefficient,
@@ -553,8 +536,7 @@ pub(crate) fn build_dispatch(
                     let hi = (reservoir.level.trial_level(reservoir.storage.max) - crest)
                         .max(0.)
                         .sqrt();
-                    m.set_bounds(root[[k, t]], lo, hi)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_bounds(root[[k, t]], lo, hi)?;
                     m.set_initial(
                         root[[k, t]],
                         start
@@ -562,8 +544,7 @@ pub(crate) fn build_dispatch(
                                 (p.head[source][t] - crest).max(0.).sqrt()
                             })
                             .clamp(lo, hi),
-                    )
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                    )?;
                     let depth = h - *crest;
                     let wet_depth = if *allow_dry {
                         (depth + depth.abs()) * 0.5
@@ -592,16 +573,14 @@ pub(crate) fn build_dispatch(
             band_floor[[k]],
             band.floor.min / 100.,
             band.floor.max / 100.,
-        )
-        .map_err(|e| Error::Model(e.to_string()))?;
+        )?;
         m.set_initial(
             band_floor[[k]],
             r.level
                 .trial_level(r.initial_storage)
                 .clamp(band.floor.min, band.floor.max)
                 / 100.,
-        )
-        .map_err(|e| Error::Model(e.to_string()))?;
+        )?;
         let curve = std::sync::Arc::new(r.level.clone());
         for point in &band.points {
             let (t, fraction) = (point.interval, point.fraction);
@@ -650,8 +629,7 @@ pub(crate) fn build_dispatch(
                     -capacity
                 },
                 capacity,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             m.set_initial(
                 qt[[e, t]],
                 start
@@ -666,8 +644,7 @@ pub(crate) fn build_dispatch(
                         },
                         capacity,
                     ),
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             if law.opening > 0. {
                 let flow = qt[[e, t]] * tunnel_scale[e];
                 let pressure =
@@ -700,8 +677,7 @@ pub(crate) fn build_dispatch(
                             .sum(),
                     )
                 }) / 100.,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             laws.push(crate::constitutive::Equation {
                 linear: crate::river::LinearForm::variable(
                     hw[[k, t]].var_id().unwrap().index(),
@@ -741,15 +717,13 @@ pub(crate) fn build_dispatch(
             } else {
                 (0., 0.)
             };
-            m.set_bounds(q[[i, t]], lo, hi)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_bounds(q[[i, t]], lo, hi)?;
             m.set_initial(
                 q[[i, t]],
                 start
                     .map_or((lo + hi) / 2., |p| p.flow[i][t] / unit_scale[i])
                     .clamp(lo, hi),
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             let flow: Expr<'_> = (q[[i, t]] * unit_scale[i]).into();
             let plant = topology.unit_plants[i];
             let p = &s.plants[plant];
@@ -806,14 +780,12 @@ pub(crate) fn build_dispatch(
             }
             let scale = u.power.max.max(1.);
             if on {
-                m.set_bounds(ht[[i, t]], u.head.min / 100., u.head.max / 100.)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_bounds(ht[[i, t]], u.head.min / 100., u.head.max / 100.)?;
                 m.set_bounds(
                     pt[[i, t]],
                     limits.power.min / scale,
                     limits.power.max / scale,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 let upstream = start.map_or(initial_head[source], |p| p.head[source][t]);
                 let downstream = start
                     .map_or(initial_head[target], |p| p.head[target][t])
@@ -836,16 +808,14 @@ pub(crate) fn build_dispatch(
                 let h0 = ((upstream - downstream - tail - u.loss_factor * q0 * q0)
                     * u.mode.power_sign())
                 .clamp(u.head.min, u.head.max);
-                m.set_initial(ht[[i, t]], h0 / 100.)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_initial(ht[[i, t]], h0 / 100.)?;
                 let guess = u.trial_power(q0, h0);
                 let p0 = if guess.is_finite() {
                     guess.clamp(limits.power.min, limits.power.max)
                 } else {
                     (u.power.min + u.power.max) / 2.
                 };
-                m.set_initial(pt[[i, t]], p0 / scale)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_initial(pt[[i, t]], p0 / scale)?;
                 constraint!(m, ht[[i, t]] - net_head / 100. == 0.);
                 if u.head.min < 0. {
                     constraint!(m, flow * ht[[i, t]] / unit_scale[i] >= 0.);
@@ -862,10 +832,8 @@ pub(crate) fn build_dispatch(
                     scale,
                 ));
             } else {
-                m.fix(ht[[i, t]], 0.)
-                    .map_err(|e| Error::Model(e.to_string()))?;
-                m.fix(pt[[i, t]], 0.)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.fix(ht[[i, t]], 0.)?;
+                m.fix(pt[[i, t]], 0.)?;
             }
             let power: Expr<'_> = (pt[[i, t]] * scale).into();
             let (starts_now, stops_now) = u.operation.transitions(&commitment[i], t);

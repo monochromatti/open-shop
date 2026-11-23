@@ -59,6 +59,12 @@ pub enum Error {
     Solver(String),
 }
 
+impl From<oximo::ModelError> for Error {
+    fn from(error: oximo::ModelError) -> Self {
+        Self::Model(error.to_string())
+    }
+}
+
 /// Shared time and accuracy limits. Time is wall-clock seconds.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]

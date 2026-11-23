@@ -715,7 +715,7 @@ impl SchedulingProblem<'_> {
             plant_power: vec![],
             head: vec![],
             objective: 0.,
-            solver_status: 0,
+            solver_status: None,
             iterations: 0,
             validation: Default::default(),
         };

@@ -54,6 +54,39 @@ impl<'a> SchedulingProblem<'a> {
     pub fn solve(&self, options: &SolveOptions) -> Result<Schedule, Error> {
         self.solve_with_backend(options, Backend::Ipopt)
     }
+    /// Improve continuous dispatch from physical controls while holding unit
+    /// commitments and selectable tunnel positions fixed. A feasible supplied
+    /// schedule is retained if refinement fails or reduces its revenue.
+    /// This local refinement does not establish global optimality.
+    pub fn refine(
+        &self,
+        controls: &crate::Controls,
+        options: &SolveOptions,
+    ) -> Result<Schedule, Error> {
+        options.validate()?;
+        let started = Instant::now();
+        let physical = self.reconstruct(controls)?;
+        let start = crate::commitment::Proposal::from_schedule(self, &physical)?;
+        let mut budget = options.clone();
+        budget.time_limit -= started.elapsed().as_secs_f64();
+        if budget.time_limit <= 0.01 {
+            return Ok(physical);
+        }
+        let refined = self.dispatch(
+            start.controls.clone(),
+            Some(&start),
+            &budget,
+            Backend::Ipopt,
+        )?;
+        if physical.validation.feasible
+            && (!refined.validation.feasible || refined.objective < physical.objective)
+        {
+            Ok(physical)
+        } else {
+            Ok(refined)
+        }
+    }
+
     fn solve_with_backend(
         &self,
         options: &SolveOptions,
@@ -330,7 +363,7 @@ impl SchedulingProblem<'_> {
             head: Vec::new(),
             commitment: controls.unit_on,
             objective: 0.,
-            solver_status: point.status,
+            solver_status: Some(point.status),
             iterations: point.iterations,
             validation: Validation::default(),
         };
@@ -1169,7 +1202,7 @@ mod tests {
             assert!(
                 (tabulated.objective - analytic.objective).abs()
                     < 1e-8 * analytic.objective.abs().max(1.),
-                "{backend:?}: analytic {}, table {}, flows {:?} {:?}, iterations {} {}, status {} {}",
+                "{backend:?}: analytic {}, table {}, flows {:?} {:?}, iterations {} {}, status {:?} {:?}",
                 analytic.objective,
                 tabulated.objective,
                 analytic.unit_flow,
@@ -1223,7 +1256,7 @@ mod tests {
             );
             assert!(
                 (result.unit_power[0][0] - 8.).abs() < 1e-5,
-                "{backend:?}: {:?}, status {}, iterations {}",
+                "{backend:?}: {:?}, status {:?}, iterations {}",
                 result.unit_power,
                 result.solver_status,
                 result.iterations

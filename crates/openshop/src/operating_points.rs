@@ -273,8 +273,7 @@ impl OperatingPoints {
             for (r, reservoir) in s.reservoirs.iter().enumerate() {
                 let lo = reservoir.level.trial_level(reservoir.storage.min);
                 let hi = reservoir.level.trial_level(reservoir.storage.max);
-                m.set_bounds(hp[[k, r]], lo / 100., hi / 100.)
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.set_bounds(hp[[k, r]], lo / 100., hi / 100.)?;
                 let v0 = start.map_or(reservoir.initial_storage, |v| {
                     v.storage[r][t] * (1. - f) + v.storage[r][t + 1] * f
                 });
@@ -285,8 +284,7 @@ impl OperatingPoints {
                         .map_or_else(|| reservoir.level.trial_level(v0), |v| v.head[r])
                         .clamp(lo, hi)
                         / 100.,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 if lo < hi {
                     let volume = storage[r][t] * (1. - f)
                         + storage[r][t + 1] * f
@@ -311,8 +309,7 @@ impl OperatingPoints {
                     hp[[k, nr + j]],
                     junction.head.min / 100.,
                     junction.head.max / 100.,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 m.set_initial(
                     hp[[k, nr + j]],
                     initial
@@ -327,8 +324,7 @@ impl OperatingPoints {
                         )
                         .clamp(junction.head.min, junction.head.max)
                         / 100.,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 head.push((hp[[k, nr + j]] * 100.).into());
             }
             head.extend(s.boundaries.iter().map(|b| mzero + b.head));
@@ -341,8 +337,7 @@ impl OperatingPoints {
                     uq[[k, g]],
                     if on { limits.flow.min / scale } else { 0. },
                     if on { limits.flow.max / scale } else { 0. },
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 m.set_initial(
                     uq[[k, g]],
                     if on {
@@ -361,8 +356,7 @@ impl OperatingPoints {
                     } else {
                         0.
                     },
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 let q: Expr<'_> = (uq[[k, g]] * scale).into();
                 if u.pump_characteristic.is_none() {
                     constraint!(m, (q - flow[g][t]) / scale == 0.);
@@ -386,8 +380,7 @@ impl OperatingPoints {
                         -cap
                     },
                     cap,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 m.set_initial(
                     tq[[k, e]],
                     initial
@@ -405,8 +398,7 @@ impl OperatingPoints {
                             cap * scale,
                         )
                         / scale,
-                )
-                .map_err(|e| Error::Model(e.to_string()))?;
+                )?;
                 if law.opening > 0. {
                     let q = tq[[k, e]] * scale;
                     constraint!(
@@ -456,11 +448,9 @@ impl OperatingPoints {
                             })
                         })
                         .sum();
-                    m.set_initial(tw[[k, j]], curve.extended_value(q0) / 100.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_initial(tw[[k, j]], curve.extended_value(q0) / 100.)?;
                 } else {
-                    m.fix(tw[[k, j]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(tw[[k, j]], 0.)?;
                 }
             }
             for (g, u) in s.units.iter().enumerate() {
@@ -476,14 +466,12 @@ impl OperatingPoints {
                     let q = unit_flow[g];
                     let h = (head[a] - outlet - tw[[k, plant]] * 100. - q.square() * u.loss_factor)
                         * u.mode.power_sign();
-                    m.set_bounds(uh[[k, g]], u.head.min / 100., u.head.max / 100.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_bounds(uh[[k, g]], u.head.min / 100., u.head.max / 100.)?;
                     m.set_bounds(
                         up[[k, g]],
                         limits.power.min / scale,
                         limits.power.max / scale,
-                    )
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                    )?;
                     let h0 = initial
                         .as_ref()
                         .map_or((u.head.min + u.head.max) / 2., |v| {
@@ -494,16 +482,14 @@ impl OperatingPoints {
                         || start.map_or((u.flow.min + u.flow.max) / 2., |v| v.flow[g][t]),
                         |v| v.unit_flow[g],
                     );
-                    m.set_initial(uh[[k, g]], h0 / 100.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_initial(uh[[k, g]], h0 / 100.)?;
                     let guess = u.trial_power(q0, h0);
                     let p0 = if guess.is_finite() {
                         guess.clamp(limits.power.min, limits.power.max)
                     } else {
                         (limits.power.min + limits.power.max) / 2.
                     };
-                    m.set_initial(up[[k, g]], p0 / scale)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_initial(up[[k, g]], p0 / scale)?;
                     constraint!(m, uh[[k, g]] - h / 100. == 0.);
                     if u.head.min < 0. {
                         constraint!(m, q * uh[[k, g]] / u.flow.max.max(1.) >= 0.);
@@ -517,10 +503,8 @@ impl OperatingPoints {
                         scale,
                     ));
                 } else {
-                    m.fix(uh[[k, g]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
-                    m.fix(up[[k, g]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(uh[[k, g]], 0.)?;
+                    m.fix(up[[k, g]], 0.)?;
                 }
                 power.push(Expr::from(up[[k, g]] * scale));
             }

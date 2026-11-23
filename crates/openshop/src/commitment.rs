@@ -112,8 +112,7 @@ pub(crate) fn propose(
                 qr[[k, t]],
                 lower,
                 operating.river_capacity[e][t] / flow_scale,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
@@ -206,8 +205,7 @@ pub(crate) fn propose(
                     -cap
                 },
                 cap,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
             constraint!(m, qt[[e, t]] <= open * cap);
             if topology.tunnel_outfalls[e].is_none() {
                 constraint!(m, qt[[e, t]] >= -open * cap);
@@ -227,14 +225,12 @@ pub(crate) fn propose(
                 v[[r, t]],
                 (bounds.min - reservoir.storage.min) / range,
                 (bounds.max - reservoir.storage.min) / range,
-            )
-            .map_err(|e| Error::Model(e.to_string()))?;
+            )?;
         }
         m.fix(
             v[[r, 0]],
             (reservoir.initial_storage - reservoir.storage.min) / range,
-        )
-        .map_err(|e| Error::Model(e.to_string()))?;
+        )?;
         for t in 0..nt {
             let change = (v[[r, t + 1]] - v[[r, t]]) * range;
             if let Some(up) = operating.reservoirs[r].volume_change[t].up {
@@ -308,8 +304,7 @@ pub(crate) fn propose(
         .collect();
     for (j, node) in s.junctions.iter().enumerate() {
         for t in 0..nt {
-            m.set_bounds(hj[[j, t]], node.head.min / 100., node.head.max / 100.)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_bounds(hj[[j, t]], node.head.min / 100., node.head.max / 100.)?;
         }
     }
     // Tangent hydraulic laws guide integer proposals. Nonlinear dispatch
@@ -414,8 +409,7 @@ pub(crate) fn propose(
             .unwrap();
         for t in 0..nt {
             let gate = operating.river_gate[e][t];
-            m.set_bounds(ga[[k, t]], gate.min, gate.max)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_bounds(ga[[k, t]], gate.min, gate.max)?;
             let h0 = reference_head[t][source];
             let h = mean_head[t][source];
             let flow: Expr<'_> = match &river.law {
@@ -432,8 +426,7 @@ pub(crate) fn propose(
                         crate::ReferenceLevel::Downstream => (other0, other),
                     };
                     let d = curve.data(h0 - other0, ref0);
-                    m.fix(ga[[k, t]], 0.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.fix(ga[[k, t]], 0.)?;
                     zero()
                         + d.value
                         + (h - other - (h0 - other0)) * d.gradient[0]
@@ -474,8 +467,7 @@ pub(crate) fn propose(
             band_floor[[k]],
             band.floor.min / 100.,
             band.floor.max / 100.,
-        )
-        .map_err(|e| Error::Model(e.to_string()))?;
+        )?;
         for point in &band.points {
             let (t, fraction) = (point.interval, point.fraction);
             let volume = ((v[[i, t]] * (1. - fraction) + v[[i, t + 1]] * fraction) * range
@@ -497,13 +489,6 @@ pub(crate) fn propose(
     let mut all_stops = Vec::new();
     let mut revenue = zero();
     for (g, unit) in s.units.iter().enumerate() {
-        for row in &topology.unit_commitment[g] {
-            let lhs = row
-                .coefficients
-                .iter()
-                .fold(zero(), |sum, &(t, a)| sum + on[[g, t]] * a);
-            constraint!(m, lhs >= row.rhs);
-        }
         let (a, b) = topology.unit_nodes[g];
         let mut powers = Vec::new();
         let mut flows = Vec::new();
@@ -513,8 +498,7 @@ pub(crate) fn propose(
         for t in 0..nt {
             let limits = &operating.units[g][t];
             if let Some(fixed) = case.commitment.get(&unit.name) {
-                m.fix(on[[g, t]], if fixed[t] { 1. } else { 0. })
-                    .map_err(|e| Error::Model(e.to_string()))?;
+                m.fix(on[[g, t]], if fixed[t] { 1. } else { 0. })?;
             }
             let plant = &s.plants[topology.unit_plants[g]];
             let total_flow = topology.plant_units[topology.unit_plants[g]]

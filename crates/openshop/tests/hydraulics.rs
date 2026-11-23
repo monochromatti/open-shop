@@ -482,7 +482,7 @@ fn crossing_an_outlet_head_floor_cannot_hide_an_interior_power_peak() {
     let peak = 0.00981 * q * (100. - 5. * q * fraction) * 0.9;
     assert!(
         (peak - 7.2).abs() < 1e-5,
-        "q {q}, peak {peak}, objective {}, iterations {}, status {}",
+        "q {q}, peak {peak}, objective {}, iterations {}, status {:?}",
         solution.objective,
         solution.iterations,
         solution.solver_status
@@ -576,4 +576,67 @@ fn zero_efficiency_cannot_hide_uphill_transfer_through_a_generating_unit() {
     assert!(physical.unit_power[0].iter().all(|p| p.abs() < 1e-10));
     assert!(physical.validation.operating_limits >= 0.1);
     assert!(case.system.units[0].power(20., -10.).is_err());
+}
+
+#[test]
+fn continuous_refinement_improves_revenue_without_changing_discrete_controls() {
+    let case = pressure_loop();
+    let problem = SchedulingProblem::new(&case).unwrap();
+    let controls = Controls {
+        commitment: vec![vec![true; 2]],
+        unit_flow: vec![vec![2.; 2]],
+        river_opening: vec![],
+        tunnel_opening: vec![vec![1.; 2]; 2],
+    };
+    let initial = problem.reconstruct(&controls).unwrap();
+    assert!(initial.validation.feasible);
+    let result = problem
+        .refine(
+            &controls,
+            &SolveOptions {
+                time_limit: 5.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(result.validation.feasible, "{:?}", result.validation);
+    assert!(result.objective > initial.objective + 100.);
+    assert_eq!(result.commitment, controls.commitment);
+    assert_eq!(result.tunnel_opening, controls.tunnel_opening);
+    let interrupted = problem
+        .refine(
+            &result.controls(),
+            &SolveOptions {
+                max_iterations: 0,
+                time_limit: 5.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(interrupted.validation.feasible);
+    assert!(interrupted.objective >= result.objective - 1e-6);
+}
+
+#[test]
+fn continuous_refinement_cannot_remove_a_commitment_time_restriction() {
+    let mut case = pressure_loop();
+    case.system.units[0].operation.minimum_up_time = 2.;
+    let controls = Controls {
+        commitment: vec![vec![true, false]],
+        unit_flow: vec![vec![5., 0.]],
+        river_opening: vec![],
+        tunnel_opening: vec![vec![1.; 2]; 2],
+    };
+    let result = SchedulingProblem::new(&case)
+        .unwrap()
+        .refine(
+            &controls,
+            &SolveOptions {
+                time_limit: 3.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(!result.validation.feasible);
+    assert_eq!(result.commitment, controls.commitment);
 }

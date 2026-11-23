@@ -36,7 +36,8 @@ pub struct Schedule {
     /// Previously counted water plus integrated observations, m³, at vertices.
     pub observed_volume: Vec<Vec<f64>>,
     pub objective: f64,
-    pub solver_status: i32,
+    /// Ipopt termination code for an optimized result; None for pure reconstruction.
+    pub solver_status: Option<i32>,
     pub iterations: usize,
     pub validation: Validation,
 }

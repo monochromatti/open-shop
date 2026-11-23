@@ -54,6 +54,12 @@ if schedule.validation.feasible {
 }
 ```
 
+Use `problem.refine(&controls, &options)` to improve continuous dispatch with
+unit commitments and selectable tunnel positions held fixed. It first reconstructs
+the supplied controls and retains a feasible starting schedule if optimization
+fails or decreases its revenue. `problem.solve(&options)` remains the complete
+commitment-search entry point. Both use the same nonlinear dispatch equations.
+
 `crates/openshop/examples/reservoir.rs` constructs and solves a case entirely
 in Rust. The `schedule` example reads JSON at the application boundary; JSON
 parsing stays in the example; `serde_json` is only a direct development dependency
@@ -261,8 +267,8 @@ is exercised in comparison tests, rather than exposed as a user option.
 `validation` evaluates water balance, pressure losses and operating limits in
 physical units. It checks this interval model, not the finer replay or global
 optimality provided by the complete Julia package. A feasible result alone says
-nothing about optimality. `solver_status` is Ipopt's termination code;
-`iterations` describes the final nonlinear solve, not the entire commitment search.
+nothing about optimality. `solver_status` contains Ipopt's termination code for an optimized result and
+is absent for pure physical reconstruction. `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
 finer independent replay, soft constraints and reserves, restart/rolling horizons and

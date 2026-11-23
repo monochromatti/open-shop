@@ -137,7 +137,7 @@ fn solve(c: &ScheduleCase) -> Schedule {
         .unwrap();
     assert!(
         result.validation.feasible,
-        "{:?}, status {}",
+        "{:?}, status {:?}",
         result.validation, result.solver_status
     );
     result

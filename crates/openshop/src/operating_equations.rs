@@ -31,6 +31,13 @@ pub(crate) fn constrain(
         let scale_q = u.flow.max.max(1.);
         let scale_p = u.power.max.max(1.);
         let zero = power[g][0] * 0.;
+        for row in &topology.unit_commitment[g] {
+            let lhs = row
+                .coefficients
+                .iter()
+                .fold(zero, |sum, &(t, a)| sum + on[g][t] * a);
+            constraint!(m, lhs >= row.rhs);
+        }
         for t in 0..nt {
             let limits = &operating.units[g][t];
             if let Some(fixed) = limits.forced {
