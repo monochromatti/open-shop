@@ -26,6 +26,10 @@ pub(crate) enum PhysicalFunction {
     StorageMean(Arc<crate::StorageCurve>),
     Production(Arc<Unit>),
     Efficiency(Arc<Unit>),
+    HeadSpan(
+        Arc<crate::head_limits::HeadEnvelope>,
+        crate::head_limits::HeadLimit,
+    ),
     Transfer(Arc<crate::river_transport::ReleaseFraction>),
     Table(Arc<TableCurve>),
     LevelFlow(Arc<crate::LevelFlowCurve>),
@@ -57,6 +61,7 @@ impl PhysicalFunction {
     fn value(&self, x: [f64; 3]) -> f64 {
         match self {
             Self::Transfer(c) => c.data(x[0]).value,
+            Self::HeadSpan(e, c) => e.range(x[0], x[1], x[2]).component(*c),
             Self::Efficiency(u) => crate::machine::hydraulic_efficiency(u, x[0], x[1]),
             Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
             Self::StorageMean(c) => c.mean_data(x[0], x[1]).value,
@@ -70,6 +75,16 @@ impl PhysicalFunction {
     }
     fn data(&self, x: [f64; 3]) -> Derivatives {
         match self {
+            Self::HeadSpan(e, c) => {
+                let (_, g, h) = hessian(
+                    |x| e.range(x[0], x[1], x[2]).component(*c),
+                    &SVector::from(x),
+                );
+                Derivatives {
+                    gradient: std::array::from_fn(|i| g[i]),
+                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
+                }
+            }
             Self::Efficiency(u) => {
                 let (_, g, h) = hessian(
                     |x| crate::machine::hydraulic_efficiency(u, x[0], x[1]),

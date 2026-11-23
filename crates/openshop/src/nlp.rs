@@ -70,7 +70,18 @@ pub(crate) fn prepare(model: &Model, laws: Vec<Equation>) -> Result<Nlp, Error> 
         .try_objective()
         .map_err(|e| Error::Model(e.to_string()))?;
     let rows = model.constraints();
-    let rows: Vec<_> = rows.algebraic().iter().filter(|row| row.active).collect();
+    let rows: Vec<_> = rows
+        .algebraic()
+        .iter()
+        .filter(|row| {
+            row.active
+                && !extract_linear(&arena, row.lhs).is_some_and(|linear| {
+                    linear.coeffs.iter().all(|(_, c)| *c == 0.)
+                        && row.lower <= linear.constant
+                        && linear.constant <= row.upper
+                })
+        })
+        .collect();
     let mut problem = NlProblem::from_expressions(NlProblemParts {
         minimize: objective.sense == ObjectiveSense::Minimize,
         objective: lower(&arena, objective.expr, &mut expressions)?,

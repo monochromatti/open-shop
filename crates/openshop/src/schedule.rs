@@ -23,6 +23,7 @@ pub struct SchedulingProblem<'a> {
     pub(crate) observations: crate::flow_requirements::FlowEquations,
     pub(crate) level_windows: crate::level_windows::LevelEquations,
     pub(crate) interlocks: crate::gate_interlocks::GateInterlocks,
+    pub(crate) operating_points: crate::operating_points::OperatingPoints,
 }
 
 impl<'a> SchedulingProblem<'a> {
@@ -35,7 +36,9 @@ impl<'a> SchedulingProblem<'a> {
             crate::flow_requirements::FlowEquations::new(case, &routing, &operating)?;
         let level_windows = crate::level_windows::LevelEquations::new(case, &routing)?;
         let interlocks = crate::gate_interlocks::GateInterlocks::new(case, &topology)?;
+        let operating_points = crate::operating_points::OperatingPoints::new(case, &routing);
         Ok(Self {
+            operating_points,
             interlocks,
             level_windows,
             observations,
@@ -146,36 +149,7 @@ impl<'a> SchedulingProblem<'a> {
         })?;
         let remaining = options.time_limit - started.elapsed().as_secs_f64();
         if remaining > 0.01 {
-            let start = crate::commitment::Proposal {
-                controls: crate::commitment::DiscreteControls {
-                    unit_on: result.commitment.clone(),
-                    gate_position: self
-                        .operating
-                        .tunnels
-                        .iter()
-                        .enumerate()
-                        .map(|(e, row)| {
-                            row.iter()
-                                .enumerate()
-                                .map(|(t, p)| {
-                                    p.positions
-                                        .iter()
-                                        .position(|p| p.opening == result.tunnel_opening[e][t])
-                                })
-                                .collect::<Option<Vec<_>>>()
-                        })
-                        .collect::<Option<Vec<_>>>()
-                        .ok_or_else(|| {
-                            Error::Model("result contains an undeclared tunnel opening".into())
-                        })?,
-                },
-                storage: result.storage.clone(),
-                flow: result.unit_flow.clone(),
-                tunnel_flow: result.tunnel_flow.clone(),
-                river_withdrawal: result.river_withdrawal.clone(),
-                river_opening: result.river_opening.clone(),
-                head: result.head.clone(),
-            };
+            let start = crate::commitment::Proposal::from_schedule(self, &result)?;
             let mut budget = options.clone();
             budget.time_limit = remaining;
             let refined = self.dispatch(start.controls.clone(), Some(&start), &budget, backend)?;
@@ -197,8 +171,80 @@ impl SchedulingProblem<'_> {
         options: &SolveOptions,
         backend: Backend,
     ) -> Result<Schedule, Error> {
+        let started = Instant::now();
+        let mut points = self.operating_points.clone();
+        if let Some(start) = start {
+            let mut columns: Vec<_> = start
+                .flow
+                .iter()
+                .flatten()
+                .copied()
+                .chain(start.tunnel_flow.iter().flatten().copied())
+                .chain(
+                    self.routing
+                        .outlets
+                        .iter()
+                        .flat_map(|&e| start.river_withdrawal[e].iter().copied()),
+                )
+                .collect();
+            self.routing.complete_columns(&mut columns);
+            points = points.with_level_crossings(self, &start.storage, &columns);
+        }
+        let mut warm = None;
+        let mut last = None;
+        loop {
+            let mut budget = options.clone();
+            budget.time_limit -= started.elapsed().as_secs_f64();
+            if budget.time_limit <= 0. {
+                return last.ok_or_else(|| Error::Solver(
+                    "nonlinear dispatch exceeded its time allowance before producing a trial point".into()));
+            }
+            let result = self.dispatch_on_points(
+                controls.clone(),
+                warm.as_ref().or(start),
+                &points,
+                &budget,
+                backend,
+            )?;
+            if result.validation.feasible
+                || options.time_limit - started.elapsed().as_secs_f64() <= 0.01
+            {
+                return Ok(result);
+            }
+            let mut columns: Vec<_> = result
+                .unit_flow
+                .iter()
+                .flatten()
+                .copied()
+                .chain(result.tunnel_flow.iter().flatten().copied())
+                .chain(
+                    self.routing
+                        .outlets
+                        .iter()
+                        .flat_map(|&e| result.river_withdrawal[e].iter().copied()),
+                )
+                .collect();
+            self.routing.complete_columns(&mut columns);
+            let refined = points.with_level_crossings(self, &result.storage, &columns);
+            if refined.len() <= points.len() {
+                return Ok(result);
+            }
+            points = refined;
+            warm = Some(crate::commitment::Proposal::from_schedule(self, &result)?);
+            last = Some(result);
+        }
+    }
+
+    fn dispatch_on_points(
+        &self,
+        controls: crate::commitment::DiscreteControls,
+        start: Option<&crate::commitment::Proposal>,
+        points: &crate::operating_points::OperatingPoints,
+        options: &SolveOptions,
+        backend: Backend,
+    ) -> Result<Schedule, Error> {
         let (case, routing) = (self.case, &self.routing);
-        let dispatch = build_dispatch(self, &controls, start)?;
+        let dispatch = build_dispatch(self, &controls, start, points)?;
         let point = nlp::solve(dispatch.problem, options, backend)?;
         let storage = dispatch
             .storage
@@ -220,7 +266,7 @@ impl SchedulingProblem<'_> {
                     .enumerate()
                     .map(|(t, i)| {
                         if controls.unit_on[g][t] {
-                            dispatch.flow_scale * point.x[i.index()]
+                            dispatch.unit_flow_scale[g] * point.x[i.index()]
                         } else {
                             0.
                         }
@@ -231,9 +277,10 @@ impl SchedulingProblem<'_> {
         let tunnel_flow = dispatch
             .tunnel_flow
             .iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(e, row)| {
                 row.iter()
-                    .map(|i| dispatch.flow_scale * point.x[i.index()])
+                    .map(|i| dispatch.tunnel_flow_scale[e] * point.x[i.index()])
                     .collect()
             })
             .collect();
@@ -279,7 +326,7 @@ impl SchedulingProblem<'_> {
                 .collect();
             schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
                 .iter()
-                .map(|i| dispatch.flow_scale * point.x[i.index()])
+                .map(|i| dispatch.river_flow_scale[river] * point.x[i.index()])
                 .collect();
         }
         let junction_head = dispatch
@@ -513,14 +560,20 @@ mod tests {
                 ..Default::default()
             },
             power_ramp: crate::RampRates {
-                down: Some(7.),
+                // The instantaneous maximum is eight MW; declining head makes
+                // the feasible interval average slightly smaller than eight.
+                down: Some(7.1),
                 ..Default::default()
             },
             ..Default::default()
         };
         let result = solve(&case, &SolveOptions::default()).unwrap();
         assert!(result.validation.feasible, "{:?}", result.validation);
-        assert!((result.unit_power[0][0] - 8.).abs() < 1e-5);
+        assert!((7.9..8.).contains(&result.unit_power[0][0]));
+        let initial_power = case.system.units[0]
+            .power(result.unit_flow[0][0], 80.)
+            .unwrap();
+        assert!((initial_power - 8.).abs() < 1e-5);
         case.system.units[0].operation.power_ramp.down = Some(6.);
         let result = solve(&case, &SolveOptions::default()).unwrap();
         assert!(!result.validation.feasible);
@@ -1095,7 +1148,19 @@ mod tests {
                 "{backend:?}: {:?}",
                 tabulated.validation
             );
-            assert!((tabulated.objective - analytic.objective).abs() < 1e-5);
+            assert!(
+                (tabulated.objective - analytic.objective).abs()
+                    < 1e-8 * analytic.objective.abs().max(1.),
+                "{backend:?}: analytic {}, table {}, flows {:?} {:?}, iterations {} {}, status {} {}",
+                analytic.objective,
+                tabulated.objective,
+                analytic.unit_flow,
+                tabulated.unit_flow,
+                analytic.iterations,
+                tabulated.iterations,
+                analytic.solver_status,
+                tabulated.solver_status
+            );
             for (&a, &b) in analytic.unit_flow[0].iter().zip(&tabulated.unit_flow[0]) {
                 assert!((a - b).abs() < 1e-5);
             }
@@ -1138,7 +1203,13 @@ mod tests {
                 "{backend:?}: {:?}",
                 result.validation
             );
-            assert!((result.unit_power[0][0] - 8.).abs() < 1e-5);
+            assert!(
+                (result.unit_power[0][0] - 8.).abs() < 1e-5,
+                "{backend:?}: {:?}, status {}, iterations {}",
+                result.unit_power,
+                result.solver_status,
+                result.iterations
+            );
             assert!((result.unit_power[0][1] - 11.).abs() < 1e-5);
         }
         case.system.units[0].operation.power_ramp.up = None;

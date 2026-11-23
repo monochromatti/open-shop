@@ -4,6 +4,18 @@ import Mathlib
 These theorems do not verify program implementations or floating-point evaluation. -/
 namespace OpenSHOP
 
+/-- An interior stationary head is the global maximum of a concave quadratic
+work curve. This is one segment of the head-span operating-limit calculation;
+it does not verify floating-point root selection or a complete trajectory. -/
+theorem quadratic_work_stationary_max (a b c stationary head : ℝ)
+    (concave : c ≤ 0) (critical : b + 2*c*stationary = 0) :
+    a+b*head+c*head^2 ≤ a+b*stationary+c*stationary^2 := by
+  have hb : b = -(2*c*stationary) := by linarith
+  have identity : (a+b*head+c*head^2) - (a+b*stationary+c*stationary^2) =
+      c*(head-stationary)^2 := by rw [hb]; ring
+  have negative := mul_nonpos_of_nonpos_of_nonneg concave (sq_nonneg (head-stationary))
+  linarith
+
 /-- Every signed internal edge credits exactly the water it withdraws. -/
 theorem incidence_cancels {N E : Type*} [Fintype N] [Fintype E] [DecidableEq N]
     (source target : E → N) (q : E → ℝ) :

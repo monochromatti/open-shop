@@ -30,8 +30,17 @@ characteristics from physical controls. It uses damped Newton iteration with
 chunked automatic derivatives and a rank-revealing linear solve when necessary.
 It does not invoke Ipopt or SCIP. Reconstruction reports operating violations;
 it never clips storage or discharge to hide an infeasible control schedule.
-The current reconstruction uses the case's hydraulic intervals. Finer replay
-and adaptive integration remain necessary for complete replacement parity.
+The current reconstruction uses the case's hydraulic intervals. At hydraulic
+vertices, river-arrival changes, measured storage-curve crossings and
+outlet-head floor crossings, it also
+solves stationary pressure equations and checks instantaneous machine and tunnel
+limits. Both sides of a control change use their own controls. Between successive
+head observations, exact polynomial extrema check power, efficiency and discharge
+over the whole head span. Refinement adds missing level-crossing
+observations to optimization without shortening integration steps.
+These finite observations do not bound every possible interior head excursion
+or interior peak of total plant power. Finer replay and adaptive integration
+remain necessary for complete replacement parity.
 
 ```rust,no_run
 use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};
@@ -80,6 +89,8 @@ piecewise-linear storage path, including changes caused by river arrivals.
 Its first and second derivatives are assembled locally through the affine storage
 paths. Sparse structure and chain-rule coefficients are prepared once, and numeric
 callbacks reuse their buffers.
+Each primary flow variable is scaled by its own unit or connection capacity;
+a large river capacity does not determine the numerical scale of a small turbine.
 A table constant over its operating range needs no head unknown.
 
 Trial points use end-secant continuation to let a solver recover from violated
@@ -247,7 +258,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
-independent replay, soft constraints and reserves, restart/rolling horizons and
+finer independent replay, soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final

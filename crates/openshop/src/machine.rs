@@ -72,6 +72,10 @@ impl PumpCharacteristic {
             },
         })
     }
+    pub(crate) fn monotone_flow(&self) -> bool {
+        self.data.discharge.windows(2).all(|v| v[0] <= v[1])
+            || self.data.discharge.windows(2).all(|v| v[0] >= v[1])
+    }
     pub fn heads(&self) -> &[f64] {
         &self.data.heads
     }
@@ -84,7 +88,7 @@ impl PumpCharacteristic {
         }
         Ok(())
     }
-    fn coefficients(&self, h: f64, efficiency: bool) -> (f64, f64, f64) {
+    pub(crate) fn coefficients(&self, h: f64, efficiency: bool) -> (f64, f64, f64) {
         let y = if efficiency {
             &self.data.efficiency
         } else {

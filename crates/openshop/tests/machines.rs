@@ -228,7 +228,16 @@ fn plant_caps_apply_to_parallel_units_and_share_the_outlet_level() {
         })
         .unwrap();
     assert!(result.validation.feasible, "{:?}", result.validation);
-    assert!((result.plant_power[0][0] - 55.).abs() < 1e-4);
+    let initial_head = 250. - 0.1 * result.plant_flow[0][0];
+    let initial_power: f64 = case
+        .system
+        .units
+        .iter()
+        .enumerate()
+        .map(|(g, u)| u.power(result.unit_flow[g][0], initial_head).unwrap())
+        .sum();
+    assert!((initial_power - 55.).abs() < 1e-4);
+    assert!(result.plant_power[0][0] < initial_power);
     assert!(result.plant_flow[0][0] <= 25. + 1e-6);
     assert!((result.unit_head[0][0] - result.unit_head[1][0]).abs() < 1e-8);
 }

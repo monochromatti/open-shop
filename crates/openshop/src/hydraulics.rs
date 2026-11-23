@@ -318,7 +318,7 @@ impl HydraulicStep<'_, '_> {
     }
 }
 
-fn machine_head<D: DualNum<Primitive = f64> + Copy>(
+pub(crate) fn machine_head<D: DualNum<Primitive = f64> + Copy>(
     p: &SchedulingProblem<'_>,
     g: usize,
     head: &[D],
@@ -425,6 +425,74 @@ fn newton(step: &HydraulicStep<'_, '_>, x: &mut [f64]) -> Result<usize, Error> {
         "hydraulic reconstruction did not converge in interval {} (maximum equation residual {residual})",
         step.interval
     )))
+}
+
+/// A passive pressure component without a fixed-head node admits one constant
+/// head shift. Choose that reference within the intersection of absolute head
+/// bounds. No head difference, water equation or machine work is changed.
+fn pressure_references(
+    p: &SchedulingProblem<'_>,
+    controls: &Controls,
+    interval: usize,
+    head: &mut [f64],
+    reference: Option<&HydraulicState>,
+) {
+    let s = &p.case.system;
+    let nr = s.reservoirs.len();
+    let nj = s.junctions.len();
+    let mut component: Vec<_> = (0..head.len()).collect();
+    for (e, &(a, b)) in p.topology.tunnel_nodes.iter().enumerate() {
+        if controls.tunnel_opening[e][interval] == 0. {
+            continue;
+        }
+        let (a, b) = (component[a], component[b]);
+        for root in &mut component {
+            if *root == b {
+                *root = a;
+            }
+        }
+    }
+    let mut anchored = vec![false; head.len()];
+    for node in (0..nr).chain(nr + nj..head.len()) {
+        anchored[component[node]] = true;
+    }
+    for (g, &(a, b)) in p.topology.unit_nodes.iter().enumerate() {
+        if !controls.commitment[g][interval] {
+            continue;
+        }
+        let plant = &s.plants[p.topology.unit_plants[g]];
+        let (a, b) = (component[a], component[b]);
+        if a != b || plant.outlet_head_floor.is_some() {
+            anchored[a] = true;
+            anchored[b] = true;
+        }
+    }
+    for (root, &is_anchored) in anchored.iter().enumerate() {
+        if is_anchored {
+            continue;
+        }
+        let nodes: Vec<_> = (nr..nr + nj).filter(|&j| component[j] == root).collect();
+        let Some(&first) = nodes.first() else {
+            continue;
+        };
+        let lo = nodes
+            .iter()
+            .map(|&j| s.junctions[j - nr].head.min - head[j])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let hi = nodes
+            .iter()
+            .map(|&j| s.junctions[j - nr].head.max - head[j])
+            .fold(f64::INFINITY, f64::min);
+        if lo > hi {
+            continue;
+        }
+        let shift = reference.map_or(lo / 2. + hi / 2., |v| {
+            (v.head[first] - head[first]).clamp(lo, hi)
+        });
+        for j in nodes {
+            head[j] += shift;
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -594,6 +662,7 @@ pub(crate) fn hydraulic_step(
     let iterations = newton(&step, &mut x)?;
     let mut w = Workspace::new(p);
     step.residual(&x, &mut w, &mut vec![0.; x.len()]);
+    pressure_references(p, controls, interval, &mut w.head, reference);
     Ok(HydraulicState {
         storage: if nr == 0 {
             previous.to_vec()
@@ -687,6 +756,14 @@ impl SchedulingProblem<'_> {
             previous.clone_from(&state.storage);
             reference = Some(state);
         }
-        Ok(crate::trajectory::evaluate(self, schedule, junctions, 1e-7))
+        let mut physical = crate::trajectory::evaluate(self, schedule, junctions, 1e-7);
+        self.routing.complete_columns(&mut columns);
+        let points = self
+            .operating_points
+            .with_level_crossings(self, &physical.storage, &columns);
+        let excess = points.residual(self, &physical)?;
+        physical.validation.operating_limits = physical.validation.operating_limits.max(excess);
+        physical.validation.feasible &= excess <= 1e-7;
+        Ok(physical)
     }
 }

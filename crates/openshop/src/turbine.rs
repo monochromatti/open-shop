@@ -167,7 +167,7 @@ impl TurbineTable {
     pub fn options(&self) -> TurbineOptions {
         self.data.options
     }
-    fn head_weights(&self, h: f64) -> (usize, usize, f64) {
+    pub(crate) fn head_weights(&self, h: f64) -> (usize, usize, f64) {
         if self.data.heads.len() == 1 {
             return (0, 0, 0.);
         }
@@ -221,7 +221,7 @@ impl TurbineTable {
         ))
     }
     // Return a cell polynomial in its own coordinate, using end secants outside data.
-    fn column_polynomial(&self, col: usize, q: f64) -> (f64, f64, [f64; 4]) {
+    pub(crate) fn column_polynomial(&self, col: usize, q: f64) -> (f64, f64, [f64; 4]) {
         let c = &self.data.curves[col];
         let x = c.coordinates();
         let y = c.values();
@@ -240,6 +240,20 @@ impl TurbineTable {
         let (origin, width, c) = self.column_polynomial(col, q.re());
         let t = (q - origin) / width;
         ((t * c[3] + c[2]) * t + c[1]) * t + c[0]
+    }
+    pub(crate) fn head_polynomial<D: DualNum<Primitive = f64> + Copy>(
+        &self,
+        q: D,
+        h: f64,
+    ) -> [D; 3] {
+        let (j, k, _) = self.head_weights(h);
+        let left = self.column(j, q);
+        let slope = if j == k {
+            D::from(0.)
+        } else {
+            (self.column(k, q) - left) / (self.data.heads[k] - self.data.heads[j])
+        };
+        [left - slope * self.data.heads[j], slope, D::from(0.)]
     }
     pub(crate) fn trial_efficiency<D: DualNum<Primitive = f64> + Copy>(&self, q: D, h: D) -> D {
         let (j, k, _) = self.head_weights(h.re());

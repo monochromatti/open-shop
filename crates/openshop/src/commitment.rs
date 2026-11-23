@@ -21,6 +21,43 @@ pub(crate) struct Proposal {
     pub head: Vec<Vec<f64>>,
 }
 
+impl Proposal {
+    pub fn from_schedule(
+        problem: &crate::SchedulingProblem<'_>,
+        result: &Schedule,
+    ) -> Result<Self, Error> {
+        let gate_position = problem
+            .operating
+            .tunnels
+            .iter()
+            .enumerate()
+            .map(|(e, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(|(t, v)| {
+                        v.positions
+                            .iter()
+                            .position(|p| p.opening == result.tunnel_opening[e][t])
+                    })
+                    .collect::<Option<Vec<_>>>()
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| Error::Model("result contains an undeclared tunnel opening".into()))?;
+        Ok(Self {
+            controls: DiscreteControls {
+                unit_on: result.commitment.clone(),
+                gate_position,
+            },
+            storage: result.storage.clone(),
+            flow: result.unit_flow.clone(),
+            tunnel_flow: result.tunnel_flow.clone(),
+            river_withdrawal: result.river_withdrawal.clone(),
+            river_opening: result.river_opening.clone(),
+            head: result.head.clone(),
+        })
+    }
+}
+
 pub(crate) fn propose(
     problem: &crate::SchedulingProblem<'_>,
     previous: Option<&Schedule>,

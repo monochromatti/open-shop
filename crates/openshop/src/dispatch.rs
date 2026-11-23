@@ -15,13 +15,16 @@ pub(crate) struct Dispatch {
     pub river_withdrawal: Vec<Vec<VarId>>,
     pub river_opening: Vec<Vec<VarId>>,
     pub junction_head: Vec<Vec<VarId>>,
-    pub flow_scale: f64,
+    pub unit_flow_scale: Vec<f64>,
+    pub tunnel_flow_scale: Vec<f64>,
+    pub river_flow_scale: Vec<f64>,
 }
 
 pub(crate) fn build_dispatch(
     problem: &crate::SchedulingProblem<'_>,
     controls: &crate::commitment::DiscreteControls,
     start: Option<&crate::commitment::Proposal>,
+    points: &crate::operating_points::OperatingPoints,
 ) -> Result<Dispatch, Error> {
     let (case, topology, routing, operating) = (
         problem.case,
@@ -90,39 +93,42 @@ pub(crate) fn build_dispatch(
         .chain(s.tunnels.iter().map(|e| e.capacity))
         .chain(s.rivers.iter().map(|r| r.capacity))
         .fold(1.0, f64::max);
+    let unit_scale: Vec<_> = s.units.iter().map(|u| u.flow.max.max(1.)).collect();
+    let tunnel_scale: Vec<_> = s.tunnels.iter().map(|e| e.capacity.max(1.)).collect();
+    let river_scale: Vec<_> = s.rivers.iter().map(|e| e.capacity.max(1.)).collect();
     let zero = || -> Expr<'_> { Expr::constant(v[[0, 0]].arena(), 0.0).into() };
     let mut river_columns = Vec::new();
     for u in 0..nu {
         for t in 0..nt {
-            river_columns.push(Expr::from(q[[u, t]] * flow_scale));
+            river_columns.push(Expr::from(q[[u, t]] * unit_scale[u]));
         }
     }
     for e in 0..s.tunnels.len() {
         for t in 0..nt {
-            river_columns.push((qt[[e, t]] * flow_scale).into());
+            river_columns.push((qt[[e, t]] * tunnel_scale[e]).into());
         }
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
             let lower = if s.rivers[e].law.is_delta() {
-                -operating.river_capacity[e][t] / flow_scale
+                -operating.river_capacity[e][t] / river_scale[e]
             } else {
                 0.
             };
             m.set_bounds(
                 qr[[k, t]],
                 lower,
-                operating.river_capacity[e][t] / flow_scale,
+                operating.river_capacity[e][t] / river_scale[e],
             )
             .map_err(|e| Error::Model(e.to_string()))?;
             m.set_initial(
                 qr[[k, t]],
                 start
-                    .map_or(0., |p| p.river_withdrawal[e][t] / flow_scale)
-                    .clamp(lower, operating.river_capacity[e][t] / flow_scale),
+                    .map_or(0., |p| p.river_withdrawal[e][t] / river_scale[e])
+                    .clamp(lower, operating.river_capacity[e][t] / river_scale[e]),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
-            river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
+            river_columns.push(Expr::from(qr[[k, t]] * river_scale[e]));
         }
     }
     variable!(m,rf[k in 0..routing.transfers.len()]);
@@ -218,10 +224,10 @@ pub(crate) fn build_dispatch(
             }
             let mut net = zero() + operating.reservoirs[r].inflow[t];
             for &(u, sign) in &topology.incidence[r] {
-                net = net + q[[u, t]] * (sign * flow_scale);
+                net = net + q[[u, t]] * (sign * unit_scale[u]);
             }
             for &(e, sign) in &topology.tunnel_incidence[r] {
-                net = net + qt[[e, t]] * (sign * flow_scale);
+                net = net + qt[[e, t]] * (sign * tunnel_scale[e]);
             }
             net = net
                 + crate::nlp::linear_expression(
@@ -331,12 +337,16 @@ pub(crate) fn build_dispatch(
             .map_err(|e| Error::Model(e.to_string()))?;
             let mut net = zero();
             for &(u, sign) in &topology.incidence[node] {
-                net = net + q[[u, t]] * sign;
+                net = net + q[[u, t]] * (sign * unit_scale[u]);
             }
             for &(e, sign) in &topology.tunnel_incidence[node] {
-                net = net + qt[[e, t]] * sign;
+                net = net + qt[[e, t]] * (sign * tunnel_scale[e]);
             }
-            constraint!(m, name = format!("junction_balance[{j},{t}]"), net == 0.);
+            constraint!(
+                m,
+                name = format!("junction_balance[{j},{t}]"),
+                net / flow_scale == 0.
+            );
         }
     }
     let mut head = Vec::new();
@@ -458,7 +468,7 @@ pub(crate) fn build_dispatch(
             )
             .map_err(|e| Error::Model(e.to_string()))?;
             let h = head[t][source];
-            let withdrawal = qr[[k, t]] * flow_scale;
+            let withdrawal = qr[[k, t]] * river_scale[e];
             match &river.law {
                 crate::RiverLaw::Controlled => {
                     constraint!(
@@ -484,7 +494,7 @@ pub(crate) fn build_dispatch(
                     laws.push(crate::constitutive::Equation {
                         linear: crate::river::LinearForm::variable(
                             qr[[k, t]].var_id().unwrap().index(),
-                            -flow_scale,
+                            -river_scale[e],
                         ),
                         terms: vec![crate::constitutive::Term {
                             function: crate::constitutive::PhysicalFunction::LevelFlow(
@@ -508,7 +518,7 @@ pub(crate) fn build_dispatch(
                     laws.push(crate::constitutive::Equation {
                         linear: crate::river::LinearForm::variable(
                             qr[[k, t]].var_id().unwrap().index(),
-                            -flow_scale,
+                            -river_scale[e],
                         ),
                         terms: vec![crate::constitutive::Term {
                             function: crate::constitutive::PhysicalFunction::OutletTable(
@@ -630,7 +640,7 @@ pub(crate) fn build_dispatch(
             let capacity = if law.opening == 0. {
                 0.
             } else {
-                interval.capacity / flow_scale
+                interval.capacity / tunnel_scale[e]
             };
             m.set_bounds(
                 qt[[e, t]],
@@ -645,7 +655,9 @@ pub(crate) fn build_dispatch(
             m.set_initial(
                 qt[[e, t]],
                 start
-                    .map_or(guess / flow_scale, |p| p.tunnel_flow[e][t] / flow_scale)
+                    .map_or(guess / tunnel_scale[e], |p| {
+                        p.tunnel_flow[e][t] / tunnel_scale[e]
+                    })
                     .clamp(
                         if topology.tunnel_outfalls[e].is_some() {
                             0.
@@ -657,7 +669,7 @@ pub(crate) fn build_dispatch(
             )
             .map_err(|e| Error::Model(e.to_string()))?;
             if law.opening > 0. {
-                let flow = qt[[e, t]] * flow_scale;
+                let flow = qt[[e, t]] * tunnel_scale[e];
                 let pressure =
                     (head[t][source] - head[t][target]) - flow * flow.abs() * law.resistance;
                 constraint!(
@@ -676,7 +688,7 @@ pub(crate) fn build_dispatch(
             for &g in &topology.plant_units[p] {
                 total
                     .coefficients
-                    .insert(q[[g, t]].var_id().unwrap().index(), flow_scale);
+                    .insert(q[[g, t]].var_id().unwrap().index(), unit_scale[g]);
             }
             m.set_initial(
                 hw[[k, t]],
@@ -722,7 +734,10 @@ pub(crate) fn build_dispatch(
             let limits = &operating.units[i][t];
             let on = commitment[i][t];
             let (lo, hi) = if on {
-                (limits.flow.min / flow_scale, limits.flow.max / flow_scale)
+                (
+                    limits.flow.min / unit_scale[i],
+                    limits.flow.max / unit_scale[i],
+                )
             } else {
                 (0., 0.)
             };
@@ -731,11 +746,11 @@ pub(crate) fn build_dispatch(
             m.set_initial(
                 q[[i, t]],
                 start
-                    .map_or((lo + hi) / 2., |p| p.flow[i][t] / flow_scale)
+                    .map_or((lo + hi) / 2., |p| p.flow[i][t] / unit_scale[i])
                     .clamp(lo, hi),
             )
             .map_err(|e| Error::Model(e.to_string()))?;
-            let flow: Expr<'_> = (q[[i, t]] * flow_scale).into();
+            let flow: Expr<'_> = (q[[i, t]] * unit_scale[i]).into();
             let plant = topology.unit_plants[i];
             let p = &s.plants[plant];
             let outlet = p.outlet_head_floor.map_or(head[t][target], |floor| {
@@ -836,11 +851,11 @@ pub(crate) fn build_dispatch(
                     machines[i].clone(),
                     crate::river::LinearForm::variable(
                         q[[i, t]].var_id().unwrap().index(),
-                        flow_scale,
+                        unit_scale[i],
                     ),
                     crate::river::LinearForm::variable(ht[[i, t]].var_id().unwrap().index(), 100.),
                     crate::river::LinearForm::variable(pt[[i, t]].var_id().unwrap().index(), scale),
-                    flow_scale,
+                    unit_scale[i],
                     scale,
                 ));
             } else {
@@ -907,6 +922,30 @@ pub(crate) fn build_dispatch(
     problem
         .interlocks
         .constrain(&m, &all_on, &gate_on, zero(), nt);
+    let volumes: Vec<Vec<Expr<'_>>> = s
+        .reservoirs
+        .iter()
+        .enumerate()
+        .map(|(r, reservoir)| {
+            (0..=nt)
+                .map(|t| {
+                    (v[[r, t]] * (reservoir.storage.max - reservoir.storage.min)
+                        + reservoir.storage.min)
+                        .into()
+                })
+                .collect()
+        })
+        .collect();
+    points.constrain(
+        problem,
+        &m,
+        &volumes,
+        &all_flow,
+        &river_columns,
+        controls,
+        start,
+        &mut laws,
+    )?;
     crate::operating_equations::constrain(
         &m,
         case,
@@ -981,6 +1020,8 @@ pub(crate) fn build_dispatch(
         river_opening: (0..routing.outlets.len())
             .map(|k| (0..nt).map(|t| ga[[k, t]].var_id().unwrap()).collect())
             .collect(),
-        flow_scale,
+        unit_flow_scale: unit_scale,
+        tunnel_flow_scale: tunnel_scale,
+        river_flow_scale: river_scale,
     })
 }

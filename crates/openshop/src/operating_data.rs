@@ -458,13 +458,14 @@ impl OperatingData {
                     }
                     state = Some(true);
                 }
-                if let Some(fixed) = case.commitment.get(&u.name)
-                    && state.is_some_and(|on| on != fixed[t])
-                {
-                    return Err(Error::Input(format!(
-                        "{}: prescribed state conflicts with operating data",
-                        u.name
-                    )));
+                if let Some(fixed) = case.commitment.get(&u.name) {
+                    if state.is_some_and(|on| on != fixed[t]) {
+                        return Err(Error::Input(format!(
+                            "{}: prescribed state conflicts with operating data",
+                            u.name
+                        )));
+                    }
+                    state = Some(fixed[t]);
                 }
                 if fixed_power.is_some_and(|p| p != 0. && !power.contains(p))
                     || fixed_flow.is_some_and(|q| q != 0. && !flow.contains(q))

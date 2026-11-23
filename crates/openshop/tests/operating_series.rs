@@ -101,8 +101,18 @@ fn changing_power_limits_are_enforced_in_nonlinear_dispatch() {
         vec![8., 10.],
     )];
     let result = solve(&c);
-    assert!((result.unit_power[0][0] - 8.).abs() < 1e-5);
-    assert!((result.unit_power[0][1] - 10.).abs() < 1e-5);
+    for (t, maximum) in [8., 10.].into_iter().enumerate() {
+        let head = c.system.reservoirs[0]
+            .level
+            .level(result.storage[0][t])
+            .unwrap()
+            - 20.;
+        let peak = c.system.units[0]
+            .power(result.unit_flow[0][t], head)
+            .unwrap();
+        assert!((peak - maximum).abs() < 1e-5);
+        assert!(result.unit_power[0][t] < peak);
+    }
 }
 #[test]
 fn ramp_rates_are_integrated_between_observation_midpoints() {
