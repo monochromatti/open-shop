@@ -231,3 +231,53 @@ fn passive_channel_data_and_incompatible_operating_inputs_are_rejected() {
     });
     assert!(SchedulingProblem::new(&c).is_err());
 }
+
+#[test]
+fn minimum_release_includes_natural_water_before_reservoir_withdrawal() {
+    let mut c = case(
+        vec![reservoir("Lake", 100., 1e6, 0.)],
+        river("Lake", "Sea", RiverLaw::Controlled),
+    );
+    c.system.reservoirs[0].water_value = 0.001;
+    c.system.rivers[0].inflow = 1.;
+    c.operations.push(OperationalSeries {
+        object: Object::River("Reach".into()),
+        attribute: Attribute::MinRelease,
+        times: vec![0., 0.5],
+        values: vec![2., 5.],
+    });
+    let s = solve(&c);
+    assert!((s.river_release[0][0] - 2.).abs() < 1e-5);
+    assert!((s.river_release[0][1] - 5.).abs() < 1e-5);
+    assert!((s.river_withdrawal[0][0] - 1.).abs() < 1e-5);
+    assert!((s.river_withdrawal[0][1] - 4.).abs() < 1e-5);
+}
+#[test]
+fn a_river_junction_release_minimum_is_an_interval_average() {
+    let mut c = case(
+        vec![reservoir("Lake", 100., 1e6, 0.)],
+        river("Lake", "Join", RiverLaw::Controlled),
+    );
+    c.grid = vec![0., 1., 2.];
+    c.prices = vec![0.; 2];
+    c.system.reservoirs[0].water_value = 0.001;
+    c.system.rivers[0].name = "Upper".into();
+    c.system.rivers[0].capacity = 10.;
+    c.system.rivers[0].transport = RiverTransport::Fixed { delay: 0.5 };
+    let mut lower = river("Join", "Sea", RiverLaw::Controlled);
+    lower.name = "Lower".into();
+    lower.capacity = 10.;
+    c.system.rivers.push(lower);
+    c.operations.push(OperationalSeries {
+        object: Object::River("Lower".into()),
+        attribute: Attribute::MinRelease,
+        times: vec![0., 1.],
+        values: vec![2., 0.],
+    });
+    let s = solve(&c);
+    assert!((s.river_withdrawal[0][0] - 4.).abs() < 1e-5);
+    assert!(s.river_withdrawal[0][1].abs() < 1e-5);
+    assert!((s.river_release[1][0] - 2.).abs() < 1e-5);
+    c.operations[0].values[0] = 11.;
+    assert!(SchedulingProblem::new(&c).is_err());
+}

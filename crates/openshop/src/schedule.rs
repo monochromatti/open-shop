@@ -22,6 +22,7 @@ pub struct SchedulingProblem<'a> {
     pub(crate) operating: crate::operating_data::OperatingData,
     pub(crate) observations: crate::flow_requirements::FlowEquations,
     pub(crate) level_windows: crate::level_windows::LevelEquations,
+    pub(crate) interlocks: crate::gate_interlocks::GateInterlocks,
 }
 
 impl<'a> SchedulingProblem<'a> {
@@ -33,7 +34,9 @@ impl<'a> SchedulingProblem<'a> {
         let observations =
             crate::flow_requirements::FlowEquations::new(case, &routing, &operating)?;
         let level_windows = crate::level_windows::LevelEquations::new(case, &routing)?;
+        let interlocks = crate::gate_interlocks::GateInterlocks::new(case, &topology)?;
         Ok(Self {
+            interlocks,
             level_windows,
             observations,
             case,
@@ -118,7 +121,8 @@ impl<'a> SchedulingProblem<'a> {
         }
         let result = best.or(last).ok_or_else(|| {
             Error::Solver(
-                "no unit and gate schedule produced a nonlinear trial point within the time limit".into(),
+                "no unit and gate schedule produced a nonlinear trial point within the time limit"
+                    .into(),
             )
         })?;
         let remaining = options.time_limit - started.elapsed().as_secs_f64();

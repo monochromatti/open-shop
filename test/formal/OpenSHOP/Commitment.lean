@@ -127,4 +127,43 @@ theorem signed_onhead_bounds (u head lo hi : ℝ)
   · simp only [one_mul]
     exact ⟨le_trans (min_le_right _ _) bounds.1,le_trans bounds.2 (le_max_right _ _)⟩
 
+/-- A gate closure is previous-open AND current-closed. The three linear
+rows and nonnegativity determine it exactly without another binary variable. -/
+theorem gate_closure_transition (previous current closed : ℝ)
+    (hp : previous=0 ∨ previous=1) (hc : current=0 ∨ current=1)
+    (nonnegative : 0 ≤ closed) (lower : previous-current ≤ closed)
+    (prior : closed ≤ previous) (now : closed ≤ 1-current) :
+    closed=max 0 (previous-current) := by
+  rcases hp with hp | hp <;> rcases hc with hc | hc <;>
+    subst previous <;> subst current <;> norm_num at * <;> linarith
+
+/-- A recorded closure forces a protected unit to remain stopped on every
+interval in its waiting window. No flow or later gate position is involved. -/
+theorem closure_wait_stops_unit (running closed : ℝ)
+    (nonnegative : 0 ≤ running) (closure : closed=1)
+    (waiting : running+closed ≤ 1) : running=0 := by
+  rw [closure] at waiting
+  linarith
+
+/-- Conditional pressure rows impose zero residual when selected and leave
+its declared affine residual domain unrestricted when the position is inactive. -/
+theorem selected_pressure_equation (residual lower upper selected : ℝ)
+    (domain : lower ≤ residual ∧ residual ≤ upper)
+    (binary : selected=0 ∨ selected=1) :
+    (min 0 lower*(1-selected) ≤ residual ∧
+      residual ≤ max 0 upper*(1-selected)) ↔ (selected=1 → residual=0) := by
+  rcases binary with h | h <;> subst selected <;>
+    simp only [sub_zero, sub_self, mul_one, mul_zero]
+  · constructor
+    · intro _ impossible; norm_num at impossible
+    · intro _
+      exact ⟨le_trans (min_le_right _ _) domain.1,
+        le_trans domain.2 (le_max_right _ _)⟩
+  · constructor
+    · rintro ⟨lo,hi⟩ _; exact le_antisymm hi lo
+    · intro h
+      have hz := h True.intro
+      rw [hz]
+      exact ⟨le_refl _,le_refl _⟩
+
 end OpenSHOP

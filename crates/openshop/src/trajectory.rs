@@ -332,6 +332,11 @@ fn validate(
         .max(problem.observations.residual(&columns))
         .max(
             problem
+                .interlocks
+                .residual(&schedule.commitment, &schedule.tunnel_opening),
+        )
+        .max(
+            problem
                 .level_windows
                 .residual(case, &schedule.storage, &columns),
         );

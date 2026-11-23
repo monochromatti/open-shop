@@ -236,8 +236,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
-independent replay, tunnel interlocks,
-soft constraints and reserves, restart/rolling horizons and
+independent replay, soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
@@ -457,3 +456,30 @@ Every positive position is prepared as a resistance in the equation
 resistance is `loss_factor/opening`; for a gate-loss curve it is
 `loss_factor + G(opening)`. This algebraic normalization keeps pressure residuals
 in metres even at a small opening. Zero remains a disconnected gate.
+
+## Gate interlocks and closure waits
+
+`TunnelInterlock::new(name, tunnels)` bounds how many listed gates have positive
+positions. `min_open` and `max_open` apply even when flow is zero. Time-dependent
+`MinOpen` and `MaxOpen` series use `Object::TunnelInterlock(name)` and must contain
+integer counts.
+
+A `ClosureWait` names a subgroup of tunnels, protected plants, a wait in hours,
+and any `initial_remaining` wait. Closing any member requires every unit in the
+protected plants to remain stopped throughout that wait. A later reopening does
+not cancel it. Changes between two positive positions do not count as closures.
+Initial unit history must already cover the elapsed part of a pending wait.
+Several groups express different closure obligations without direction-specific
+special fields. These are operating restrictions, independent of flow direction.
+
+Closure indicators follow exact linear transition rows and need only continuous
+bounds: the gate choices already determine their binary values. The same rows
+constrain proposals and fixed-decision nonlinear dispatch. Lean proves this
+transition identity and the shutdown implication in real arithmetic, together
+with the conditional pressure-row implication. It does not verify floating-point
+execution or prove the optimization result globally optimal.
+
+`Object::River(name)` also accepts `MinRelease`, a minimum upstream release in
+m³/s averaged over a control interval. Natural inflow counts toward the minimum;
+a reservoir supplies only the remaining withdrawal. At a river junction, the
+bound applies to its interval-average outgoing release, including delayed water.

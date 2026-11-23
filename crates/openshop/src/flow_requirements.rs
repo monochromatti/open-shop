@@ -130,6 +130,20 @@ impl FlowEquations {
         let (start, end) = (case.grid[0], case.grid[nt]);
         let tunnel_offset = s.units.len() * nt;
         let mut names = HashSet::new();
+        // Environmental release minima constrain the control-interval average,
+        // including natural inflow and routed arrivals at a river junction.
+        for (e, series) in routing.releases.iter().enumerate() {
+            for (t, w) in case.grid.windows(2).enumerate() {
+                let lower = operating.river_min_release[e][t];
+                if lower > 0. {
+                    data.rows.push(FlowRow {
+                        expression: series.integral(w[0], w[1]).scaled(1. / (w[1] - w[0])),
+                        bounds: Bounds::new(lower, f64::INFINITY),
+                        scale: 100.,
+                    });
+                }
+            }
+        }
         for (i, rule) in case.flow_requirements.iter().enumerate() {
             let invalid = |message: &str| Error::Input(format!("{}: {message}", rule.name));
             if rule.name.is_empty()

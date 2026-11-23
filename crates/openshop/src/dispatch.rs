@@ -836,6 +836,27 @@ pub(crate) fn build_dispatch(
                 .collect()
         })
         .collect();
+    let gate_on: Vec<Vec<_>> = operating
+        .tunnels
+        .iter()
+        .enumerate()
+        .map(|(e, row)| {
+            row.iter()
+                .enumerate()
+                .map(|(t, interval)| {
+                    zero()
+                        + if interval.positions[controls.gate_position[e][t]].opening > 0. {
+                            1.
+                        } else {
+                            0.
+                        }
+                })
+                .collect()
+        })
+        .collect();
+    problem
+        .interlocks
+        .constrain(&m, &all_on, &gate_on, zero(), nt);
     crate::operating_equations::constrain(
         &m,
         case,

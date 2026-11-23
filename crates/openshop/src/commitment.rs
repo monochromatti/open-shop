@@ -129,10 +129,12 @@ pub(crate) fn propose(
     variable!(m,position[k in 0..choices],Bin);
     let mut gate_weights = Vec::new();
     let mut gate_opening = Vec::new();
+    let mut gate_on = Vec::new();
     let mut index = 0;
     for (e, intervals) in operating.tunnels.iter().enumerate() {
         let mut weights_row = Vec::new();
         let mut opening_row = Vec::new();
+        let mut on_row = Vec::new();
         for (t, interval) in intervals.iter().enumerate() {
             let weights: Vec<Expr<'_>> = if interval.positions.len() == 1 {
                 vec![zero() + 1.]
@@ -171,9 +173,11 @@ pub(crate) fn propose(
             if topology.tunnel_outfalls[e].is_none() {
                 constraint!(m, qt[[e, t]] >= -open * cap);
             }
+            on_row.push(open);
             weights_row.push(weights);
             opening_row.push(opening);
         }
+        gate_on.push(on_row);
         gate_weights.push(weights_row);
         gate_opening.push(opening_row);
     }
@@ -630,6 +634,9 @@ pub(crate) fn propose(
         }
         plant_states.push(states);
     }
+    problem
+        .interlocks
+        .constrain(&m, &all_on, &gate_on, zero(), nt);
     crate::operating_equations::constrain(
         &m,
         case,

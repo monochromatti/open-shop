@@ -535,6 +535,8 @@ pub struct HydroSystem {
     #[serde(default)]
     pub tunnels: Vec<Tunnel>,
     #[serde(default)]
+    pub tunnel_interlocks: Vec<crate::TunnelInterlock>,
+    #[serde(default)]
     pub rivers: Vec<River>,
 }
 

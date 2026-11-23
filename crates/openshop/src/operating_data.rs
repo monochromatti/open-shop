@@ -14,6 +14,7 @@ pub enum Object {
     Tunnel(String),
     River(String),
     FlowRequirement(String),
+    TunnelInterlock(String),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +47,9 @@ pub enum Attribute {
     GrossHeadMin,
     GrossHeadMax,
     StartupGrossHeadMin,
+    MinOpen,
+    MinRelease,
+    MaxOpen,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,7 +60,7 @@ pub struct OperationalSeries {
     pub values: Vec<f64>,
 }
 impl OperationalSeries {
-    fn at(&self, time: f64, default: Option<f64>, left: bool) -> Option<f64> {
+    pub(crate) fn at(&self, time: f64, default: Option<f64>, left: bool) -> Option<f64> {
         let k = self
             .times
             .partition_point(|&t| if left { t < time } else { t <= time });
@@ -142,6 +146,7 @@ pub(crate) struct OperatingData {
     pub tunnels: Vec<Vec<TunnelInterval>>,
     pub river_capacity: Vec<Vec<f64>>,
     pub river_inflow: Vec<Vec<f64>>,
+    pub river_min_release: Vec<Vec<f64>>,
     pub river_gate: Vec<Vec<Bounds>>,
     pub observed_flow: Vec<Vec<crate::flow_requirements::FlowInterval>>,
 }
@@ -263,6 +268,10 @@ impl OperatingData {
                     system.tunnels.iter().any(|x| &x.name == name)
                         && matches!(s.attribute, Capacity | Opening)
                 }
+                Object::TunnelInterlock(name) => {
+                    system.tunnel_interlocks.iter().any(|r| &r.name == name)
+                        && matches!(s.attribute, MinOpen | MaxOpen)
+                }
                 Object::FlowRequirement(name) => {
                     case.flow_requirements.iter().any(|r| &r.name == name)
                         && matches!(s.attribute, FlowMin | FlowMax | Inflow)
@@ -273,7 +282,10 @@ impl OperatingData {
                             && (!x.law.is_delta() || s.attribute == Capacity)
                             && (system.reservoirs.iter().any(|r| r.name == x.source)
                                 || !matches!(s.attribute, GateMin | GateMax))
-                    }) && matches!(s.attribute, Capacity | Inflow | GateMin | GateMax)
+                    }) && matches!(
+                        s.attribute,
+                        Capacity | Inflow | GateMin | GateMax | MinRelease
+                    )
                 }
             };
             if !allowed {
@@ -300,6 +312,7 @@ impl OperatingData {
                 true
             } else {
                 match s.attribute {
+                    MinOpen | MaxOpen => s.values.iter().all(|v| *v >= 0. && v.fract() == 0.),
                     ForcedOn => s.values.iter().all(|v| [-1., 0., 1.].contains(v)),
                     Maintenance => s.values.iter().all(|v| [0., 1.].contains(v)),
                     Opening | GateMin | GateMax => s.values.iter().all(|v| (0. ..=1.).contains(v)),
@@ -339,10 +352,21 @@ impl OperatingData {
                         .unwrap()
                         .capacity,
                 )),
+                Object::TunnelInterlock(name) => Some((
+                    0.,
+                    system
+                        .tunnel_interlocks
+                        .iter()
+                        .find(|r| &r.name == name)
+                        .unwrap()
+                        .tunnels
+                        .len() as f64,
+                )),
                 Object::FlowRequirement(_) => None,
                 Object::River(name) => {
                     let r = system.rivers.iter().find(|r| &r.name == name).unwrap();
                     match s.attribute {
+                        MinRelease => Some((0., r.capacity)),
                         Capacity => Some((0., r.capacity)),
                         GateMin => Some((r.gate.min, 1.)),
                         GateMax => Some((0., r.gate.max)),
@@ -790,16 +814,19 @@ impl OperatingData {
         let mut river_gate = Vec::new();
         let mut river_capacity = Vec::new();
         let mut river_inflow = Vec::new();
+        let mut river_min_release = Vec::new();
         for river in &system.rivers {
             let object = Object::River(river.name.clone());
             let m = series.get(&object);
             let mut gates = Vec::new();
             let mut cap = Vec::new();
             let mut inflow = Vec::new();
+            let mut minimum = Vec::new();
             for &time in &case.grid[..nt] {
                 let c = value(m, Capacity, time, Some(river.capacity), false).unwrap();
                 let q = value(m, Inflow, time, Some(river.inflow), false).unwrap();
-                if c > river.capacity || q > c {
+                let minimum_release = value(m, MinRelease, time, Some(0.), false).unwrap();
+                if c > river.capacity || q > c || minimum_release > c {
                     return Err(Error::Input(format!(
                         "{}: invalid river capacity/inflow",
                         river.name
@@ -822,12 +849,14 @@ impl OperatingData {
                 } else {
                     Bounds::new(lo, hi)
                 });
+                minimum.push(minimum_release);
                 cap.push(c);
                 inflow.push(q);
             }
             river_gate.push(gates);
             river_capacity.push(cap);
             river_inflow.push(inflow);
+            river_min_release.push(minimum);
         }
         let mut observed_flow = Vec::new();
         for r in &case.flow_requirements {
@@ -862,6 +891,7 @@ impl OperatingData {
             tunnels,
             river_capacity,
             river_inflow,
+            river_min_release,
             river_gate,
         })
     }
