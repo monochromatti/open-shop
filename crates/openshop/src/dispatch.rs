@@ -644,6 +644,51 @@ pub(crate) fn build_dispatch(
             let net_head =
                 (head[t][source] - outlet - tailwater[plant][t] - flow.square() * u.loss_factor)
                     * u.mode.power_sign();
+            if let Some(reference) = &topology.gross_heads[i] {
+                let gross =
+                    (head[t][reference.source] - head[t][reference.target]) * u.mode.power_sign();
+                if on {
+                    if let Some(lo) = limits.gross_head_min {
+                        constraint!(m, gross / 100. >= lo / 100.);
+                    }
+                    if let Some(hi) = limits.gross_head_max {
+                        constraint!(m, gross / 100. <= hi / 100.);
+                    }
+                }
+                if u.operation.transitions(&commitment[i], t).0
+                    && let Some(lo) = limits.startup_gross_head_min
+                {
+                    let mut equation = crate::constitutive::Equation {
+                        linear: Default::default(),
+                        terms: Vec::new(),
+                        bounds: crate::Bounds::new(lo / 100., f64::INFINITY),
+                    };
+                    for (node, sign) in [
+                        (reference.source, u.mode.power_sign()),
+                        (reference.target, -u.mode.power_sign()),
+                    ] {
+                        if node < nr {
+                            let r = &s.reservoirs[node];
+                            let range = r.storage.max - r.storage.min;
+                            let volume = nlp::linear_form(
+                                &m,
+                                (v[[node, t]] * range + r.storage.min).into(),
+                            )?;
+                            equation.terms.push(crate::constitutive::Term {
+                                function: crate::constitutive::PhysicalFunction::StorageMean(
+                                    std::sync::Arc::new(r.level.clone()),
+                                ),
+                                inputs: [volume.clone(), volume, Default::default()],
+                                weight: sign / 100.,
+                            });
+                        } else {
+                            equation.linear.constant +=
+                                sign * s.boundaries[node - nr - s.junctions.len()].head / 100.;
+                        }
+                    }
+                    laws.push(equation);
+                }
+            }
             let scale = u.power.max.max(1.);
             if on {
                 m.set_bounds(ht[[i, t]], u.head.min / 100., u.head.max / 100.)

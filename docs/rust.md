@@ -236,7 +236,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
-independent replay, optimized tunnel gates and interlocks, gross-head limits,
+independent replay, optimized tunnel gates and interlocks,
 observation windows, soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
@@ -353,3 +353,23 @@ release boundaries and require no mixing mesh.
 in m³. Arrival fractions integrate the nonnegative pieces of the trapezoidal
 arrival density directly. Remaining inventory integrates survival probability
 directly, avoiding cancellation when only a small tail remains in transit.
+
+
+## Hydraulic operating limits
+
+`Unit::minimum_efficiency` restricts the machine's actual hydraulic efficiency;
+it does not replace low curve values with a floor. The same restriction applies
+to generating, variable-speed pumping and fixed-speed characteristics.
+
+`gross_head_min` and `gross_head_max` constrain the surface-level difference
+before machine and tunnel losses. `startup_gross_head_min` applies at an
+off-to-on transition and uses the surface levels at that control edge. Running
+limits use the represented interval mean levels. Pumping reverses the sign so
+that its gross head is a positive lift. These limits also accept time-dependent
+`GrossHeadMin`, `GrossHeadMax` and `StartupGrossHeadMin` series on units.
+
+Plant endpoints supply the default gross-head references. If an endpoint is a
+pressure junction, supply `Plant::gross_head_source` and/or `gross_head_target`
+explicitly: gross-head references must be reservoir surfaces or fixed boundaries.
+They may differ from machine head endpoints. Startup table levels are evaluated
+at the actual starting storage, without smoothing or interpolating in time.

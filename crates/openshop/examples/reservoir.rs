@@ -7,6 +7,15 @@ use openshop::{
 use std::collections::BTreeMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut unit = Unit::new(
+        "Unit",
+        "Station",
+        Bounds::new(5., 20.),
+        Bounds::new(1., 25.),
+        Bounds::new(35., 105.),
+        Efficiency::constant(0.9),
+    );
+    unit.operation.startup_cost = 100.;
     let system = HydroSystem {
         reservoirs: vec![Reservoir {
             operation: Default::default(),
@@ -26,23 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             head: 20.,
         }],
         plants: vec![Plant::new("Station", "Lake", "Sea")],
-        units: vec![Unit {
-            name: "Station".into(),
-            plant: "Station".into(),
-            mode: openshop::UnitMode::Generate,
-            pump_characteristic: None,
-            motor_efficiency: 1.,
-            generator_efficiency_curve: None,
-            flow: Bounds::new(5., 20.),
-            power: Bounds::new(1., 25.),
-            head: Bounds::new(35., 105.),
-            efficiency: Efficiency::constant(0.9),
-            loss_factor: 0.,
-            operation: openshop::UnitOperation {
-                startup_cost: 100.,
-                ..Default::default()
-            },
-        }],
+        units: vec![unit],
         ..Default::default()
     };
     let case = ScheduleCase {

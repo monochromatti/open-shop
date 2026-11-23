@@ -25,6 +25,7 @@ pub(crate) struct StorageHeadEquation {
 pub(crate) enum PhysicalFunction {
     StorageMean(Arc<crate::StorageCurve>),
     Production(Arc<Unit>),
+    Efficiency(Arc<Unit>),
     Transfer(Arc<crate::river_transport::ReleaseFraction>),
     Table(Arc<TableCurve>),
     LevelFlow(Arc<crate::LevelFlowCurve>),
@@ -56,6 +57,7 @@ impl PhysicalFunction {
     fn value(&self, x: [f64; 3]) -> f64 {
         match self {
             Self::Transfer(c) => c.data(x[0]).value,
+            Self::Efficiency(u) => crate::machine::hydraulic_efficiency(u, x[0], x[1]),
             Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
             Self::StorageMean(c) => c.mean_data(x[0], x[1]).value,
             Self::Table(c) => c.extended_value(x[0]),
@@ -68,6 +70,16 @@ impl PhysicalFunction {
     }
     fn data(&self, x: [f64; 3]) -> Derivatives {
         match self {
+            Self::Efficiency(u) => {
+                let (_, g, h) = hessian(
+                    |x| crate::machine::hydraulic_efficiency(u, x[0], x[1]),
+                    &SVector::from(x),
+                );
+                Derivatives {
+                    gradient: std::array::from_fn(|i| g[i]),
+                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
+                }
+            }
             Self::Production(u) => {
                 let (_, g, h) = hessian(
                     |x| crate::machine::power_balance(u, x[0], x[1], x[2]),
@@ -140,6 +152,17 @@ impl Equation {
             }],
             bounds: Bounds::new(0., 0.),
         }];
+        if unit.minimum_efficiency > 0. {
+            equations.push(Self {
+                linear: LinearForm::default(),
+                terms: vec![Term {
+                    function: PhysicalFunction::Efficiency(unit.clone()),
+                    inputs: [flow.clone(), head.clone(), Default::default()],
+                    weight: 1.,
+                }],
+                bounds: Bounds::new(unit.minimum_efficiency, 1.),
+            });
+        }
         let mut flow_equation = |function, bounds| {
             equations.push(Self {
                 linear: flow.clone().scaled(-1. / flow_scale),
@@ -773,6 +796,7 @@ mod tests {
             Bounds::new(80., 160.),
             crate::Efficiency::Table((*curve).clone()),
         );
+        unit.minimum_efficiency = 0.6;
         unit.generator_efficiency_curve =
             Some(TableCurve::new(vec![0., 15., 30.], vec![0.88, 0.95, 0.97]).unwrap());
         let equations = Equation::production(
@@ -787,7 +811,7 @@ mod tests {
         check_derivatives(
             &mut problem,
             &[[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]],
-            &[0.6, 1.3, -0.2, 0.4],
+            &[0.6, 1.3, -0.2, 0.4, -0.7],
         );
     }
     #[test]

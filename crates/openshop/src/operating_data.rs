@@ -42,6 +42,9 @@ pub enum Attribute {
     Inflow,
     GateMin,
     GateMax,
+    GrossHeadMin,
+    GrossHeadMax,
+    StartupGrossHeadMin,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,6 +99,9 @@ pub(crate) struct MachineInterval {
     pub startup_cost: f64,
     pub shutdown_cost: f64,
     pub stopping_power_min: f64,
+    pub gross_head_min: Option<f64>,
+    pub gross_head_max: Option<f64>,
+    pub startup_gross_head_min: Option<f64>,
     pub flow_change: ChangeLimit,
     pub power_change: ChangeLimit,
 }
@@ -196,7 +202,10 @@ impl OperatingData {
                     system.units.iter().any(|x| &x.name == name)
                         && matches!(
                             s.attribute,
-                            FlowMin
+                            GrossHeadMin
+                                | GrossHeadMax
+                                | StartupGrossHeadMin
+                                | FlowMin
                                 | FlowMax
                                 | PowerMin
                                 | PowerMax
@@ -416,7 +425,24 @@ impl OperatingData {
                 } else {
                     intervals[t - 1].power.min
                 };
+                let gross_head_min = value(m, GrossHeadMin, time, u.gross_head_min, false);
+                let gross_head_max = value(m, GrossHeadMax, time, u.gross_head_max, false);
+                if matches!((gross_head_min,gross_head_max),(Some(a),Some(b)) if a>b) {
+                    return Err(Error::Input(format!(
+                        "{}: inconsistent gross head limits",
+                        u.name
+                    )));
+                }
                 intervals.push(MachineInterval {
+                    gross_head_min,
+                    gross_head_max,
+                    startup_gross_head_min: value(
+                        m,
+                        StartupGrossHeadMin,
+                        time,
+                        u.startup_gross_head_min,
+                        false,
+                    ),
                     flow,
                     power,
                     forced: state,

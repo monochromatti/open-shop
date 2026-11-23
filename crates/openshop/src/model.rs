@@ -345,6 +345,11 @@ pub struct Plant {
     pub tailwater_curve: Option<crate::TableCurve>,
     #[serde(default)]
     pub outlet_head_floor: Option<f64>,
+    /// Reservoir/boundary references before hydraulic losses; defaults to plant endpoints.
+    #[serde(default)]
+    pub gross_head_source: Option<String>,
+    #[serde(default)]
+    pub gross_head_target: Option<String>,
     #[serde(default)]
     pub operation: crate::PlantOperation,
 }
@@ -365,6 +370,8 @@ impl Plant {
             power_max: None,
             tailwater_curve: None,
             outlet_head_floor: None,
+            gross_head_source: None,
+            gross_head_target: None,
             operation: Default::default(),
         }
     }
@@ -388,6 +395,14 @@ pub struct Unit {
     pub power: Bounds,
     pub head: Bounds,
     pub efficiency: Efficiency,
+    #[serde(default)]
+    pub minimum_efficiency: f64,
+    #[serde(default)]
+    pub gross_head_min: Option<f64>,
+    #[serde(default)]
+    pub gross_head_max: Option<f64>,
+    #[serde(default)]
+    pub startup_gross_head_min: Option<f64>,
     #[serde(default)]
     pub pump_characteristic: Option<crate::PumpCharacteristic>,
     #[serde(default = "one")]
@@ -416,6 +431,10 @@ impl Unit {
             power,
             head,
             efficiency,
+            minimum_efficiency: 0.,
+            gross_head_min: None,
+            gross_head_max: None,
+            startup_gross_head_min: None,
             pump_characteristic: None,
             motor_efficiency: 1.,
             generator_efficiency_curve: None,
@@ -547,7 +566,13 @@ pub struct ScheduleCase {
     pub commitment: BTreeMap<String, Vec<bool>>,
 }
 
+pub(crate) struct HeadReference {
+    pub source: usize,
+    pub target: usize,
+    pub range: Bounds,
+}
 pub(crate) struct Topology {
+    pub gross_heads: Vec<Option<HeadReference>>,
     pub unit_nodes: Vec<(usize, usize)>,
     pub unit_plants: Vec<usize>,
     pub plant_units: Vec<Vec<usize>>,
@@ -628,6 +653,29 @@ impl ScheduleCase {
         for j in &s.junctions {
             j.head.validate(&j.name)?;
         }
+        let gross_node = |name: &str| -> Result<usize, Error> {
+            nodes
+                .get(name)
+                .copied()
+                .filter(|&i| i < s.reservoirs.len() || i >= s.reservoirs.len() + s.junctions.len())
+                .ok_or_else(|| {
+                    Error::Input(format!(
+                        "gross head reference {name} must name a reservoir or boundary"
+                    ))
+                })
+        };
+        let head_range = |i: usize| {
+            if i < s.reservoirs.len() {
+                let r = &s.reservoirs[i];
+                Bounds::new(
+                    r.level.trial_level(r.storage.min),
+                    r.level.trial_level(r.storage.max),
+                )
+            } else {
+                let h = s.boundaries[i - s.reservoirs.len() - s.junctions.len()].head;
+                Bounds::new(h, h)
+            }
+        };
         let mut plant_names = HashMap::new();
         let mut plant_nodes = Vec::new();
         for (i, p) in s.plants.iter().enumerate() {
@@ -654,8 +702,13 @@ impl ScheduleCase {
             {
                 return Err(Error::Input(format!("{}: invalid plant limits", p.name)));
             }
+            if p.gross_head_source.is_some() || p.gross_head_target.is_some() {
+                gross_node(p.gross_head_source.as_deref().unwrap_or(&p.source))?;
+                gross_node(p.gross_head_target.as_deref().unwrap_or(&p.target))?;
+            }
             plant_nodes.push((source, target));
         }
+        let mut gross_heads = Vec::new();
         let mut unit_plants = Vec::new();
         let mut plant_units = vec![Vec::new(); s.plants.len()];
         let mut incidence = vec![Vec::new(); s.reservoirs.len() + s.junctions.len()];
@@ -672,6 +725,18 @@ impl ScheduleCase {
                 bounds.validate(&format!("{} {name}", u.name))?;
             }
             u.operation.validate(&u.name)?;
+            if !u.minimum_efficiency.is_finite()
+                || !(0. ..=1.).contains(&u.minimum_efficiency)
+                || [u.gross_head_min, u.gross_head_max, u.startup_gross_head_min]
+                    .into_iter()
+                    .flatten()
+                    .any(|v| !v.is_finite() || v < 0.)
+            {
+                return Err(Error::Input(format!(
+                    "{}: invalid efficiency or gross head limit",
+                    u.name
+                )));
+            }
             if u.flow.min < 0.
                 || u.flow.max <= 0.
                 || u.power.min < 0.
@@ -693,6 +758,36 @@ impl ScheduleCase {
             let plant = *plant_names
                 .get(u.plant.as_str())
                 .ok_or_else(|| Error::Input(format!("{}: unknown plant {}", u.name, u.plant)))?;
+            let enabled = u.gross_head_min.is_some()
+                || u.gross_head_max.is_some()
+                || u.startup_gross_head_min.is_some()
+                || self.operations.iter().any(|o| {
+                    o.object == crate::Object::Unit(u.name.clone())
+                        && matches!(
+                            o.attribute,
+                            crate::Attribute::GrossHeadMin
+                                | crate::Attribute::GrossHeadMax
+                                | crate::Attribute::StartupGrossHeadMin
+                        )
+                });
+            gross_heads.push(if enabled {
+                let p = &s.plants[plant];
+                let a = gross_node(p.gross_head_source.as_deref().unwrap_or(&p.source))?;
+                let b = gross_node(p.gross_head_target.as_deref().unwrap_or(&p.target))?;
+                let (lo, hi) = (head_range(a), head_range(b));
+                let range = if u.mode == UnitMode::Generate {
+                    Bounds::new(lo.min - hi.max, lo.max - hi.min)
+                } else {
+                    Bounds::new(hi.min - lo.max, hi.max - lo.min)
+                };
+                Some(HeadReference {
+                    source: a,
+                    target: b,
+                    range,
+                })
+            } else {
+                None
+            });
             unit_plants.push(plant);
             plant_units[plant].push(i);
             let (source, target) = plant_nodes[plant];
@@ -917,6 +1012,7 @@ impl ScheduleCase {
             }
         }
         Ok(Topology {
+            gross_heads,
             unit_nodes,
             unit_plants,
             plant_units,

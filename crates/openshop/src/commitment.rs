@@ -346,6 +346,55 @@ pub(crate) fn propose(
                     0.00981 * head * eta * electrical
                 }
             };
+            if let Some(reference) = &topology.gross_heads[g] {
+                let interval_level = |node: usize| {
+                    if node < nr {
+                        mean_head[t][node]
+                    } else {
+                        zero() + s.boundaries[node - nr - s.junctions.len()].head
+                    }
+                };
+                let gross = (interval_level(reference.source) - interval_level(reference.target))
+                    * unit.mode.power_sign();
+                if let Some(lo) = limits.gross_head_min {
+                    constraint!(
+                        m,
+                        gross / 100.
+                            >= (lo - (lo - reference.range.min).max(0.) * (1. - on[[g, t]])) / 100.
+                    );
+                }
+                if let Some(hi) = limits.gross_head_max {
+                    constraint!(
+                        m,
+                        gross / 100.
+                            <= (hi + (reference.range.max - hi).max(0.) * (1. - on[[g, t]])) / 100.
+                    );
+                }
+                if let Some(lo) = limits.startup_gross_head_min {
+                    let vertex_level = |node: usize| {
+                        if node < nr {
+                            let r = &s.reservoirs[node];
+                            let volume = previous.map_or(r.initial_storage, |p| p.storage[node][t]);
+                            let d = r.level.mean_data(volume, volume);
+                            zero()
+                                + d.value
+                                + (v[[node, t]] * (r.storage.max - r.storage.min) + r.storage.min
+                                    - volume)
+                                    * (d.gradient[0] + d.gradient[1])
+                        } else {
+                            zero() + s.boundaries[node - nr - s.junctions.len()].head
+                        }
+                    };
+                    let initial = (vertex_level(reference.source) - vertex_level(reference.target))
+                        * unit.mode.power_sign();
+                    constraint!(
+                        m,
+                        initial / 100.
+                            >= (lo - (lo - reference.range.min).max(0.) * (1. - start[[g, t]]))
+                                / 100.
+                    );
+                }
+            }
             if let crate::Efficiency::Table(table) = &unit.efficiency {
                 let minimum = table.envelope_data(head, false).value.max(unit.flow.min);
                 let maximum = table.envelope_data(head, true).value.min(unit.flow.max);

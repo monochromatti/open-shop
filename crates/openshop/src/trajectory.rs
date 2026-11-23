@@ -572,6 +572,48 @@ fn validate(
                         .max(violation(q, minimum, maximum, u.flow.max.max(1.)));
             }
             if on {
+                let eta = crate::machine::hydraulic_efficiency(u, q, h);
+                result.operating_limits =
+                    result
+                        .operating_limits
+                        .max(violation(eta, u.minimum_efficiency, 1., 1.));
+                if let Some(reference) = &topology.gross_heads[i] {
+                    let gross = (schedule.head[reference.source][t]
+                        - schedule.head[reference.target][t])
+                        * u.mode.power_sign();
+                    result.operating_limits = result.operating_limits.max(violation(
+                        gross,
+                        limits.gross_head_min.unwrap_or(f64::NEG_INFINITY),
+                        limits.gross_head_max.unwrap_or(f64::INFINITY),
+                        100.,
+                    ));
+                    if u.operation.transitions(&schedule.commitment[i], t).0
+                        && let Some(lo) = limits.startup_gross_head_min
+                    {
+                        let at_vertex = |node: usize| {
+                            if node < case.system.reservoirs.len() {
+                                case.system.reservoirs[node]
+                                    .level
+                                    .trial_level(schedule.storage[node][t])
+                            } else {
+                                case.system.boundaries[node
+                                    - case.system.reservoirs.len()
+                                    - case.system.junctions.len()]
+                                .head
+                            }
+                        };
+                        let initial = (at_vertex(reference.source) - at_vertex(reference.target))
+                            * u.mode.power_sign();
+                        result.operating_limits = result.operating_limits.max(violation(
+                            initial,
+                            lo,
+                            f64::INFINITY,
+                            100.,
+                        ));
+                    }
+                }
+            }
+            if on {
                 result.operating_limits = result.operating_limits.max(violation(
                     h,
                     u.head.min,
