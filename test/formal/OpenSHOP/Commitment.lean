@@ -68,6 +68,18 @@ theorem negative_head_idle_counterexample :
       p=(981/100000)*q*h*eta := by
   refine ⟨1,0,0,-5,9/10,?_,?_,?_,?_,?_,?_⟩ <;> norm_num
 
+/-- Nonnegative hydraulic work excludes uphill transfer at positive discharge,
+while leaving the head unrestricted when discharge is zero. -/
+theorem positive_discharge_requires_nonnegative_work_head (q h : ℝ)
+    (flow : 0 < q) (work : 0 ≤ q*h) : 0 ≤ h := by
+  nlinarith
+
+/-- Electrical work balance alone cannot exclude uphill transfer when hydraulic
+efficiency vanishes. The separate hydraulic-work domain is necessary. -/
+theorem zero_efficiency_reverse_work_counterexample :
+    ∃ q h eta p : ℝ, 0<q ∧ h<0 ∧ eta=0 ∧ p=0 ∧ p=q*h*eta ∧ q*h<0 := by
+  refine ⟨20,-10,0,0,?_,?_,?_,?_,?_,?_⟩ <;> norm_num
+
 /-- The transition rows uniquely identify startup and shutdown with binary
 adjacent states, even though transition variables need only be continuous. -/
 theorem binary_transitions (previous current startup shutdown : ℝ)

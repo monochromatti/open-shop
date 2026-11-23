@@ -161,6 +161,13 @@ flow and power and do not impose a turbine operating-head range. Trial evaluatio
 uses secant continuation to let a solver recover from violated constraints;
 returned schedules must satisfy the declared physical domains.
 
+Generating units may declare a head range that includes negative values. A
+committed unit can then idle with zero flow and power at negative head. Positive
+discharge still requires nonnegative hydraulic work, `Q H ≥ 0`, independently of
+efficiency; zero efficiency cannot permit uphill transfer. Pumps require a
+strictly positive declared lift. Public power evaluation rejects negative
+discharge and negative hydraulic work.
+
 ## Unit operation
 
 Each unit has a `UnitOperation` record. Its default has no minimum operating times

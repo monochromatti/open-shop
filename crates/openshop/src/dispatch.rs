@@ -847,6 +847,9 @@ pub(crate) fn build_dispatch(
                 m.set_initial(pt[[i, t]], p0 / scale)
                     .map_err(|e| Error::Model(e.to_string()))?;
                 constraint!(m, ht[[i, t]] - net_head / 100. == 0.);
+                if u.head.min < 0. {
+                    constraint!(m, flow * ht[[i, t]] / unit_scale[i] >= 0.);
+                }
                 laws.extend(crate::constitutive::Equation::production(
                     machines[i].clone(),
                     crate::river::LinearForm::variable(

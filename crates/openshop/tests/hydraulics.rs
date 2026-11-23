@@ -508,3 +508,72 @@ fn reconstruction_checks_prescribed_commitment_in_addition_to_water_and_pressure
     assert!(physical.validation.pressure_balance < 1e-8);
     assert!(physical.validation.operating_limits > 0.);
 }
+
+#[test]
+fn a_committed_idle_unit_can_have_negative_head_without_transferring_water_uphill() {
+    let mut case = pressure_loop();
+    case.system.junctions.clear();
+    case.system.tunnels.clear();
+    case.system.plants[0].source = "Lake".into();
+    case.system.reservoirs[0].level = StorageCurve::Polynomial {
+        reference_volume: 0.,
+        elevation: -10.,
+        slope: 0.,
+        curvature: 0.,
+    };
+    let u = &mut case.system.units[0];
+    u.flow = Bounds::new(0., 20.);
+    u.power = Bounds::new(0., 20.);
+    u.head = Bounds::new(-20., 20.);
+    case.commitment.insert("Unit".into(), vec![true; 2]);
+    let problem = SchedulingProblem::new(&case).unwrap();
+    let solution = problem
+        .solve(&SolveOptions {
+            time_limit: 5.,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(solution.validation.feasible, "{:?}", solution.validation);
+    assert!(solution.commitment[0].iter().all(|on| *on));
+    assert!(solution.unit_flow[0].iter().all(|q| q.abs() < 1e-8));
+    assert!(solution.unit_head[0].iter().all(|h| (h + 10.).abs() < 1e-8));
+    assert_eq!(case.system.units[0].power(0., -10.).unwrap(), 0.);
+}
+
+#[test]
+fn zero_efficiency_cannot_hide_uphill_transfer_through_a_generating_unit() {
+    let mut case = pressure_loop();
+    case.system.junctions.clear();
+    case.system.tunnels.clear();
+    case.system.plants[0].source = "Lake".into();
+    case.system.reservoirs[0].level = StorageCurve::Polynomial {
+        reference_volume: 0.,
+        elevation: -10.,
+        slope: 0.,
+        curvature: 0.,
+    };
+    let u = &mut case.system.units[0];
+    u.flow = Bounds::new(0., 20.);
+    u.power = Bounds::new(0., 20.);
+    u.head = Bounds::new(-20., 20.);
+    u.efficiency = Efficiency::Quadratic {
+        peak: 0.9,
+        best_flow: 10.,
+        flow_curvature: 0.009,
+        best_head: 100.,
+        head_curvature: 0.,
+    };
+    case.commitment.insert("Unit".into(), vec![true; 2]);
+    let controls = Controls {
+        commitment: vec![vec![true; 2]],
+        unit_flow: vec![vec![20.; 2]],
+        river_opening: vec![],
+        tunnel_opening: vec![],
+    };
+    let problem = SchedulingProblem::new(&case).unwrap();
+    let physical = problem.reconstruct(&controls).unwrap();
+    assert!(!physical.validation.feasible);
+    assert!(physical.unit_power[0].iter().all(|p| p.abs() < 1e-10));
+    assert!(physical.validation.operating_limits >= 0.1);
+    assert!(case.system.units[0].power(20., -10.).is_err());
+}

@@ -11,7 +11,8 @@ pub struct Schedule {
     pub unit_flow: Vec<Vec<f64>>,
     /// Unit by control interval, MW.
     pub unit_power: Vec<Vec<f64>>,
-    /// Positive generating head or pumping lift, unit by control interval, m.
+    /// Net working head or pumping lift, unit by control interval, m.
+    /// An idle generating unit can have negative head if its declared range permits it.
     pub unit_head: Vec<Vec<f64>>,
     pub plant_flow: Vec<Vec<f64>>,
     pub plant_power: Vec<Vec<f64>>,
@@ -649,6 +650,9 @@ fn validate(
                         .max(violation(q, minimum, maximum, u.flow.max.max(1.)));
             }
             if on {
+                result.operating_limits = result
+                    .operating_limits
+                    .max((-q * h).max(0.) / (u.flow.max.max(1.) * 100.));
                 let eta = crate::machine::hydraulic_efficiency(u, q, h);
                 result.operating_limits =
                     result

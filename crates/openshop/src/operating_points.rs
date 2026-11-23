@@ -505,6 +505,9 @@ impl OperatingPoints {
                     m.set_initial(up[[k, g]], p0 / scale)
                         .map_err(|e| Error::Model(e.to_string()))?;
                     constraint!(m, uh[[k, g]] - h / 100. == 0.);
+                    if u.head.min < 0. {
+                        constraint!(m, q * uh[[k, g]] / u.flow.max.max(1.) >= 0.);
+                    }
                     laws.extend(Equation::production(
                         Arc::new(u.clone()),
                         nlp::linear_form(m, q)?,
@@ -675,6 +678,7 @@ impl OperatingPoints {
                 if on {
                     let h = crate::hydraulics::machine_head(p, g, &state.head, &state.unit_flow);
                     excess = excess
+                        .max((-q * h).max(0.) / (u.flow.max.max(1.) * 100.))
                         .max(violation(h, u.head.min, u.head.max, 100.))
                         .max(violation(
                             crate::machine::hydraulic_efficiency(u, q, h),

@@ -257,6 +257,17 @@ impl SchedulingProblem<'_> {
                     .collect()
             })
             .collect();
+        // Project only solver-sized bound roundoff in the physical controls.
+        // Independent reconstruction then checks all equations and restrictions.
+        let roundoff_to_bounds = |x: f64, bounds: crate::Bounds, scale: f64| {
+            if x >= bounds.min - options.tolerance * scale
+                && x <= bounds.max + options.tolerance * scale
+            {
+                x.clamp(bounds.min, bounds.max)
+            } else {
+                x
+            }
+        };
         let unit_flow = dispatch
             .flow
             .iter()
@@ -266,7 +277,11 @@ impl SchedulingProblem<'_> {
                     .enumerate()
                     .map(|(t, i)| {
                         if controls.unit_on[g][t] {
-                            dispatch.unit_flow_scale[g] * point.x[i.index()]
+                            roundoff_to_bounds(
+                                dispatch.unit_flow_scale[g] * point.x[i.index()],
+                                self.operating.units[g][t].flow,
+                                dispatch.unit_flow_scale[g],
+                            )
                         } else {
                             0.
                         }
@@ -322,7 +337,10 @@ impl SchedulingProblem<'_> {
         for (k, &river) in routing.outlets.iter().enumerate() {
             schedule.river_opening[river] = dispatch.river_opening[k]
                 .iter()
-                .map(|i| point.x[i.index()])
+                .enumerate()
+                .map(|(t, i)| {
+                    roundoff_to_bounds(point.x[i.index()], self.operating.river_gate[river][t], 1.)
+                })
                 .collect();
             schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
                 .iter()
@@ -342,7 +360,7 @@ impl SchedulingProblem<'_> {
                 physical.iterations = schedule.iterations;
                 Ok(physical)
             }
-            Err(Error::Solver(_)) => {
+            Err(Error::Solver(_) | Error::Input(_)) => {
                 schedule.validation.feasible = false;
                 Ok(schedule)
             }

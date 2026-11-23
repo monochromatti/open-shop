@@ -480,6 +480,11 @@ impl Unit {
         if !flow.is_finite() || !head.is_finite() {
             return Err(Error::Input("nonfinite power coordinates".into()));
         }
+        if flow < 0. || flow * head < 0. {
+            return Err(Error::Input(
+                "machine discharge and hydraulic work must be nonnegative".into(),
+            ));
+        }
         if flow == 0. {
             return Ok(0.);
         }
@@ -784,7 +789,6 @@ impl ScheduleCase {
             if u.flow.min < 0.
                 || u.flow.max <= 0.
                 || u.power.min < 0.
-                || u.head.min < 0.
                 || !u.loss_factor.is_finite()
                 || u.loss_factor < 0.
             {
