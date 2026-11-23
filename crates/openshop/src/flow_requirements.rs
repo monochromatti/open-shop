@@ -128,7 +128,7 @@ impl FlowEquations {
         let s = &case.system;
         let nt = case.prices.len();
         let (start, end) = (case.grid[0], case.grid[nt]);
-        let tunnel_offset = routing.primary_columns + routing.transfers.len();
+        let tunnel_offset = s.units.len() * nt;
         let mut names = HashSet::new();
         for (i, rule) in case.flow_requirements.iter().enumerate() {
             let invalid = |message: &str| Error::Input(format!("{}: {message}", rule.name));

@@ -90,7 +90,8 @@ pub(crate) struct Routing {
     pub transfers: Vec<TransferEquation>,
     /// Reservoir-source reach indices, in decision-variable order.
     pub outlets: Vec<usize>,
-    /// Columns are unit flows, then reservoir river releases; each is interval-major.
+    /// Columns are unit flows, tunnel flows, then reservoir river releases;
+    /// each block is interval-major. Shared reference fluxes follow these inputs.
     pub releases: Vec<ReleaseSeries>,
     /// Mean downstream arrival rate, reach by control interval, m³/s.
     pub arrivals: Vec<Vec<LinearForm>>,
@@ -228,6 +229,7 @@ impl Routing {
                 && upstream[i].is_empty()
                 && operating.river_inflow[i].iter().all(|q| *q == 0.)
                 && !topology.unit_outfalls.contains(&Some(i))
+                && !topology.tunnel_outfalls.contains(&Some(i))
             {
                 return Err(Error::Input(format!(
                     "{}: river source {} has no incoming reach, outfall or inflow",
@@ -293,7 +295,7 @@ impl Routing {
                     };
                     if let Some(k) = outlet_index[i] {
                         rate.coefficients
-                            .insert(s.units.len() * nt + k * nt + t, 1.);
+                            .insert((s.units.len() + s.tunnels.len()) * nt + k * nt + t, 1.);
                     }
                     for &j in &upstream[i] {
                         let released = time - s.rivers[j].transport.fixed_delay().unwrap();
@@ -307,6 +309,11 @@ impl Routing {
                     for (u, outfall) in topology.unit_outfalls.iter().enumerate() {
                         if *outfall == Some(i) {
                             rate.coefficients.insert(u * nt + t, 1.);
+                        }
+                    }
+                    for (e, outfall) in topology.tunnel_outfalls.iter().enumerate() {
+                        if *outfall == Some(i) {
+                            rate.coefficients.insert((s.units.len() + e) * nt + t, 1.);
                         }
                     }
                     rate
@@ -363,7 +370,7 @@ impl Routing {
                 let k = outlet_index[i].unwrap();
                 for (t, row) in reservoir_net[ridx].iter_mut().enumerate() {
                     *row.coefficients
-                        .entry(s.units.len() * nt + k * nt + t)
+                        .entry((s.units.len() + s.tunnels.len()) * nt + k * nt + t)
                         .or_default() -= 1.;
                 }
             }
@@ -416,7 +423,7 @@ impl Routing {
             }
         }
         Ok(Self {
-            primary_columns: (s.units.len() + outlets.len()) * nt,
+            primary_columns: (s.units.len() + s.tunnels.len() + outlets.len()) * nt,
             transfers: Vec::new(),
             outlets,
             releases,
@@ -448,7 +455,7 @@ impl Routing {
         let s = &case.system;
         let nt = case.prices.len();
         let nr = s.rivers.len();
-        let primary_columns = (s.units.len() + outlets.len()) * nt;
+        let primary_columns = (s.units.len() + s.tunnels.len() + outlets.len()) * nt;
         let mut transfers = Vec::new();
         let mesh = if case.routing_grid.is_empty() {
             let mut grid = Vec::new();
@@ -491,7 +498,8 @@ impl Routing {
                     ..Default::default()
                 };
                 if let Some(j) = outlet_index[i] {
-                    q.coefficients.insert(s.units.len() * nt + j * nt + t, 1.);
+                    q.coefficients
+                        .insert((s.units.len() + s.tunnels.len()) * nt + j * nt + t, 1.);
                 }
                 for &j in &upstream[i] {
                     q.add_scaled(&mesh_arrival[j][k], r.allocation);
@@ -499,6 +507,13 @@ impl Routing {
                 for (u, outfall) in topology.unit_outfalls.iter().enumerate() {
                     if *outfall == Some(i) {
                         *q.coefficients.entry(u * nt + t).or_default() += 1.;
+                    }
+                }
+                for (e, outfall) in topology.tunnel_outfalls.iter().enumerate() {
+                    if *outfall == Some(i) {
+                        *q.coefficients
+                            .entry((s.units.len() + e) * nt + t)
+                            .or_default() += 1.;
                     }
                 }
                 rates.push(q);
@@ -571,7 +586,7 @@ impl Routing {
                     let j = outlet_index[i].unwrap();
                     for (t, row) in reservoir_net[r].iter_mut().enumerate() {
                         *row.coefficients
-                            .entry(s.units.len() * nt + j * nt + t)
+                            .entry((s.units.len() + s.tunnels.len()) * nt + j * nt + t)
                             .or_default() -= 1.;
                     }
                 }

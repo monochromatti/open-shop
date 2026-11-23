@@ -214,11 +214,35 @@ pub struct Tunnel {
     pub target: String,
     pub capacity: f64,
     pub loss_factor: f64,
+    /// Forward water destination; target remains the pressure reference.
+    #[serde(default)]
+    pub discharge_river: Option<String>,
     /// Head multiplier in [0,1] when no gate-loss curve is supplied.
     pub opening: f64,
     /// Additional signed-flow resistance as a function of gate position.
     #[serde(default)]
     pub gate_loss_factor_curve: Option<crate::TableCurve>,
+}
+
+impl Tunnel {
+    pub fn new(
+        name: impl Into<String>,
+        source: impl Into<String>,
+        target: impl Into<String>,
+        capacity: f64,
+        loss_factor: f64,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            source: source.into(),
+            target: target.into(),
+            capacity,
+            loss_factor,
+            opening: 1.,
+            gate_loss_factor_curve: None,
+            discharge_river: None,
+        }
+    }
 }
 
 /// Turbine hydraulic efficiency, before electrical conversion.
@@ -583,6 +607,7 @@ pub(crate) struct Topology {
     pub exclusions: Vec<Vec<Vec<usize>>>,
     pub incidence: Vec<Vec<(usize, f64)>>,
     pub tunnel_nodes: Vec<(usize, usize)>,
+    pub tunnel_outfalls: Vec<Option<usize>>,
     pub tunnel_incidence: Vec<Vec<(usize, f64)>>,
     pub unit_outfalls: Vec<Option<usize>>,
     pub unit_commitment: Vec<Vec<crate::operation::CommitmentInequality>>,
@@ -932,6 +957,7 @@ impl ScheduleCase {
             }
         }
         let mut tunnel_nodes = Vec::new();
+        let mut tunnel_outfalls = Vec::new();
         let mut tunnel_incidence = vec![Vec::new(); incidence.len()];
         let mut tunnel_names = HashMap::new();
         for (i, tunnel) in s.tunnels.iter().enumerate() {
@@ -971,7 +997,23 @@ impl ScheduleCase {
                     tunnel.name
                 )));
             }
+            let outfall = tunnel
+                .discharge_river
+                .as_ref()
+                .map(|name| {
+                    s.rivers
+                        .iter()
+                        .position(|r| &r.name == name)
+                        .ok_or_else(|| {
+                            Error::Input(format!("{}: unknown discharge river {name}", tunnel.name))
+                        })
+                })
+                .transpose()?;
+            tunnel_outfalls.push(outfall);
             for (node, sign) in [(source, -1.), (target, 1.)] {
+                if sign > 0. && outfall.is_some() {
+                    continue;
+                }
                 if node < tunnel_incidence.len() {
                     tunnel_incidence[node].push((i, sign));
                 }
@@ -1023,6 +1065,7 @@ impl ScheduleCase {
             exclusions,
             incidence,
             tunnel_nodes,
+            tunnel_outfalls,
             tunnel_incidence,
             unit_outfalls,
             unit_commitment,

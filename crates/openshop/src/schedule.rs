@@ -752,6 +752,7 @@ mod tests {
                 capacity: 20.,
                 loss_factor: 0.1,
                 opening: 1.,
+                discharge_river: None,
                 gate_loss_factor_curve: None,
             },
             Tunnel {
@@ -761,6 +762,7 @@ mod tests {
                 capacity: 20.,
                 loss_factor: 0.4,
                 opening: 1.,
+                discharge_river: None,
                 gate_loss_factor_curve: None,
             },
         ];
@@ -1114,6 +1116,7 @@ mod tests {
             capacity: 50.,
             loss_factor: 1.,
             opening: 0.25,
+            discharge_river: None,
             gate_loss_factor_curve: None,
         }];
         for backend in [Backend::Ipopt, Backend::Pounce] {
@@ -1161,6 +1164,7 @@ mod tests {
             capacity: 50.,
             loss_factor: 1.,
             opening: 1e-4,
+            discharge_river: None,
             gate_loss_factor_curve: None,
         }];
         let problem = SchedulingProblem::new(&case).unwrap();
@@ -1184,6 +1188,7 @@ mod tests {
             capacity: 0.,
             loss_factor: 1.,
             opening: 0.,
+            discharge_river: None,
             gate_loss_factor_curve: Some(
                 crate::TableCurve::new(vec![0., 1.], vec![0., 0.]).unwrap(),
             ),
@@ -1216,6 +1221,7 @@ mod tests {
             capacity: 50.,
             loss_factor: 0.01,
             opening: 0.,
+            discharge_river: None,
             gate_loss_factor_curve: None,
         });
         let result = solve(&case, &SolveOptions::default()).unwrap();

@@ -180,6 +180,7 @@ fn scheduled_gate_closure_disconnects_heads() {
         capacity: 50.,
         loss_factor: 1.,
         opening: 1.,
+        discharge_river: None,
         gate_loss_factor_curve: None,
     });
     c.operations = vec![series(

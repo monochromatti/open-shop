@@ -249,6 +249,10 @@ impl RiverLaw {
                     || river.gate.min != 0.
                     || river.gate.max != 1.
                     || system
+                        .tunnels
+                        .iter()
+                        .any(|t| t.discharge_river.as_deref() == Some(&river.name))
+                    || system
                         .plants
                         .iter()
                         .any(|p| p.discharge_river.as_deref() == Some(&river.name))

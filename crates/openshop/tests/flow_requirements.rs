@@ -148,6 +148,7 @@ fn observations_retain_signed_tunnel_flow() {
         capacity: 10.,
         loss_factor: 6.25,
         opening: 1.,
+        discharge_river: None,
         gate_loss_factor_curve: None,
     });
     let mut r = FlowRequirement::new("Gauge");

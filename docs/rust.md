@@ -419,3 +419,16 @@ endpoints alone. Monotonicity of the level–storage curve makes those vertices
 sufficient for the represented piecewise-linear storage path. Physical validation
 independently calculates the largest minus smallest level, including history.
 A zero range therefore enforces a constant surface without changing the curve.
+
+
+## Tunnel outfalls
+
+`Tunnel::new(name, source, target, capacity, loss_factor)` constructs an open
+pressure connection. Setting `discharge_river` sends its water into that reach
+while `target` remains the pressure reference. Outfall flow is nonnegative in
+the declared direction; reverse flow cannot become a negative river release.
+The source loses water once, and the receiving reservoir gains it through the
+reach's arrival response. River inventory accounts for the intervening water.
+A closed outfall tunnel still disconnects pressure. Ordinary tunnels remain
+bidirectional. Flow observations can refer to the tunnel or its downstream
+river arrivals explicitly.

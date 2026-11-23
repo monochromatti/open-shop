@@ -51,6 +51,11 @@ pub(crate) fn propose(
             river_columns.push(Expr::from(q[[u, t]] * flow_scale));
         }
     }
+    for e in 0..s.tunnels.len() {
+        for t in 0..nt {
+            river_columns.push((qt[[e, t]] * flow_scale).into());
+        }
+    }
     for (k, &e) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
             let lower = if s.rivers[e].law.is_delta() {
@@ -73,6 +78,7 @@ pub(crate) fn propose(
             .iter()
             .flatten()
             .copied()
+            .chain(p.tunnel_flow.iter().flatten().copied())
             .chain(
                 routing
                     .outlets
@@ -92,15 +98,7 @@ pub(crate) fn propose(
         );
         river_columns.push((rf[[k]] * flow_scale).into());
     }
-    let mut observation_columns = river_columns.clone();
-    for e in 0..s.tunnels.len() {
-        for t in 0..nt {
-            observation_columns.push((qt[[e, t]] * flow_scale).into());
-        }
-    }
-    problem
-        .observations
-        .constrain(&m, &observation_columns, zero());
+    problem.observations.constrain(&m, &river_columns, zero());
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -122,8 +120,16 @@ pub(crate) fn propose(
             } else {
                 operating.tunnels[e][t].capacity / flow_scale
             };
-            m.set_bounds(qt[[e, t]], -capacity, capacity)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_bounds(
+                qt[[e, t]],
+                if topology.tunnel_outfalls[e].is_some() {
+                    0.
+                } else {
+                    -capacity
+                },
+                capacity,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
         }
     }
     for (r, reservoir) in s.reservoirs.iter().enumerate() {

@@ -93,6 +93,7 @@ pub(crate) fn evaluate(
         .iter()
         .flatten()
         .copied()
+        .chain(schedule.tunnel_flow.iter().flatten().copied())
         .chain(
             routing
                 .outlets
@@ -101,7 +102,6 @@ pub(crate) fn evaluate(
         )
         .collect();
     routing.complete_columns(&mut columns);
-    columns.extend(schedule.tunnel_flow.iter().flatten().copied());
     schedule.observed_flow = problem
         .observations
         .rates
@@ -315,6 +315,7 @@ fn validate(
         .iter()
         .flatten()
         .copied()
+        .chain(schedule.tunnel_flow.iter().flatten().copied())
         .chain(
             routing
                 .outlets
@@ -323,7 +324,6 @@ fn validate(
         )
         .collect();
     routing.complete_columns(&mut columns);
-    columns.extend(schedule.tunnel_flow.iter().flatten().copied());
     result.operating_limits = result
         .operating_limits
         .max(problem.observations.residual(&columns))
@@ -515,7 +515,11 @@ fn validate(
             let capacity = if law.opening == 0. { 0. } else { law.capacity };
             result.operating_limits = result.operating_limits.max(violation(
                 q,
-                -capacity,
+                if topology.tunnel_outfalls[e].is_some() {
+                    0.
+                } else {
+                    -capacity
+                },
                 capacity,
                 tunnel.capacity.max(1.),
             ));
