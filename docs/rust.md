@@ -403,7 +403,23 @@ arrival density directly. Remaining inventory integrates survival probability
 directly, avoiding cancellation when only a small tail remains in transit.
 
 
-## Environmental river arrivals
+## River operation
+
+`river.operation.flow_ramp` limits changes in upstream interval-average release
+in (m³/s)/hour. The allowance is integrated between interval midpoints, including
+unequal intervals and time-dependent `FlowRampUp`/`FlowRampDown` rates. Supply
+`initial_release` and `initial_interval_hours` for a preceding observation. If
+omitted, the last historical release and its duration supply that reference;
+without either, the first ramp has no prior observation. These restrictions act
+on the total upstream release, including natural inflow and arriving water at
+river junctions. They also apply to signed level-difference channels.
+
+`flow_change_cost`, or `Attribute::FlowChangeCost`, charges the absolute change
+in successive interval-average releases. It is currency per m³/s of change,
+charged once per change. It is not multiplied by interval duration. Both solver
+models use the standard convex formulation `d ≥ Q_t − Q_previous`,
+`d ≥ Q_previous − Q_t` and minimize the nonnegative cost times `d`.
+Reported revenue independently uses the actual absolute flow differences.
 
 `river.operation.minimum_arrival` sets a downstream minimum in m³/s.
 `Attribute::MinArrival` supplies changes at control boundaries, including an

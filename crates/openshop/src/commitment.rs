@@ -713,6 +713,7 @@ pub(crate) fn propose(
         }
     }
     revenue = revenue + crate::nlp::linear_expression(&problem.water_value, &river_columns, zero());
+    revenue = revenue - problem.observations.cost(&m, &river_columns, zero());
     objective!(m, Max, revenue / 1000.);
     let options = ScipOptions::default()
         .time_limit(Duration::from_secs_f64(seconds))

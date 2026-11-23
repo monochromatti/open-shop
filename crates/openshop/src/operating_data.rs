@@ -50,6 +50,7 @@ pub enum Attribute {
     MinOpen,
     MinRelease,
     MinArrival,
+    FlowChangeCost,
     MaxOpen,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -149,6 +150,8 @@ pub(crate) struct OperatingData {
     pub river_inflow: Vec<Vec<f64>>,
     pub river_min_release: Vec<Vec<f64>>,
     pub river_min_arrival: Vec<Vec<f64>>,
+    pub river_flow_change: Vec<Vec<ChangeLimit>>,
+    pub river_change_cost: Vec<Vec<f64>>,
     pub river_gate: Vec<Vec<Bounds>>,
     pub observed_flow: Vec<Vec<crate::flow_requirements::FlowInterval>>,
 }
@@ -281,12 +284,24 @@ impl OperatingData {
                 Object::River(name) => {
                     system.rivers.iter().any(|x| {
                         &x.name == name
-                            && (!x.law.is_delta() || s.attribute == Capacity)
+                            && (!x.law.is_delta()
+                                || matches!(
+                                    s.attribute,
+                                    Capacity | FlowRampUp | FlowRampDown | FlowChangeCost
+                                ))
                             && (system.reservoirs.iter().any(|r| r.name == x.source)
                                 || !matches!(s.attribute, GateMin | GateMax))
                     }) && matches!(
                         s.attribute,
-                        Capacity | Inflow | GateMin | GateMax | MinRelease | MinArrival
+                        Capacity
+                            | Inflow
+                            | GateMin
+                            | GateMax
+                            | MinRelease
+                            | MinArrival
+                            | FlowRampUp
+                            | FlowRampDown
+                            | FlowChangeCost
                     )
                 }
             };
@@ -820,6 +835,8 @@ impl OperatingData {
         let mut river_inflow = Vec::new();
         let mut river_min_release = Vec::new();
         let mut river_min_arrival = Vec::new();
+        let mut river_flow_change = Vec::new();
+        let mut river_change_cost = Vec::new();
         for river in &system.rivers {
             river.operation.validate(&case.grid)?;
             let object = Object::River(river.name.clone());
@@ -829,7 +846,15 @@ impl OperatingData {
             let mut inflow = Vec::new();
             let mut minimum = Vec::new();
             let mut arrival = Vec::new();
-            for &time in &case.grid[..nt] {
+            let mut ramps = Vec::new();
+            let mut costs = Vec::new();
+            let prior = river.previous_release();
+            if prior.is_some_and(|(q, _)| q < 0.) && !river.law.is_delta() {
+                return Err(Error::Input(
+                    "directed river initial releases must be nonnegative".into(),
+                ));
+            }
+            for (t, &time) in case.grid[..nt].iter().enumerate() {
                 let c = value(m, Capacity, time, Some(river.capacity), false).unwrap();
                 let q = value(m, Inflow, time, Some(river.inflow), false).unwrap();
                 let minimum_release = value(m, MinRelease, time, Some(0.), false).unwrap();
@@ -867,6 +892,36 @@ impl OperatingData {
                     )
                     .unwrap(),
                 );
+                let a = if t == 0 {
+                    time - prior.map_or(river.operation.initial_interval_hours, |(_, dt)| dt) / 2.
+                } else {
+                    case.grid[t - 1] + (time - case.grid[t - 1]) / 2.
+                };
+                let b = time + (case.grid[t + 1] - time) / 2.;
+                let ramp = ChangeLimit {
+                    up: change(m, FlowRampUp, a, b, river.operation.flow_ramp.up),
+                    down: change(m, FlowRampDown, a, b, river.operation.flow_ramp.down),
+                };
+                if !a.is_finite()
+                    || !b.is_finite()
+                    || b <= a
+                    || ramp.up.into_iter().chain(ramp.down).any(|v| !v.is_finite())
+                {
+                    return Err(Error::Input(
+                        "river ramp observation times and allowances must be finite".into(),
+                    ));
+                }
+                ramps.push(ramp);
+                costs.push(
+                    value(
+                        m,
+                        FlowChangeCost,
+                        time,
+                        Some(river.operation.flow_change_cost),
+                        false,
+                    )
+                    .unwrap(),
+                );
                 cap.push(c);
                 inflow.push(q);
             }
@@ -875,6 +930,8 @@ impl OperatingData {
             river_inflow.push(inflow);
             river_min_release.push(minimum);
             river_min_arrival.push(arrival);
+            river_flow_change.push(ramps);
+            river_change_cost.push(costs);
         }
         let mut observed_flow = Vec::new();
         for r in &case.flow_requirements {
@@ -911,6 +968,8 @@ impl OperatingData {
             river_inflow,
             river_min_release,
             river_min_arrival,
+            river_flow_change,
+            river_change_cost,
             river_gate,
         })
     }

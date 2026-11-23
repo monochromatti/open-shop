@@ -932,6 +932,7 @@ pub(crate) fn build_dispatch(
         },
     );
     revenue = revenue + nlp::linear_expression(&problem.water_value, &river_columns, zero());
+    revenue = revenue - problem.observations.cost(&m, &river_columns, zero());
     let openings: Vec<Vec<f64>> = operating
         .tunnels
         .iter()

@@ -108,6 +108,7 @@ pub(crate) struct FlowRow {
 pub(crate) struct FlowEquations {
     pub rates: Vec<Vec<LinearForm>>,
     pub rows: Vec<FlowRow>,
+    changes: Vec<(LinearForm, f64, f64)>,
 }
 fn ordered(a: f64, b: f64) -> bool {
     a.is_finite() && b.is_finite() && b > a && (b - a).is_finite()
@@ -137,14 +138,48 @@ impl FlowEquations {
         // Environmental release minima constrain the control-interval average,
         // including natural inflow and routed arrivals at a river junction.
         for (e, series) in routing.releases.iter().enumerate() {
-            for (t, w) in case.grid.windows(2).enumerate() {
+            let river = &s.rivers[e];
+            let rates: Vec<_> = case
+                .grid
+                .windows(2)
+                .map(|w| series.integral(w[0], w[1]).scaled(1. / (w[1] - w[0])))
+                .collect();
+            for t in 0..nt {
                 let lower = operating.river_min_release[e][t];
                 if lower > 0. {
                     data.rows.push(FlowRow {
-                        expression: series.integral(w[0], w[1]).scaled(1. / (w[1] - w[0])),
+                        expression: rates[t].clone(),
                         bounds: Bounds::new(lower, f64::INFINITY),
                         scale: 100.,
                     });
+                }
+                let prior = if t == 0 {
+                    river.previous_release().map(|(q, _)| LinearForm {
+                        constant: q,
+                        ..Default::default()
+                    })
+                } else {
+                    Some(rates[t - 1].clone())
+                };
+                if let Some(prior) = prior {
+                    let mut difference = rates[t].clone();
+                    difference.add_scaled(&prior, -1.);
+                    let ramp = operating.river_flow_change[e][t];
+                    let scale = river.capacity.max(1.);
+                    if ramp.up.is_some() || ramp.down.is_some() {
+                        data.rows.push(FlowRow {
+                            expression: difference.clone(),
+                            bounds: Bounds::new(
+                                ramp.down.map_or(f64::NEG_INFINITY, |q| -q),
+                                ramp.up.unwrap_or(f64::INFINITY),
+                            ),
+                            scale,
+                        });
+                    }
+                    let cost = operating.river_change_cost[e][t];
+                    if cost > 0. {
+                        data.changes.push((difference, cost, scale));
+                    }
                 }
             }
         }
@@ -380,10 +415,16 @@ impl FlowEquations {
             }
             data.rates.push(rates);
         }
-        if data.rows.iter().any(|r| {
-            !r.expression.constant.is_finite()
-                || r.expression.coefficients.values().any(|c| !c.is_finite())
-        }) {
+        let finite = |expression: &LinearForm| {
+            expression.constant.is_finite()
+                && expression.coefficients.values().all(|c| c.is_finite())
+        };
+        if data.rows.iter().any(|r| !finite(&r.expression))
+            || data
+                .changes
+                .iter()
+                .any(|(expression, cost, scale)| !finite(expression) || !(cost * scale).is_finite())
+        {
             return Err(Error::Input(
                 "flow observation integral exceeds finite arithmetic".into(),
             ));
@@ -424,5 +465,25 @@ impl FlowEquations {
                 }
             })
             .fold(0., f64::max)
+    }
+
+    /// Convex epigraph of total variation. A change is charged once, without
+    /// multiplying by an interval duration. Zero-cost changes add no unknowns.
+    pub fn cost<'a>(
+        &self,
+        model: &'a oximo::Model,
+        columns: &[oximo::expr::Expr<'a>],
+        zero: oximo::expr::Expr<'a>,
+    ) -> oximo::expr::Expr<'a> {
+        use oximo::prelude::*;
+        variable!(model, change[k in 0..self.changes.len()] >= 0.);
+        let mut cost = zero;
+        for (k, (difference, coefficient, scale)) in self.changes.iter().enumerate() {
+            let delta = crate::nlp::linear_expression(difference, columns, zero) / *scale;
+            constraint!(model, change[[k]] >= delta);
+            constraint!(model, change[[k]] >= -delta);
+            cost = cost + change[[k]] * (coefficient * scale);
+        }
+        cost
     }
 }

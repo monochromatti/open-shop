@@ -24,7 +24,7 @@ pub enum ArrivalPolicy {
     Pointwise,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RiverOperation {
     /// Minimum downstream arrival, m³/s; includes historical releases.
@@ -33,12 +33,59 @@ pub struct RiverOperation {
     /// Observation-window edges, hours. Empty uses the control grid.
     /// A supplied grid must span the horizon; it need not match control edges.
     pub arrival_window_grid: Vec<f64>,
+    /// Changes in upstream interval-average discharge, (m³/s)/hour.
+    pub flow_ramp: crate::RampRates,
+    /// Previous upstream interval-average release, m³/s. If omitted, use the
+    /// last historical release and its duration; absent history skips this ramp.
+    pub initial_release: Option<f64>,
+    pub initial_interval_hours: f64,
+    /// Currency per m³/s of absolute change, charged once per control change.
+    pub flow_change_cost: f64,
+}
+
+impl Default for RiverOperation {
+    fn default() -> Self {
+        Self {
+            minimum_arrival: 0.,
+            arrival_policy: Default::default(),
+            arrival_window_grid: vec![],
+            flow_ramp: Default::default(),
+            initial_release: None,
+            initial_interval_hours: 1.,
+            flow_change_cost: 0.,
+        }
+    }
+}
+
+impl crate::River {
+    pub(crate) fn previous_release(&self) -> Option<(f64, f64)> {
+        self.operation
+            .initial_release
+            .map(|q| (q, self.operation.initial_interval_hours))
+            .or_else(|| {
+                self.history_release
+                    .last()
+                    .zip(self.history_grid.windows(2).last())
+                    .map(|(&q, w)| (q, w[1] - w[0]))
+            })
+    }
 }
 
 impl RiverOperation {
     pub(crate) fn validate(&self, grid: &[f64]) -> Result<(), Error> {
         if !self.minimum_arrival.is_finite()
             || self.minimum_arrival < 0.
+            || !self.initial_interval_hours.is_finite()
+            || self.initial_interval_hours <= 0.
+            || self.initial_release.is_some_and(|q| !q.is_finite())
+            || !self.flow_change_cost.is_finite()
+            || self.flow_change_cost < 0.
+            || self
+                .flow_ramp
+                .up
+                .into_iter()
+                .chain(self.flow_ramp.down)
+                .any(|q| !q.is_finite() || q < 0.)
             || (!self.arrival_window_grid.is_empty()
                 && (self.arrival_window_grid.len() < 2
                     || self.arrival_window_grid.first() != grid.first()
@@ -50,7 +97,7 @@ impl RiverOperation {
                         .all(|w| w[1] > w[0] && (w[1] - w[0]).is_finite())))
         {
             return Err(Error::Input(
-                "river arrival minima must be finite and nonnegative; observation windows must span the horizon with finite ordered edges".into(),
+                "river limits, ramp rates and costs must be finite and nonnegative; observation windows must span the horizon with finite ordered edges".into(),
             ));
         }
         Ok(())

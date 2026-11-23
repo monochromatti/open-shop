@@ -231,3 +231,152 @@ fn invalid_arrival_inputs_are_rejected_before_optimization() {
     c.system.rivers[0].operation.minimum_arrival = -1.;
     assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
 }
+
+#[test]
+fn release_ramps_use_unequal_interval_midpoints_and_the_declared_history_window() {
+    for explicit in [true, false] {
+        let mut c = case(RiverTransport::default());
+        c.grid = vec![0., 1., 3.];
+        let r = &mut c.system.rivers[0];
+        r.history_grid = vec![-0.5, 0.];
+        r.history_release = vec![10.];
+        r.operation = RiverOperation {
+            initial_release: explicit.then_some(10.),
+            initial_interval_hours: 0.5,
+            flow_ramp: RampRates {
+                up: Some(2.),
+                down: Some(4.),
+            },
+            ..Default::default()
+        };
+        let result = SchedulingProblem::new(&c)
+            .unwrap()
+            .solve(&SolveOptions {
+                time_limit: 5.,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        assert!((result.river_release[0][0] - 7.).abs() < 1e-5);
+        assert!((result.river_release[0][1] - 1.).abs() < 1e-5);
+    }
+}
+
+#[test]
+fn changing_river_ramp_rates_are_integrated_between_observation_midpoints() {
+    let mut c = case(RiverTransport::default());
+    c.grid = vec![0., 1., 3.];
+    c.system.rivers[0].operation = RiverOperation {
+        initial_release: Some(10.),
+        initial_interval_hours: 0.5,
+        ..Default::default()
+    };
+    c.operations.push(OperationalSeries {
+        object: Object::River("Reach".into()),
+        attribute: Attribute::FlowRampDown,
+        times: vec![-1., 1.],
+        values: vec![2., 8.],
+    });
+    let p = SchedulingProblem::new(&c).unwrap();
+    let result = p.reconstruct(&controls(vec![8.5 / 20., 0.])).unwrap();
+    assert!(result.validation.feasible, "{:?}", result.validation);
+    let invalid = p.reconstruct(&controls(vec![8.4 / 20., 0.])).unwrap();
+    assert!(!invalid.validation.feasible);
+}
+
+#[test]
+fn river_change_cost_is_total_variation_without_duration_weights() {
+    for history in [true, false] {
+        let mut c = case(RiverTransport::default());
+        c.grid = vec![0., 0.5, 2.];
+        let r = &mut c.system.rivers[0];
+        r.history_grid.clear();
+        r.history_release.clear();
+        r.operation = RiverOperation {
+            initial_release: history.then_some(5.),
+            flow_change_cost: 2.,
+            ..Default::default()
+        };
+        c.operations.push(OperationalSeries {
+            object: Object::River("Reach".into()),
+            attribute: Attribute::FlowChangeCost,
+            times: vec![0.5],
+            values: vec![3.],
+        });
+        let physical = SchedulingProblem::new(&c)
+            .unwrap()
+            .reconstruct(&controls(vec![0.4, 0.1]))
+            .unwrap();
+        let water_value = -3600. * (8. * 0.5 + 2. * 1.5);
+        let cost = if history { 2. * 3. + 3. * 6. } else { 3. * 6. };
+        assert!(physical.validation.feasible, "{:?}", physical.validation);
+        assert!((physical.objective - (water_value - cost)).abs() < 1e-8);
+    }
+}
+
+#[test]
+fn high_variation_cost_makes_steady_release_preferable_to_depleting_it() {
+    let mut c = case(RiverTransport::default());
+    c.system.reservoirs[0].water_value = 0.0001;
+    c.system.rivers[0].operation = RiverOperation {
+        initial_release: Some(8.),
+        flow_change_cost: 10.,
+        ..Default::default()
+    };
+    let result = SchedulingProblem::new(&c)
+        .unwrap()
+        .solve(&SolveOptions {
+            time_limit: 5.,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(result.validation.feasible, "{:?}", result.validation);
+    assert!(
+        result.river_release[0]
+            .iter()
+            .all(|q| (q - 8.).abs() < 1e-5)
+    );
+    assert!((result.objective + 5.76).abs() < 1e-5);
+    c.system.rivers[0].operation.flow_change_cost = 0.;
+    let without = SchedulingProblem::new(&c)
+        .unwrap()
+        .solve(&SolveOptions {
+            time_limit: 5.,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(without.validation.feasible, "{:?}", without.validation);
+    assert!(without.river_release[0].iter().all(|q| q.abs() < 1e-5));
+}
+
+#[test]
+fn invalid_release_history_and_ramp_data_return_input_errors() {
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].history_grid.clear();
+    assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
+    for op in [
+        RiverOperation {
+            initial_interval_hours: 0.,
+            ..Default::default()
+        },
+        RiverOperation {
+            flow_ramp: RampRates {
+                down: Some(-1.),
+                up: None,
+            },
+            ..Default::default()
+        },
+        RiverOperation {
+            flow_change_cost: -1.,
+            ..Default::default()
+        },
+        RiverOperation {
+            initial_release: Some(-1.),
+            ..Default::default()
+        },
+    ] {
+        let mut c = case(RiverTransport::default());
+        c.system.rivers[0].operation = op;
+        assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
+    }
+}

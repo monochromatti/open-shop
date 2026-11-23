@@ -287,7 +287,27 @@ fn objective(
                 .sum::<f64>()
         })
         .sum::<f64>();
-    revenue - schedule.gate_adjustment_cost
+    let river_cost: f64 = case
+        .system
+        .rivers
+        .iter()
+        .enumerate()
+        .map(|(e, r)| {
+            (0..case.prices.len())
+                .map(|t| {
+                    let prior = if t == 0 {
+                        r.previous_release().map(|(q, _)| q)
+                    } else {
+                        Some(schedule.river_release[e][t - 1])
+                    };
+                    prior.map_or(0., |q| {
+                        operating.river_change_cost[e][t] * (schedule.river_release[e][t] - q).abs()
+                    })
+                })
+                .sum::<f64>()
+        })
+        .sum();
+    revenue - schedule.gate_adjustment_cost - river_cost
         + case
             .system
             .rivers
