@@ -41,6 +41,10 @@ pub struct RiverOperation {
     pub initial_interval_hours: f64,
     /// Currency per m³/s of absolute change, charged once per control change.
     pub flow_change_cost: f64,
+    /// Optional disjunction: total release is zero or at least this rate, m³/s.
+    pub minimum_on_flow: Option<f64>,
+    pub startup_cost: f64,
+    pub shutdown_cost: f64,
 }
 
 impl Default for RiverOperation {
@@ -53,11 +57,21 @@ impl Default for RiverOperation {
             initial_release: None,
             initial_interval_hours: 1.,
             flow_change_cost: 0.,
+            minimum_on_flow: None,
+            startup_cost: 0.,
+            shutdown_cost: 0.,
         }
     }
 }
 
 impl crate::River {
+    /// Classification is unambiguous on the two allowed release domains.
+    /// Validation separately rejects the gap between zero and the on minimum.
+    pub(crate) fn flow_on(&self, flow: f64) -> bool {
+        self.operation
+            .minimum_on_flow
+            .is_some_and(|q| flow >= q / 2.)
+    }
     pub(crate) fn previous_release(&self) -> Option<(f64, f64)> {
         self.operation
             .initial_release
@@ -80,6 +94,14 @@ impl RiverOperation {
             || self.initial_release.is_some_and(|q| !q.is_finite())
             || !self.flow_change_cost.is_finite()
             || self.flow_change_cost < 0.
+            || [self.startup_cost, self.shutdown_cost]
+                .iter()
+                .any(|v| !v.is_finite() || *v < 0.)
+            || self
+                .minimum_on_flow
+                .is_some_and(|q| !q.is_finite() || q <= 0.)
+            || (self.minimum_on_flow.is_none()
+                && (self.startup_cost > 0. || self.shutdown_cost > 0.))
             || self
                 .flow_ramp
                 .up

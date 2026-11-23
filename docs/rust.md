@@ -55,7 +55,7 @@ if schedule.validation.feasible {
 ```
 
 Use `problem.refine(&controls, &options)` to improve continuous dispatch with
-unit commitments and selectable tunnel positions held fixed. It first reconstructs
+unit commitments, river flow states and selectable tunnel positions held fixed. It first reconstructs
 the supplied controls and retains a feasible starting schedule if optimization
 fails or decreases its revenue. `problem.solve(&options)` remains the complete
 commitment-search entry point. Both use the same nonlinear dispatch equations.
@@ -420,6 +420,21 @@ charged once per change. It is not multiplied by interval duration. Both solver
 models use the standard convex formulation `d ≥ Q_t − Q_previous`,
 `d ≥ Q_previous − Q_t` and minimize the nonnegative cost times `d`.
 Reported revenue independently uses the actual absolute flow differences.
+
+Set `minimum_on_flow: Some(q)` when a directed reach must carry either zero
+flow or at least `q` m³/s. The model uses the binary rows
+`q_min y ≤ Q ≤ capacity y` on total interval-average release. A known previous
+release, from `initial_release` or history, must also be zero or in the on
+range. Natural inflow and routed upstream arrivals remain in conservation;
+an off state cannot erase that water. Signed level-difference channels do not
+use this directed-flow disjunction.
+
+`startup_cost` and `shutdown_cost`, including their operational series, charge
+flow-state transitions. They require a positive `minimum_on_flow`, which makes
+the two states distinct. SCIP proposes river states together with unit states
+and tunnel positions, and search can change any of them. Continuous refinement
+holds those states fixed. Independent validation checks the gap between zero
+and the on minimum before accepting a schedule.
 
 `river.operation.minimum_arrival` sets a downstream minimum in m³/s.
 `Attribute::MinArrival` supplies changes at control boundaries, including an

@@ -59,7 +59,7 @@ impl<'a> SchedulingProblem<'a> {
         self.solve_with_backend(options, Backend::Ipopt)
     }
     /// Improve continuous dispatch from physical controls while holding unit
-    /// commitments and selectable tunnel positions fixed. A feasible supplied
+    /// commitments, river flow states and selectable tunnel positions fixed. A feasible supplied
     /// schedule is retained if refinement fails or reduces its revenue.
     /// This local refinement does not establish global optimality.
     pub fn refine(
@@ -162,7 +162,9 @@ impl<'a> SchedulingProblem<'a> {
                         .collect::<Option<Vec<_>>>()
                 })
                 .collect::<Option<Vec<_>>>();
-            if let (Some(unit_on), Some(gate_position)) = (unit_on, gate_position) {
+            if let (Some(unit_on), Some(gate_position)) = (unit_on, gate_position)
+                && self.observations.domains.is_empty()
+            {
                 let mut budget = options.clone();
                 budget.time_limit -= started.elapsed().as_secs_f64();
                 if budget.time_limit > 0. {
@@ -170,6 +172,7 @@ impl<'a> SchedulingProblem<'a> {
                         crate::commitment::DiscreteControls {
                             unit_on,
                             gate_position,
+                            river_on: vec![],
                         },
                         None,
                         &budget,

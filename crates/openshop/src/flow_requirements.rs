@@ -104,11 +104,21 @@ pub(crate) struct FlowRow {
     pub bounds: Bounds,
     pub scale: f64,
 }
+pub(crate) struct FlowDomain {
+    pub river: usize,
+    pub minimum: f64,
+    pub initial_on: bool,
+    rates: Vec<LinearForm>,
+    capacity: Vec<f64>,
+    startup_cost: Vec<f64>,
+    shutdown_cost: Vec<f64>,
+}
 #[derive(Default)]
 pub(crate) struct FlowEquations {
     pub rates: Vec<Vec<LinearForm>>,
     pub rows: Vec<FlowRow>,
     changes: Vec<(LinearForm, f64, f64)>,
+    pub domains: Vec<FlowDomain>,
 }
 fn ordered(a: f64, b: f64) -> bool {
     a.is_finite() && b.is_finite() && b > a && (b - a).is_finite()
@@ -144,6 +154,17 @@ impl FlowEquations {
                 .windows(2)
                 .map(|w| series.integral(w[0], w[1]).scaled(1. / (w[1] - w[0])))
                 .collect();
+            if let Some(minimum) = river.operation.minimum_on_flow {
+                data.domains.push(FlowDomain {
+                    river: e,
+                    minimum,
+                    initial_on: river.flow_on(river.previous_release().unwrap().0),
+                    rates: rates.clone(),
+                    capacity: operating.river_capacity[e].clone(),
+                    startup_cost: operating.river_startup_cost[e].clone(),
+                    shutdown_cost: operating.river_shutdown_cost[e].clone(),
+                });
+            }
             for t in 0..nt {
                 let lower = operating.river_min_release[e][t];
                 if lower > 0. {
@@ -454,7 +475,8 @@ impl FlowEquations {
         }
     }
     pub fn residual(&self, columns: &[f64]) -> f64 {
-        self.rows
+        let mut excess = self
+            .rows
             .iter()
             .map(|r| {
                 let value = r.expression.value(columns);
@@ -464,7 +486,53 @@ impl FlowEquations {
                     (r.bounds.min - value).max(value - r.bounds.max).max(0.) / r.scale
                 }
             })
-            .fold(0., f64::max)
+            .fold(0., f64::max);
+        for domain in &self.domains {
+            for rate in &domain.rates {
+                let q = rate.value(columns);
+                excess = excess.max(if q.is_finite() {
+                    q.abs().min((domain.minimum - q).max(0.)) / domain.minimum.max(1.)
+                } else {
+                    f64::INFINITY
+                });
+            }
+        }
+        excess
+    }
+
+    /// On-state flow bounds and exact linear transition equations. The same
+    /// rows accept binary proposal states or prescribed nonlinear states.
+    pub fn constrain_states<'a>(
+        &self,
+        model: &oximo::Model,
+        columns: &[oximo::expr::Expr<'a>],
+        on: &[Vec<oximo::expr::Expr<'a>>],
+        starts: &[Vec<oximo::expr::Expr<'a>>],
+        zero: oximo::expr::Expr<'a>,
+    ) -> oximo::expr::Expr<'a> {
+        use oximo::prelude::*;
+        let mut cost = zero;
+        for (k, domain) in self.domains.iter().enumerate() {
+            for t in 0..domain.rates.len() {
+                let scale = domain.capacity[t].max(domain.minimum).max(1.);
+                let q = crate::nlp::linear_expression(&domain.rates[t], columns, zero) / scale;
+                let state = on[k][t];
+                let start = starts[k][t];
+                let prior = if t == 0 {
+                    zero + if domain.initial_on { 1. } else { 0. }
+                } else {
+                    on[k][t - 1]
+                };
+                constraint!(model, q >= state * (domain.minimum / scale));
+                constraint!(model, q <= state * (domain.capacity[t] / scale));
+                constraint!(model, start >= state - prior);
+                constraint!(model, start <= state);
+                constraint!(model, start <= 1. - prior);
+                let stop = start - state + prior;
+                cost = cost + start * domain.startup_cost[t] + stop * domain.shutdown_cost[t];
+            }
+        }
+        cost
     }
 
     /// Convex epigraph of total variation. A change is charged once, without

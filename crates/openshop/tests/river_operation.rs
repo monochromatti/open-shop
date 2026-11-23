@@ -380,3 +380,162 @@ fn invalid_release_history_and_ramp_data_return_input_errors() {
         assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
     }
 }
+
+#[test]
+fn river_release_is_zero_or_inside_its_on_state_domain() {
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].operation = RiverOperation {
+        minimum_on_flow: Some(4.),
+        ..Default::default()
+    };
+    let p = SchedulingProblem::new(&c).unwrap();
+    for rates in [vec![0., 4.], vec![20., 0.]] {
+        let s = p
+            .reconstruct(&controls(rates.iter().map(|q| q / 20.).collect()))
+            .unwrap();
+        assert!(s.validation.feasible, "{:?}", s.validation);
+    }
+    for q in [0.1, 2., 3.9] {
+        assert!(
+            !p.reconstruct(&controls(vec![q / 20., 0.]))
+                .unwrap()
+                .validation
+                .feasible
+        );
+    }
+}
+
+#[test]
+fn river_transitions_charge_time_dependent_start_and_stop_costs() {
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].operation = RiverOperation {
+        minimum_on_flow: Some(4.),
+        startup_cost: 12.,
+        shutdown_cost: 7.,
+        ..Default::default()
+    };
+    c.operations.push(OperationalSeries {
+        object: Object::River("Reach".into()),
+        attribute: Attribute::ShutdownCost,
+        times: vec![1.],
+        values: vec![9.],
+    });
+    let s = SchedulingProblem::new(&c)
+        .unwrap()
+        .reconstruct(&controls(vec![0.2, 0.]))
+        .unwrap();
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    assert!((s.objective - (-4. * 3600. - 12. - 9.)).abs() < 1e-8);
+}
+
+#[test]
+fn river_commitment_is_searched_and_refinement_holds_the_selected_states() {
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].operation = RiverOperation {
+        minimum_on_flow: Some(4.),
+        startup_cost: 12.,
+        shutdown_cost: 7.,
+        ..Default::default()
+    };
+    c.operations.push(OperationalSeries {
+        object: Object::River("Reach".into()),
+        attribute: Attribute::MinRelease,
+        times: vec![0., 1.],
+        values: vec![3., 0.],
+    });
+    let p = SchedulingProblem::new(&c).unwrap();
+    let options = SolveOptions {
+        time_limit: 5.,
+        ..Default::default()
+    };
+    let solved = p.solve(&options).unwrap();
+    let refined = p.refine(&controls(vec![0.4, 0.]), &options).unwrap();
+    for s in [solved, refined] {
+        assert!(s.validation.feasible, "{:?}", s.validation);
+        assert!((s.river_release[0][0] - 4.).abs() < 1e-5);
+        assert!(s.river_release[0][1].abs() < 1e-6);
+        assert!((s.objective + 14419.).abs() < 0.01);
+    }
+}
+
+#[test]
+fn natural_inflow_cannot_be_erased_by_an_off_river_state() {
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].inflow = 2.;
+    c.system.rivers[0].operation = RiverOperation {
+        minimum_on_flow: Some(4.),
+        ..Default::default()
+    };
+    let s = SchedulingProblem::new(&c)
+        .unwrap()
+        .solve(&SolveOptions {
+            time_limit: 5.,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    for t in 0..2 {
+        assert!((s.river_release[0][t] - 4.).abs() < 1e-5);
+        assert!((s.river_withdrawal[0][t] - 2.).abs() < 1e-5);
+    }
+}
+
+#[test]
+fn river_startup_cost_can_make_remaining_open_optimal() {
+    let mut c = case(RiverTransport::default());
+    c.system.reservoirs[0].water_value = 0.0001;
+    c.system.rivers[0].operation = RiverOperation {
+        initial_release: Some(4.),
+        minimum_on_flow: Some(4.),
+        startup_cost: 10.,
+        ..Default::default()
+    };
+    c.operations.push(OperationalSeries {
+        object: Object::River("Reach".into()),
+        attribute: Attribute::MinRelease,
+        times: vec![0., 1.],
+        values: vec![0., 4.],
+    });
+    let s = SchedulingProblem::new(&c)
+        .unwrap()
+        .solve(&SolveOptions {
+            time_limit: 5.,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    assert!(s.river_release[0].iter().all(|q| (q - 4.).abs() < 1e-5));
+    assert!((s.objective + 2.88).abs() < 1e-5);
+}
+
+#[test]
+fn river_flow_commitment_requires_a_separated_domain_and_known_initial_state() {
+    for operation in [
+        RiverOperation {
+            minimum_on_flow: Some(0.),
+            ..Default::default()
+        },
+        RiverOperation {
+            minimum_on_flow: Some(21.),
+            ..Default::default()
+        },
+        RiverOperation {
+            minimum_on_flow: Some(4.),
+            initial_release: Some(2.),
+            ..Default::default()
+        },
+        RiverOperation {
+            startup_cost: 1.,
+            ..Default::default()
+        },
+    ] {
+        let mut c = case(RiverTransport::default());
+        c.system.rivers[0].operation = operation;
+        assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
+    }
+    let mut c = case(RiverTransport::default());
+    c.system.rivers[0].operation.minimum_on_flow = Some(4.);
+    c.system.rivers[0].history_grid.clear();
+    c.system.rivers[0].history_release.clear();
+    assert!(matches!(SchedulingProblem::new(&c), Err(Error::Input(_))));
+}

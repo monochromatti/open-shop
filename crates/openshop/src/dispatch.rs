@@ -169,6 +169,37 @@ pub(crate) fn build_dispatch(
         river_columns.push((rf[[k]] * flow_scale).into());
     }
     problem.observations.constrain(&m, &river_columns, zero());
+    let river_on: Vec<Vec<_>> = controls
+        .river_on
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|&on| zero() + if on { 1. } else { 0. })
+                .collect()
+        })
+        .collect();
+    let river_starts: Vec<Vec<_>> = controls
+        .river_on
+        .iter()
+        .enumerate()
+        .map(|(k, row)| {
+            row.iter()
+                .enumerate()
+                .map(|(t, &on)| {
+                    let prior = if t == 0 {
+                        problem.observations.domains[k].initial_on
+                    } else {
+                        row[t - 1]
+                    };
+                    zero() + if on && !prior { 1. } else { 0. }
+                })
+                .collect()
+        })
+        .collect();
+    let river_transition_cost =
+        problem
+            .observations
+            .constrain_states(&m, &river_columns, &river_on, &river_starts, zero());
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -933,6 +964,7 @@ pub(crate) fn build_dispatch(
     );
     revenue = revenue + nlp::linear_expression(&problem.water_value, &river_columns, zero());
     revenue = revenue - problem.observations.cost(&m, &river_columns, zero());
+    revenue = revenue - river_transition_cost;
     let openings: Vec<Vec<f64>> = operating
         .tunnels
         .iter()

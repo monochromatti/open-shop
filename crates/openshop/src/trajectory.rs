@@ -301,7 +301,20 @@ fn objective(
                         Some(schedule.river_release[e][t - 1])
                     };
                     prior.map_or(0., |q| {
-                        operating.river_change_cost[e][t] * (schedule.river_release[e][t] - q).abs()
+                        let release = schedule.river_release[e][t];
+                        let before = r.flow_on(q);
+                        let after = r.flow_on(release);
+                        operating.river_change_cost[e][t] * (release - q).abs()
+                            + if after && !before {
+                                operating.river_startup_cost[e][t]
+                            } else {
+                                0.
+                            }
+                            + if before && !after {
+                                operating.river_shutdown_cost[e][t]
+                            } else {
+                                0.
+                            }
                     })
                 })
                 .sum::<f64>()

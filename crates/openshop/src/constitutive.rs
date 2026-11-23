@@ -709,6 +709,7 @@ mod tests {
         let controls = crate::commitment::DiscreteControls {
             unit_on: vec![vec![true; case.prices.len()]; case.system.units.len()],
             gate_position: vec![vec![0; case.prices.len()]; case.system.tunnels.len()],
+            river_on: vec![],
         };
         let mut problem =
             crate::dispatch::build_dispatch(&prepared, &controls, None, &prepared.operating_points)

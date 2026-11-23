@@ -152,6 +152,8 @@ pub(crate) struct OperatingData {
     pub river_min_arrival: Vec<Vec<f64>>,
     pub river_flow_change: Vec<Vec<ChangeLimit>>,
     pub river_change_cost: Vec<Vec<f64>>,
+    pub river_startup_cost: Vec<Vec<f64>>,
+    pub river_shutdown_cost: Vec<Vec<f64>>,
     pub river_gate: Vec<Vec<Bounds>>,
     pub observed_flow: Vec<Vec<crate::flow_requirements::FlowInterval>>,
 }
@@ -291,6 +293,8 @@ impl OperatingData {
                                 ))
                             && (system.reservoirs.iter().any(|r| r.name == x.source)
                                 || !matches!(s.attribute, GateMin | GateMax))
+                            && (!matches!(s.attribute, StartupCost | ShutdownCost)
+                                || x.operation.minimum_on_flow.is_some())
                     }) && matches!(
                         s.attribute,
                         Capacity
@@ -302,6 +306,8 @@ impl OperatingData {
                             | FlowRampUp
                             | FlowRampDown
                             | FlowChangeCost
+                            | StartupCost
+                            | ShutdownCost
                     )
                 }
             };
@@ -837,6 +843,8 @@ impl OperatingData {
         let mut river_min_arrival = Vec::new();
         let mut river_flow_change = Vec::new();
         let mut river_change_cost = Vec::new();
+        let mut river_startup_cost = Vec::new();
+        let mut river_shutdown_cost = Vec::new();
         for river in &system.rivers {
             river.operation.validate(&case.grid)?;
             let object = Object::River(river.name.clone());
@@ -848,11 +856,20 @@ impl OperatingData {
             let mut arrival = Vec::new();
             let mut ramps = Vec::new();
             let mut costs = Vec::new();
+            let mut starts = Vec::new();
+            let mut stops = Vec::new();
             let prior = river.previous_release();
             if prior.is_some_and(|(q, _)| q < 0.) && !river.law.is_delta() {
                 return Err(Error::Input(
                     "directed river initial releases must be nonnegative".into(),
                 ));
+            }
+            if let Some(minimum) = river.operation.minimum_on_flow
+                && (river.law.is_delta()
+                    || minimum > river.capacity
+                    || prior.is_none_or(|(q, _)| q != 0. && q < minimum))
+            {
+                return Err(Error::Input("river flow commitment requires a positive on minimum within capacity and zero or on-state initial release".into()));
             }
             for (t, &time) in case.grid[..nt].iter().enumerate() {
                 let c = value(m, Capacity, time, Some(river.capacity), false).unwrap();
@@ -922,6 +939,26 @@ impl OperatingData {
                     )
                     .unwrap(),
                 );
+                starts.push(
+                    value(
+                        m,
+                        StartupCost,
+                        time,
+                        Some(river.operation.startup_cost),
+                        false,
+                    )
+                    .unwrap(),
+                );
+                stops.push(
+                    value(
+                        m,
+                        ShutdownCost,
+                        time,
+                        Some(river.operation.shutdown_cost),
+                        false,
+                    )
+                    .unwrap(),
+                );
                 cap.push(c);
                 inflow.push(q);
             }
@@ -932,6 +969,8 @@ impl OperatingData {
             river_min_arrival.push(arrival);
             river_flow_change.push(ramps);
             river_change_cost.push(costs);
+            river_startup_cost.push(starts);
+            river_shutdown_cost.push(stops);
         }
         let mut observed_flow = Vec::new();
         for r in &case.flow_requirements {
@@ -970,6 +1009,8 @@ impl OperatingData {
             river_min_arrival,
             river_flow_change,
             river_change_cost,
+            river_startup_cost,
+            river_shutdown_cost,
             river_gate,
         })
     }

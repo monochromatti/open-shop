@@ -10,6 +10,8 @@ use std::time::Duration;
 pub(crate) struct DiscreteControls {
     pub unit_on: Vec<Vec<bool>>,
     pub gate_position: Vec<Vec<usize>>,
+    /// Only reaches with a positive on-state minimum, in prepared domain order.
+    pub river_on: Vec<Vec<bool>>,
 }
 pub(crate) struct Proposal {
     pub controls: DiscreteControls,
@@ -47,6 +49,17 @@ impl Proposal {
             controls: DiscreteControls {
                 unit_on: result.commitment.clone(),
                 gate_position,
+                river_on: problem
+                    .observations
+                    .domains
+                    .iter()
+                    .map(|d| {
+                        result.river_release[d.river]
+                            .iter()
+                            .map(|&q| problem.case.system.rivers[d.river].flow_on(q))
+                            .collect()
+                    })
+                    .collect(),
             },
             storage: result.storage.clone(),
             flow: result.unit_flow.clone(),
@@ -143,6 +156,19 @@ pub(crate) fn propose(
         river_columns.push((rf[[k]] * flow_scale).into());
     }
     problem.observations.constrain(&m, &river_columns, zero());
+    let nd = problem.observations.domains.len();
+    variable!(m, river_state[k in 0..nd,t in 0..nt], Bin);
+    variable!(m, 0. <= river_start[k in 0..nd,t in 0..nt] <= 1.);
+    let river_on = (0..nd)
+        .map(|k| (0..nt).map(|t| Expr::from(river_state[[k, t]])).collect())
+        .collect::<Vec<_>>();
+    let river_starts = (0..nd)
+        .map(|k| (0..nt).map(|t| Expr::from(river_start[[k, t]])).collect())
+        .collect::<Vec<_>>();
+    let river_transition_cost =
+        problem
+            .observations
+            .constrain_states(&m, &river_columns, &river_on, &river_starts, zero());
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -690,6 +716,16 @@ pub(crate) fn propose(
                 difference = difference + 1. - weights[commitment.gate_position[e][t]];
             }
         }
+        for (k, row) in commitment.river_on.iter().enumerate() {
+            for (t, &state) in row.iter().enumerate() {
+                difference = difference
+                    + if state {
+                        1. - river_state[[k, t]]
+                    } else {
+                        river_state[[k, t]]
+                    };
+            }
+        }
         constraint!(m, difference >= 1.);
     }
     let moving: Vec<_> = s
@@ -714,6 +750,7 @@ pub(crate) fn propose(
     }
     revenue = revenue + crate::nlp::linear_expression(&problem.water_value, &river_columns, zero());
     revenue = revenue - problem.observations.cost(&m, &river_columns, zero());
+    revenue = revenue - river_transition_cost;
     objective!(m, Max, revenue / 1000.);
     let options = ScipOptions::default()
         .time_limit(Duration::from_secs_f64(seconds))
@@ -810,6 +847,13 @@ pub(crate) fn propose(
         controls: DiscreteControls {
             unit_on: commitment,
             gate_position,
+            river_on: (0..nd)
+                .map(|k| {
+                    (0..nt)
+                        .map(|t| value(river_state[[k, t]]).map(|v| v > 0.5))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         },
         storage,
         flow,
