@@ -11,6 +11,7 @@ fn case() -> ScheduleCase {
     );
     unit.loss_factor = 0.01;
     ScheduleCase {
+        flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],
         system: HydroSystem {

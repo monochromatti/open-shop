@@ -120,6 +120,7 @@ fn network(cells: usize) -> ScheduleCase {
         },
         grid,
         prices: vec![0.; 3],
+        flow_requirements: vec![],
         routing_grid,
         operations,
         inflows: BTreeMap::new(),

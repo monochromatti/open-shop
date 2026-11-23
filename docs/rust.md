@@ -200,8 +200,8 @@ once; no gate-table lookup occurs in nonlinear callbacks.
 Pressure validation reports the unscaled head error in metres, so a small opening
 cannot hide a large hydraulic error. A closed tunnel has zero flow and imposes no pressure relation. Pressure
 junctions conserve water without storage. Junction heads are independent
-unknowns. Tabulated reservoir mean heads and turbine net heads/powers have local
-constitutive equations; polynomial reservoir heads remain derived expressions. All machines use the
+unknowns. Nonconstant reservoir mean heads and turbine net heads/powers have local
+constitutive equations. All machines use the
 same net-head and electrical-power unknowns with local work balances.
 
 A fixed-delay river translates each release interval by its travel time.
@@ -237,7 +237,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 
 Still required are adaptive hydraulic integration and
 independent replay, optimized tunnel gates and interlocks,
-observation windows, soft constraints and reserves, restart/rolling horizons and
+soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
@@ -373,3 +373,49 @@ pressure junction, supply `Plant::gross_head_source` and/or `gross_head_target`
 explicitly: gross-head references must be reservoir surfaces or fixed boundaries.
 They may differ from machine head endpoints. Startup table levels are evaluated
 at the actual starting storage, without smoothing or interpolating in time.
+
+
+## Flow observations and water allowances
+
+`FlowRequirement::new(name)` defines a sum of unit discharges, river releases,
+river arrivals and signed tunnel flows. Add it to `ScheduleCase::flow_requirements`.
+An observation introduces no water or hydraulic node. Local `inflow` augments
+the observed rate only. River arrivals retain their control-interval average
+meaning when a window cuts an interval.
+
+`min_flow`/`max_flow` bound rates in m³/s. `min_volume`/`max_volume` bound the
+horizon's integrated water in m³, including `initial_volume` carried from an
+earlier schedule. `VolumeWindow` bounds water over its own absolute-hour window
+and counts historical water exactly once. `RollingRamp` bounds the difference
+from the preceding `hours`-long average, including both sides of a jump.
+`PeriodRamp` compares time-weighted averages of consecutive, possibly unequal
+periods. Ramp limits are differences in m³/s, rather than rates per hour.
+
+Windows crossing the horizon start require complete `history_grid`/`history_flow`
+data. History records interval rates and must end at the horizon start. Windows
+are never shortened to fit available history. Active volume windows and period
+ramps must finish within the horizon. `Object::FlowRequirement(name)` accepts
+time-dependent `FlowMin`, `FlowMax` and `Inflow` inputs.
+
+Preparation integrates interval overlaps into sparse linear equations. The same
+rows constrain commitment proposals and nonlinear dispatch. Results expose
+`observed_flow` and `observed_volume` in requirement order; the latter includes
+the previously counted water at its initial vertex.
+
+
+## Reservoir level ranges
+
+`ReservoirOperation::level_windows` contains `LevelWindow` records with absolute
+start/end hours and a maximum level range in metres. Window endpoints inside
+the horizon must be control vertices. A window ending after the horizon
+constrains the known prefix; a window starting earlier requires complete
+`StorageHistory` in `ReservoirOperation::history`. Historical storage is linearly
+interpolated in time before applying the level–storage curve. Its final record
+must equal the supplied initial storage.
+
+One unknown lower level bounds all surfaces in a window. The equations include
+river-arrival vertices between control times, rather than checking control
+endpoints alone. Monotonicity of the level–storage curve makes those vertices
+sufficient for the represented piecewise-linear storage path. Physical validation
+independently calculates the largest minus smallest level, including history.
+A zero range therefore enforces a constant surface without changing the curve.

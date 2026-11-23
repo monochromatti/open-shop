@@ -8,6 +8,8 @@ mod commitment;
 mod constitutive;
 mod curve;
 mod dispatch;
+mod flow_requirements;
+mod level_windows;
 mod machine;
 mod model;
 mod native_ipopt;
@@ -24,6 +26,8 @@ mod trajectory;
 mod turbine;
 
 pub use curve::TableCurve;
+pub use flow_requirements::{FlowRequirement, PeriodRamp, RollingRamp, VolumeWindow};
+pub use level_windows::{LevelWindow, StorageHistory};
 pub use machine::PumpCharacteristic;
 pub use model::{
     Boundary, Bounds, CommitmentExclusion, Efficiency, HydroSystem, Junction, Plant, Reservoir,

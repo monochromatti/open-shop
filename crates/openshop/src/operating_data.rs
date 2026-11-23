@@ -13,6 +13,7 @@ pub enum Object {
     Plant(String),
     Tunnel(String),
     River(String),
+    FlowRequirement(String),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -84,6 +85,8 @@ impl OperationalSeries {
 pub struct ReservoirOperation {
     pub volume_ramp: RampRates,
     pub level_ramp: RampRates,
+    pub level_windows: Vec<crate::LevelWindow>,
+    pub history: Option<crate::StorageHistory>,
 }
 #[derive(Clone, Copy, Default)]
 pub(crate) struct ChangeLimit {
@@ -137,6 +140,7 @@ pub(crate) struct OperatingData {
     pub river_capacity: Vec<Vec<f64>>,
     pub river_inflow: Vec<Vec<f64>>,
     pub river_gate: Vec<Vec<Bounds>>,
+    pub observed_flow: Vec<Vec<crate::flow_requirements::FlowInterval>>,
 }
 type SeriesMap<'a> = HashMap<Attribute, &'a OperationalSeries>;
 fn value(
@@ -256,6 +260,10 @@ impl OperatingData {
                     system.tunnels.iter().any(|x| &x.name == name)
                         && matches!(s.attribute, Capacity | Opening)
                 }
+                Object::FlowRequirement(name) => {
+                    case.flow_requirements.iter().any(|r| &r.name == name)
+                        && matches!(s.attribute, FlowMin | FlowMax | Inflow)
+                }
                 Object::River(name) => {
                     system.rivers.iter().any(|x| {
                         &x.name == name
@@ -271,11 +279,17 @@ impl OperatingData {
                     s.attribute, s.object
                 )));
             }
-            let valid = match s.attribute {
-                ForcedOn => s.values.iter().all(|v| [-1., 0., 1.].contains(v)),
-                Maintenance => s.values.iter().all(|v| [0., 1.].contains(v)),
-                Opening | GateMin | GateMax => s.values.iter().all(|v| (0. ..=1.).contains(v)),
-                _ => s.values.iter().all(|v| *v >= 0.),
+            let valid = if matches!(s.object, Object::FlowRequirement(_))
+                && matches!(s.attribute, FlowMin | FlowMax)
+            {
+                true
+            } else {
+                match s.attribute {
+                    ForcedOn => s.values.iter().all(|v| [-1., 0., 1.].contains(v)),
+                    Maintenance => s.values.iter().all(|v| [0., 1.].contains(v)),
+                    Opening | GateMin | GateMax => s.values.iter().all(|v| (0. ..=1.).contains(v)),
+                    _ => s.values.iter().all(|v| *v >= 0.),
+                }
             };
             if !valid {
                 return Err(Error::Input(
@@ -310,6 +324,7 @@ impl OperatingData {
                         .unwrap()
                         .capacity,
                 )),
+                Object::FlowRequirement(_) => None,
                 Object::River(name) => {
                     let r = system.rivers.iter().find(|r| &r.name == name).unwrap();
                     match s.attribute {
@@ -785,7 +800,31 @@ impl OperatingData {
             river_capacity.push(cap);
             river_inflow.push(inflow);
         }
+        let mut observed_flow = Vec::new();
+        for r in &case.flow_requirements {
+            let object = Object::FlowRequirement(r.name.clone());
+            let m = series.get(&object);
+            let mut intervals = Vec::new();
+            for &time in &case.grid[..nt] {
+                let bounds = Bounds::new(
+                    value(m, FlowMin, time, Some(r.min_flow), false).unwrap(),
+                    value(m, FlowMax, time, r.max_flow, false).unwrap_or(f64::INFINITY),
+                );
+                if bounds.min > bounds.max {
+                    return Err(Error::Input(format!(
+                        "{}: inconsistent observed flow bounds",
+                        r.name
+                    )));
+                }
+                intervals.push(crate::flow_requirements::FlowInterval {
+                    inflow: value(m, Inflow, time, Some(r.inflow), false).unwrap(),
+                    bounds,
+                });
+            }
+            observed_flow.push(intervals);
+        }
         Ok(Self {
+            observed_flow,
             units,
             plants,
             plant_initial_flow,

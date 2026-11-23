@@ -16,10 +16,12 @@ use std::time::Instant;
 /// An infeasible or unfinished solve is reported through `validation.feasible`;
 /// a solver's success flag alone does not establish physical feasibility.
 pub struct SchedulingProblem<'a> {
-    case: &'a ScheduleCase,
-    topology: Topology,
-    routing: Routing,
-    operating: crate::operating_data::OperatingData,
+    pub(crate) case: &'a ScheduleCase,
+    pub(crate) topology: Topology,
+    pub(crate) routing: Routing,
+    pub(crate) operating: crate::operating_data::OperatingData,
+    pub(crate) observations: crate::flow_requirements::FlowEquations,
+    pub(crate) level_windows: crate::level_windows::LevelEquations,
 }
 
 impl<'a> SchedulingProblem<'a> {
@@ -28,7 +30,12 @@ impl<'a> SchedulingProblem<'a> {
         let topology = case.topology()?;
         let operating = crate::operating_data::OperatingData::new(case, &topology)?;
         let routing = Routing::new(case, &topology, &operating)?;
+        let observations =
+            crate::flow_requirements::FlowEquations::new(case, &routing, &operating)?;
+        let level_windows = crate::level_windows::LevelEquations::new(case, &routing)?;
         Ok(Self {
+            level_windows,
+            observations,
             case,
             topology,
             routing,
@@ -47,7 +54,7 @@ impl<'a> SchedulingProblem<'a> {
         backend: Backend,
     ) -> Result<Schedule, Error> {
         options.validate()?;
-        let (case, topology, routing) = (self.case, &self.topology, &self.routing);
+        let case = self.case;
         if case.commitment.len() == case.system.units.len() {
             let commitment = case
                 .system
@@ -64,10 +71,7 @@ impl<'a> SchedulingProblem<'a> {
         while options.time_limit - started.elapsed().as_secs_f64() > 0.01 {
             let remaining = options.time_limit - started.elapsed().as_secs_f64();
             let Some(proposal) = crate::commitment::propose(
-                case,
-                topology,
-                routing,
-                &self.operating,
+                self,
                 best.as_ref(),
                 &excluded,
                 remaining.min(options.time_limit / 4.),
@@ -125,9 +129,8 @@ impl SchedulingProblem<'_> {
         options: &SolveOptions,
         backend: Backend,
     ) -> Result<Schedule, Error> {
-        let (case, topology, routing, operating) =
-            (self.case, &self.topology, &self.routing, &self.operating);
-        let dispatch = build_dispatch(case, topology, routing, operating, &commitment, start)?;
+        let (case, routing) = (self.case, &self.routing);
+        let dispatch = build_dispatch(self, &commitment, start)?;
         let point = nlp::solve(dispatch.problem, options, backend)?;
         let storage = dispatch
             .storage
@@ -164,6 +167,8 @@ impl SchedulingProblem<'_> {
             tunnel_flow,
             river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
             river_opening: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
+            observed_flow: Vec::new(),
+            observed_volume: Vec::new(),
             river_release: Vec::new(),
             river_arrival_volume: Vec::new(),
             river_storage: Vec::new(),
@@ -193,15 +198,8 @@ impl SchedulingProblem<'_> {
             .iter()
             .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
             .collect();
-        let schedule = crate::trajectory::evaluate(
-            case,
-            topology,
-            routing,
-            operating,
-            schedule,
-            junction_head,
-            options.tolerance.max(1e-7),
-        );
+        let schedule =
+            crate::trajectory::evaluate(self, schedule, junction_head, options.tolerance.max(1e-7));
         Ok(schedule)
     }
 }
@@ -225,6 +223,7 @@ mod tests {
 
     fn reservoir_case() -> ScheduleCase {
         ScheduleCase {
+            flow_requirements: vec![],
             routing_grid: vec![],
             operations: Default::default(),
             system: HydroSystem {
@@ -1169,15 +1168,7 @@ mod tests {
         assert!(result.validation.feasible, "{:?}", result.validation);
         result.tunnel_flow[0][0] += 1e-5;
         result.storage[0][1] -= 3600. * 1e-5;
-        let checked = crate::trajectory::evaluate(
-            &case,
-            &problem.topology,
-            &problem.routing,
-            &problem.operating,
-            result,
-            vec![],
-            1e-7,
-        );
+        let checked = crate::trajectory::evaluate(&problem, result, vec![], 1e-7);
         assert!(!checked.validation.feasible);
         assert!(checked.validation.water_balance < 1e-8);
         assert!(checked.validation.pressure_balance > 0.01);

@@ -46,6 +46,7 @@ fn case(reservoirs: Vec<Reservoir>, r: River) -> ScheduleCase {
         prices: vec![0.; 2],
         inflows: BTreeMap::new(),
         commitment: BTreeMap::new(),
+        flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],
     }

@@ -705,6 +705,7 @@ mod tests {
     }
     fn case(rivers: Vec<River>) -> ScheduleCase {
         ScheduleCase {
+            flow_requirements: vec![],
             routing_grid: vec![],
             operations: Default::default(),
             system: HydroSystem {

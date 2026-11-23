@@ -1,6 +1,6 @@
 //! Physical trajectories, revenue and residuals. No solver or I/O operations.
 
-use crate::{ScheduleCase, model::Topology, river::Routing};
+use crate::ScheduleCase;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -28,6 +28,10 @@ pub struct Schedule {
     /// Node by control interval, mean head in metres.
     pub head: Vec<Vec<f64>>,
     pub commitment: Vec<Vec<bool>>,
+    /// Named flow requirement by control interval, m³/s.
+    pub observed_flow: Vec<Vec<f64>>,
+    /// Previously counted water plus integrated observations, m³, at vertices.
+    pub observed_volume: Vec<Vec<f64>>,
     pub objective: f64,
     pub solver_status: i32,
     pub iterations: usize,
@@ -72,14 +76,17 @@ pub struct Validation {
 }
 
 pub(crate) fn evaluate(
-    case: &ScheduleCase,
-    topology: &Topology,
-    routing: &Routing,
-    operating: &crate::operating_data::OperatingData,
+    problem: &crate::SchedulingProblem<'_>,
     mut schedule: Schedule,
     junction_head: Vec<Vec<f64>>,
     tolerance: f64,
 ) -> Schedule {
+    let (case, topology, routing, operating) = (
+        problem.case,
+        &problem.topology,
+        &problem.routing,
+        &problem.operating,
+    );
     let s = &case.system;
     let mut columns: Vec<_> = schedule
         .unit_flow
@@ -94,6 +101,27 @@ pub(crate) fn evaluate(
         )
         .collect();
     routing.complete_columns(&mut columns);
+    columns.extend(schedule.tunnel_flow.iter().flatten().copied());
+    schedule.observed_flow = problem
+        .observations
+        .rates
+        .iter()
+        .map(|row| row.iter().map(|f| f.value(&columns)).collect())
+        .collect();
+    schedule.observed_volume = case
+        .flow_requirements
+        .iter()
+        .zip(&schedule.observed_flow)
+        .map(|(r, rates)| {
+            let mut total = r.initial_volume;
+            let mut volumes = vec![total];
+            for (q, w) in rates.iter().zip(case.grid.windows(2)) {
+                total += q * 3600. * (w[1] - w[0]);
+                volumes.push(total);
+            }
+            volumes
+        })
+        .collect();
     schedule.river_release = routing
         .releases
         .iter()
@@ -200,7 +228,7 @@ pub(crate) fn evaluate(
         })
         .collect();
     schedule.objective = objective(case, &schedule, operating);
-    schedule.validation = validate(case, topology, routing, operating, &schedule, tolerance);
+    schedule.validation = validate(problem, &schedule, tolerance);
     schedule
 }
 
@@ -261,13 +289,16 @@ fn objective(
 }
 
 fn validate(
-    case: &ScheduleCase,
-    topology: &Topology,
-    routing: &Routing,
-    operating: &crate::operating_data::OperatingData,
+    problem: &crate::SchedulingProblem<'_>,
     schedule: &Schedule,
     tolerance: f64,
 ) -> Validation {
+    let (case, topology, routing, operating) = (
+        problem.case,
+        &problem.topology,
+        &problem.routing,
+        &problem.operating,
+    );
     let mut result = Validation {
         feasible: true,
         ..Default::default()
@@ -292,6 +323,15 @@ fn validate(
         )
         .collect();
     routing.complete_columns(&mut columns);
+    columns.extend(schedule.tunnel_flow.iter().flatten().copied());
+    result.operating_limits = result
+        .operating_limits
+        .max(problem.observations.residual(&columns))
+        .max(
+            problem
+                .level_windows
+                .residual(case, &schedule.storage, &columns),
+        );
     for (r, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -744,6 +784,8 @@ fn validate(
         .chain(&schedule.head)
         .chain(&schedule.tunnel_flow)
         .chain(&schedule.river_storage)
+        .chain(&schedule.observed_flow)
+        .chain(&schedule.observed_volume)
         .chain(&schedule.river_withdrawal)
         .chain(&schedule.river_arrival_volume)
         .chain(&schedule.river_release)

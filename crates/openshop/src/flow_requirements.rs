@@ -1,0 +1,410 @@
+//! Flow observations and exact time-window integrals of interval averages.
+//!
+//! An observation constrains existing flows; it adds no water or hydraulic node.
+use crate::{
+    Bounds, Error, ScheduleCase,
+    river::{LinearForm, Routing},
+};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VolumeWindow {
+    pub start_time: f64,
+    pub end_time: f64,
+    #[serde(default)]
+    pub min_volume: Option<f64>,
+    #[serde(default)]
+    pub max_volume: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RollingRamp {
+    pub hours: f64,
+    #[serde(default)]
+    pub up: Option<f64>,
+    #[serde(default)]
+    pub down: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeriodRamp {
+    pub grid: Vec<f64>,
+    #[serde(default)]
+    pub up: Option<f64>,
+    #[serde(default)]
+    pub down: Option<f64>,
+}
+/// Named sum of existing rates, m³/s; volume bounds and counted water use m³.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FlowRequirement {
+    pub name: String,
+    #[serde(default)]
+    pub units: Vec<String>,
+    #[serde(default)]
+    pub rivers: Vec<String>,
+    #[serde(default)]
+    pub river_arrivals: Vec<String>,
+    #[serde(default)]
+    pub tunnels: Vec<String>,
+    #[serde(default)]
+    pub inflow: f64,
+    #[serde(default)]
+    pub min_flow: f64,
+    #[serde(default)]
+    pub max_flow: Option<f64>,
+    #[serde(default)]
+    pub min_volume: Option<f64>,
+    #[serde(default)]
+    pub max_volume: Option<f64>,
+    #[serde(default)]
+    pub initial_volume: f64,
+    #[serde(default)]
+    pub volume_windows: Vec<VolumeWindow>,
+    #[serde(default)]
+    pub rolling_ramps: Vec<RollingRamp>,
+    #[serde(default)]
+    pub period_ramps: Vec<PeriodRamp>,
+    #[serde(default)]
+    pub history_grid: Vec<f64>,
+    #[serde(default)]
+    pub history_flow: Vec<f64>,
+}
+impl FlowRequirement {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            units: vec![],
+            rivers: vec![],
+            river_arrivals: vec![],
+            tunnels: vec![],
+            inflow: 0.,
+            min_flow: 0.,
+            max_flow: None,
+            min_volume: None,
+            max_volume: None,
+            initial_volume: 0.,
+            volume_windows: vec![],
+            rolling_ramps: vec![],
+            period_ramps: vec![],
+            history_grid: vec![],
+            history_flow: vec![],
+        }
+    }
+}
+pub(crate) struct FlowInterval {
+    pub inflow: f64,
+    pub bounds: Bounds,
+}
+pub(crate) struct FlowRow {
+    pub expression: LinearForm,
+    pub bounds: Bounds,
+    pub scale: f64,
+}
+#[derive(Default)]
+pub(crate) struct FlowEquations {
+    pub rates: Vec<Vec<LinearForm>>,
+    pub rows: Vec<FlowRow>,
+}
+fn ordered(a: f64, b: f64) -> bool {
+    a.is_finite() && b.is_finite() && b > a && (b - a).is_finite()
+}
+fn bounds_valid(lo: Option<f64>, hi: Option<f64>) -> bool {
+    lo.into_iter().chain(hi).all(|v| v.is_finite()) && !matches!((lo,hi),(Some(a),Some(b)) if a>b)
+}
+fn ramp_valid(up: Option<f64>, down: Option<f64>) -> bool {
+    (up.is_some() || down.is_some()) && up.into_iter().chain(down).all(|v| v.is_finite() && v >= 0.)
+}
+
+impl FlowEquations {
+    pub fn new(
+        case: &ScheduleCase,
+        routing: &Routing,
+        operating: &crate::operating_data::OperatingData,
+    ) -> Result<Self, Error> {
+        let mut data = Self::default();
+        let s = &case.system;
+        let nt = case.prices.len();
+        let (start, end) = (case.grid[0], case.grid[nt]);
+        let tunnel_offset = routing.primary_columns + routing.transfers.len();
+        let mut names = HashSet::new();
+        for (i, rule) in case.flow_requirements.iter().enumerate() {
+            let invalid = |message: &str| Error::Input(format!("{}: {message}", rule.name));
+            if rule.name.is_empty()
+                || !names.insert(&rule.name)
+                || !rule.inflow.is_finite()
+                || rule.inflow < 0.
+                || !rule.min_flow.is_finite()
+                || !rule.initial_volume.is_finite()
+                || !bounds_valid(Some(rule.min_flow), rule.max_flow)
+                || !bounds_valid(rule.min_volume, rule.max_volume)
+            {
+                return Err(invalid("invalid flow observation bounds or name"));
+            }
+            let indices =
+                |requested: &[String], available: Vec<&str>| -> Result<Vec<usize>, Error> {
+                    let mut seen = HashSet::new();
+                    requested
+                        .iter()
+                        .map(|name| {
+                            if seen.insert(name) {
+                                available
+                                    .iter()
+                                    .position(|n| *n == name)
+                                    .ok_or_else(|| invalid("unknown flow observation contribution"))
+                            } else {
+                                Err(invalid("duplicate flow observation contribution"))
+                            }
+                        })
+                        .collect()
+                };
+            let units = indices(
+                &rule.units,
+                s.units.iter().map(|u| u.name.as_str()).collect(),
+            )?;
+            let rivers = indices(
+                &rule.rivers,
+                s.rivers.iter().map(|r| r.name.as_str()).collect(),
+            )?;
+            let arrivals = indices(
+                &rule.river_arrivals,
+                s.rivers.iter().map(|r| r.name.as_str()).collect(),
+            )?;
+            let tunnels = indices(
+                &rule.tunnels,
+                s.tunnels.iter().map(|t| t.name.as_str()).collect(),
+            )?;
+            let empty_history = rule.history_grid.is_empty() && rule.history_flow.is_empty();
+            if !empty_history
+                && (rule.history_grid.len() != rule.history_flow.len() + 1
+                    || rule.history_grid.len() < 2
+                    || rule.history_grid.last() != Some(&start)
+                    || !rule.history_grid.windows(2).all(|w| ordered(w[0], w[1]))
+                    || !rule.history_flow.iter().all(|q| q.is_finite()))
+            {
+                return Err(invalid(
+                    "flow history must be finite, ordered and end at the horizon start",
+                ));
+            }
+            let history = |a: f64| -> Result<(), Error> {
+                if a < start && (rule.history_grid.is_empty() || rule.history_grid[0] > a) {
+                    Err(invalid(
+                        "observation window requires complete earlier flow history",
+                    ))
+                } else {
+                    Ok(())
+                }
+            };
+            let rates: Vec<_> = (0..nt)
+                .map(|t| {
+                    let mut rate = LinearForm {
+                        constant: operating.observed_flow[i][t].inflow,
+                        ..Default::default()
+                    };
+                    for &u in &units {
+                        rate.add_scaled(&LinearForm::variable(u * nt + t, 1.), 1.);
+                    }
+                    for &e in &rivers {
+                        rate.add_scaled(
+                            &routing.releases[e].integral(case.grid[t], case.grid[t + 1]),
+                            1. / (case.grid[t + 1] - case.grid[t]),
+                        );
+                    }
+                    for &e in &arrivals {
+                        rate.add_scaled(&routing.arrivals[e][t], 1.);
+                    }
+                    for &e in &tunnels {
+                        rate.add_scaled(&LinearForm::variable(tunnel_offset + e * nt + t, 1.), 1.);
+                    }
+                    rate
+                })
+                .collect();
+            for (t, rate) in rates.iter().enumerate() {
+                data.rows.push(FlowRow {
+                    expression: rate.clone(),
+                    bounds: operating.observed_flow[i][t].bounds,
+                    scale: 100.,
+                });
+            }
+            let integral = |a: f64, b: f64| {
+                let mut volume = LinearForm::default();
+                for (t, w) in case.grid.windows(2).enumerate() {
+                    volume.add_scaled(&rates[t], 3600. * (b.min(w[1]) - a.max(w[0])).max(0.));
+                }
+                for (t, w) in rule.history_grid.windows(2).enumerate() {
+                    volume.constant +=
+                        3600. * (b.min(w[1]) - a.max(w[0])).max(0.) * rule.history_flow[t];
+                }
+                volume
+            };
+            if rule.min_volume.is_some() || rule.max_volume.is_some() {
+                let mut total = integral(start, end);
+                total.constant += rule.initial_volume;
+                data.rows.push(FlowRow {
+                    expression: total,
+                    bounds: Bounds::new(
+                        rule.min_volume.unwrap_or(f64::NEG_INFINITY),
+                        rule.max_volume.unwrap_or(f64::INFINITY),
+                    ),
+                    scale: 1e6,
+                });
+            }
+            for w in &rule.volume_windows {
+                if !ordered(w.start_time, w.end_time)
+                    || !bounds_valid(w.min_volume, w.max_volume)
+                    || (w.min_volume.is_none() && w.max_volume.is_none())
+                {
+                    return Err(invalid(
+                        "volume window needs ordered finite times and at least one consistent bound",
+                    ));
+                }
+                if w.start_time >= end || w.end_time <= start {
+                    continue;
+                }
+                if w.end_time > end {
+                    return Err(invalid(
+                        "an active volume window must finish within the horizon",
+                    ));
+                }
+                history(w.start_time)?;
+                data.rows.push(FlowRow {
+                    expression: integral(w.start_time, w.end_time),
+                    bounds: Bounds::new(
+                        w.min_volume.unwrap_or(f64::NEG_INFINITY),
+                        w.max_volume.unwrap_or(f64::INFINITY),
+                    ),
+                    scale: 1e6,
+                });
+            }
+            for r in &rule.rolling_ramps {
+                if !ramp_valid(r.up, r.down)
+                    || !r.hours.is_finite()
+                    || r.hours <= 0.
+                    || !(3600. * r.hours).is_finite()
+                    || !ordered(start - r.hours, start)
+                    || !ordered(end, end + r.hours)
+                    || !(start - r.hours).is_finite()
+                    || !(end + r.hours).is_finite()
+                {
+                    return Err(invalid(
+                        "rolling ramp needs positive finite duration and a nonnegative difference limit",
+                    ));
+                }
+                history(start - r.hours)?;
+                let mut knots = case.grid.clone();
+                knots.extend(
+                    rule.history_grid
+                        .iter()
+                        .chain(&case.grid)
+                        .map(|t| t + r.hours)
+                        .filter(|t| start < *t && *t < end),
+                );
+                knots.sort_by(f64::total_cmp);
+                knots.dedup();
+                for time in knots {
+                    let average = integral(time - r.hours, time).scaled(1. / (3600. * r.hours));
+                    let k = case
+                        .grid
+                        .partition_point(|v| *v <= time)
+                        .saturating_sub(1)
+                        .min(nt - 1);
+                    let mut intervals = vec![k];
+                    if time > start && time < end && case.grid[k] == time {
+                        intervals.push(k - 1);
+                    }
+                    for k in intervals {
+                        let mut change = rates[k].clone();
+                        change.add_scaled(&average, -1.);
+                        data.rows.push(FlowRow {
+                            expression: change,
+                            bounds: Bounds::new(
+                                r.down.map_or(f64::NEG_INFINITY, |v| -v),
+                                r.up.unwrap_or(f64::INFINITY),
+                            ),
+                            scale: 100.,
+                        });
+                    }
+                }
+            }
+            for r in &rule.period_ramps {
+                if !ramp_valid(r.up, r.down)
+                    || r.grid.len() < 3
+                    || !r.grid.windows(2).all(|w| ordered(w[0], w[1]))
+                {
+                    return Err(invalid(
+                        "period ramp needs two ordered finite periods and a nonnegative difference limit",
+                    ));
+                }
+                for w in r.grid.windows(3) {
+                    let (a, b, c) = (w[0], w[1], w[2]);
+                    if b >= end || c <= start {
+                        continue;
+                    }
+                    if c > end {
+                        return Err(invalid(
+                            "an active ramp period must finish within the horizon",
+                        ));
+                    }
+                    history(a)?;
+                    let mut change = integral(b, c).scaled(1. / (3600. * (c - b)));
+                    change.add_scaled(&integral(a, b), -1. / (3600. * (b - a)));
+                    data.rows.push(FlowRow {
+                        expression: change,
+                        bounds: Bounds::new(
+                            r.down.map_or(f64::NEG_INFINITY, |v| -v),
+                            r.up.unwrap_or(f64::INFINITY),
+                        ),
+                        scale: 100.,
+                    });
+                }
+            }
+            data.rates.push(rates);
+        }
+        if data.rows.iter().any(|r| {
+            !r.expression.constant.is_finite()
+                || r.expression.coefficients.values().any(|c| !c.is_finite())
+        }) {
+            return Err(Error::Input(
+                "flow observation integral exceeds finite arithmetic".into(),
+            ));
+        }
+        Ok(data)
+    }
+    pub fn constrain<'a>(
+        &self,
+        model: &oximo::Model,
+        columns: &[oximo::expr::Expr<'a>],
+        zero: oximo::expr::Expr<'a>,
+    ) {
+        use oximo::prelude::*;
+        for row in &self.rows {
+            let expression =
+                crate::nlp::linear_expression(&row.expression, columns, zero) / row.scale;
+            if row.bounds.min == row.bounds.max {
+                constraint!(model, expression == row.bounds.min / row.scale);
+            } else {
+                if row.bounds.min.is_finite() {
+                    constraint!(model, expression >= row.bounds.min / row.scale);
+                }
+                if row.bounds.max.is_finite() {
+                    constraint!(model, expression <= row.bounds.max / row.scale);
+                }
+            }
+        }
+    }
+    pub fn residual(&self, columns: &[f64]) -> f64 {
+        self.rows
+            .iter()
+            .map(|r| {
+                let value = r.expression.value(columns);
+                if !value.is_finite() {
+                    f64::INFINITY
+                } else {
+                    (r.bounds.min - value).max(value - r.bounds.max).max(0.) / r.scale
+                }
+            })
+            .fold(0., f64::max)
+    }
+}

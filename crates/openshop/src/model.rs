@@ -141,7 +141,7 @@ impl StorageCurve {
             }
         })
     }
-    fn validate(&self, bounds: Bounds, name: &str) -> Result<(), Error> {
+    pub(crate) fn validate(&self, bounds: Bounds, name: &str) -> Result<(), Error> {
         let valid = match self {
             Self::Polynomial {
                 reference_volume,
@@ -548,6 +548,8 @@ fn one() -> f64 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleCase {
+    #[serde(default)]
+    pub flow_requirements: Vec<crate::FlowRequirement>,
     /// Optional transport mesh: must retain all control vertices.
     #[serde(default)]
     pub routing_grid: Vec<f64>,

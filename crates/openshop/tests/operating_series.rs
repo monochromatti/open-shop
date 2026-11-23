@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 fn case() -> ScheduleCase {
     ScheduleCase {
+        flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],
         system: HydroSystem {

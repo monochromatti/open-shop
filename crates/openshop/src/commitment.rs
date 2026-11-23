@@ -2,7 +2,7 @@
 //! These schedules initialize nonlinear dispatch; their objectives are not bounds
 //! on the nonlinear problem. No-good cuts let search change earlier commitments.
 
-use crate::{Error, Schedule, ScheduleCase, model::Topology, river::Routing};
+use crate::{Error, Schedule};
 use oximo::{ScipOptions, prelude::*, solvers::Scip};
 use std::time::Duration;
 
@@ -15,14 +15,17 @@ pub(crate) struct Proposal {
 }
 
 pub(crate) fn propose(
-    case: &ScheduleCase,
-    topology: &Topology,
-    routing: &Routing,
-    operating: &crate::operating_data::OperatingData,
+    problem: &crate::SchedulingProblem<'_>,
     previous: Option<&Schedule>,
     excluded: &[Vec<Vec<bool>>],
     seconds: f64,
 ) -> Result<Option<Proposal>, Error> {
+    let (case, topology, routing, operating) = (
+        problem.case,
+        &problem.topology,
+        &problem.routing,
+        &problem.operating,
+    );
     let s = &case.system;
     let (nr, nu, nt) = (s.reservoirs.len(), s.units.len(), case.prices.len());
     let m = Model::new("unit commitment");
@@ -89,6 +92,15 @@ pub(crate) fn propose(
         );
         river_columns.push((rf[[k]] * flow_scale).into());
     }
+    let mut observation_columns = river_columns.clone();
+    for e in 0..s.tunnels.len() {
+        for t in 0..nt {
+            observation_columns.push((qt[[e, t]] * flow_scale).into());
+        }
+    }
+    problem
+        .observations
+        .constrain(&m, &observation_columns, zero());
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -277,6 +289,31 @@ pub(crate) fn propose(
                 }
             };
             constraint!(m, qr[[k, t]] - flow / flow_scale == 0.);
+        }
+    }
+    variable!(m,band_floor[k in 0..problem.level_windows.bands.len()]);
+    for (k, band) in problem.level_windows.bands.iter().enumerate() {
+        let i = band.reservoir;
+        let r = &s.reservoirs[i];
+        let range = r.storage.max - r.storage.min;
+        m.set_bounds(
+            band_floor[[k]],
+            band.floor.min / 100.,
+            band.floor.max / 100.,
+        )
+        .map_err(|e| Error::Model(e.to_string()))?;
+        for point in &band.points {
+            let (t, fraction) = (point.interval, point.fraction);
+            let volume = ((v[[i, t]] * (1. - fraction) + v[[i, t + 1]] * fraction) * range
+                + r.storage.min)
+                + crate::nlp::linear_expression(&point.correction, &river_columns, zero());
+            let v0 = previous.map_or(r.initial_storage, |p| {
+                p.storage[i][t] * (1. - fraction) + p.storage[i][t + 1] * fraction
+            }) + point.correction.value(&reference_columns);
+            let d = r.level.mean_data(v0, v0);
+            let level = (volume - v0) * (d.gradient[0] + d.gradient[1]) + d.value;
+            constraint!(m, level / 100. - band_floor[[k]] >= 0.);
+            constraint!(m, level / 100. - band_floor[[k]] <= band.max_change / 100.);
         }
     }
     let mut all_power = Vec::new();

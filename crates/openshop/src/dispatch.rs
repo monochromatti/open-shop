@@ -1,7 +1,7 @@
 //! Simultaneous nonlinear water balances, pressure laws and operating equations.
 
+use crate::Error;
 use crate::nlp;
-use crate::{Error, ScheduleCase, model::Topology, river::Routing};
 use oximo::{
     expr::{Expr, VarId},
     prelude::*,
@@ -19,13 +19,16 @@ pub(crate) struct Dispatch {
 }
 
 pub(crate) fn build_dispatch(
-    case: &ScheduleCase,
-    topology: &Topology,
-    routing: &Routing,
-    operating: &crate::operating_data::OperatingData,
+    problem: &crate::SchedulingProblem<'_>,
     commitment: &[Vec<bool>],
     start: Option<&crate::commitment::Proposal>,
 ) -> Result<Dispatch, Error> {
+    let (case, topology, routing, operating) = (
+        problem.case,
+        &problem.topology,
+        &problem.routing,
+        &problem.operating,
+    );
     let s = &case.system;
     let (nr, nu, nt) = (s.reservoirs.len(), s.units.len(), case.prices.len());
     let m = Model::new("hydropower dispatch");
@@ -155,6 +158,15 @@ pub(crate) fn build_dispatch(
         });
         river_columns.push((rf[[k]] * flow_scale).into());
     }
+    let mut observation_columns = river_columns.clone();
+    for e in 0..s.tunnels.len() {
+        for t in 0..nt {
+            observation_columns.push((qt[[e, t]] * flow_scale).into());
+        }
+    }
+    problem
+        .observations
+        .constrain(&m, &observation_columns, zero());
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -537,6 +549,46 @@ pub(crate) fn build_dispatch(
                     constraint!(m, withdrawal - discharge == 0.);
                 }
             }
+        }
+    }
+    variable!(m,band_floor[k in 0..problem.level_windows.bands.len()]);
+    for (k, band) in problem.level_windows.bands.iter().enumerate() {
+        let i = band.reservoir;
+        let r = &s.reservoirs[i];
+        let range = r.storage.max - r.storage.min;
+        m.set_bounds(
+            band_floor[[k]],
+            band.floor.min / 100.,
+            band.floor.max / 100.,
+        )
+        .map_err(|e| Error::Model(e.to_string()))?;
+        m.set_initial(
+            band_floor[[k]],
+            r.level
+                .trial_level(r.initial_storage)
+                .clamp(band.floor.min, band.floor.max)
+                / 100.,
+        )
+        .map_err(|e| Error::Model(e.to_string()))?;
+        let curve = std::sync::Arc::new(r.level.clone());
+        for point in &band.points {
+            let (t, fraction) = (point.interval, point.fraction);
+            let volume = ((v[[i, t]] * (1. - fraction) + v[[i, t + 1]] * fraction) * range
+                + r.storage.min)
+                + nlp::linear_expression(&point.correction, &river_columns, zero());
+            let input = nlp::linear_form(&m, volume)?;
+            laws.push(crate::constitutive::Equation {
+                linear: crate::river::LinearForm::variable(
+                    band_floor[[k]].var_id().unwrap().index(),
+                    -1.,
+                ),
+                terms: vec![crate::constitutive::Term {
+                    function: crate::constitutive::PhysicalFunction::StorageMean(curve.clone()),
+                    inputs: [input.clone(), input, Default::default()],
+                    weight: 1. / 100.,
+                }],
+                bounds: crate::Bounds::new(0., band.max_change / 100.),
+            });
         }
     }
     let initial_head: Vec<_> = s
