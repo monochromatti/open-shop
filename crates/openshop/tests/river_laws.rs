@@ -17,6 +17,7 @@ fn reservoir(name: &str, head: f64, volume: f64, slope: f64) -> Reservoir {
 }
 fn river(source: &str, target: &str, law: RiverLaw) -> River {
     River {
+        operation: Default::default(),
         name: "Reach".into(),
         source: source.into(),
         target: target.into(),

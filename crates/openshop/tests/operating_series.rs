@@ -213,6 +213,7 @@ fn river_inflows_follow_their_original_release_intervals() {
     c.system.units.clear();
     c.system.plants.clear();
     c.system.rivers.push(River {
+        operation: Default::default(),
         law: Default::default(),
         gate: Bounds::new(0., 1.),
         name: "River".into(),

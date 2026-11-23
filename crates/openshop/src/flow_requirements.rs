@@ -98,6 +98,7 @@ pub(crate) struct FlowInterval {
     pub inflow: f64,
     pub bounds: Bounds,
 }
+#[derive(Clone)]
 pub(crate) struct FlowRow {
     pub expression: LinearForm,
     pub bounds: Bounds,
@@ -124,7 +125,10 @@ impl FlowEquations {
         routing: &Routing,
         operating: &crate::operating_data::OperatingData,
     ) -> Result<Self, Error> {
-        let mut data = Self::default();
+        let mut data = Self {
+            rows: routing.arrival_limits.clone(),
+            ..Default::default()
+        };
         let s = &case.system;
         let nt = case.prices.len();
         let (start, end) = (case.grid[0], case.grid[nt]);

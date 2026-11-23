@@ -5,6 +5,14 @@
 use crate::{Error, curve::Derivatives2};
 use serde::{Deserialize, Serialize};
 
+/// One-sided value at a change in arrival rate. Distributed arrivals are
+/// continuous; a fixed travel time preserves jumps in the release series.
+#[derive(Clone, Copy, Debug)]
+pub enum TimeSide {
+    Left,
+    Right,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(try_from = "DelayData", into = "DelayData")]
 pub struct DelayCurve {
@@ -165,6 +173,14 @@ impl RiverTransport {
         let at = |c: &DelayCurve| match window {
             Observation::Arrival(a, b) => c.arrival_fraction(a, b, s, e),
             Observation::Transit(time) => c.transit_fraction(time, s, e),
+            Observation::Point(time, _) => c
+                .edges()
+                .windows(2)
+                .zip(c.weights())
+                .map(|(w, &weight)| {
+                    weight * (w[1].min(time - s) - w[0].max(time - e)).max(0.) / (w[1] - w[0])
+                })
+                .sum(),
         };
         match self {
             Self::Fixed { delay } => ReleaseFraction {
@@ -176,6 +192,13 @@ impl RiverTransport {
                     Observation::Transit(time) => {
                         (time.min(e) - s.max(time - delay)).max(0.) / (e - s)
                     }
+                    Observation::Point(time, side) => {
+                        let inside = match side {
+                            TimeSide::Left => s + delay < time && time <= e + delay,
+                            TimeSide::Right => s + delay <= time && time < e + delay,
+                        };
+                        if inside { 1. } else { 0. }
+                    }
                 }],
             },
             Self::Distributed { curves } => ReleaseFraction {
@@ -183,6 +206,26 @@ impl RiverTransport {
                 coefficients: curves.iter().map(at).collect(),
             },
         }
+    }
+    /// Instantaneous downstream rate, m³/s, from one constant release.
+    /// At a fixed-delay jump, `side` selects the value before or after it.
+    pub fn arrival_rate(
+        &self,
+        release: (f64, f64),
+        flow: f64,
+        time: f64,
+        side: TimeSide,
+    ) -> Result<f64, Error> {
+        self.check_observation(release, flow)?;
+        if !time.is_finite() {
+            return Err(Error::Input(
+                "finite arrival observation time required".into(),
+            ));
+        }
+        Ok(self
+            .fraction(Observation::Point(time, side), release.0, release.1)
+            .data(flow)
+            .value)
     }
     /// Volume (m³) from one constant release arriving within an observation window.
     pub fn arrival_volume(
@@ -246,6 +289,7 @@ impl RiverTransport {
 pub(crate) enum Observation {
     Arrival(f64, f64),
     Transit(f64),
+    Point(f64, TimeSide),
 }
 #[derive(Clone)]
 pub(crate) struct ReleaseFraction {

@@ -559,6 +559,8 @@ pub struct HydroSystem {
 #[serde(deny_unknown_fields)]
 pub struct River {
     #[serde(default)]
+    pub operation: crate::RiverOperation,
+    #[serde(default)]
     pub law: crate::RiverLaw,
     #[serde(default = "gate_range")]
     pub gate: Bounds,

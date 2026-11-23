@@ -6,7 +6,7 @@ use crate::{
     Bounds, Error, TableCurve, TurbineTable, Unit, curve::Derivatives2, river::LinearForm,
 };
 use nalgebra::SVector;
-use num_dual::hessian;
+use num_dual::{DualNum, gradient, hessian};
 use pounce_nl::nl_reader::NlTnlp;
 use pounce_nlp::tnlp::{
     BoundsInfo, IndexStyle, IpoptCq, IpoptData, NlpInfo, Solution, SparsityRequest, StartingPoint,
@@ -55,6 +55,27 @@ impl From<Derivatives2> for Derivatives {
     }
 }
 impl PhysicalFunction {
+    fn ad_value<D: DualNum<Primitive = f64> + Copy>(&self, x: &SVector<D, 3>) -> D {
+        match self {
+            Self::Efficiency(u) => crate::machine::hydraulic_efficiency(u, x[0], x[1]),
+            Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
+            Self::HeadSpan(e, c) => e.range(x[0], x[1], x[2]).component(*c),
+            Self::OutletTable(c) => crate::machine::table_value(c, x[0]) * x[1],
+            _ => unreachable!("this physical function uses analytic derivatives"),
+        }
+    }
+    fn gradient(&self, x: [f64; 3]) -> [f64; 3] {
+        match self {
+            Self::Efficiency(_)
+            | Self::Production(_)
+            | Self::HeadSpan(_, _)
+            | Self::OutletTable(_) => {
+                let (_, g) = gradient(|x| self.ad_value(&x), &SVector::from(x));
+                std::array::from_fn(|i| g[i])
+            }
+            _ => self.data(x).gradient,
+        }
+    }
     fn is_linear(&self) -> bool {
         matches!(self,Self::StorageMean(c) if matches!(&**c,crate::StorageCurve::Polynomial{curvature,..} if *curvature==0.))
     }
@@ -75,31 +96,11 @@ impl PhysicalFunction {
     }
     fn data(&self, x: [f64; 3]) -> Derivatives {
         match self {
-            Self::HeadSpan(e, c) => {
-                let (_, g, h) = hessian(
-                    |x| e.range(x[0], x[1], x[2]).component(*c),
-                    &SVector::from(x),
-                );
-                Derivatives {
-                    gradient: std::array::from_fn(|i| g[i]),
-                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
-                }
-            }
-            Self::Efficiency(u) => {
-                let (_, g, h) = hessian(
-                    |x| crate::machine::hydraulic_efficiency(u, x[0], x[1]),
-                    &SVector::from(x),
-                );
-                Derivatives {
-                    gradient: std::array::from_fn(|i| g[i]),
-                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
-                }
-            }
-            Self::Production(u) => {
-                let (_, g, h) = hessian(
-                    |x| crate::machine::power_balance(u, x[0], x[1], x[2]),
-                    &SVector::from(x),
-                );
+            Self::Efficiency(_)
+            | Self::Production(_)
+            | Self::HeadSpan(_, _)
+            | Self::OutletTable(_) => {
+                let (_, g, h) = hessian(|x| self.ad_value(&x), &SVector::from(x));
                 Derivatives {
                     gradient: std::array::from_fn(|i| g[i]),
                     hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
@@ -111,16 +112,6 @@ impl PhysicalFunction {
             Self::MinimumFlow(c) => c.envelope_data(x[1], false).into(),
             Self::MaximumFlow(c) => c.envelope_data(x[1], true).into(),
             Self::LevelFlow(c) => c.data(x[0], x[1]).into(),
-            Self::OutletTable(c) => {
-                let (_, g, h) = hessian(
-                    |x| crate::machine::table_value(c, x[0]) * x[1],
-                    &SVector::from(x),
-                );
-                Derivatives {
-                    gradient: std::array::from_fn(|i| g[i]),
-                    hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
-                }
-            }
             Self::Table(c) => {
                 let coordinates = c.coordinates();
                 let i = coordinates
@@ -542,10 +533,7 @@ impl TNLP for Nlp {
                         out[i] += a;
                     }
                     for t in &e.terms {
-                        let g = t
-                            .function
-                            .data(t.inputs.each_ref().map(|v| v.value(x)))
-                            .gradient;
+                        let g = t.function.gradient(t.inputs.each_ref().map(|v| v.value(x)));
                         for (input, &derivative) in t.jacobian.iter().zip(&g) {
                             for &(i, a) in input {
                                 out[i] += a * derivative;
@@ -711,6 +699,128 @@ mod tests {
             gradient[cols[k] as usize] += lambda[rows[k] as usize] * values[k];
         }
         gradient
+    }
+
+    #[test]
+    fn complete_watercourse_lagrangian_matches_directional_second_differences() {
+        let case: crate::ScheduleCase =
+            serde_json::from_str(include_str!("../examples/data/tabulated_cascade.json")).unwrap();
+        let prepared = crate::SchedulingProblem::new(&case).unwrap();
+        let controls = crate::commitment::DiscreteControls {
+            unit_on: vec![vec![true; case.prices.len()]; case.system.units.len()],
+            gate_position: vec![vec![0; case.prices.len()]; case.system.tunnels.len()],
+        };
+        let mut problem =
+            crate::dispatch::build_dispatch(&prepared, &controls, None, &prepared.operating_points)
+                .unwrap()
+                .problem;
+        let info = problem.get_nlp_info().unwrap();
+        let (n, m) = (info.n as usize, info.m as usize);
+        let (mut lo, mut hi, mut gl, mut gu) = (vec![0.; n], vec![0.; n], vec![0.; m], vec![0.; m]);
+        assert!(problem.get_bounds_info(BoundsInfo {
+            x_l: &mut lo,
+            x_u: &mut hi,
+            g_l: &mut gl,
+            g_u: &mut gu
+        }));
+        let mut x = vec![0.; n];
+        let mut zl = vec![0.; n];
+        let mut zu = vec![0.; n];
+        let mut multipliers = vec![0.; m];
+        assert!(problem.get_starting_point(StartingPoint {
+            init_x: true,
+            x: &mut x,
+            init_z: false,
+            z_l: &mut zl,
+            z_u: &mut zu,
+            init_lambda: false,
+            lambda: &mut multipliers
+        }));
+        for i in 0..n {
+            if lo[i] < hi[i] {
+                let perturb = 0.001 * ((i as f64 + 1.) * 1.37).cos() * x[i].abs().max(1.);
+                x[i] = (x[i] + perturb).clamp(
+                    lo[i] + (hi[i] - lo[i]) * 0.0001,
+                    hi[i] - (hi[i] - lo[i]) * 0.0001,
+                );
+            }
+        }
+        let lambda: Vec<_> = (0..m)
+            .map(|i| ((i as f64 + 1.) * 0.71).sin() * 0.3)
+            .collect();
+        let mut hr = vec![0; info.nnz_h_lag as usize];
+        let mut hc = hr.clone();
+        let mut h = vec![0.; hr.len()];
+        assert!(problem.eval_h(
+            None,
+            false,
+            0.7,
+            None,
+            false,
+            SparsityRequest::Structure {
+                irow: &mut hr,
+                jcol: &mut hc
+            }
+        ));
+        assert!(problem.eval_h(
+            Some(&x),
+            true,
+            0.7,
+            Some(&lambda),
+            true,
+            SparsityRequest::Values { values: &mut h }
+        ));
+        for phase in [0.3, 1.4, 2.7] {
+            let direction: Vec<_> = (0..n)
+                .map(|i| {
+                    if lo[i] == hi[i] {
+                        0.
+                    } else {
+                        ((i as f64 + 1.) * phase).cos() / (n as f64).sqrt()
+                    }
+                })
+                .collect();
+            let mut product = vec![0.; n];
+            for ((&r, &c), &v) in hr.iter().zip(&hc).zip(&h) {
+                let (r, c) = (r as usize, c as usize);
+                product[r] += v * direction[c];
+                if r != c {
+                    product[c] += v * direction[r];
+                }
+            }
+            let step = 1e-5;
+            let plus: Vec<_> = x
+                .iter()
+                .zip(&direction)
+                .map(|(&v, &d)| v + step * d)
+                .collect();
+            let minus: Vec<_> = x
+                .iter()
+                .zip(&direction)
+                .map(|(&v, &d)| v - step * d)
+                .collect();
+            let a = lagrangian_gradient(&mut problem, &plus, 0.7, &lambda);
+            let b = lagrangian_gradient(&mut problem, &minus, 0.7, &lambda);
+            let numerical: Vec<_> = a
+                .iter()
+                .zip(&b)
+                .map(|(&a, &b)| (a - b) / (2. * step))
+                .collect();
+            let norm = product
+                .iter()
+                .chain(&numerical)
+                .map(|v| v.abs())
+                .fold(1., f64::max);
+            let error = product
+                .iter()
+                .zip(&numerical)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0., f64::max);
+            assert!(
+                error < 1e-5 * norm,
+                "directional Hessian error {error}, scale {norm}"
+            );
+        }
     }
     #[test]
     fn affine_paths_and_algebraic_terms_share_correct_sparse_second_derivatives() {

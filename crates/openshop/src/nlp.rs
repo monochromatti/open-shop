@@ -268,6 +268,28 @@ mod tests {
     use pounce_nlp::tnlp::SparsityRequest;
 
     #[test]
+    fn interrupted_barrier_iterations_do_not_discard_a_better_feasible_initial_point() {
+        let m = Model::new("feasible nonlinear start");
+        variable!(m,0.1<=x<=10.,initial=1.);
+        variable!(m,0.1<=y<=10.,initial=1.);
+        constraint!(m, x * y >= 1.);
+        objective!(m, Min, x + y);
+        let point = solve(
+            prepare(&m, vec![]).unwrap(),
+            &SolveOptions {
+                max_iterations: 1,
+                ..Default::default()
+            },
+            Backend::Ipopt,
+        )
+        .unwrap();
+        let a = point.x[x.var_id().unwrap().index()];
+        let b = point.x[y.var_id().unwrap().index()];
+        assert!(a * b >= 1. - 1e-8);
+        assert!(a + b <= 2. + 1e-8);
+    }
+
+    #[test]
     fn exact_derivatives_include_curvature_of_constraint_rows() {
         let m = Model::new("pressure and energy derivatives");
         variable!(m,-2.0<=q<=2.0,initial=0.0);

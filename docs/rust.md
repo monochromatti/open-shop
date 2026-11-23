@@ -60,6 +60,13 @@ the supplied controls and retains a feasible starting schedule if optimization
 fails or decreases its revenue. `problem.solve(&options)` remains the complete
 commitment-search entry point. Both use the same nonlinear dispatch equations.
 
+The nonlinear solver uses exact sparse first derivatives and a limited-memory
+BFGS approximation to curvature. Local second derivatives remain available for
+mathematical checks. At an iteration or time limit, the solver retains its best
+point satisfying the original nonlinear constraints; independent hydraulic
+reconstruction must still accept the resulting controls. Solver settings are
+set by the library, without reading a working-directory `ipopt.opt` file.
+
 `crates/openshop/examples/reservoir.rs` constructs and solves a case entirely
 in Rust. The `schedule` example reads JSON at the application boundary; JSON
 parsing stays in the example; `serde_json` is only a direct development dependency
@@ -98,6 +105,13 @@ callbacks reuse their buffers.
 Each primary flow variable is scaled by its own unit or connection capacity;
 a large river capacity does not determine the numerical scale of a small turbine.
 A table constant over its operating range needs no head unknown.
+
+The optimization objective expresses the change in stored-water value through
+the water balances. A transfer between reservoirs therefore carries the
+difference in their marginal water values. This is algebraically equal to
+terminal minus initial inventory value, including water in transit, but removes
+large cancelling storage terms from the numerical gradient. Reported revenue
+is evaluated independently from terminal and initial inventories.
 
 Trial points use end-secant continuation to let a solver recover from violated
 constraints; storage bounds and the measured domain are still enforced and
@@ -388,6 +402,34 @@ in m³. Arrival fractions integrate the nonnegative pieces of the trapezoidal
 arrival density directly. Remaining inventory integrates survival probability
 directly, avoiding cancellation when only a small tail remains in transit.
 
+
+## Environmental river arrivals
+
+`river.operation.minimum_arrival` sets a downstream minimum in m³/s.
+`Attribute::MinArrival` supplies changes at control boundaries, including an
+explicit zero that disables the minimum. Historical releases contribute to
+arrivals in the same way as scheduled releases.
+
+`ArrivalPolicy::IntervalAverage` constrains the mean arrival over each control
+interval. Supply `arrival_window_grid` to use other observation windows; their
+edges must span the horizon but need not coincide with control boundaries.
+Each window integrates the actual represented arrival wave. It does not
+interpolate or redistribute control-interval arrival totals. A changing minimum
+is averaged over the same observation window.
+
+`ArrivalPolicy::Pointwise` enforces the instantaneous minimum throughout the
+horizon. Uniform delay bins give piecewise-linear arrival waves; constraints at
+every shifted release/delay edge suffice between knots. Fixed travel times
+preserve release jumps, so both sides are checked. The start uses its right
+limit and the end its left limit. A changing minimum uses the matching side
+of its own control boundary.
+
+These rows share the same release-dependent reference fluxes as water balance
+and transit inventory. They do not add separate nonlinear blending variables.
+At distributed river junctions, the statement applies to releases represented
+on the routing grid; refinement of that grid remains a separate transport
+accuracy question. `RiverTransport::arrival_rate(release, flow, time, side)`
+evaluates the downstream rate from an individual constant release directly.
 
 ## Hydraulic operating limits
 

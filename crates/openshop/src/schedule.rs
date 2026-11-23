@@ -24,6 +24,7 @@ pub struct SchedulingProblem<'a> {
     pub(crate) level_windows: crate::level_windows::LevelEquations,
     pub(crate) interlocks: crate::gate_interlocks::GateInterlocks,
     pub(crate) operating_points: crate::operating_points::OperatingPoints,
+    pub(crate) water_value: crate::river::LinearForm,
 }
 
 impl<'a> SchedulingProblem<'a> {
@@ -37,7 +38,10 @@ impl<'a> SchedulingProblem<'a> {
         let level_windows = crate::level_windows::LevelEquations::new(case, &routing)?;
         let interlocks = crate::gate_interlocks::GateInterlocks::new(case, &topology)?;
         let operating_points = crate::operating_points::OperatingPoints::new(case, &routing);
+        let water_value =
+            crate::trajectory::water_value_change(case, &topology, &routing, &operating);
         Ok(Self {
+            water_value,
             operating_points,
             interlocks,
             level_windows,
@@ -1066,6 +1070,7 @@ mod tests {
             .push(Plant::new("Downstream", "Forebay", "Sea"));
         case.system.units.push(lower);
         let mut river = crate::River {
+            operation: Default::default(),
             law: Default::default(),
             gate: Bounds::new(0., 1.),
             name: "River".into(),

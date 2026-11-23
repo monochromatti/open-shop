@@ -30,6 +30,7 @@ fn case(transport: RiverTransport) -> ScheduleCase {
             }],
             tunnels: vec![tunnel],
             rivers: vec![River {
+                operation: Default::default(),
                 name: "Reach".into(),
                 source: "Outfall".into(),
                 target: "Lower".into(),

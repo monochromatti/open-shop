@@ -16,6 +16,20 @@ theorem quadratic_work_stationary_max (a b c stationary head : ℝ)
   have negative := mul_nonpos_of_nonpos_of_nonneg concave (sq_nonneg (head-stationary))
   linarith
 
+/-- Conservation permits terminal storage value to be expressed through net
+water fluxes. This changes numerical gradients, not the value at a feasible
+trajectory. Durations include the chosen physical unit conversion. -/
+theorem water_value_flux_substitution {R T : Type*} [Fintype R] [Fintype T]
+    (value initial final : R → ℝ) (duration : T → ℝ) (net : R → T → ℝ)
+    (balance : ∀ r, final r-initial r = ∑ t, duration t*net r t) :
+    (∑ r, value r*(final r-initial r)) = ∑ r, ∑ t, duration t*(value r*net r t) := by
+  simp_rw [balance, Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro r _
+  apply Finset.sum_congr rfl
+  intro t _
+  ring
+
 /-- Every signed internal edge credits exactly the water it withdraws. -/
 theorem incidence_cancels {N E : Type*} [Fintype N] [Fintype E] [DecidableEq N]
     (source target : E → N) (q : E → ℝ) :
@@ -377,5 +391,17 @@ theorem controlled_outlet_off (capacity opening : ℝ) (positive : 0 < capacity)
     exact (mul_eq_zero.mp zeroFlow).resolve_left (ne_of_gt positive)
   · intro zeroOpening
     simp [zeroOpening]
+
+/-- Between consecutive arrival-wave knots, the rate is a linear interpolant.
+Checking both endpoint limits therefore enforces the lower bound on the entire
+segment. At a jump, the adjacent segments use their own one-sided limits. -/
+theorem linear_arrival_minimum (left right fraction minimum : ℝ)
+    (nonnegativeFraction : 0 ≤ fraction) (unitFraction : fraction ≤ 1)
+    (leftLimit : minimum ≤ left) (rightLimit : minimum ≤ right) :
+    minimum ≤ (1-fraction)*left + fraction*right := by
+  have leftWeight : 0 ≤ 1-fraction := by linarith
+  have leftExcess := mul_nonneg leftWeight (sub_nonneg.mpr leftLimit)
+  have rightExcess := mul_nonneg nonnegativeFraction (sub_nonneg.mpr rightLimit)
+  nlinarith
 
 end OpenSHOP

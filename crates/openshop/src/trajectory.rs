@@ -309,6 +309,44 @@ fn objective(
             .sum::<f64>()
 }
 
+/// Express the change in stored-water value through conserved water fluxes.
+/// On the balance equations this equals terminal value minus initial value.
+/// It removes the large, physically redundant storage-range gradient from the
+/// numerical objective; internal transfers carry differences in water value.
+pub(crate) fn water_value_change(
+    case: &ScheduleCase,
+    topology: &crate::model::Topology,
+    routing: &crate::river::Routing,
+    operating: &crate::operating_data::OperatingData,
+) -> crate::river::LinearForm {
+    let s = &case.system;
+    let nt = case.prices.len();
+    let mut value = crate::river::LinearForm::default();
+    for (r, reservoir) in s.reservoirs.iter().enumerate() {
+        for t in 0..nt {
+            let mut net = routing.reservoir_net[r][t].clone();
+            net.constant += operating.reservoirs[r].inflow[t];
+            for &(g, sign) in &topology.incidence[r] {
+                *net.coefficients.entry(g * nt + t).or_default() += sign;
+            }
+            for &(e, sign) in &topology.tunnel_incidence[r] {
+                *net.coefficients
+                    .entry((s.units.len() + e) * nt + t)
+                    .or_default() += sign;
+            }
+            value.add_scaled(
+                &net,
+                3600. * (case.grid[t + 1] - case.grid[t]) * reservoir.water_value,
+            );
+        }
+    }
+    for (r, river) in s.rivers.iter().enumerate() {
+        value.add_scaled(&routing.inventory[r][nt], river.water_value);
+        value.add_scaled(&routing.inventory[r][0], -river.water_value);
+    }
+    value
+}
+
 fn validate(
     problem: &crate::SchedulingProblem<'_>,
     schedule: &Schedule,
@@ -858,4 +896,89 @@ pub(crate) fn gate_adjustment_cost(tunnels: &[crate::Tunnel], openings: &[Vec<f6
                 .sum::<f64>()
         })
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn conserved_flux_value_matches_terminal_storage_and_historical_river_inventory() {
+        let case = ScheduleCase {
+            system: HydroSystem {
+                reservoirs: vec![Reservoir {
+                    name: "Lake".into(),
+                    storage: Bounds::new(0., 1e6),
+                    initial_storage: 5e5,
+                    level: StorageCurve::Polynomial {
+                        reference_volume: 0.,
+                        elevation: 100.,
+                        slope: 0.,
+                        curvature: 0.,
+                    },
+                    water_value: 0.002,
+                    operation: Default::default(),
+                }],
+                boundaries: vec![Boundary {
+                    name: "Sea".into(),
+                    head: 20.,
+                }],
+                plants: vec![Plant::new("Station", "Lake", "Sea")],
+                units: vec![Unit::new(
+                    "Unit",
+                    "Station",
+                    Bounds::new(0., 30.),
+                    Bounds::new(0., 100.),
+                    Bounds::new(0., 200.),
+                    Efficiency::constant(0.9),
+                )],
+                rivers: vec![River {
+                    operation: Default::default(),
+                    name: "Reach".into(),
+                    source: "Lake".into(),
+                    target: "Sea".into(),
+                    capacity: 20.,
+                    transport: RiverTransport::Fixed { delay: 0.5 },
+                    allocation: 1.,
+                    inflow: 2.,
+                    water_value: 0.003,
+                    history_grid: vec![-1., 0.],
+                    history_release: vec![6.],
+                    law: RiverLaw::Controlled,
+                    gate: Bounds::new(0., 1.),
+                }],
+                ..Default::default()
+            },
+            grid: vec![0., 1., 1.5],
+            prices: vec![100.; 2],
+            inflows: BTreeMap::from([("Lake".into(), vec![3.; 2])]),
+            commitment: Default::default(),
+            operations: vec![],
+            flow_requirements: vec![],
+            routing_grid: vec![],
+        };
+        let problem = SchedulingProblem::new(&case).unwrap();
+        let physical = problem
+            .reconstruct(&Controls {
+                commitment: vec![vec![true; 2]],
+                unit_flow: vec![vec![10.; 2]],
+                river_opening: vec![vec![0.25, 0.75]],
+                tunnel_opening: vec![],
+            })
+            .unwrap();
+        assert!(physical.validation.feasible, "{:?}", physical.validation);
+        let mut columns: Vec<_> = physical
+            .unit_flow
+            .iter()
+            .flatten()
+            .copied()
+            .chain(physical.river_withdrawal.iter().flatten().copied())
+            .collect();
+        problem.routing.complete_columns(&mut columns);
+        let terminal = 0.002 * (physical.storage[0][2] - physical.storage[0][0])
+            + 0.003 * (physical.river_storage[0][2] - physical.river_storage[0][0]);
+        assert!((terminal + 105.3).abs() < 1e-8);
+        assert!((problem.water_value.value(&columns) - terminal).abs() < 1e-8);
+    }
 }

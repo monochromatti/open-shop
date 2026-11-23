@@ -49,6 +49,7 @@ pub enum Attribute {
     StartupGrossHeadMin,
     MinOpen,
     MinRelease,
+    MinArrival,
     MaxOpen,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -147,6 +148,7 @@ pub(crate) struct OperatingData {
     pub river_capacity: Vec<Vec<f64>>,
     pub river_inflow: Vec<Vec<f64>>,
     pub river_min_release: Vec<Vec<f64>>,
+    pub river_min_arrival: Vec<Vec<f64>>,
     pub river_gate: Vec<Vec<Bounds>>,
     pub observed_flow: Vec<Vec<crate::flow_requirements::FlowInterval>>,
 }
@@ -284,7 +286,7 @@ impl OperatingData {
                                 || !matches!(s.attribute, GateMin | GateMax))
                     }) && matches!(
                         s.attribute,
-                        Capacity | Inflow | GateMin | GateMax | MinRelease
+                        Capacity | Inflow | GateMin | GateMax | MinRelease | MinArrival
                     )
                 }
             };
@@ -367,6 +369,7 @@ impl OperatingData {
                     let r = system.rivers.iter().find(|r| &r.name == name).unwrap();
                     match s.attribute {
                         MinRelease => Some((0., r.capacity)),
+                        MinArrival => Some((0., f64::INFINITY)),
                         Capacity => Some((0., r.capacity)),
                         GateMin => Some((r.gate.min, 1.)),
                         GateMax => Some((0., r.gate.max)),
@@ -816,13 +819,16 @@ impl OperatingData {
         let mut river_capacity = Vec::new();
         let mut river_inflow = Vec::new();
         let mut river_min_release = Vec::new();
+        let mut river_min_arrival = Vec::new();
         for river in &system.rivers {
+            river.operation.validate(&case.grid)?;
             let object = Object::River(river.name.clone());
             let m = series.get(&object);
             let mut gates = Vec::new();
             let mut cap = Vec::new();
             let mut inflow = Vec::new();
             let mut minimum = Vec::new();
+            let mut arrival = Vec::new();
             for &time in &case.grid[..nt] {
                 let c = value(m, Capacity, time, Some(river.capacity), false).unwrap();
                 let q = value(m, Inflow, time, Some(river.inflow), false).unwrap();
@@ -851,6 +857,16 @@ impl OperatingData {
                     Bounds::new(lo, hi)
                 });
                 minimum.push(minimum_release);
+                arrival.push(
+                    value(
+                        m,
+                        MinArrival,
+                        time,
+                        Some(river.operation.minimum_arrival),
+                        false,
+                    )
+                    .unwrap(),
+                );
                 cap.push(c);
                 inflow.push(q);
             }
@@ -858,6 +874,7 @@ impl OperatingData {
             river_capacity.push(cap);
             river_inflow.push(inflow);
             river_min_release.push(minimum);
+            river_min_arrival.push(arrival);
         }
         let mut observed_flow = Vec::new();
         for r in &case.flow_requirements {
@@ -893,6 +910,7 @@ impl OperatingData {
             river_capacity,
             river_inflow,
             river_min_release,
+            river_min_arrival,
             river_gate,
         })
     }

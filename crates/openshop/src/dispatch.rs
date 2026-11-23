@@ -931,27 +931,7 @@ pub(crate) fn build_dispatch(
             plant_on,
         },
     );
-    for (r, reservoir) in s.reservoirs.iter().enumerate() {
-        revenue = revenue
-            + (v[[r, nt]] * (reservoir.storage.max - reservoir.storage.min)
-                + reservoir.storage.min)
-                * reservoir.water_value;
-    }
-    for (r, river) in s.rivers.iter().enumerate() {
-        revenue = revenue
-            + crate::nlp::linear_expression(&routing.inventory[r][nt], &river_columns, zero())
-                * river.water_value;
-    }
-    let initial_value: f64 = s
-        .reservoirs
-        .iter()
-        .map(|r| r.initial_storage * r.water_value)
-        .sum::<f64>()
-        + s.rivers
-            .iter()
-            .enumerate()
-            .map(|(i, r)| routing.inventory[i][0].constant * r.water_value)
-            .sum::<f64>();
+    revenue = revenue + nlp::linear_expression(&problem.water_value, &river_columns, zero());
     let openings: Vec<Vec<f64>> = operating
         .tunnels
         .iter()
@@ -963,8 +943,7 @@ pub(crate) fn build_dispatch(
                 .collect()
         })
         .collect();
-    revenue =
-        revenue - initial_value - crate::trajectory::gate_adjustment_cost(&s.tunnels, &openings);
+    revenue = revenue - crate::trajectory::gate_adjustment_cost(&s.tunnels, &openings);
     objective!(m, Max, revenue / 1000.);
     let storage = (0..nr)
         .map(|r| (0..=nt).map(|t| v[[r, t]].var_id().unwrap()).collect())

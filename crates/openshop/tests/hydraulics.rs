@@ -530,6 +530,7 @@ fn a_committed_idle_unit_can_have_negative_head_without_transferring_water_uphil
     let solution = problem
         .solve(&SolveOptions {
             time_limit: 5.,
+            tolerance: 1e-11,
             ..Default::default()
         })
         .unwrap();

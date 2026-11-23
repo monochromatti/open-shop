@@ -95,6 +95,7 @@ pub(crate) struct Routing {
     pub releases: Vec<ReleaseSeries>,
     /// Mean downstream arrival rate, reach by control interval, m³/s.
     pub arrivals: Vec<Vec<LinearForm>>,
+    pub arrival_limits: Vec<crate::flow_requirements::FlowRow>,
     /// River inventory at each control vertex, m³.
     pub inventory: Vec<Vec<LinearForm>>,
     /// River contributions to reservoir balances, m³/s.
@@ -322,9 +323,22 @@ impl Routing {
             releases[i] = ReleaseSeries { grid, rates };
         }
         let mut arrivals = Vec::new();
+        let mut arrival_limits = Vec::new();
         let mut inventory = Vec::new();
         let mut reservoir_net = vec![vec![LinearForm::default(); nt]; s.reservoirs.len()];
         for (i, r) in s.rivers.iter().enumerate() {
+            // Fixed-delay reference partitions have one flux per release and
+            // add no nonlinear transfer variables.
+            let mut transfers = Vec::new();
+            let flux = reference_fluxes(&r.transport, &releases[i], 0, &mut transfers);
+            let past_flux = reference_fluxes(&r.transport, &history[i], 0, &mut transfers);
+            arrival_limits.extend(crate::river_operation::arrival_limits(
+                case,
+                operating,
+                i,
+                (&releases[i], &flux),
+                (&history[i], &past_flux),
+            ));
             let arrived: Vec<_> = case
                 .grid
                 .windows(2)
@@ -428,6 +442,7 @@ impl Routing {
             outlets,
             releases,
             arrivals,
+            arrival_limits,
             inventory,
             reservoir_net,
             storage_shape,
@@ -478,6 +493,7 @@ impl Routing {
         ];
         let mut mesh_arrival = vec![vec![]; nr];
         let mut arrivals = vec![vec![]; nr];
+        let mut arrival_limits = Vec::new();
         let mut inventory = vec![vec![]; nr];
         for i in order {
             let r = &s.rivers[i];
@@ -523,6 +539,13 @@ impl Routing {
                 reference_fluxes(&r.transport, &releases[i], primary_columns, &mut transfers);
             let past_flux =
                 reference_fluxes(&r.transport, &history[i], primary_columns, &mut transfers);
+            arrival_limits.extend(crate::river_operation::arrival_limits(
+                case,
+                operating,
+                i,
+                (&releases[i], &flux),
+                (&history[i], &past_flux),
+            ));
             mesh_arrival[i] = mesh
                 .windows(2)
                 .map(|w| {
@@ -621,6 +644,7 @@ impl Routing {
             outlets,
             releases,
             arrivals,
+            arrival_limits,
             inventory,
             reservoir_net,
             storage_shape,
@@ -681,7 +705,7 @@ fn reference_fluxes(
 }
 
 /// Integral in (m³/s)·hours, retaining each release's original reference blend.
-fn transport_series(
+pub(crate) fn transport_series(
     transport: &crate::RiverTransport,
     series: &ReleaseSeries,
     flux: &[Vec<LinearForm>],
@@ -691,7 +715,15 @@ fn transport_series(
     for (j, w) in series.grid.windows(2).enumerate() {
         let fraction = transport.fraction(observation, w[0], w[1]);
         for (column, &coefficient) in flux[j].iter().zip(&fraction.coefficients) {
-            total.add_scaled(column, coefficient * (w[1] - w[0]));
+            let duration = if matches!(
+                observation,
+                crate::river_transport::Observation::Point(_, _)
+            ) {
+                1.
+            } else {
+                w[1] - w[0]
+            };
+            total.add_scaled(column, coefficient * duration);
         }
     }
     total
@@ -704,6 +736,7 @@ mod tests {
 
     fn reach(name: &str, source: &str, target: &str, delay: f64) -> River {
         River {
+            operation: Default::default(),
             law: Default::default(),
             gate: Bounds::new(0., 1.),
             name: name.into(),

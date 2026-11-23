@@ -151,6 +151,7 @@ fn identical_endpoint_levels_cannot_hide_an_interior_river_pulse() {
         values: vec![0.3],
     });
     c.system.rivers.push(River {
+        operation: Default::default(),
         name: "Pulse".into(),
         source: "Upstream".into(),
         target: "Lake".into(),

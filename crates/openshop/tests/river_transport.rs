@@ -49,6 +49,7 @@ fn narrow_releases_and_small_late_tails_do_not_lose_volume_to_cancellation() {
 }
 fn reach(name: &str, source: &str, target: &str, transport: RiverTransport) -> River {
     River {
+        operation: Default::default(),
         name: name.into(),
         source: source.into(),
         target: target.into(),

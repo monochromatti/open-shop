@@ -179,7 +179,16 @@ impl OperatingPoints {
         let mzero = storage[0][0] * 0.;
         variable!(m,hp[k in 0..np,n in 0..nr+nj]);
         variable!(m,tq[k in 0..np,e in 0..s.tunnels.len()]);
-        variable!(m,uq[k in 0..np,g in 0..nu]);
+        let pumps: Vec<_> = s
+            .units
+            .iter()
+            .enumerate()
+            .filter_map(|(g, u)| u.pump_characteristic.as_ref().map(|_| g))
+            .collect();
+        let pump_index: Vec<_> = (0..nu)
+            .map(|g| pumps.iter().position(|&i| i == g))
+            .collect();
+        variable!(m,uq[k in 0..np,j in 0..pumps.len()]);
         variable!(m,uh[k in 0..np,g in 0..nu]);
         variable!(m,up[k in 0..np,g in 0..nu]);
         variable!(m,tw[k in 0..np,j in 0..s.plants.len()]);
@@ -330,38 +339,33 @@ impl OperatingPoints {
             head.extend(s.boundaries.iter().map(|b| mzero + b.head));
             let mut unit_flow = Vec::new();
             for (g, u) in s.units.iter().enumerate() {
+                let Some(j) = pump_index[g] else {
+                    // An adjustable machine has one held flow control, shared
+                    // by all pressure observations in its operating interval.
+                    unit_flow.push(flow[g][t]);
+                    continue;
+                };
                 let on = controls.unit_on[g][t];
                 let limits = &p.operating.units[g][t];
                 let scale = u.flow.max.max(1.);
                 m.set_bounds(
-                    uq[[k, g]],
+                    uq[[k, j]],
                     if on { limits.flow.min / scale } else { 0. },
                     if on { limits.flow.max / scale } else { 0. },
                 )?;
+                let q0 = initial.as_ref().map_or_else(
+                    || start.map_or((limits.flow.min + limits.flow.max) / 2., |v| v.flow[g][t]),
+                    |v| v.unit_flow[g],
+                );
                 m.set_initial(
-                    uq[[k, g]],
+                    uq[[k, j]],
                     if on {
-                        initial
-                            .as_ref()
-                            .map_or_else(
-                                || {
-                                    start.map_or((limits.flow.min + limits.flow.max) / 2., |v| {
-                                        v.flow[g][t]
-                                    })
-                                },
-                                |v| v.unit_flow[g],
-                            )
-                            .clamp(limits.flow.min, limits.flow.max)
-                            / scale
+                        q0.clamp(limits.flow.min, limits.flow.max) / scale
                     } else {
                         0.
                     },
                 )?;
-                let q: Expr<'_> = (uq[[k, g]] * scale).into();
-                if u.pump_characteristic.is_none() {
-                    constraint!(m, (q - flow[g][t]) / scale == 0.);
-                }
-                unit_flow.push(q);
+                unit_flow.push(Expr::from(uq[[k, j]] * scale));
             }
             for (e, &(a, b)) in p.topology.tunnel_nodes.iter().enumerate() {
                 let interval = &p.operating.tunnels[e][t];

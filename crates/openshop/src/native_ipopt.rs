@@ -25,8 +25,16 @@ impl Drop for Problem {
 
 struct Callbacks<'a> {
     evaluator: &'a mut dyn TNLP,
+    problem: ffi::IpoptProblem,
     panicked: bool,
     iterations: usize,
+    current_x: Vec<f64>,
+    best_x: Vec<f64>,
+    best_objective: f64,
+    lower_violation: Vec<f64>,
+    upper_violation: Vec<f64>,
+    constraint_violation: Vec<f64>,
+    tolerance: f64,
 }
 
 pub(crate) fn solve(
@@ -105,18 +113,44 @@ pub(crate) fn solve(
             )));
         }
     }
+    // A library solve must not depend on an unrelated ipopt.opt in its caller's
+    // working directory. All numerical options are set at this boundary.
+    set_string(&problem, c"option_file_name", c"")?;
     set_string(&problem, c"sb", c"yes")?;
     set_string(&problem, c"mu_strategy", c"monotone")?;
+    set_string(&problem, c"hessian_approximation", c"limited-memory")?;
     // SAFETY: The callback remains valid for the entire synchronous solve.
     unsafe {
         ffi::SetIntermediateCallback(problem.0, Some(intermediate));
     }
+    let mut g = vec![0.; m];
+    let feasible = |x: &[f64], g: &[f64]| {
+        x.iter().zip(&xl).zip(&xu).all(|((&v, &lo), &hi)| {
+            v.is_finite() && v >= lo - options.tolerance && v <= hi + options.tolerance
+        }) && g.iter().zip(&gl).zip(&gu).all(|((&v, &lo), &hi)| {
+            v.is_finite() && v >= lo - options.tolerance && v <= hi + options.tolerance
+        })
+    };
+    let initial_objective = evaluator.eval_f(&x, true).filter(|v| v.is_finite());
+    let initial_feasible =
+        initial_objective.is_some() && evaluator.eval_g(&x, false, &mut g) && feasible(&x, &g);
     let mut callbacks = Callbacks {
         evaluator,
+        problem: problem.0,
         panicked: false,
         iterations: 0,
+        current_x: vec![0.; n],
+        best_x: x.clone(),
+        best_objective: if initial_feasible {
+            initial_objective.unwrap()
+        } else {
+            f64::INFINITY
+        },
+        lower_violation: vec![0.; n],
+        upper_violation: vec![0.; n],
+        constraint_violation: vec![0.; m],
+        tolerance: options.tolerance,
     };
-    let mut g = vec![0.; m];
     let mut objective = 0.0;
     // SAFETY: All buffers match CreateIpoptProblem dimensions. The context and
     // evaluator stay exclusively borrowed until IpoptSolve returns.
@@ -134,6 +168,14 @@ pub(crate) fn solve(
     };
     if callbacks.panicked {
         return Err(Error::Solver("a nonlinear callback panicked".into()));
+    }
+    let final_objective = callbacks.evaluator.eval_f(&x, true);
+    let final_feasible = callbacks.evaluator.eval_g(&x, false, &mut g) && feasible(&x, &g);
+    if callbacks.best_objective.is_finite()
+        && (!final_feasible
+            || final_objective.is_none_or(|v| !v.is_finite() || callbacks.best_objective < v))
+    {
+        x.copy_from_slice(&callbacks.best_x);
     }
     Ok(NlpSolution {
         x,
@@ -322,9 +364,9 @@ unsafe extern "C" fn eval_h(
     }
 }
 unsafe extern "C" fn intermediate(
-    _mode: i32,
+    mode: i32,
     iter: i32,
-    _obj: f64,
+    objective: f64,
     _pr: f64,
     _du: f64,
     _mu: f64,
@@ -339,6 +381,52 @@ unsafe extern "C" fn intermediate(
     unsafe {
         callback(data, |c| {
             c.iterations = iter.max(0) as usize;
+            if mode != 0 || !objective.is_finite() || objective >= c.best_objective {
+                return true;
+            }
+            let n = c.current_x.len() as i32;
+            let m = c.constraint_violation.len() as i32;
+            // SAFETY: The live problem owns the current iterate. All requested
+            // buffers have its original dimensions; null outputs are optional.
+            let checked = ffi::GetIpoptCurrentViolations(
+                c.problem,
+                false,
+                n,
+                c.lower_violation.as_mut_ptr(),
+                c.upper_violation.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                m,
+                c.constraint_violation.as_mut_ptr(),
+                std::ptr::null_mut(),
+            );
+            if !checked
+                || c.lower_violation
+                    .iter()
+                    .chain(&c.upper_violation)
+                    .chain(&c.constraint_violation)
+                    .any(|v| !v.is_finite() || *v > c.tolerance)
+            {
+                return true;
+            }
+            // SAFETY: This is the same live problem and n-sized buffer. Reading
+            // the iterate does not change the solver or retain its C storage.
+            let read = ffi::GetIpoptCurrentIterate(
+                c.problem,
+                false,
+                n,
+                c.current_x.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                m,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            if read && c.current_x.iter().all(|v| v.is_finite()) {
+                c.best_x.copy_from_slice(&c.current_x);
+                c.best_objective = objective;
+            }
             true
         })
     }
