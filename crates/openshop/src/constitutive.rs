@@ -152,17 +152,15 @@ impl Equation {
             }],
             bounds: Bounds::new(0., 0.),
         }];
-        if unit.minimum_efficiency > 0. {
-            equations.push(Self {
-                linear: LinearForm::default(),
-                terms: vec![Term {
-                    function: PhysicalFunction::Efficiency(unit.clone()),
-                    inputs: [flow.clone(), head.clone(), Default::default()],
-                    weight: 1.,
-                }],
-                bounds: Bounds::new(unit.minimum_efficiency, 1.),
-            });
-        }
+        equations.push(Self {
+            linear: LinearForm::default(),
+            terms: vec![Term {
+                function: PhysicalFunction::Efficiency(unit.clone()),
+                inputs: [flow.clone(), head.clone(), Default::default()],
+                weight: 1.,
+            }],
+            bounds: Bounds::new(unit.minimum_efficiency, 1.),
+        });
         let mut flow_equation = |function, bounds| {
             equations.push(Self {
                 linear: flow.clone().scaled(-1. / flow_scale),

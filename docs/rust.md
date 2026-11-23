@@ -125,9 +125,11 @@ By default the data must cover the complete unit operating range. Explicit
 Discharge continuation uses the end secants even for PCHIP. A single reference
 head requires `head_extrapolation: Extrapolation::Constant`, declaring efficiency
 and the envelope independent of head. It does not make power independent of head.
-Preparation checks efficiency throughout the allowed rectangle, including cubic
-stationary points, and checks that discharge envelopes overlap at every head.
-Values are neither clipped nor silently repaired.
+Preparation checks that the interpolation policies define the response. The
+nonlinear model enforces the head-dependent discharge envelope and hydraulic
+efficiency between `minimum_efficiency` and one. These constraints may exclude
+part of the unit's declared head range; an infeasible head slice does not invalidate
+an otherwise usable turbine. Values are neither clipped nor silently repaired.
 
 Table units use net head and power unknowns with the physical equalities
 `H = H_source − H_target − loss_factor Q²` and `P = 0.00981 Q H η(Q,H)`.

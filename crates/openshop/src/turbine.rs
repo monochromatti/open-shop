@@ -273,85 +273,40 @@ impl TurbineTable {
     pub(crate) fn validate_domain(&self, flow: Bounds, head: Bounds) -> Result<(), Error> {
         self.check_head(head.min)?;
         self.check_head(head.max)?;
-        let mut hh: Vec<_> = self
+        // Calibration and interpolation policies must define the response.
+        // Head-dependent operating envelopes and efficiency bounds are model
+        // constraints; an empty slice at one head does not invalidate the unit.
+        if self
+            .data
+            .flow
+            .iter()
+            .any(|q| q.min > flow.max || q.max < flow.min)
+        {
+            return Err(Error::Input(
+                "turbine and unit discharge limits do not overlap at a supplied reference head"
+                    .into(),
+            ));
+        }
+        let mut heads: Vec<_> = self
             .data
             .heads
             .iter()
             .copied()
             .filter(|h| head.min < *h && *h < head.max)
             .collect();
-        hh.extend([head.min, head.max]);
-        let mut qq: Vec<_> = self
+        heads.extend([head.min, head.max]);
+        let mut flows: Vec<_> = self
             .data
             .curves
             .iter()
             .flat_map(|c| c.coordinates().iter().copied())
             .filter(|q| flow.min < *q && *q < flow.max)
             .collect();
-        qq.extend([flow.min, flow.max]);
-        qq.sort_by(f64::total_cmp);
-        qq.dedup();
-        for h in hh {
-            let limits = self.flow_limits(h)?;
-            if !limits.min.is_finite()
-                || !limits.max.is_finite()
-                || limits.min < 0.
-                || limits.min > limits.max
-                || limits.min > flow.max
-                || limits.max < flow.min
-            {
-                return Err(Error::Input(
-                    "turbine and unit discharge envelopes do not overlap throughout operating head"
-                        .into(),
-                ));
-            }
-            for q in [flow.min, flow.max] {
-                let efficiency = self.efficiency(q, h)?;
-                if !efficiency.is_finite() || efficiency <= 0. || efficiency > 1. + 1e-14 {
-                    return Err(Error::Input(
-                        "extended turbine efficiency outside (0,1]".into(),
-                    ));
-                }
-            }
-            // Each discharge cell is cubic and each head cell is affine. Its extrema
-            // occur at head edges and discharge endpoints or stationary points.
-            for w in qq.windows(2) {
-                let (j, k, b) = self.head_weights(h);
-                let transformed = |col| {
-                    let (origin, width, c) = self.column_polynomial(col, (w[0] + w[1]) / 2.);
-                    let a = (w[0] - origin) / width;
-                    let r = (w[1] - w[0]) / width;
-                    [
-                        ((c[3] * a + c[2]) * a + c[1]) * a + c[0],
-                        r * ((3. * c[3] * a + 2. * c[2]) * a + c[1]),
-                        r * r * (c[2] + 3. * c[3] * a),
-                        r * r * r * c[3],
-                    ]
-                };
-                let left = transformed(j);
-                let right = transformed(k);
-                let c: [f64; 4] = std::array::from_fn(|i| left[i] + b * (right[i] - left[i]));
-                let valid = |t: f64| {
-                    let v = ((c[3] * t + c[2]) * t + c[1]) * t + c[0];
-                    v.is_finite() && v > 0. && v <= 1. + 1e-14
-                };
-                if !valid(0.) || !valid(1.) {
-                    return Err(Error::Input(
-                        "extended turbine efficiency outside (0,1]".into(),
-                    ));
-                }
-                let (a, b, d) = (3. * c[3], 2. * c[2], c[1]);
-                let roots = if a == 0. {
-                    [-d / b, f64::NAN]
-                } else {
-                    let discriminant = b * b - 4. * a * d;
-                    let q = -0.5 * (b + discriminant.sqrt().copysign(b));
-                    [q / a, d / q]
-                };
-                if roots.iter().any(|t| *t > 0. && *t < 1. && !valid(*t)) {
-                    return Err(Error::Input(
-                        "extended turbine efficiency outside (0,1] between knots".into(),
-                    ));
+        flows.extend([flow.min, flow.max]);
+        for h in heads {
+            for &q in &flows {
+                if !self.efficiency(q, h)?.is_finite() {
+                    return Err(Error::Input("nonfinite extended turbine response".into()));
                 }
             }
         }
@@ -528,7 +483,7 @@ mod tests {
                 .validate_domain(Bounds::new(0., 20.), Bounds::new(80., 120.))
                 .is_ok()
         );
-        // A fixed discharge can still have an invalid extended efficiency.
+        // These static discharge bounds miss every declared operating envelope.
         assert!(
             table
                 .validate_domain(Bounds::new(100., 100.), Bounds::new(80., 120.))
@@ -537,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn extended_efficiency_is_checked_between_knots_not_only_at_corners() {
+    fn declared_head_extension_preserves_the_response_for_operating_constraints() {
         let curves = vec![
             TableCurve::new(vec![0., 5., 10.], vec![0.7, 0.9, 0.7]).unwrap(),
             TableCurve::new(vec![0., 5., 10.], vec![0.6, 0.95, 0.6]).unwrap(),
@@ -557,10 +512,12 @@ mod tests {
             t.validate_domain(Bounds::new(0., 10.), Bounds::new(100., 200.))
                 .is_ok()
         );
-        // At 400 m the endpoint efficiencies are 0.4, but the interior exceeds one.
+        // Extension is a defined response; the optimizer enforces eta <= 1.
+        assert!((t.efficiency(0., 400.).unwrap() - 0.4).abs() < 1e-14);
+        assert!(t.efficiency(5., 400.).unwrap() > 1.);
         assert!(
             t.validate_domain(Bounds::new(0., 10.), Bounds::new(100., 400.))
-                .is_err()
+                .is_ok()
         );
     }
 }

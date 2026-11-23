@@ -143,3 +143,79 @@ fn changing_gross_head_limits_control_commitment() {
     assert!(s.validation.feasible, "{:?}", s.validation);
     assert_eq!(s.commitment[0], vec![false, true]);
 }
+
+#[test]
+fn head_dependent_flow_limits_can_exclude_part_of_a_units_declared_head_range() {
+    let mut c = case();
+    c.system.reservoirs[0].level = StorageCurve::Polynomial {
+        reference_volume: 0.,
+        elevation: 140.,
+        slope: 0.,
+        curvature: 0.,
+    };
+    let u = &mut c.system.units[0];
+    u.flow = Bounds::new(5., 20.);
+    u.efficiency = Efficiency::Table(
+        TurbineTable::new(
+            vec![100., 120.],
+            vec![TableCurve::new(vec![5., 20.], vec![0.8, 0.9]).unwrap(); 2],
+            vec![Bounds::new(20., 20.), Bounds::new(5., 20.)],
+            TurbineOptions {
+                head_extrapolation: Extrapolation::Linear,
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+    );
+    let s = solve(&c);
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    assert!((s.unit_flow[0][0] - 20.).abs() < 1e-4);
+    c.system.reservoirs[0].level = StorageCurve::Polynomial {
+        reference_volume: 0.,
+        elevation: 100.,
+        slope: 0.,
+        curvature: 0.,
+    };
+    assert!(!solve(&c).validation.feasible);
+}
+#[test]
+fn efficiency_bounds_exclude_nonphysical_extrapolated_points_without_rejecting_the_table() {
+    let mut c = case();
+    c.system.reservoirs[0].level = StorageCurve::Polynomial {
+        reference_volume: 0.,
+        elevation: 420.,
+        slope: 0.,
+        curvature: 0.,
+    };
+    let u = &mut c.system.units[0];
+    u.flow = Bounds::new(1., 10.);
+    u.head = Bounds::new(100., 400.);
+    u.loss_factor = 0.;
+    u.efficiency = Efficiency::Table(
+        TurbineTable::new(
+            vec![100., 200.],
+            vec![
+                TableCurve::new(vec![0., 5., 10.], vec![0.7, 0.9, 0.7]).unwrap(),
+                TableCurve::new(vec![0., 5., 10.], vec![0.6, 0.95, 0.6]).unwrap(),
+            ],
+            vec![Bounds::new(0., 10.); 2],
+            TurbineOptions {
+                interpolation: DischargeInterpolation::Pchip,
+                head_extrapolation: Extrapolation::Linear,
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+    );
+    c.operations.push(OperationalSeries {
+        object: Object::Unit("Unit".into()),
+        attribute: Attribute::Discharge,
+        times: vec![0.],
+        values: vec![5.],
+    });
+    assert!(!solve(&c).validation.feasible);
+    c.operations[0].values[0] = 10.;
+    let s = solve(&c);
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    assert!((s.unit_power[0][0] - 15.696).abs() < 1e-4);
+}

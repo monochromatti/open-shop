@@ -329,7 +329,7 @@ impl Efficiency {
                     || [flow.min, flow.max].iter().any(|&q| {
                         [head.min, head.max]
                             .iter()
-                            .any(|&h| self.trial_value(q, h) <= 0.)
+                            .any(|&h| !self.trial_value(q, h).is_finite())
                     })
                 {
                     return Err(Error::Input("invalid quadratic turbine efficiency".into()));
@@ -488,6 +488,12 @@ impl Unit {
         } else {
             self.efficiency.value(flow, head)?
         };
+        if !eta.is_finite()
+            || !(0. ..=1.).contains(&eta)
+            || (self.mode == UnitMode::Pump && eta == 0.)
+        {
+            return Err(Error::Input("power requires physical hydraulic efficiency in [0,1], strictly positive for pumping".into()));
+        }
         let hydraulic = 0.00981 * flow * head;
         match self.mode {
             UnitMode::Pump => Ok(hydraulic / (eta * self.motor_efficiency)),
