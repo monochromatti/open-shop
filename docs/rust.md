@@ -24,6 +24,15 @@ prepared problem can be reused for another solve. It borrows immutable inputs,
 so Rust prevents the inputs changing while its numerical structure is in use.
 Collection order determines result axes. Names identify connections.
 
+`let physical = problem.reconstruct(&schedule.controls())?` independently solves
+water balance, pressure losses, reservoir outlets and fixed-speed pump
+characteristics from physical controls. It uses damped Newton iteration with
+chunked automatic derivatives and a rank-revealing linear solve when necessary.
+It does not invoke Ipopt or SCIP. Reconstruction reports operating violations;
+it never clips storage or discharge to hide an infeasible control schedule.
+The current reconstruction uses the case's hydraulic intervals. Finer replay
+and adaptive integration remain necessary for complete replacement parity.
+
 ```rust,no_run
 use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};
 fn optimize(case: &ScheduleCase) -> Result<(), openshop::Error> {

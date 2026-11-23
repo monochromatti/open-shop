@@ -17,6 +17,8 @@ pub(crate) struct Proposal {
     pub flow: Vec<Vec<f64>>,
     pub tunnel_flow: Vec<Vec<f64>>,
     pub river_withdrawal: Vec<Vec<f64>>,
+    pub river_opening: Vec<Vec<f64>>,
+    pub head: Vec<Vec<f64>>,
 }
 
 pub(crate) fn propose(
@@ -733,6 +735,7 @@ pub(crate) fn propose(
     let mut flow = vec![vec![0.; nt]; nu];
     let mut tunnel_flow = vec![vec![0.; nt]; s.tunnels.len()];
     let mut river_withdrawal = vec![vec![0.; nt]; s.rivers.len()];
+    let mut river_opening = vec![vec![0.; nt]; s.rivers.len()];
     for r in 0..nr {
         for t in 0..=nt {
             let volume = value(v[[r, t]])?;
@@ -754,6 +757,7 @@ pub(crate) fn propose(
     for (k, &r) in routing.outlets.iter().enumerate() {
         for t in 0..nt {
             river_withdrawal[r][t] = flow_scale * value(qr[[k, t]])?;
+            river_opening[r][t] = value(ga[[k, t]])?;
         }
     }
     let mut index = 0;
@@ -780,6 +784,27 @@ pub(crate) fn propose(
                 .collect::<Result<Vec<_>, Error>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let junction_head = (0..s.junctions.len())
+        .map(|j| {
+            (0..nt)
+                .map(|t| value(hj[[j, t]]).map(|h| 100. * h))
+                .collect::<Result<Vec<_>, Error>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut columns: Vec<_> = flow
+        .iter()
+        .flatten()
+        .copied()
+        .chain(tunnel_flow.iter().flatten().copied())
+        .chain(
+            routing
+                .outlets
+                .iter()
+                .flat_map(|&r| river_withdrawal[r].iter().copied()),
+        )
+        .collect();
+    routing.complete_columns(&mut columns);
+    let head = crate::trajectory::hydraulic_heads(case, routing, &storage, &columns, junction_head);
     Ok(Some(Proposal {
         controls: DiscreteControls {
             unit_on: commitment,
@@ -789,5 +814,7 @@ pub(crate) fn propose(
         flow,
         tunnel_flow,
         river_withdrawal,
+        river_opening,
+        head,
     }))
 }

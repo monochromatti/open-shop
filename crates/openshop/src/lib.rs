@@ -10,6 +10,7 @@ mod curve;
 mod dispatch;
 mod flow_requirements;
 mod gate_interlocks;
+mod hydraulics;
 mod level_windows;
 mod machine;
 mod model;
@@ -29,6 +30,7 @@ mod turbine;
 pub use curve::TableCurve;
 pub use flow_requirements::{FlowRequirement, PeriodRamp, RollingRamp, VolumeWindow};
 pub use gate_interlocks::{ClosureWait, TunnelInterlock};
+pub use hydraulics::Controls;
 pub use level_windows::{LevelWindow, StorageHistory};
 pub use machine::PumpCharacteristic;
 pub use model::{

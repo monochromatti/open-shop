@@ -319,8 +319,16 @@ pub(crate) fn build_dispatch(
                 junction.head.max / 100.,
             )
             .map_err(|e| Error::Model(e.to_string()))?;
-            m.set_initial(hj[[j, t]], (junction.head.min + junction.head.max) / 200.)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_initial(
+                hj[[j, t]],
+                start
+                    .map_or((junction.head.min + junction.head.max) / 2., |p| {
+                        p.head[node][t]
+                    })
+                    .clamp(junction.head.min, junction.head.max)
+                    / 100.,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
             let mut net = zero();
             for &(u, sign) in &topology.incidence[node] {
                 net = net + q[[u, t]] * sign;
@@ -372,7 +380,10 @@ pub(crate) fn build_dispatch(
                     );
                     m.set_initial(
                         hm[[k, t]],
-                        c.trial_mean_level(before, after).clamp(lo, hi) / 100.,
+                        start
+                            .map_or(c.trial_mean_level(before, after), |p| p.head[r][t])
+                            .clamp(lo, hi)
+                            / 100.,
                     )
                     .map_err(|e| Error::Model(e.to_string()))?;
                     let path = {
@@ -439,8 +450,13 @@ pub(crate) fn build_dispatch(
             let gate = operating.river_gate[e][t];
             m.set_bounds(ga[[k, t]], gate.min, gate.max)
                 .map_err(|e| Error::Model(e.to_string()))?;
-            m.set_initial(ga[[k, t]], (gate.min + gate.max) / 2.)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_initial(
+                ga[[k, t]],
+                start
+                    .map_or((gate.min + gate.max) / 2., |p| p.river_opening[e][t])
+                    .clamp(gate.min, gate.max),
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
             let h = head[t][source];
             let withdrawal = qr[[k, t]] * flow_scale;
             match &river.law {
@@ -529,8 +545,15 @@ pub(crate) fn build_dispatch(
                         .sqrt();
                     m.set_bounds(root[[k, t]], lo, hi)
                         .map_err(|e| Error::Model(e.to_string()))?;
-                    m.set_initial(root[[k, t]], (lo + hi) / 2.)
-                        .map_err(|e| Error::Model(e.to_string()))?;
+                    m.set_initial(
+                        root[[k, t]],
+                        start
+                            .map_or((lo + hi) / 2., |p| {
+                                (p.head[source][t] - crest).max(0.).sqrt()
+                            })
+                            .clamp(lo, hi),
+                    )
+                    .map_err(|e| Error::Model(e.to_string()))?;
                     let depth = h - *crest;
                     let wet_depth = if *allow_dry {
                         (depth + depth.abs()) * 0.5
@@ -655,8 +678,18 @@ pub(crate) fn build_dispatch(
                     .coefficients
                     .insert(q[[g, t]].var_id().unwrap().index(), flow_scale);
             }
-            m.set_initial(hw[[k, t]], curve.values()[0] / 100.)
-                .map_err(|e| Error::Model(e.to_string()))?;
+            m.set_initial(
+                hw[[k, t]],
+                start.map_or(curve.values()[0], |start| {
+                    curve.extended_value(
+                        topology.plant_units[p]
+                            .iter()
+                            .map(|&g| start.flow[g][t])
+                            .sum(),
+                    )
+                }) / 100.,
+            )
+            .map_err(|e| Error::Model(e.to_string()))?;
             laws.push(crate::constitutive::Equation {
                 linear: crate::river::LinearForm::variable(
                     hw[[k, t]].var_id().unwrap().index(),
@@ -766,11 +799,28 @@ pub(crate) fn build_dispatch(
                     limits.power.max / scale,
                 )
                 .map_err(|e| Error::Model(e.to_string()))?;
-                let h0 = ((initial_head[source] - initial_head[target]) * u.mode.power_sign())
-                    .clamp(u.head.min, u.head.max);
+                let upstream = start.map_or(initial_head[source], |p| p.head[source][t]);
+                let downstream = start
+                    .map_or(initial_head[target], |p| p.head[target][t])
+                    .max(p.outlet_head_floor.unwrap_or(f64::NEG_INFINITY));
+                let total_flow = topology.plant_units[plant]
+                    .iter()
+                    .map(|&g| {
+                        start.map_or((s.units[g].flow.min + s.units[g].flow.max) / 2., |p| {
+                            p.flow[g][t]
+                        })
+                    })
+                    .sum();
+                let tail = p
+                    .tailwater_curve
+                    .as_ref()
+                    .map_or(0., |c| c.extended_value(total_flow));
                 let q0 = start
                     .map_or((u.flow.min + u.flow.max) / 2., |p| p.flow[i][t])
                     .clamp(u.flow.min, u.flow.max);
+                let h0 = ((upstream - downstream - tail - u.loss_factor * q0 * q0)
+                    * u.mode.power_sign())
+                .clamp(u.head.min, u.head.max);
                 m.set_initial(ht[[i, t]], h0 / 100.)
                     .map_err(|e| Error::Model(e.to_string()))?;
                 let guess = u.trial_power(q0, h0);

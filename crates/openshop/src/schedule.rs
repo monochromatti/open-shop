@@ -57,36 +57,6 @@ impl<'a> SchedulingProblem<'a> {
         backend: Backend,
     ) -> Result<Schedule, Error> {
         options.validate()?;
-        let case = self.case;
-        if case.commitment.len() == case.system.units.len()
-            && self
-                .operating
-                .tunnels
-                .iter()
-                .flatten()
-                .all(|p| p.positions.len() == 1)
-        {
-            let commitment = case
-                .system
-                .units
-                .iter()
-                .map(|u| case.commitment[&u.name].clone())
-                .collect();
-            return self.dispatch(
-                crate::commitment::DiscreteControls {
-                    unit_on: commitment,
-                    gate_position: self
-                        .operating
-                        .tunnels
-                        .iter()
-                        .map(|row| vec![0; row.len()])
-                        .collect(),
-                },
-                None,
-                options,
-                backend,
-            );
-        }
         let started = Instant::now();
         let mut excluded = Vec::new();
         let mut best: Option<Schedule> = None;
@@ -119,6 +89,55 @@ impl<'a> SchedulingProblem<'a> {
             }
             last = Some(result);
         }
+        // An infeasible linearization does not prove nonlinear infeasibility.
+        // If every discrete control is prescribed, solve those equations directly.
+        if last.is_none() {
+            let unit_on = self
+                .case
+                .system
+                .units
+                .iter()
+                .enumerate()
+                .map(|(g, u)| {
+                    self.operating.units[g]
+                        .iter()
+                        .enumerate()
+                        .map(|(t, interval)| {
+                            self.case
+                                .commitment
+                                .get(&u.name)
+                                .map(|on| on[t])
+                                .or(interval.forced)
+                        })
+                        .collect::<Option<Vec<_>>>()
+                })
+                .collect::<Option<Vec<_>>>();
+            let gate_position = self
+                .operating
+                .tunnels
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|interval| (interval.positions.len() == 1).then_some(0))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .collect::<Option<Vec<_>>>();
+            if let (Some(unit_on), Some(gate_position)) = (unit_on, gate_position) {
+                let mut budget = options.clone();
+                budget.time_limit -= started.elapsed().as_secs_f64();
+                if budget.time_limit > 0. {
+                    return self.dispatch(
+                        crate::commitment::DiscreteControls {
+                            unit_on,
+                            gate_position,
+                        },
+                        None,
+                        &budget,
+                        backend,
+                    );
+                }
+            }
+        }
         let result = best.or(last).ok_or_else(|| {
             Error::Solver(
                 "no unit and gate schedule produced a nonlinear trial point within the time limit"
@@ -126,7 +145,7 @@ impl<'a> SchedulingProblem<'a> {
             )
         })?;
         let remaining = options.time_limit - started.elapsed().as_secs_f64();
-        if result.validation.feasible && remaining > 0.01 {
+        if remaining > 0.01 {
             let start = crate::commitment::Proposal {
                 controls: crate::commitment::DiscreteControls {
                     unit_on: result.commitment.clone(),
@@ -154,11 +173,15 @@ impl<'a> SchedulingProblem<'a> {
                 flow: result.unit_flow.clone(),
                 tunnel_flow: result.tunnel_flow.clone(),
                 river_withdrawal: result.river_withdrawal.clone(),
+                river_opening: result.river_opening.clone(),
+                head: result.head.clone(),
             };
             let mut budget = options.clone();
             budget.time_limit = remaining;
             let refined = self.dispatch(start.controls.clone(), Some(&start), &budget, backend)?;
-            if refined.validation.feasible && refined.objective >= result.objective {
+            if refined.validation.feasible
+                && (!result.validation.feasible || refined.objective >= result.objective)
+            {
                 return Ok(refined);
             }
         }
@@ -191,9 +214,17 @@ impl SchedulingProblem<'_> {
         let unit_flow = dispatch
             .flow
             .iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(g, row)| {
                 row.iter()
-                    .map(|i| dispatch.flow_scale * point.x[i.index()])
+                    .enumerate()
+                    .map(|(t, i)| {
+                        if controls.unit_on[g][t] {
+                            dispatch.flow_scale * point.x[i.index()]
+                        } else {
+                            0.
+                        }
+                    })
                     .collect()
             })
             .collect();
@@ -256,9 +287,20 @@ impl SchedulingProblem<'_> {
             .iter()
             .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
             .collect();
-        let schedule =
+        let mut schedule =
             crate::trajectory::evaluate(self, schedule, junction_head, options.tolerance.max(1e-7));
-        Ok(schedule)
+        match self.reconstruct(&schedule.controls()) {
+            Ok(mut physical) => {
+                physical.solver_status = schedule.solver_status;
+                physical.iterations = schedule.iterations;
+                Ok(physical)
+            }
+            Err(Error::Solver(_)) => {
+                schedule.validation.feasible = false;
+                Ok(schedule)
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -1307,16 +1349,21 @@ mod tests {
     }
 
     #[test]
-    fn an_interrupted_solve_does_not_claim_physical_feasibility() {
+    fn an_interrupted_solve_reports_recomputed_water_balance() {
+        let case = reservoir_case();
         let result = solve(
-            &reservoir_case(),
+            &case,
             &SolveOptions {
                 max_iterations: 0,
                 ..Default::default()
             },
         )
         .unwrap();
-        assert!(!result.validation.feasible);
-        assert!(result.validation.water_balance > 1.);
+        let balance = (result.storage[0][1] - case.system.reservoirs[0].initial_storage) / 3600.
+            + result.unit_flow[0][0];
+        assert!((result.validation.water_balance - balance.abs()).abs() < 1e-9);
+        if balance.abs() > 1e-7 {
+            assert!(!result.validation.feasible);
+        }
     }
 }

@@ -77,6 +77,46 @@ pub struct Validation {
     pub operating_limits: f64,
 }
 
+/// Interval heads integrated over the represented piecewise-linear storage paths.
+pub(crate) fn hydraulic_heads(
+    case: &ScheduleCase,
+    routing: &crate::river::Routing,
+    storage: &[Vec<f64>],
+    columns: &[f64],
+    junction_head: Vec<Vec<f64>>,
+) -> Vec<Vec<f64>> {
+    case.system
+        .reservoirs
+        .iter()
+        .enumerate()
+        .map(|(r, reservoir)| {
+            storage[r]
+                .windows(2)
+                .enumerate()
+                .map(|(t, v)| {
+                    let vertices: Vec<_> = routing.storage_shape[r][t]
+                        .iter()
+                        .map(|(f, c)| (*f, (1. - f) * v[0] + f * v[1] + c.value(columns)))
+                        .collect();
+                    vertices
+                        .windows(2)
+                        .map(|w| {
+                            (w[1].0 - w[0].0) * reservoir.level.trial_mean_level(w[0].1, w[1].1)
+                        })
+                        .sum()
+                })
+                .collect()
+        })
+        .chain(junction_head)
+        .chain(
+            case.system
+                .boundaries
+                .iter()
+                .map(|b| vec![b.head; case.prices.len()]),
+        )
+        .collect()
+}
+
 pub(crate) fn evaluate(
     problem: &crate::SchedulingProblem<'_>,
     mut schedule: Schedule,
@@ -149,31 +189,7 @@ pub(crate) fn evaluate(
         .iter()
         .map(|row| row.iter().map(|v| v.value(&columns)).collect())
         .collect();
-    schedule.head = s
-        .reservoirs
-        .iter()
-        .enumerate()
-        .map(|(r, reservoir)| {
-            schedule.storage[r]
-                .windows(2)
-                .enumerate()
-                .map(|(t, v)| {
-                    let vertices: Vec<_> = routing.storage_shape[r][t]
-                        .iter()
-                        .map(|(f, c)| (*f, (1. - f) * v[0] + f * v[1] + c.value(&columns)))
-                        .collect();
-                    vertices
-                        .windows(2)
-                        .map(|w| {
-                            (w[1].0 - w[0].0) * reservoir.level.trial_mean_level(w[0].1, w[1].1)
-                        })
-                        .sum()
-                })
-                .collect()
-        })
-        .chain(junction_head)
-        .chain(s.boundaries.iter().map(|b| vec![b.head; case.prices.len()]))
-        .collect();
+    schedule.head = hydraulic_heads(case, routing, &schedule.storage, &columns, junction_head);
     schedule.plant_flow = topology
         .plant_units
         .iter()
