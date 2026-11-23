@@ -20,7 +20,7 @@ pub(crate) struct Dispatch {
 
 pub(crate) fn build_dispatch(
     problem: &crate::SchedulingProblem<'_>,
-    commitment: &[Vec<bool>],
+    controls: &crate::commitment::DiscreteControls,
     start: Option<&crate::commitment::Proposal>,
 ) -> Result<Dispatch, Error> {
     let (case, topology, routing, operating) = (
@@ -29,6 +29,7 @@ pub(crate) fn build_dispatch(
         &problem.routing,
         &problem.operating,
     );
+    let commitment = &controls.unit_on;
     let s = &case.system;
     let (nr, nu, nt) = (s.reservoirs.len(), s.units.len(), case.prices.len());
     let m = Model::new("hydropower dispatch");
@@ -600,12 +601,13 @@ pub(crate) fn build_dispatch(
         let (source, target) = topology.tunnel_nodes[e];
         let dh = initial_head[source] - initial_head[target];
         for t in 0..nt {
-            let law = &operating.tunnels[e][t];
-            let guess = dh.signum() * (law.head_factor * dh.abs() / law.resistance).sqrt();
+            let interval = &operating.tunnels[e][t];
+            let law = &interval.positions[controls.gate_position[e][t]];
+            let guess = dh.signum() * (dh.abs() / law.resistance).sqrt();
             let capacity = if law.opening == 0. {
                 0.
             } else {
-                law.capacity / flow_scale
+                interval.capacity / flow_scale
             };
             m.set_bounds(
                 qt[[e, t]],
@@ -633,8 +635,8 @@ pub(crate) fn build_dispatch(
             .map_err(|e| Error::Model(e.to_string()))?;
             if law.opening > 0. {
                 let flow = qt[[e, t]] * flow_scale;
-                let pressure = (head[t][source] - head[t][target]) * law.head_factor
-                    - flow * flow.abs() * law.resistance;
+                let pressure =
+                    (head[t][source] - head[t][target]) - flow * flow.abs() * law.resistance;
                 constraint!(
                     m,
                     name = format!("pressure_loss[{e},{t}]"),
@@ -869,7 +871,19 @@ pub(crate) fn build_dispatch(
             .enumerate()
             .map(|(i, r)| routing.inventory[i][0].constant * r.water_value)
             .sum::<f64>();
-    revenue = revenue - initial_value;
+    let openings: Vec<Vec<f64>> = operating
+        .tunnels
+        .iter()
+        .enumerate()
+        .map(|(e, row)| {
+            row.iter()
+                .enumerate()
+                .map(|(t, p)| p.positions[controls.gate_position[e][t]].opening)
+                .collect()
+        })
+        .collect();
+    revenue =
+        revenue - initial_value - crate::trajectory::gate_adjustment_cost(&s.tunnels, &openings);
     objective!(m, Max, revenue / 1000.);
     let storage = (0..nr)
         .map(|r| (0..=nt).map(|t| v[[r, t]].var_id().unwrap()).collect())

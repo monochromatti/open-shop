@@ -219,6 +219,12 @@ pub struct Tunnel {
     pub discharge_river: Option<String>,
     /// Head multiplier in [0,1] when no gate-loss curve is supplied.
     pub opening: f64,
+    #[serde(default)]
+    pub gate_positions: Vec<f64>,
+    #[serde(default)]
+    pub initial_opening: Option<f64>,
+    #[serde(default)]
+    pub gate_adjustment_cost: f64,
     /// Additional signed-flow resistance as a function of gate position.
     #[serde(default)]
     pub gate_loss_factor_curve: Option<crate::TableCurve>,
@@ -239,6 +245,9 @@ impl Tunnel {
             capacity,
             loss_factor,
             opening: 1.,
+            gate_positions: vec![],
+            initial_opening: None,
+            gate_adjustment_cost: 0.,
             gate_loss_factor_curve: None,
             discharge_river: None,
         }
@@ -972,6 +981,26 @@ impl ScheduleCase {
             {
                 return Err(Error::Input(format!(
                     "{}: invalid tunnel capacity, resistance or opening",
+                    tunnel.name
+                )));
+            }
+            if !tunnel
+                .gate_positions
+                .iter()
+                .all(|v| v.is_finite() && (0. ..=1.).contains(v))
+                || !tunnel.gate_positions.windows(2).all(|w| w[1] > w[0])
+                || !tunnel.initial_opening.unwrap_or(tunnel.opening).is_finite()
+                || !(0. ..=1.).contains(&tunnel.initial_opening.unwrap_or(tunnel.opening))
+                || !tunnel.gate_adjustment_cost.is_finite()
+                || tunnel.gate_adjustment_cost < 0.
+                || (!tunnel.gate_positions.is_empty()
+                    && (!tunnel.gate_positions.contains(&tunnel.opening)
+                        || !tunnel
+                            .gate_positions
+                            .contains(&tunnel.initial_opening.unwrap_or(tunnel.opening))))
+            {
+                return Err(Error::Input(format!(
+                    "{}: gate positions must be ordered in [0,1], contain initial/static positions, and have a finite nonnegative adjustment cost",
                     tunnel.name
                 )));
             }

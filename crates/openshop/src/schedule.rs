@@ -10,7 +10,7 @@ use crate::{
 };
 use std::time::Instant;
 
-/// Optimize on/off schedules with SCIP proposals and exact nonlinear dispatch.
+/// Optimize unit states and tunnel gates with SCIP proposals and nonlinear dispatch.
 /// Prescribed commitments remain fixed; other units can change commitment
 /// between nonlinear solves. This search does not establish a global bound.
 /// An infeasible or unfinished solve is reported through `validation.feasible`;
@@ -55,14 +55,34 @@ impl<'a> SchedulingProblem<'a> {
     ) -> Result<Schedule, Error> {
         options.validate()?;
         let case = self.case;
-        if case.commitment.len() == case.system.units.len() {
+        if case.commitment.len() == case.system.units.len()
+            && self
+                .operating
+                .tunnels
+                .iter()
+                .flatten()
+                .all(|p| p.positions.len() == 1)
+        {
             let commitment = case
                 .system
                 .units
                 .iter()
                 .map(|u| case.commitment[&u.name].clone())
                 .collect();
-            return self.dispatch(commitment, None, options, backend);
+            return self.dispatch(
+                crate::commitment::DiscreteControls {
+                    unit_on: commitment,
+                    gate_position: self
+                        .operating
+                        .tunnels
+                        .iter()
+                        .map(|row| vec![0; row.len()])
+                        .collect(),
+                },
+                None,
+                options,
+                backend,
+            );
         }
         let started = Instant::now();
         let mut excluded = Vec::new();
@@ -79,7 +99,7 @@ impl<'a> SchedulingProblem<'a> {
             else {
                 break;
             };
-            excluded.push(proposal.on.clone());
+            excluded.push(proposal.controls.clone());
             let mut budget = options.clone();
             budget.time_limit =
                 (options.time_limit - started.elapsed().as_secs_f64()).min(options.time_limit / 4.);
@@ -87,7 +107,8 @@ impl<'a> SchedulingProblem<'a> {
                 break;
             }
             budget.max_iterations = options.max_iterations.min(200);
-            let result = self.dispatch(proposal.on.clone(), Some(&proposal), &budget, backend)?;
+            let result =
+                self.dispatch(proposal.controls.clone(), Some(&proposal), &budget, backend)?;
             if result.validation.feasible
                 && best.as_ref().is_none_or(|p| result.objective > p.objective)
             {
@@ -97,13 +118,34 @@ impl<'a> SchedulingProblem<'a> {
         }
         let result = best.or(last).ok_or_else(|| {
             Error::Solver(
-                "no commitment produced a nonlinear trial point within the time limit".into(),
+                "no unit and gate schedule produced a nonlinear trial point within the time limit".into(),
             )
         })?;
         let remaining = options.time_limit - started.elapsed().as_secs_f64();
         if result.validation.feasible && remaining > 0.01 {
             let start = crate::commitment::Proposal {
-                on: result.commitment.clone(),
+                controls: crate::commitment::DiscreteControls {
+                    unit_on: result.commitment.clone(),
+                    gate_position: self
+                        .operating
+                        .tunnels
+                        .iter()
+                        .enumerate()
+                        .map(|(e, row)| {
+                            row.iter()
+                                .enumerate()
+                                .map(|(t, p)| {
+                                    p.positions
+                                        .iter()
+                                        .position(|p| p.opening == result.tunnel_opening[e][t])
+                                })
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| {
+                            Error::Model("result contains an undeclared tunnel opening".into())
+                        })?,
+                },
                 storage: result.storage.clone(),
                 flow: result.unit_flow.clone(),
                 tunnel_flow: result.tunnel_flow.clone(),
@@ -111,8 +153,7 @@ impl<'a> SchedulingProblem<'a> {
             };
             let mut budget = options.clone();
             budget.time_limit = remaining;
-            let refined =
-                self.dispatch(result.commitment.clone(), Some(&start), &budget, backend)?;
+            let refined = self.dispatch(start.controls.clone(), Some(&start), &budget, backend)?;
             if refined.validation.feasible && refined.objective >= result.objective {
                 return Ok(refined);
             }
@@ -124,13 +165,13 @@ impl<'a> SchedulingProblem<'a> {
 impl SchedulingProblem<'_> {
     fn dispatch(
         &self,
-        commitment: Vec<Vec<bool>>,
+        controls: crate::commitment::DiscreteControls,
         start: Option<&crate::commitment::Proposal>,
         options: &SolveOptions,
         backend: Backend,
     ) -> Result<Schedule, Error> {
         let (case, routing) = (self.case, &self.routing);
-        let dispatch = build_dispatch(self, &commitment, start)?;
+        let dispatch = build_dispatch(self, &controls, start)?;
         let point = nlp::solve(dispatch.problem, options, backend)?;
         let storage = dispatch
             .storage
@@ -165,6 +206,19 @@ impl SchedulingProblem<'_> {
             storage,
             unit_flow,
             tunnel_flow,
+            tunnel_opening: self
+                .operating
+                .tunnels
+                .iter()
+                .enumerate()
+                .map(|(e, row)| {
+                    row.iter()
+                        .enumerate()
+                        .map(|(t, p)| p.positions[controls.gate_position[e][t]].opening)
+                        .collect()
+                })
+                .collect(),
+            gate_adjustment_cost: 0.,
             river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
             river_opening: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
             observed_flow: Vec::new(),
@@ -177,7 +231,7 @@ impl SchedulingProblem<'_> {
             plant_flow: Vec::new(),
             plant_power: Vec::new(),
             head: Vec::new(),
-            commitment,
+            commitment: controls.unit_on,
             objective: 0.,
             solver_status: point.status,
             iterations: point.iterations,
@@ -753,6 +807,9 @@ mod tests {
                 loss_factor: 0.1,
                 opening: 1.,
                 discharge_river: None,
+                gate_positions: vec![],
+                initial_opening: None,
+                gate_adjustment_cost: 0.,
                 gate_loss_factor_curve: None,
             },
             Tunnel {
@@ -763,6 +820,9 @@ mod tests {
                 loss_factor: 0.4,
                 opening: 1.,
                 discharge_river: None,
+                gate_positions: vec![],
+                initial_opening: None,
+                gate_adjustment_cost: 0.,
                 gate_loss_factor_curve: None,
             },
         ];
@@ -1117,6 +1177,9 @@ mod tests {
             loss_factor: 1.,
             opening: 0.25,
             discharge_river: None,
+            gate_positions: vec![],
+            initial_opening: None,
+            gate_adjustment_cost: 0.,
             gate_loss_factor_curve: None,
         }];
         for backend in [Backend::Ipopt, Backend::Pounce] {
@@ -1165,6 +1228,9 @@ mod tests {
             loss_factor: 1.,
             opening: 1e-4,
             discharge_river: None,
+            gate_positions: vec![],
+            initial_opening: None,
+            gate_adjustment_cost: 0.,
             gate_loss_factor_curve: None,
         }];
         let problem = SchedulingProblem::new(&case).unwrap();
@@ -1189,6 +1255,9 @@ mod tests {
             loss_factor: 1.,
             opening: 0.,
             discharge_river: None,
+            gate_positions: vec![],
+            initial_opening: None,
+            gate_adjustment_cost: 0.,
             gate_loss_factor_curve: Some(
                 crate::TableCurve::new(vec![0., 1.], vec![0., 0.]).unwrap(),
             ),
@@ -1222,6 +1291,9 @@ mod tests {
             loss_factor: 0.01,
             opening: 0.,
             discharge_river: None,
+            gate_positions: vec![],
+            initial_opening: None,
+            gate_adjustment_cost: 0.,
             gate_loss_factor_curve: None,
         });
         let result = solve(&case, &SolveOptions::default()).unwrap();

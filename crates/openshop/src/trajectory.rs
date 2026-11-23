@@ -16,6 +16,8 @@ pub struct Schedule {
     pub plant_flow: Vec<Vec<f64>>,
     pub plant_power: Vec<Vec<f64>>,
     pub tunnel_flow: Vec<Vec<f64>>,
+    pub tunnel_opening: Vec<Vec<f64>>,
+    pub gate_adjustment_cost: f64,
     /// River by control interval. Withdrawal excludes local river inflow/outfalls.
     pub river_withdrawal: Vec<Vec<f64>>,
     /// Reservoir outlet gate fraction, river by control interval; zero for signed channels and river junctions.
@@ -227,6 +229,7 @@ pub(crate) fn evaluate(
                 .collect()
         })
         .collect();
+    schedule.gate_adjustment_cost = gate_adjustment_cost(&s.tunnels, &schedule.tunnel_opening);
     schedule.objective = objective(case, &schedule, operating);
     schedule.validation = validate(problem, &schedule, tolerance);
     schedule
@@ -266,7 +269,7 @@ fn objective(
                 .sum::<f64>()
         })
         .sum::<f64>();
-    revenue
+    revenue - schedule.gate_adjustment_cost
         + case
             .system
             .rivers
@@ -498,7 +501,15 @@ fn validate(
     }
     for (e, tunnel) in case.system.tunnels.iter().enumerate() {
         for t in 0..case.prices.len() {
-            let law = &operating.tunnels[e][t];
+            let interval = &operating.tunnels[e][t];
+            let Some(law) = interval
+                .positions
+                .iter()
+                .find(|p| p.opening == schedule.tunnel_opening[e][t])
+            else {
+                result.operating_limits = f64::INFINITY;
+                continue;
+            };
             let (a, b) = topology.tunnel_nodes[e];
             let q = schedule.tunnel_flow[e][t];
             let error = if law.opening == 0. {
@@ -506,13 +517,14 @@ fn validate(
                 // impose no pressure law.
                 0.
             } else {
-                ((schedule.head[a][t] - schedule.head[b][t]) * law.head_factor
-                    - law.resistance * q * q.abs())
-                .abs()
-                    / law.head_factor
+                ((schedule.head[a][t] - schedule.head[b][t]) - law.resistance * q * q.abs()).abs()
             };
             result.pressure_balance = result.pressure_balance.max(error);
-            let capacity = if law.opening == 0. { 0. } else { law.capacity };
+            let capacity = if law.opening == 0. {
+                0.
+            } else {
+                interval.capacity
+            };
             result.operating_limits = result.operating_limits.max(violation(
                 q,
                 if topology.tunnel_outfalls[e].is_some() {
@@ -787,6 +799,7 @@ fn validate(
         .chain(&schedule.unit_head)
         .chain(&schedule.head)
         .chain(&schedule.tunnel_flow)
+        .chain(&schedule.tunnel_opening)
         .chain(&schedule.river_storage)
         .chain(&schedule.observed_flow)
         .chain(&schedule.observed_volume)
@@ -801,4 +814,22 @@ fn validate(
         && result.operating_limits <= tolerance
         && schedule.objective.is_finite();
     result
+}
+
+/// Total variation of physical gate positions, with the declared initial position.
+pub(crate) fn gate_adjustment_cost(tunnels: &[crate::Tunnel], openings: &[Vec<f64>]) -> f64 {
+    tunnels
+        .iter()
+        .zip(openings)
+        .map(|(e, row)| {
+            let mut previous = e.initial_opening.unwrap_or(e.opening);
+            row.iter()
+                .map(|&a| {
+                    let cost = (a - previous).abs() * e.gate_adjustment_cost;
+                    previous = a;
+                    cost
+                })
+                .sum::<f64>()
+        })
+        .sum()
 }

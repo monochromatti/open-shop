@@ -124,11 +124,14 @@ pub(crate) struct ReservoirData {
     pub volume_change: Vec<ChangeLimit>,
     pub level_change: Vec<ChangeLimit>,
 }
+#[derive(Clone, Copy)]
+pub(crate) struct TunnelPosition {
+    pub opening: f64,
+    pub resistance: f64,
+}
 pub(crate) struct TunnelInterval {
     pub capacity: f64,
-    pub opening: f64,
-    pub head_factor: f64,
-    pub resistance: f64,
+    pub positions: Vec<TunnelPosition>,
 }
 pub(crate) struct OperatingData {
     pub units: Vec<Vec<MachineInterval>>,
@@ -278,6 +281,18 @@ impl OperatingData {
                     "unsupported operating attribute {:?} on {:?}",
                     s.attribute, s.object
                 )));
+            }
+            if let Object::Tunnel(name) = &s.object
+                && s.attribute == Opening
+            {
+                let e = system.tunnels.iter().find(|e| &e.name == name).unwrap();
+                if !e.gate_positions.is_empty()
+                    && s.values.iter().any(|v| !e.gate_positions.contains(v))
+                {
+                    return Err(Error::Input(format!(
+                        "{name}: opening schedule must select declared gate positions"
+                    )));
+                }
             }
             let valid = if matches!(s.object, Object::FlowRequirement(_))
                 && matches!(s.attribute, FlowMin | FlowMax)
@@ -732,28 +747,42 @@ impl OperatingData {
             let mut intervals = Vec::new();
             for &time in &case.grid[..nt] {
                 let capacity = value(m, Capacity, time, Some(tunnel.capacity), false).unwrap();
-                let opening = value(m, Opening, time, Some(tunnel.opening), false).unwrap();
                 if capacity > tunnel.capacity {
                     return Err(Error::Input(format!(
                         "{}: operating capacity exceeds static domain",
                         tunnel.name
                     )));
                 }
-                let (head_factor, resistance) = if opening == 0. {
-                    (0., tunnel.loss_factor)
-                } else if let Some(c) = &tunnel.gate_loss_factor_curve {
-                    (1., tunnel.loss_factor + c.value(opening)?)
+                let permitted = if tunnel.gate_positions.is_empty() {
+                    vec![value(m, Opening, time, Some(tunnel.opening), false).unwrap()]
+                } else if let Some(opening) = value(m, Opening, time, None, false) {
+                    vec![opening]
                 } else {
-                    (opening, tunnel.loss_factor)
+                    tunnel.gate_positions.clone()
                 };
-                if !resistance.is_finite() {
-                    return Err(Error::Input("nonfinite gate resistance".into()));
+                let mut positions = Vec::new();
+                for opening in permitted {
+                    let resistance = if opening == 0. {
+                        tunnel.loss_factor
+                    } else if let Some(c) = &tunnel.gate_loss_factor_curve {
+                        tunnel.loss_factor + c.value(opening)?
+                    } else {
+                        tunnel.loss_factor / opening
+                    };
+                    if !resistance.is_finite() {
+                        return Err(Error::Input(format!(
+                            "{}: nonfinite tunnel resistance",
+                            tunnel.name
+                        )));
+                    }
+                    positions.push(TunnelPosition {
+                        opening,
+                        resistance,
+                    });
                 }
                 intervals.push(TunnelInterval {
                     capacity,
-                    opening,
-                    head_factor,
-                    resistance,
+                    positions,
                 });
             }
             tunnels.push(intervals);

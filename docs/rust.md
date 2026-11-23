@@ -236,7 +236,7 @@ nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
-independent replay, optimized tunnel gates and interlocks,
+independent replay, tunnel interlocks,
 soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
@@ -432,3 +432,28 @@ reach's arrival response. River inventory accounts for the intervening water.
 A closed outfall tunnel still disconnects pressure. Ordinary tunnels remain
 bidirectional. Flow observations can refer to the tunnel or its downstream
 river arrivals explicitly.
+
+
+## Discrete tunnel gates
+
+A nonempty `Tunnel::gate_positions` lets optimization select among its ordered
+positions in `[0, 1]`. Static and initial openings must be listed positions.
+An `Opening` time series is a hard schedule after its first knot; preceding
+intervals retain the full declared choice. Empty `gate_positions` keeps the
+opening prescribed, including arbitrary continuous scheduled values.
+
+SCIP proposes unit states and gate positions together. Pressure tangents
+distinguish positions hydraulically, with inactive-row bounds derived from the
+affine head and flow domains. Nonlinear dispatch solves the original pressure
+law at the selected position. Search exclusions include both unit and gate
+decisions, so fixing all units does not lock free gates.
+
+`gate_adjustment_cost` charges each absolute position change, including the
+change from `initial_opening` (or the static opening if omitted). Public results
+include physical `tunnel_opening` and total `gate_adjustment_cost`.
+
+Every positive position is prepared as a resistance in the equation
+`H_source − H_target = resistance Q |Q|`. For the head-multiplier convention this
+resistance is `loss_factor/opening`; for a gate-loss curve it is
+`loss_factor + G(opening)`. This algebraic normalization keeps pressure residuals
+in metres even at a small opening. Zero remains a disconnected gate.
