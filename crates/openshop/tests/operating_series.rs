@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 fn case() -> ScheduleCase {
     ScheduleCase {
+        routing_grid: vec![],
         operations: vec![],
         system: HydroSystem {
             reservoirs: vec![Reservoir {
@@ -203,7 +204,7 @@ fn river_inflows_follow_their_original_release_intervals() {
         source: "Natural".into(),
         target: "Sea".into(),
         capacity: 10.,
-        delay: 0.5,
+        transport: RiverTransport::Fixed { delay: 0.5 },
         allocation: 1.,
         inflow: 0.,
         water_value: 0.,

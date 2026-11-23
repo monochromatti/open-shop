@@ -206,6 +206,27 @@ impl RiverLaw {
             }
         })
     }
+    // Numerical evaluation never clips a returned control. Bounds are checked
+    // separately, so solver roundoff remains visible in the residuals.
+    pub(crate) fn trial_outlet_flow(
+        &self,
+        head: f64,
+        opening: f64,
+        capacity: f64,
+        inflow: f64,
+    ) -> f64 {
+        match self {
+            Self::Controlled => (capacity - inflow) * opening,
+            Self::Orifice {
+                coefficient, crest, ..
+            } => coefficient * opening * (head - crest).max(0.).sqrt(),
+            Self::Weir {
+                coefficient, crest, ..
+            } => coefficient * (head - crest).max(0.).powf(1.5),
+            Self::Level { curve } => opening * curve.extended_value(head),
+            Self::Delta { .. } => f64::NAN,
+        }
+    }
     pub(crate) fn validate(
         &self,
         river: &crate::River,
@@ -222,7 +243,7 @@ impl RiverLaw {
             Self::Delta { .. } => {
                 if source.is_none()
                     || !system.reservoirs.iter().any(|r| r.name == river.target)
-                    || river.delay != 0.
+                    || river.transport.fixed_delay() != Some(0.)
                     || river.inflow != 0.
                     || river.history_release.iter().any(|&q| q != 0.)
                     || river.gate.min != 0.

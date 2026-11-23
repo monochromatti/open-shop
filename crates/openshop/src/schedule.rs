@@ -225,6 +225,7 @@ mod tests {
 
     fn reservoir_case() -> ScheduleCase {
         ScheduleCase {
+            routing_grid: vec![],
             operations: Default::default(),
             system: HydroSystem {
                 reservoirs: vec![Reservoir {
@@ -865,7 +866,7 @@ mod tests {
             name: "River".into(),
             source: "Outfall".into(),
             target: "Forebay".into(),
-            delay: 0.5,
+            transport: crate::RiverTransport::Fixed { delay: 0.5 },
             capacity: 30.,
             allocation: 1.,
             inflow: 0.,

@@ -66,11 +66,11 @@ nearby cubic potentials. The potential primitive is in m⁴; multiplying its cha
 by water density and gravity gives the potential-energy change in joules.
 
 The nonlinear model uses one mean-head equation per interval for each nonconstant
-measured curve. The equation integrates every segment of the reservoir's actual
+polynomial or measured curve. The equation integrates every segment of the reservoir's actual
 piecewise-linear storage path, including changes caused by river arrivals.
 Its first and second derivatives are assembled locally through the affine storage
 paths. Sparse structure and chain-rule coefficients are prepared once, and numeric
-callbacks reuse their buffers. Polynomial heads remain direct expressions.
+callbacks reuse their buffers.
 A table constant over its operating range needs no head unknown.
 
 Trial points use end-secant continuation to let a solver recover from violated
@@ -235,8 +235,7 @@ optimality provided by the complete Julia package. A feasible result alone says
 nothing about optimality. `solver_status` is Ipopt's termination code;
 `iterations` describes the final nonlinear solve, not the entire commitment search.
 
-Still required are flow-dependent distributed river responses, outlet laws and
-instantaneous level-difference channels, adaptive hydraulic integration and
+Still required are adaptive hydraulic integration and
 independent replay, optimized tunnel gates and interlocks, gross-head limits,
 observation windows, soft constraints and reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
@@ -325,3 +324,32 @@ curve applies. Channel equations extend each delta-level curve by its end
 secants, while raw `value` lookups reject delta levels outside the supplied
 domain. A channel connects two reservoirs immediately, with signed discharge,
 zero delay, and no gate, natural inflow or historical inventory.
+
+
+## Distributed river travel times
+
+`RiverTransport::Fixed { delay }` translates releases exactly in hours.
+`RiverTransport::Distributed { curves }` supplies `DelayCurve` records containing
+a reference flow, ordered delay-bin edges and bin probabilities. Probabilities
+must sum to one; they are never silently normalized. A single curve is independent
+of flow. Several curves must cover zero through the reach capacity, and their
+probability distributions interpolate between neighboring reference flows.
+
+Each release retains its original reference blend. The model forms reference
+flows once per release and reuses them for every arrival and inventory
+observation. The last reference flow is the total minus the others, preserving
+conservation algebraically. Nonlinear derivative assembly only sees the small
+piecewise-quadratic reference-flow functions.
+
+Distributed river junctions pass interval-average arrivals into downstream
+reaches on a separate transport mesh. `ScheduleCase::routing_grid` can supply
+that mesh; it must include all control vertices. The default has four cells per
+control interval. Refinement changes arrival timing at river junctions and must
+be checked for convergence; a small equation residual alone does not establish
+transport accuracy. Networks containing only fixed delays retain exact shifted
+release boundaries and require no mixing mesh.
+
+`arrival_volume` and `remaining_volume` expose interval transport calculations
+in m³. Arrival fractions integrate the nonnegative pieces of the trapezoidal
+arrival density directly. Remaining inventory integrates survival probability
+directly, avoiding cancellation when only a small tail remains in transit.

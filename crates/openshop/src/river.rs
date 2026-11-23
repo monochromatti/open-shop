@@ -1,4 +1,4 @@
-//! Exact transport of piecewise constant releases through fixed-delay rivers.
+//! Conservative transport through river networks.
 //!
 //! A release interval is translated in time, not spread over the next control
 //! interval. At a river junction we retain every arriving interval boundary.
@@ -28,10 +28,18 @@ impl LinearForm {
         self
     }
 
-    fn add_scaled(&mut self, other: &Self, scale: f64) {
+    pub(crate) fn add_scaled(&mut self, other: &Self, scale: f64) {
+        if scale == 0. {
+            return;
+        }
         self.constant += scale * other.constant;
         for (&i, &a) in &other.coefficients {
-            *self.coefficients.entry(i).or_default() += scale * a;
+            let value = self.coefficients.get(&i).copied().unwrap_or(0.) + scale * a;
+            if value == 0. {
+                self.coefficients.remove(&i);
+            } else {
+                self.coefficients.insert(i, value);
+            }
         }
     }
     pub fn value(&self, x: &[f64]) -> f64 {
@@ -72,7 +80,14 @@ impl ReleaseSeries {
     }
 }
 
+pub(crate) struct TransferEquation {
+    pub flow: LinearForm,
+    pub fraction: std::sync::Arc<crate::river_transport::ReleaseFraction>,
+}
 pub(crate) struct Routing {
+    pub primary_columns: usize,
+    /// Local released-transfer equations, in upstream-to-downstream order.
+    pub transfers: Vec<TransferEquation>,
     /// Reservoir-source reach indices, in decision-variable order.
     pub outlets: Vec<usize>,
     /// Columns are unit flows, then reservoir river releases; each is interval-major.
@@ -123,9 +138,6 @@ impl Routing {
                 || s.boundaries.iter().any(|n| n.name == r.source)
                 || !r.capacity.is_finite()
                 || r.capacity <= 0.
-                || !r.delay.is_finite()
-                || r.delay < 0.
-                || !(end + r.delay).is_finite()
                 || !r.allocation.is_finite()
                 || !(0. ..=1.).contains(&r.allocation)
                 || !r.inflow.is_finite()
@@ -138,6 +150,7 @@ impl Routing {
                 )));
             }
             r.law.validate(r, s)?;
+            r.transport.validate(r.capacity, end)?;
             let empty = r.history_grid.is_empty() && r.history_release.is_empty();
             if !empty
                 && (r.history_grid.len() != r.history_release.len() + 1
@@ -148,6 +161,17 @@ impl Routing {
             {
                 return Err(Error::Input(format!(
                     "{}: invalid historical river releases",
+                    r.name
+                )));
+            }
+            if let crate::RiverTransport::Distributed { curves } = &r.transport
+                && curves.len() > 1
+                && r.history_release
+                    .iter()
+                    .any(|q| *q > curves.last().unwrap().reference_flow())
+            {
+                return Err(Error::Input(format!(
+                    "{}: historical release exceeds delay reference domain",
                     r.name
                 )));
             }
@@ -227,6 +251,18 @@ impl Routing {
                 ));
             }
         }
+        if s.rivers.iter().any(|r| r.transport.fixed_delay().is_none()) {
+            return Self::distributed(
+                case,
+                topology,
+                operating,
+                outlets,
+                outlet_index,
+                upstream,
+                order,
+                history,
+            );
+        }
         let mut releases: Vec<_> = (0..s.rivers.len())
             .map(|_| ReleaseSeries {
                 grid: Vec::new(),
@@ -238,7 +274,7 @@ impl Routing {
             let mut grid = case.grid.clone();
             for &j in &upstream[i] {
                 for &t in releases[j].grid.iter().chain(&history[j].grid) {
-                    let arrival = t + s.rivers[j].delay;
+                    let arrival = t + s.rivers[j].transport.fixed_delay().unwrap();
                     if arrival > start && arrival < end {
                         grid.push(arrival);
                     }
@@ -260,7 +296,7 @@ impl Routing {
                             .insert(s.units.len() * nt + k * nt + t, 1.);
                     }
                     for &j in &upstream[i] {
-                        let released = time - s.rivers[j].delay;
+                        let released = time - s.rivers[j].transport.fixed_delay().unwrap();
                         let previous = if released < start {
                             &history[j]
                         } else {
@@ -286,8 +322,17 @@ impl Routing {
                 .grid
                 .windows(2)
                 .map(|w| {
-                    let mut volume = history[i].integral(w[0] - r.delay, w[1] - r.delay);
-                    volume.add_scaled(&releases[i].integral(w[0] - r.delay, w[1] - r.delay), 1.);
+                    let mut volume = history[i].integral(
+                        w[0] - r.transport.fixed_delay().unwrap(),
+                        w[1] - r.transport.fixed_delay().unwrap(),
+                    );
+                    volume.add_scaled(
+                        &releases[i].integral(
+                            w[0] - r.transport.fixed_delay().unwrap(),
+                            w[1] - r.transport.fixed_delay().unwrap(),
+                        ),
+                        1.,
+                    );
                     let mut mean = LinearForm::default();
                     mean.add_scaled(&volume, 1. / (w[1] - w[0]));
                     mean
@@ -298,8 +343,14 @@ impl Routing {
                 .iter()
                 .map(|&time| {
                     let mut volume = LinearForm::default();
-                    volume.add_scaled(&history[i].integral(time - r.delay, time), 3600.);
-                    volume.add_scaled(&releases[i].integral(time - r.delay, time), 3600.);
+                    volume.add_scaled(
+                        &history[i].integral(time - r.transport.fixed_delay().unwrap(), time),
+                        3600.,
+                    );
+                    volume.add_scaled(
+                        &releases[i].integral(time - r.transport.fixed_delay().unwrap(), time),
+                        3600.,
+                    );
                     volume
                 })
                 .collect();
@@ -331,7 +382,7 @@ impl Routing {
                 let mut times = vec![w[0], w[1]];
                 for &i in &incoming {
                     for &release in releases[i].grid.iter().chain(&history[i].grid) {
-                        let arrival = release + s.rivers[i].delay;
+                        let arrival = release + s.rivers[i].transport.fixed_delay().unwrap();
                         if arrival > w[0] && arrival < w[1] {
                             times.push(arrival);
                         }
@@ -346,7 +397,7 @@ impl Routing {
                         let mut correction = LinearForm::default();
                         if time > w[0] && time < w[1] {
                             for &i in &incoming {
-                                let delay = s.rivers[i].delay;
+                                let delay = s.rivers[i].transport.fixed_delay().unwrap();
                                 correction.add_scaled(
                                     &history[i].integral(w[0] - delay, time - delay),
                                     3600.,
@@ -365,6 +416,8 @@ impl Routing {
             }
         }
         Ok(Self {
+            primary_columns: (s.units.len() + outlets.len()) * nt,
+            transfers: Vec::new(),
             outlets,
             releases,
             arrivals,
@@ -373,6 +426,260 @@ impl Routing {
             storage_shape,
         })
     }
+    /// Complete physical routing values in dependency order. This is also used
+    /// to validate a solver result independently of its lifted transfer variables.
+    pub fn complete_columns(&self, columns: &mut Vec<f64>) {
+        debug_assert_eq!(columns.len(), self.primary_columns);
+        for e in &self.transfers {
+            columns.push(e.fraction.data(e.flow.value(columns)).value);
+        }
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn distributed(
+        case: &ScheduleCase,
+        topology: &Topology,
+        operating: &crate::operating_data::OperatingData,
+        outlets: Vec<usize>,
+        outlet_index: Vec<Option<usize>>,
+        upstream: Vec<Vec<usize>>,
+        order: Vec<usize>,
+        history: Vec<ReleaseSeries>,
+    ) -> Result<Self, Error> {
+        let s = &case.system;
+        let nt = case.prices.len();
+        let nr = s.rivers.len();
+        let primary_columns = (s.units.len() + outlets.len()) * nt;
+        let mut transfers = Vec::new();
+        let mesh = if case.routing_grid.is_empty() {
+            let mut grid = Vec::new();
+            for w in case.grid.windows(2) {
+                for k in 0..4 {
+                    grid.push(w[0] + (w[1] - w[0]) * k as f64 / 4.);
+                }
+            }
+            grid.push(*case.grid.last().unwrap());
+            grid
+        } else {
+            case.routing_grid.clone()
+        };
+        let mut releases = vec![
+            ReleaseSeries {
+                grid: vec![],
+                rates: vec![]
+            };
+            nr
+        ];
+        let mut mesh_arrival = vec![vec![]; nr];
+        let mut arrivals = vec![vec![]; nr];
+        let mut inventory = vec![vec![]; nr];
+        for i in order {
+            let r = &s.rivers[i];
+            let grid = if upstream[i].is_empty() {
+                case.grid.clone()
+            } else {
+                mesh.clone()
+            };
+            let mut rates = Vec::new();
+            for (k, w) in grid.windows(2).enumerate() {
+                let t = case
+                    .grid
+                    .partition_point(|v| *v <= w[0])
+                    .saturating_sub(1)
+                    .min(nt - 1);
+                let mut q = LinearForm {
+                    constant: operating.river_inflow[i][t],
+                    ..Default::default()
+                };
+                if let Some(j) = outlet_index[i] {
+                    q.coefficients.insert(s.units.len() * nt + j * nt + t, 1.);
+                }
+                for &j in &upstream[i] {
+                    q.add_scaled(&mesh_arrival[j][k], r.allocation);
+                }
+                for (u, outfall) in topology.unit_outfalls.iter().enumerate() {
+                    if *outfall == Some(i) {
+                        *q.coefficients.entry(u * nt + t).or_default() += 1.;
+                    }
+                }
+                rates.push(q);
+            }
+            releases[i] = ReleaseSeries { grid, rates };
+            let flux =
+                reference_fluxes(&r.transport, &releases[i], primary_columns, &mut transfers);
+            let past_flux =
+                reference_fluxes(&r.transport, &history[i], primary_columns, &mut transfers);
+            mesh_arrival[i] = mesh
+                .windows(2)
+                .map(|w| {
+                    let observation = crate::river_transport::Observation::Arrival(w[0], w[1]);
+                    let mut mean =
+                        transport_series(&r.transport, &history[i], &past_flux, observation);
+                    mean.add_scaled(
+                        &transport_series(&r.transport, &releases[i], &flux, observation),
+                        1.,
+                    );
+                    mean.scaled(1. / (w[1] - w[0]))
+                })
+                .collect();
+            arrivals[i] = case
+                .grid
+                .windows(2)
+                .map(|w| {
+                    let mut mean = LinearForm::default();
+                    for (k, cell) in mesh.windows(2).enumerate() {
+                        if w[0] <= cell[0] && cell[1] <= w[1] {
+                            mean.add_scaled(
+                                &mesh_arrival[i][k],
+                                (cell[1] - cell[0]) / (w[1] - w[0]),
+                            );
+                        }
+                    }
+                    mean
+                })
+                .collect();
+            inventory[i] = case
+                .grid
+                .iter()
+                .map(|&time| {
+                    let observation = crate::river_transport::Observation::Transit(time);
+                    let mut volume =
+                        transport_series(&r.transport, &history[i], &past_flux, observation);
+                    volume.add_scaled(
+                        &transport_series(&r.transport, &releases[i], &flux, observation),
+                        1.,
+                    );
+                    volume.scaled(3600.)
+                })
+                .collect();
+        }
+        let mut reservoir_net = vec![vec![LinearForm::default(); nt]; s.reservoirs.len()];
+        let mut storage_shape = vec![vec![]; s.reservoirs.len()];
+        for (r, reservoir) in s.reservoirs.iter().enumerate() {
+            let incoming: Vec<_> = s
+                .rivers
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| (e.target == reservoir.name).then_some(i))
+                .collect();
+            for &i in &incoming {
+                for t in 0..nt {
+                    reservoir_net[r][t].add_scaled(&arrivals[i][t], 1.);
+                }
+            }
+            for (i, e) in s.rivers.iter().enumerate() {
+                if e.source == reservoir.name {
+                    let j = outlet_index[i].unwrap();
+                    for (t, row) in reservoir_net[r].iter_mut().enumerate() {
+                        *row.coefficients
+                            .entry(s.units.len() * nt + j * nt + t)
+                            .or_default() -= 1.;
+                    }
+                }
+            }
+            for (t, w) in case.grid.windows(2).enumerate() {
+                let mut vertices = vec![(0., LinearForm::default())];
+                let mut correction = LinearForm::default();
+                for (k, cell) in mesh.windows(2).enumerate() {
+                    if cell[0] < w[0] || cell[1] > w[1] {
+                        continue;
+                    }
+                    for &i in &incoming {
+                        correction.add_scaled(&mesh_arrival[i][k], 3600. * (cell[1] - cell[0]));
+                        correction.add_scaled(&arrivals[i][t], -3600. * (cell[1] - cell[0]));
+                    }
+                    let fraction = (cell[1] - w[0]) / (w[1] - w[0]);
+                    vertices.push((
+                        fraction,
+                        if cell[1] == w[1] {
+                            LinearForm::default()
+                        } else {
+                            correction.clone()
+                        },
+                    ));
+                }
+                storage_shape[r].push(vertices);
+            }
+        }
+        Ok(Self {
+            primary_columns,
+            transfers,
+            outlets,
+            releases,
+            arrivals,
+            inventory,
+            reservoir_net,
+            storage_shape,
+        })
+    }
+}
+
+/// Partition each release into reference-distribution fluxes. Only J−1
+/// nonlinear fluxes are needed: the last equals total release minus the others.
+/// Every arrival and inventory observation reuses this partition, so its size
+/// grows with releases and reference curves rather than arrival/release pairs.
+fn reference_fluxes(
+    transport: &crate::RiverTransport,
+    series: &ReleaseSeries,
+    primary_columns: usize,
+    transfers: &mut Vec<TransferEquation>,
+) -> Vec<Vec<LinearForm>> {
+    let references = match transport {
+        crate::RiverTransport::Fixed { .. } => vec![0.],
+        crate::RiverTransport::Distributed { curves } => curves
+            .iter()
+            .map(crate::DelayCurve::reference_flow)
+            .collect(),
+    };
+    series
+        .rates
+        .iter()
+        .map(|q| {
+            let mut columns = Vec::new();
+            let mut remainder = q.clone();
+            for j in 0..references.len() - 1 {
+                let mut coefficients = vec![0.; references.len()];
+                coefficients[j] = 1.;
+                let fraction = crate::river_transport::ReleaseFraction {
+                    references: references.clone(),
+                    coefficients,
+                };
+                let column = if q.coefficients.is_empty() {
+                    LinearForm {
+                        constant: fraction.data(q.constant).value,
+                        ..Default::default()
+                    }
+                } else {
+                    let index = primary_columns + transfers.len();
+                    transfers.push(TransferEquation {
+                        flow: q.clone(),
+                        fraction: std::sync::Arc::new(fraction),
+                    });
+                    LinearForm::variable(index, 1.)
+                };
+                remainder.add_scaled(&column, -1.);
+                columns.push(column);
+            }
+            columns.push(remainder);
+            columns
+        })
+        .collect()
+}
+
+/// Integral in (m³/s)·hours, retaining each release's original reference blend.
+fn transport_series(
+    transport: &crate::RiverTransport,
+    series: &ReleaseSeries,
+    flux: &[Vec<LinearForm>],
+    observation: crate::river_transport::Observation,
+) -> LinearForm {
+    let mut total = LinearForm::default();
+    for (j, w) in series.grid.windows(2).enumerate() {
+        let fraction = transport.fraction(observation, w[0], w[1]);
+        for (column, &coefficient) in flux[j].iter().zip(&fraction.coefficients) {
+            total.add_scaled(column, coefficient * (w[1] - w[0]));
+        }
+    }
+    total
 }
 
 #[cfg(test)]
@@ -387,7 +694,7 @@ mod tests {
             name: name.into(),
             source: source.into(),
             target: target.into(),
-            delay,
+            transport: crate::RiverTransport::Fixed { delay },
             capacity: 100.,
             allocation: 1.,
             inflow: 0.,
@@ -398,6 +705,7 @@ mod tests {
     }
     fn case(rivers: Vec<River>) -> ScheduleCase {
         ScheduleCase {
+            routing_grid: vec![],
             operations: Default::default(),
             system: HydroSystem {
                 reservoirs: vec![Reservoir {

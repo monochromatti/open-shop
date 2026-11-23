@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     let case = ScheduleCase {
+        routing_grid: vec![],
         operations: Vec::new(),
         system,
         grid: vec![0., 1., 2.],

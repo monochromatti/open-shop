@@ -25,6 +25,7 @@ pub(crate) struct StorageHeadEquation {
 pub(crate) enum PhysicalFunction {
     StorageMean(Arc<crate::StorageCurve>),
     Production(Arc<Unit>),
+    Transfer(Arc<crate::river_transport::ReleaseFraction>),
     Table(Arc<TableCurve>),
     LevelFlow(Arc<crate::LevelFlowCurve>),
     OutletTable(Arc<TableCurve>),
@@ -54,6 +55,7 @@ impl PhysicalFunction {
     }
     fn value(&self, x: [f64; 3]) -> f64 {
         match self {
+            Self::Transfer(c) => c.data(x[0]).value,
             Self::Production(u) => crate::machine::power_balance(u, x[0], x[1], x[2]),
             Self::StorageMean(c) => c.mean_data(x[0], x[1]).value,
             Self::Table(c) => c.extended_value(x[0]),
@@ -76,6 +78,7 @@ impl PhysicalFunction {
                     hessian: std::array::from_fn(|i| std::array::from_fn(|j| h[(i, j)])),
                 }
             }
+            Self::Transfer(c) => c.data(x[0]).into(),
             Self::StorageMean(c) => c.mean_data(x[0], x[1]).into(),
             Self::Characteristic(c) => c.discharge_data(x[1]).into(),
             Self::MinimumFlow(c) => c.envelope_data(x[1], false).into(),
@@ -780,6 +783,51 @@ mod tests {
             20.,
             10.,
         );
+        let mut problem = crate::nlp::prepare(&m, equations).unwrap();
+        check_derivatives(
+            &mut problem,
+            &[[0.2, 2.4, 14.], [2.6, 0.4, 14.], [1.2, 2.5, 14.]],
+            &[0.6, 1.3, -0.2, 0.4],
+        );
+    }
+    #[test]
+    fn river_law_jacobians_and_lagrangian_hessians_include_shared_inputs() {
+        let m = Model::new("river chain rule");
+        variable!(m,0.<=a<=4.,initial=0.2);
+        variable!(m,0.<=b<=4.,initial=2.4);
+        variable!(m,0.<=z<=30.,initial=14.);
+        constraint!(m, a.square() + a * b <= 5.);
+        objective!(m, Min, a.square() + b * z + z.square());
+        let flow = crate::nlp::linear_form(&m, (a * 3. + b + 2.).into()).unwrap();
+        let reference = crate::nlp::linear_form(&m, (a * 10. + b * 3. + 80.).into()).unwrap();
+        let curves = vec![
+            TableCurve::new(vec![-20., 0., 20.], vec![-4., 0., 8.]).unwrap(),
+            TableCurve::new(vec![-20., 0., 20.], vec![-8., 0., 16.]).unwrap(),
+        ];
+        let functions = [
+            PhysicalFunction::Transfer(Arc::new(crate::river_transport::ReleaseFraction {
+                references: vec![0., 10., 40.],
+                coefficients: vec![0.8, 0.6, 0.2],
+            })),
+            PhysicalFunction::OutletTable(Arc::new(
+                TableCurve::new(vec![0., 10., 30.], vec![1., 4., 8.]).unwrap(),
+            )),
+            PhysicalFunction::LevelFlow(Arc::new(
+                crate::LevelFlowCurve::new(vec![80., 160.], curves).unwrap(),
+            )),
+        ];
+        let equations = functions
+            .into_iter()
+            .map(|function| Equation {
+                linear: LinearForm::variable(z.var_id().unwrap().index(), -2.),
+                terms: vec![Term {
+                    function,
+                    inputs: [flow.clone(), reference.clone(), Default::default()],
+                    weight: 0.3,
+                }],
+                bounds: Bounds::new(0., 0.),
+            })
+            .collect();
         let mut problem = crate::nlp::prepare(&m, equations).unwrap();
         check_derivatives(
             &mut problem,

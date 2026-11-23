@@ -81,7 +81,7 @@ pub(crate) fn evaluate(
     tolerance: f64,
 ) -> Schedule {
     let s = &case.system;
-    let columns: Vec<_> = schedule
+    let mut columns: Vec<_> = schedule
         .unit_flow
         .iter()
         .flatten()
@@ -93,6 +93,7 @@ pub(crate) fn evaluate(
                 .flat_map(|&r| schedule.river_withdrawal[r].iter().copied()),
         )
         .collect();
+    routing.complete_columns(&mut columns);
     schedule.river_release = routing
         .releases
         .iter()
@@ -278,7 +279,7 @@ fn validate(
             f64::INFINITY
         }
     };
-    let columns: Vec<_> = schedule
+    let mut columns: Vec<_> = schedule
         .unit_flow
         .iter()
         .flatten()
@@ -290,6 +291,7 @@ fn validate(
                 .flat_map(|&r| schedule.river_withdrawal[r].iter().copied()),
         )
         .collect();
+    routing.complete_columns(&mut columns);
     for (r, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
@@ -349,15 +351,12 @@ fn validate(
                         },
                     )
                 }
-                _ => river
-                    .law
-                    .outlet_flow(
-                        h,
-                        gate.clamp(0., 1.),
-                        operating.river_capacity[e][t],
-                        operating.river_inflow[e][t],
-                    )
-                    .unwrap_or(f64::INFINITY),
+                _ => river.law.trial_outlet_flow(
+                    h,
+                    gate,
+                    operating.river_capacity[e][t],
+                    operating.river_inflow[e][t],
+                ),
             };
             result.water_balance = result
                 .water_balance
@@ -703,6 +702,8 @@ fn validate(
         .chain(&schedule.head)
         .chain(&schedule.tunnel_flow)
         .chain(&schedule.river_storage)
+        .chain(&schedule.river_withdrawal)
+        .chain(&schedule.river_arrival_volume)
         .chain(&schedule.river_release)
         .chain(&schedule.river_opening)
         .all(|row| row.iter().all(|v| v.is_finite()));

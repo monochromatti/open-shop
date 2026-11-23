@@ -501,7 +501,8 @@ pub struct River {
     pub source: String,
     pub target: String,
     pub capacity: f64,
-    pub delay: f64,
+    #[serde(default)]
+    pub transport: crate::RiverTransport,
     #[serde(default = "one")]
     pub allocation: f64,
     /// Natural inflow entering the top of this reach, after allocation.
@@ -528,6 +529,9 @@ fn one() -> f64 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleCase {
+    /// Optional transport mesh: must retain all control vertices.
+    #[serde(default)]
+    pub routing_grid: Vec<f64>,
     #[serde(default)]
     pub operations: Vec<crate::OperationalSeries>,
     pub system: HydroSystem,
@@ -572,6 +576,18 @@ impl ScheduleCase {
         {
             return Err(Error::Input(
                 "finite increasing grid and one price per interval required".into(),
+            ));
+        }
+        if !self.routing_grid.is_empty()
+            && (self.routing_grid.len() < 2
+                || self.routing_grid.first() != self.grid.first()
+                || self.routing_grid.last() != self.grid.last()
+                || !self.routing_grid.iter().all(|v| v.is_finite())
+                || !self.routing_grid.windows(2).all(|w| w[1] > w[0])
+                || !self.grid.iter().all(|v| self.routing_grid.contains(v)))
+        {
+            return Err(Error::Input(
+                "transport mesh must be finite, increasing and retain every control vertex".into(),
             ));
         }
         if s.reservoirs.is_empty() {

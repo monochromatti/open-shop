@@ -23,7 +23,7 @@ fn river(source: &str, target: &str, law: RiverLaw) -> River {
         law,
         gate: Bounds::new(0., 1.),
         capacity: 100.,
-        delay: 0.,
+        transport: RiverTransport::Fixed { delay: 0. },
         allocation: 1.,
         inflow: 0.,
         water_value: 0.,
@@ -46,6 +46,7 @@ fn case(reservoirs: Vec<Reservoir>, r: River) -> ScheduleCase {
         prices: vec![0.; 2],
         inflows: BTreeMap::new(),
         commitment: BTreeMap::new(),
+        routing_grid: vec![],
         operations: vec![],
     }
 }
@@ -218,9 +219,9 @@ fn passive_channel_data_and_incompatible_operating_inputs_are_rejected() {
             },
         ),
     );
-    c.system.rivers[0].delay = 0.1;
+    c.system.rivers[0].transport = RiverTransport::Fixed { delay: 0.1 };
     assert!(SchedulingProblem::new(&c).is_err());
-    c.system.rivers[0].delay = 0.;
+    c.system.rivers[0].transport = RiverTransport::default();
     c.operations.push(OperationalSeries {
         object: Object::River("Reach".into()),
         attribute: Attribute::Inflow,

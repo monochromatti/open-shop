@@ -18,6 +18,7 @@ mod operation;
 mod physics;
 mod river;
 mod river_laws;
+mod river_transport;
 mod schedule;
 mod trajectory;
 mod turbine;
@@ -31,6 +32,7 @@ pub use model::{
 pub use operating_data::{Attribute, Object, OperationalSeries, ReservoirOperation};
 pub use operation::{PlantOperation, RampRates, UnitOperation};
 pub use river_laws::{LevelFlowCurve, ReferenceLevel, RiverLaw};
+pub use river_transport::{DelayCurve, RiverTransport};
 pub use schedule::SchedulingProblem;
 pub use trajectory::{Schedule, Validation};
 pub use turbine::{DischargeInterpolation, Extrapolation, TurbineOptions, TurbineTable};

@@ -116,6 +116,45 @@ pub(crate) fn build_dispatch(
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
+    variable!(m,rf[k in 0..routing.transfers.len()]);
+    let mut reference_columns: Vec<_> = start.map_or(vec![0.; routing.primary_columns], |p| {
+        p.flow
+            .iter()
+            .flatten()
+            .copied()
+            .chain(
+                routing
+                    .outlets
+                    .iter()
+                    .flat_map(|&e| p.river_withdrawal[e].iter().copied()),
+            )
+            .collect()
+    });
+    for (k, e) in routing.transfers.iter().enumerate() {
+        let q0 = e.flow.value(&reference_columns);
+        let value = e.fraction.data(q0).value;
+        reference_columns.push(value);
+        m.set_initial(rf[[k]], value / flow_scale)
+            .map_err(|e| Error::Model(e.to_string()))?;
+        let input = nlp::linear_expression(&e.flow, &river_columns, zero());
+        laws.push(crate::constitutive::Equation {
+            linear: crate::river::LinearForm::variable(
+                rf[[k]].var_id().unwrap().index(),
+                -flow_scale,
+            ),
+            terms: vec![crate::constitutive::Term {
+                function: crate::constitutive::PhysicalFunction::Transfer(e.fraction.clone()),
+                inputs: [
+                    nlp::linear_form(&m, input)?,
+                    Default::default(),
+                    Default::default(),
+                ],
+                weight: 1.,
+            }],
+            bounds: crate::Bounds::new(0., 0.),
+        });
+        river_columns.push((rf[[k]] * flow_scale).into());
+    }
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case

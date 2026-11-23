@@ -301,15 +301,15 @@ impl OperatingData {
                         .unwrap()
                         .capacity,
                 )),
-                Object::River(name) if s.attribute == Capacity => Some((
-                    0.,
-                    system
-                        .rivers
-                        .iter()
-                        .find(|r| &r.name == name)
-                        .unwrap()
-                        .capacity,
-                )),
+                Object::River(name) => {
+                    let r = system.rivers.iter().find(|r| &r.name == name).unwrap();
+                    match s.attribute {
+                        Capacity => Some((0., r.capacity)),
+                        GateMin => Some((r.gate.min, 1.)),
+                        GateMax => Some((0., r.gate.max)),
+                        _ => None,
+                    }
+                }
                 Object::Plant(name) => {
                     let p = system.plants.iter().find(|p| &p.name == name).unwrap();
                     match s.attribute {

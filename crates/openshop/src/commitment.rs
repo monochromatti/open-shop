@@ -64,6 +64,31 @@ pub(crate) fn propose(
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
+    variable!(m,rf[k in 0..routing.transfers.len()]);
+    let mut reference_columns: Vec<_> = previous.map_or(vec![0.; routing.primary_columns], |p| {
+        p.unit_flow
+            .iter()
+            .flatten()
+            .copied()
+            .chain(
+                routing
+                    .outlets
+                    .iter()
+                    .flat_map(|&e| p.river_withdrawal[e].iter().copied()),
+            )
+            .collect()
+    });
+    for (k, e) in routing.transfers.iter().enumerate() {
+        let q0 = e.flow.value(&reference_columns);
+        let d = e.fraction.data(q0);
+        reference_columns.push(d.value);
+        let input = crate::nlp::linear_expression(&e.flow, &river_columns, zero());
+        constraint!(
+            m,
+            rf[[k]] - (input * d.gradient[0] + d.value - q0 * d.gradient[0]) / flow_scale == 0.
+        );
+        river_columns.push((rf[[k]] * flow_scale).into());
+    }
     for (i, series) in routing.releases.iter().enumerate() {
         for (k, rate) in series.rates.iter().enumerate() {
             let period = case
