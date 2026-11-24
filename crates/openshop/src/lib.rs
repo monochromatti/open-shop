@@ -29,6 +29,7 @@ mod river_transport;
 mod schedule;
 mod soft_constraints;
 mod time_discretization;
+mod time_integration;
 mod trajectory;
 mod turbine;
 
@@ -49,6 +50,7 @@ pub use river_operation::{ArrivalPolicy, RiverOperation};
 pub use river_transport::{DelayCurve, RiverTransport, TimeSide};
 pub use schedule::SchedulingProblem;
 pub use soft_constraints::{PenaltyLimit, SoftConstraint, SoftSlack, SoftTarget};
+pub use time_integration::{TimeAccuracy, TimeIntegrationError};
 pub use trajectory::{Schedule, Validation};
 pub use turbine::{DischargeInterpolation, Extrapolation, TurbineOptions, TurbineTable};
 

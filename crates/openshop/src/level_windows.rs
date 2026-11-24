@@ -241,7 +241,7 @@ mod tests {
         let operating = crate::operating_data::OperatingData::new(&c, &topology).unwrap();
         let mesh =
             crate::time_discretization::TimeDiscretization::new(&c.grid, &[0., 0.5, 1.]).unwrap();
-        let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+        let routing = Routing::new(&c, &topology, &operating, &mesh, &c.routing_grid).unwrap();
         let equations = LevelEquations::new(&c, &routing, &mesh).unwrap();
         assert!(equations.residual(&c, &[vec![5e5, 6e5, 5e5]], &[]) > 0.);
         assert_eq!(equations.residual(&c, &[vec![5e5, 5e5, 5e5]], &[]), 0.);

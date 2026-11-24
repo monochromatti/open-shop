@@ -24,7 +24,11 @@ fn optimize(case: &ScheduleCase) -> Result<(), openshop::Error> {
 Inputs use metres, m³, m³/s, hours, MW and currency/MWh. Network incidence and
 transport are prepared once; the problem borrows immutable inputs and can be
 solved repeatedly. Physical validation checks equations and restrictions. It
-does not establish global optimality or replace finer hydraulic replay.
+does not establish global optimality. Use
+`problem.validate_replay(&schedule, &openshop::TimeAccuracy::default())` to
+reconstruct finer hydraulic and river-mixing steps with the same controls.
+The returned schedule checks physical feasibility; the accompanying error
+compares numerical convergence between the grids.
 
 From the repository's pinned Nix development shell:
 

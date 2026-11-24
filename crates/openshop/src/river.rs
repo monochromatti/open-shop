@@ -85,6 +85,8 @@ pub(crate) struct TransferEquation {
     pub fraction: std::sync::Arc<crate::river_transport::ReleaseFraction>,
 }
 pub(crate) struct Routing {
+    /// Numerical mixing cells; empty when all reaches have exact fixed delays.
+    pub mixing_grid: Vec<f64>,
     pub primary_columns: usize,
     /// Local released-transfer equations, in upstream-to-downstream order.
     pub transfers: Vec<TransferEquation>,
@@ -111,6 +113,7 @@ impl Routing {
         topology: &Topology,
         operating: &crate::operating_data::OperatingData,
         hydraulic: &TimeDiscretization,
+        mixing_grid: &[f64],
     ) -> Result<Self, Error> {
         let s = &case.system;
         let nt = hydraulic.dt.len();
@@ -261,6 +264,7 @@ impl Routing {
                 topology,
                 operating,
                 hydraulic,
+                mixing_grid,
                 outlets,
                 outlet_index,
                 upstream,
@@ -439,6 +443,7 @@ impl Routing {
             }
         }
         Ok(Self {
+            mixing_grid: Vec::new(),
             primary_columns: (s.units.len() + s.tunnels.len() + outlets.len()) * nt,
             transfers: Vec::new(),
             outlets,
@@ -464,6 +469,7 @@ impl Routing {
         topology: &Topology,
         operating: &crate::operating_data::OperatingData,
         hydraulic: &TimeDiscretization,
+        mixing_grid: &[f64],
         outlets: Vec<usize>,
         outlet_index: Vec<Option<usize>>,
         upstream: Vec<Vec<usize>>,
@@ -475,7 +481,7 @@ impl Routing {
         let nr = s.rivers.len();
         let primary_columns = (s.units.len() + s.tunnels.len() + outlets.len()) * nt;
         let mut transfers = Vec::new();
-        let mut mixing_grid = if case.routing_grid.is_empty() {
+        let mut mixing_grid = if mixing_grid.is_empty() {
             let mut grid = Vec::new();
             for w in case.grid.windows(2) {
                 for k in 0..4 {
@@ -485,7 +491,8 @@ impl Routing {
             grid.push(*case.grid.last().unwrap());
             grid
         } else {
-            case.routing_grid.clone()
+            TimeDiscretization::new(&case.grid, mixing_grid)?;
+            mixing_grid.to_vec()
         };
         mixing_grid.extend(hydraulic.grid.iter().copied());
         mixing_grid.sort_by(f64::total_cmp);
@@ -645,6 +652,7 @@ impl Routing {
             }
         }
         Ok(Self {
+            mixing_grid,
             primary_columns,
             transfers,
             outlets,
@@ -795,7 +803,7 @@ mod tests {
         let topology = case.topology()?;
         let operating = crate::operating_data::OperatingData::new(case, &topology)?;
         let mesh = TimeDiscretization::new(&case.grid, &case.grid)?;
-        Routing::new(case, &topology, &operating, &mesh)
+        Routing::new(case, &topology, &operating, &mesh, &case.routing_grid)
     }
 
     #[test]
@@ -894,7 +902,7 @@ mod tests {
         let original = TimeDiscretization::new(&c.grid, &c.grid).unwrap();
         let fine = TimeDiscretization::new(&c.grid, &refined).unwrap();
         let calculate = |mesh: &TimeDiscretization| {
-            let routing = Routing::new(&c, &topology, &operating, mesh).unwrap();
+            let routing = Routing::new(&c, &topology, &operating, mesh, &c.routing_grid).unwrap();
             let mut values: Vec<_> = mesh
                 .hold(&[vec![4., 8., 0.]])
                 .unwrap()
@@ -956,7 +964,8 @@ mod tests {
             refined.push(*c.grid.last().unwrap());
             let calculate = |grid: &[f64]| {
                 let mesh = TimeDiscretization::new(&c.grid, grid).unwrap();
-                let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+                let routing =
+                    Routing::new(&c, &topology, &operating, &mesh, &c.routing_grid).unwrap();
                 let mut columns: Vec<_> =
                     mesh.hold(&source).unwrap().into_iter().flatten().collect();
                 routing.complete_columns(&mut columns);

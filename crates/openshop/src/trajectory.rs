@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct Schedule {
     /// Hydraulic time edges, hours; state and power arrays use these cells.
     pub grid: Vec<f64>,
+    /// River mixing time edges, hours; empty for exact fixed-delay routing.
+    pub routing_grid: Vec<f64>,
     /// Original decision times, hours; controls remain held on these intervals.
     pub operating_grid: Vec<f64>,
     /// Reservoir by grid vertex, m³.

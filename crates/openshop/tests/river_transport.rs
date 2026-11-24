@@ -183,6 +183,39 @@ fn transport_cell_refinement_converges_for_changing_flows_at_multiple_river_junc
         "{totals:?}"
     );
 }
+
+#[test]
+fn finer_replay_refines_river_mixing_without_new_gate_decisions() {
+    let c = network(1);
+    let problem = SchedulingProblem::new(&c).unwrap();
+    let controls = Controls {
+        head_guess: None,
+        commitment: vec![],
+        unit_flow: vec![],
+        tunnel_opening: vec![],
+        river_opening: vec![vec![0.5, 0., 0.25], vec![0.; 3], vec![0.; 3], vec![0.; 3]],
+    };
+    let mut schedule = problem.reconstruct(&controls).unwrap();
+    let mut errors = Vec::new();
+    for _ in 0..4 {
+        let (fine, error) = problem
+            .validate_replay(&schedule, &TimeAccuracy::default())
+            .unwrap();
+        assert!(fine.validation.feasible, "{:?}", fine.validation);
+        assert_eq!(
+            fine.controls().unwrap().river_opening,
+            controls.river_opening
+        );
+        let end = fine.grid.len() - 1;
+        let accounted = fine.storage[0][end]
+            + fine.river_storage.iter().map(|r| r[end]).sum::<f64>()
+            + fine.river_arrival_volume[3].iter().sum::<f64>();
+        assert!((accounted - 5e5).abs() < 1e-5);
+        errors.push(error.arrival_volume_difference[3]);
+        schedule = fine;
+    }
+    assert!(errors[0] > 1. && errors[3] < errors[0] * 0.1, "{errors:?}");
+}
 #[test]
 fn invalid_delay_domains_probabilities_and_meshes_are_rejected() {
     assert!(DelayCurve::new(0., vec![0., 1.], vec![0.9]).is_err());

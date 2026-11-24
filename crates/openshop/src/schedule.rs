@@ -36,7 +36,7 @@ impl<'a> SchedulingProblem<'a> {
         let mesh = crate::time_discretization::TimeDiscretization::new(&case.grid, &case.grid)?;
         let soft_limits = Arc::new(crate::soft_constraints::SoftLimits::new(case, &topology)?);
         let operating = Arc::new(crate::operating_data::OperatingData::new(case, &topology)?);
-        let routing = Routing::new(case, &topology, &operating, &mesh)?;
+        let routing = Routing::new(case, &topology, &operating, &mesh, &case.routing_grid)?;
         let observations =
             crate::flow_requirements::FlowEquations::new(case, &routing, &operating, &mesh)?;
         let level_windows = crate::level_windows::LevelEquations::new(case, &routing, &mesh)?;
@@ -60,11 +60,10 @@ impl<'a> SchedulingProblem<'a> {
             operating,
         })
     }
-    #[cfg(test)]
-    pub(crate) fn on_grid(&self, grid: &[f64]) -> Result<Self, Error> {
+    pub(crate) fn on_mesh(&self, grid: &[f64], mixing_grid: &[f64]) -> Result<Self, Error> {
         let case = self.case;
         let mesh = crate::time_discretization::TimeDiscretization::new(&case.grid, grid)?;
-        let routing = Routing::new(case, &self.topology, &self.operating, &mesh)?;
+        let routing = Routing::new(case, &self.topology, &self.operating, &mesh, mixing_grid)?;
         let observations =
             crate::flow_requirements::FlowEquations::new(case, &routing, &self.operating, &mesh)?;
         let level_windows = crate::level_windows::LevelEquations::new(case, &routing, &mesh)?;
@@ -464,6 +463,7 @@ impl SchedulingProblem<'_> {
             .collect();
         let mut schedule = Schedule {
             grid: self.mesh.grid.clone(),
+            routing_grid: self.routing.mixing_grid.clone(),
             operating_grid: case.grid.clone(),
             storage,
             unit_flow,
@@ -658,7 +658,7 @@ mod tests {
         let p = SchedulingProblem::new(&case).unwrap();
         let coarse = p.reconstruct(&controls).unwrap();
         let fine = p
-            .on_grid(&[0., 0.125, 0.5, 0.75, 1.5, 2.])
+            .on_mesh(&[0., 0.125, 0.5, 0.75, 1.5, 2.], &p.routing.mixing_grid)
             .unwrap()
             .reconstruct(&controls)
             .unwrap();
@@ -683,7 +683,7 @@ mod tests {
         case.system.units[0].operation.flow_ramp.up = Some(9.);
         let p = SchedulingProblem::new(&case).unwrap();
         let invalid = p
-            .on_grid(&fine.grid)
+            .on_mesh(&fine.grid, &p.routing.mixing_grid)
             .unwrap()
             .reconstruct(&controls)
             .unwrap();
@@ -715,7 +715,9 @@ mod tests {
             tunnel_opening: vec![],
         };
         let p = SchedulingProblem::new(&case).unwrap();
-        let fine = p.on_grid(&[0., 0.3, 1., 1.2, 1.5, 2.]).unwrap();
+        let fine = p
+            .on_mesh(&[0., 0.3, 1., 1.2, 1.5, 2.], &p.routing.mixing_grid)
+            .unwrap();
         let result = fine
             .refine(
                 &controls,
@@ -769,7 +771,9 @@ mod tests {
             tunnel_opening: vec![],
         };
         let p = SchedulingProblem::new(&case).unwrap();
-        let fine = p.on_grid(&[0., 0.1, 0.4, 1.]).unwrap();
+        let fine = p
+            .on_mesh(&[0., 0.1, 0.4, 1.], &p.routing.mixing_grid)
+            .unwrap();
         let result = fine
             .refine(
                 &controls,
@@ -806,7 +810,9 @@ mod tests {
             tunnel_opening: vec![],
         };
         let p = SchedulingProblem::new(&case).unwrap();
-        let fine = p.on_grid(&[0., 0.1, 0.5, 0.75, 1., 1.25, 1.5]).unwrap();
+        let fine = p
+            .on_mesh(&[0., 0.1, 0.5, 0.75, 1., 1.25, 1.5], &p.routing.mixing_grid)
+            .unwrap();
         let initial = fine.reconstruct(&controls).unwrap();
         assert!(!initial.validation.feasible);
         let result = fine
@@ -885,8 +891,26 @@ mod tests {
         let mut previous_error = f64::INFINITY;
         for steps in [1, 2, 4, 8, 16] {
             let grid: Vec<_> = (0..=steps).map(|k| 0.5 * k as f64 / steps as f64).collect();
-            let result = p.on_grid(&grid).unwrap().reconstruct(&controls).unwrap();
+            let result = p
+                .on_mesh(&grid, &p.routing.mixing_grid)
+                .unwrap()
+                .reconstruct(&controls)
+                .unwrap();
             assert!(result.validation.feasible, "{:?}", result.validation);
+            let (replay, estimate) = p
+                .validate_replay(&result, &crate::TimeAccuracy::default())
+                .unwrap();
+            assert!(replay.validation.feasible, "{:?}", replay.validation);
+            assert_eq!(
+                replay.controls().unwrap().river_opening,
+                controls.river_opening
+            );
+            if steps == 1 {
+                assert!(!estimate.converged());
+            }
+            if steps == 16 {
+                assert!(estimate.converged(), "{estimate:?}");
+            }
             let end = *result.storage[0].last().unwrap();
             let error = (end - exact).abs();
             assert!(error < previous_error);

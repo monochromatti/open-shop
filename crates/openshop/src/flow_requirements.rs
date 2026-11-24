@@ -616,7 +616,7 @@ mod tests {
         let mesh =
             crate::time_discretization::TimeDiscretization::new(&c.grid, &[0., 0.25, 1., 2., 3.])
                 .unwrap();
-        let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+        let routing = Routing::new(&c, &topology, &operating, &mesh, &c.routing_grid).unwrap();
         let equations = FlowEquations::new(&c, &routing, &operating, &mesh).unwrap();
         let values = [4., 8., 12., 20., 1., 1., 2., 2.];
         let rates: Vec<_> = equations.rates[0]

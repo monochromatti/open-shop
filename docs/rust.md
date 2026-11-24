@@ -50,8 +50,23 @@ head observations, exact polynomial extrema check power, efficiency and discharg
 over the whole head span. Refinement adds missing level-crossing
 observations to optimization without shortening integration steps.
 These finite observations do not bound every possible interior head excursion
-or interior peak of total plant power. Finer replay and adaptive integration
-remain necessary for complete replacement parity.
+or interior peak of total plant power.
+
+Use `let (fine, error) = problem.validate_replay(&schedule, &TimeAccuracy::default())?`
+to reconstruct the same operating decisions with smaller hydraulic and river-mixing
+cells. Check both `fine.validation.feasible` and `error.converged()`. The first
+checks physical equations and restrictions; the second compares storage, levels,
+cumulative river arrivals, water in transit and revenue between the two grids.
+These differences estimate numerical convergence, without bounding continuous-time
+error. The current optimizer does not yet select its hydraulic grid automatically.
+
+`Schedule.grid` contains hydraulic time edges; `Schedule.operating_grid` retains
+the original decision times. `Schedule.routing_grid` records the river mixing
+mesh and is empty for exact fixed-delay routing. Adjustable discharge, gate
+positions and commitments remain held over original intervals. Fixed-speed pump
+flows follow their characteristics on each hydraulic step. Ramps, requested
+average production, transition costs and operating targets retain their original
+windows. Nonlinear generation is evaluated before taking time averages.
 
 ```rust,no_run
 use openshop::{ScheduleCase, SchedulingProblem, SolveOptions};

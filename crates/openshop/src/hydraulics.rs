@@ -804,6 +804,7 @@ impl SchedulingProblem<'_> {
         let nt = self.mesh.dt.len();
         let mut schedule = Schedule {
             grid: self.mesh.grid.clone(),
+            routing_grid: self.routing.mixing_grid.clone(),
             operating_grid: self.case.grid.clone(),
             storage: s
                 .reservoirs
