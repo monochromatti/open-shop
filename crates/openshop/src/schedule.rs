@@ -1833,6 +1833,55 @@ mod tests {
     }
 
     #[test]
+    fn fixed_water_budget_can_require_flow_through_an_initially_level_tunnel() {
+        let mut case = reservoir_case();
+        case.commitment.clear();
+        case.system.plants[0].source = "Intake".into();
+        case.system.junctions.push(crate::Junction {
+            name: "Intake".into(),
+            head: Bounds::new(25., 175.),
+        });
+        let mut upper_lake = case.system.reservoirs[0].clone();
+        upper_lake.name = "Upper lake".into();
+        for (reservoir, head, discharge) in [
+            (&mut case.system.reservoirs[0], 100., 5.),
+            (&mut upper_lake, 175., 10.),
+        ] {
+            reservoir.level = StorageCurve::Polynomial {
+                reference_volume: 0.,
+                elevation: head,
+                slope: 0.,
+                curvature: 0.,
+            };
+            case.system.tunnels.push(crate::Tunnel::new(
+                format!("{} intake", reservoir.name),
+                reservoir.name.clone(),
+                "Intake",
+                20.,
+                1.,
+            ));
+            for attribute in [crate::Attribute::StorageMin, crate::Attribute::StorageMax] {
+                case.operations.push(crate::OperationalSeries {
+                    object: crate::Object::Reservoir(reservoir.name.clone()),
+                    attribute,
+                    times: vec![1.],
+                    values: vec![reservoir.initial_storage - 3600. * discharge],
+                });
+            }
+        }
+        case.system.reservoirs.push(upper_lake);
+        let schedule = SchedulingProblem::new(&case)
+            .unwrap()
+            .solve(&SolveOptions::default())
+            .unwrap();
+        assert!(schedule.validation.feasible, "{:?}", schedule.validation);
+        assert!((schedule.unit_flow[0][0] - 15.).abs() < 1e-6);
+        assert!((schedule.tunnel_flow[0][0] - 5.).abs() < 1e-6);
+        assert!((schedule.tunnel_flow[1][0] - 10.).abs() < 1e-6);
+        assert!((schedule.head[2][0] - 75.).abs() < 1e-6);
+    }
+
+    #[test]
     fn small_reservoir_couples_two_plants_without_small_time_steps() {
         let mut case = reservoir_case();
         case.system.reservoirs.push(Reservoir {

@@ -4,6 +4,26 @@ import Mathlib
 These theorems do not verify program implementations or floating-point evaluation. -/
 namespace OpenSHOP
 
+/-- If the source and target heads lie in given intervals, the inverse tunnel
+law gives lower and upper discharge bounds for a fixed positive resistance. -/
+theorem tunnel_discharge_enclosure (r source target a b c d : ℝ)
+    (hr : 0 < r) (ha : a ≤ source) (hb : source ≤ b)
+    (hc : c ≤ target) (hd : target ≤ d) :
+    let discharge := fun h : ℝ =>
+      if h < 0 then -Real.sqrt (-h / r) else Real.sqrt (h / r)
+    discharge (a-d) ≤ discharge (source-target) ∧
+      discharge (source-target) ≤ discharge (b-c) := by
+  intro discharge
+  have monotone : Monotone discharge := by
+    intro x y hxy
+    dsimp [discharge]
+    split_ifs with hx hy hy
+    · exact neg_le_neg (Real.sqrt_le_sqrt (div_le_div_of_nonneg_right (by linarith) hr.le))
+    · exact le_trans (neg_nonpos.mpr (Real.sqrt_nonneg _)) (Real.sqrt_nonneg _)
+    · exact (hx (hy.trans_le' hxy)).elim
+    · exact Real.sqrt_le_sqrt (div_le_div_of_nonneg_right hxy hr.le)
+  exact ⟨monotone (by linarith), monotone (by linarith)⟩
+
 /-- An interior stationary head is the global maximum of a concave quadratic
 work curve. This is one segment of the head-span operating-limit calculation;
 it does not verify floating-point root selection or a complete trajectory. -/

@@ -231,7 +231,6 @@ pub(crate) fn propose(
     variable!(m,0.0<=v[r in 0..nr,t in 0..nt+1]<=1.0);
     variable!(m,q[g in 0..nu,t in 0..nt]>=0.0);
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
-    variable!(m,hj[j in 0..s.junctions.len(),t in 0..nt]);
     variable!(m,qr[e in 0..routing.outlets.len(),t in 0..nt]);
     variable!(m,0.<=ga[e in 0..routing.outlets.len(),t in 0..nt]<=1.);
     variable!(m,on[g in 0..nu,t in 0..nt],Bin);
@@ -271,7 +270,7 @@ pub(crate) fn propose(
             river_columns.push(Expr::from(qr[[k, t]] * flow_scale));
         }
     }
-    variable!(m,rf[k in 0..routing.transfers.len()]);
+    variable!(m,rf[k in 0..routing.transfers.len()]>=0.);
     let mut reference_columns: Vec<_> = previous.map_or(vec![0.; routing.primary_columns], |p| {
         p.flow
             .iter()
@@ -286,15 +285,25 @@ pub(crate) fn propose(
             )
             .collect()
     });
+    let mut partition = zero();
     for (k, e) in routing.transfers.iter().enumerate() {
         let q0 = e.flow.value(&reference_columns);
         let d = e.fraction.data(q0);
         reference_columns.push(d.value);
         let input = crate::nlp::linear_expression(&e.flow, &river_columns, zero());
-        constraint!(
-            m,
-            rf[[k]] - (input * d.gradient[0] + d.value - q0 * d.gradient[0]) / flow_scale == 0.
-        );
+        // Each reference receives a nonnegative share of the same release.
+        // The last share is eliminated in the routing equations.
+        partition = partition + rf[[k]];
+        if e.partition_end {
+            constraint!(m, partition <= input / flow_scale);
+            partition = zero();
+        }
+        for slope in [0., d.gradient[0]] {
+            let bounds = e.fraction.affine_residual_bounds(slope);
+            let residual = rf[[k]] - input * (slope / flow_scale);
+            constraint!(m, residual >= bounds.min / flow_scale);
+            constraint!(m, residual <= bounds.max / flow_scale);
+        }
         river_columns.push((rf[[k]] * flow_scale).into());
     }
     problem.observations.constrain(&m, &river_columns, zero());
@@ -341,6 +350,7 @@ pub(crate) fn propose(
         let mut weights_row = Vec::new();
         let mut opening_row = Vec::new();
         let mut on_row = Vec::new();
+        let (source, target) = topology.tunnel_nodes[e];
         for (t, interval) in intervals.iter().enumerate() {
             let weights: Vec<Expr<'_>> = if interval.positions.len() == 1 {
                 vec![zero() + 1.]
@@ -364,20 +374,48 @@ pub(crate) fn propose(
                 .iter()
                 .zip(&weights)
                 .fold(zero(), |sum, (p, w)| sum + *w * p.opening);
-            let cap = interval.capacity / flow_scale;
+            // Monotone storage curves enclose every interval head, including
+            // means of routed, piecewise-linear storage paths. Inverting the
+            // signed tunnel loss gives a discharge interval for each gate.
+            let bounds = |node: usize| {
+                if node < nr {
+                    let storage = operating.reservoirs[node].interval_storage[t];
+                    let curve = &s.reservoirs[node].level;
+                    crate::Bounds::new(
+                        curve.trial_level(storage.min),
+                        curve.trial_level(storage.max),
+                    )
+                } else if node < nr + s.junctions.len() {
+                    s.junctions[node - nr].head
+                } else {
+                    let head = s.boundaries[node - nr - s.junctions.len()].head;
+                    crate::Bounds::new(head, head)
+                }
+            };
+            let (a, b) = (bounds(source), bounds(target));
+            let lower_capacity = if topology.tunnel_outfalls[e].is_some() {
+                0.
+            } else {
+                -interval.capacity
+            };
+            let (mut lower, mut upper) = (zero(), zero());
+            for (&selected, law) in weights.iter().zip(&interval.positions) {
+                if law.opening > 0. {
+                    let flow = |drop: f64| {
+                        let q = drop.signum() * (drop.abs() / law.resistance).sqrt();
+                        q.clamp(lower_capacity, interval.capacity) / flow_scale
+                    };
+                    lower = lower + selected * flow(a.min - b.max);
+                    upper = upper + selected * flow(a.max - b.min);
+                }
+            }
             m.set_bounds(
                 qt[[e, t]],
-                if topology.tunnel_outfalls[e].is_some() {
-                    0.
-                } else {
-                    -cap
-                },
-                cap,
+                lower_capacity / flow_scale,
+                interval.capacity / flow_scale,
             )?;
-            constraint!(m, qt[[e, t]] <= open * cap);
-            if topology.tunnel_outfalls[e].is_none() {
-                constraint!(m, qt[[e, t]] >= -open * cap);
-            }
+            constraint!(m, qt[[e, t]] >= lower);
+            constraint!(m, qt[[e, t]] <= upper);
             on_row.push(open);
             weights_row.push(weights);
             opening_row.push(opening);
@@ -470,16 +508,10 @@ pub(crate) fn propose(
         .chain(s.junctions.iter().map(|j| (j.head.min + j.head.max) / 2.))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
-    for (j, node) in s.junctions.iter().enumerate() {
-        for t in 0..nt {
-            m.set_bounds(hj[[j, t]], node.head.min / 100., node.head.max / 100.)?;
-        }
-    }
-    // Tangent hydraulic laws guide integer proposals. Nonlinear dispatch
-    // subsequently enforces the original equations, not these tangents.
+    // Affine reservoir heights are used by the remaining level-dependent
+    // operating rows. Dispatch reconstructs the coupled tunnel pressures.
     let mut mean_head = vec![vec![zero(); nr]; nt];
     let mut reference_head = vec![vec![0.; nr]; nt];
-    let mut head_bounds = vec![vec![crate::Bounds::new(0., 0.); nr]; nt];
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
         let range = reservoir.storage.max - reservoir.storage.min;
         for t in 0..nt {
@@ -488,86 +520,11 @@ pub(crate) fn propose(
                 |p| (p.storage[r][t], p.storage[r][t + 1]),
             );
             let d = reservoir.level.mean_data(a, b);
-            let before = operating.reservoirs[r].storage[t];
-            let after = operating.reservoirs[r].storage[t + 1];
-            let da = [
-                d.gradient[0] * (before.min - a),
-                d.gradient[0] * (before.max - a),
-            ];
-            let db = [
-                d.gradient[1] * (after.min - b),
-                d.gradient[1] * (after.max - b),
-            ];
-            head_bounds[t][r] = crate::Bounds::new(
-                d.value + da[0].min(da[1]) + db[0].min(db[1]),
-                d.value + da[0].max(da[1]) + db[0].max(db[1]),
-            );
             reference_head[t][r] = d.value;
             mean_head[t][r] = zero()
                 + d.value
                 + (v[[r, t]] * range + reservoir.storage.min - a) * d.gradient[0]
                 + (v[[r, t + 1]] * range + reservoir.storage.min - b) * d.gradient[1];
-        }
-    }
-    // Conditional pressure tangents give each positive gate position its own
-    // hydraulic meaning in the MILP. Inactive row bounds follow the actual
-    // affine head and discharge domains, without an arbitrary big-M constant.
-    for (e, intervals) in operating.tunnels.iter().enumerate() {
-        let (source, target) = topology.tunnel_nodes[e];
-        for (t, interval) in intervals.iter().enumerate() {
-            let level = |node: usize| {
-                if node < nr {
-                    mean_head[t][node]
-                } else if node < nr + s.junctions.len() {
-                    (hj[[node - nr, t]] * 100.).into()
-                } else {
-                    zero() + s.boundaries[node - nr - s.junctions.len()].head
-                }
-            };
-            let bounds = |node: usize| {
-                if node < nr {
-                    head_bounds[t][node]
-                } else if node < nr + s.junctions.len() {
-                    s.junctions[node - nr].head
-                } else {
-                    let h = s.boundaries[node - nr - s.junctions.len()].head;
-                    crate::Bounds::new(h, h)
-                }
-            };
-            let (a, b) = (bounds(source), bounds(target));
-            let delta = level(source) - level(target);
-            let dh = previous.map_or(initial_head[source] - initial_head[target], |p| {
-                p.head[source][t] - p.head[target][t]
-            });
-            for (j, law) in interval.positions.iter().enumerate() {
-                if law.opening == 0. {
-                    continue;
-                }
-                let q0 = previous
-                    .filter(|p| {
-                        interval.positions[p.controls.gate_position[e][t]].opening == law.opening
-                    })
-                    .map_or_else(
-                        || dh.signum() * (dh.abs() / law.resistance).sqrt(),
-                        |p| p.tunnel_flow[e][t],
-                    )
-                    .clamp(
-                        if topology.tunnel_outfalls[e].is_some() {
-                            0.
-                        } else {
-                            -interval.capacity
-                        },
-                        interval.capacity,
-                    );
-                let derivative = 2. * law.resistance * q0.abs();
-                let constant = law.resistance * q0 * q0.abs();
-                let residual = delta - qt[[e, t]] * (flow_scale * derivative) + constant;
-                let lo = (a.min - b.max) - derivative * interval.capacity + constant;
-                let hi = (a.max - b.min) + derivative * interval.capacity + constant;
-                let selected = gate_weights[e][t][j];
-                constraint!(m, residual / 100. >= lo.min(0.) / 100. * (1. - selected));
-                constraint!(m, residual / 100. <= hi.max(0.) / 100. * (1. - selected));
-            }
         }
     }
     for (k, &e) in routing.outlets.iter().enumerate() {
@@ -1001,13 +958,9 @@ pub(crate) fn propose(
                 .collect::<Result<Vec<_>, Error>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let junction_head = (0..s.junctions.len())
-        .map(|j| {
-            (0..nt)
-                .map(|t| value(hj[[j, t]]).map(|h| 100. * h))
-                .collect::<Result<Vec<_>, Error>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let junction_head = (nr..nr + s.junctions.len())
+        .map(|j| previous.map_or_else(|| vec![initial_head[j]; nt], |p| p.head[j].clone()))
+        .collect();
     let mut columns: Vec<_> = flow
         .iter()
         .flatten()

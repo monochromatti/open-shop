@@ -83,6 +83,8 @@ impl ReleaseSeries {
 pub(crate) struct TransferEquation {
     pub flow: LinearForm,
     pub fraction: std::sync::Arc<crate::river_transport::ReleaseFraction>,
+    /// The following reference flux is the remaining release.
+    pub partition_end: bool,
 }
 pub(crate) struct Routing {
     /// Numerical mixing cells; empty when all reaches have exact fixed delays.
@@ -706,6 +708,7 @@ fn reference_fluxes(
                     transfers.push(TransferEquation {
                         flow: q.clone(),
                         fraction: std::sync::Arc::new(fraction),
+                        partition_end: j == references.len() - 2,
                     });
                     LinearForm::variable(index, 1.)
                 };

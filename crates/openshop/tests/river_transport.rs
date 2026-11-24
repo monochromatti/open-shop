@@ -144,6 +144,49 @@ fn solve(c: &ScheduleCase) -> Schedule {
     );
     result
 }
+
+#[test]
+fn minimum_arrival_can_require_a_faster_response_than_at_zero_release() {
+    let mut c = network(4);
+    c.grid = vec![0., 1.];
+    c.prices = vec![100.];
+    c.operations.clear();
+    c.routing_grid.clear();
+    c.system.rivers = vec![reach(
+        "Tailrace",
+        "Tailrace junction",
+        "Sea",
+        RiverTransport::Distributed {
+            curves: vec![
+                DelayCurve::new(0., vec![2., 3.], vec![1.]).unwrap(),
+                DelayCurve::new(40., vec![0., 0.25], vec![1.]).unwrap(),
+            ],
+        },
+    )];
+    let mut plant = Plant::new("Station", "Lake", "Sea");
+    plant.discharge_river = Some("Tailrace".into());
+    c.system.plants.push(plant);
+    c.system.units.push(Unit::new(
+        "Unit",
+        "Station",
+        Bounds::new(5., 20.),
+        Bounds::new(1., 30.),
+        Bounds::new(90., 110.),
+        Efficiency::constant(0.9),
+    ));
+    c.system.rivers[0].operation.minimum_arrival = 2.;
+    let result = solve(&c);
+    assert!(result.controls().unwrap().commitment[0][0]);
+    let arrival: f64 = result.river_arrival_volume[0].iter().sum();
+    assert!(arrival >= 7200. - 1e-5, "{arrival}");
+    let release: f64 = result.unit_flow[0]
+        .iter()
+        .zip(result.grid.windows(2))
+        .map(|(q, interval)| q * (interval[1] - interval[0]) * 3600.)
+        .sum();
+    assert!((arrival + result.river_storage[0].last().unwrap() - release).abs() < 1e-6);
+}
+
 #[test]
 fn flow_dependent_split_merge_transport_conserves_every_reservoir_withdrawal() {
     let c = network(4);

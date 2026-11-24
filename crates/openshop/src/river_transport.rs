@@ -325,6 +325,28 @@ impl ReleaseFraction {
             hessian: [[2. * slope, 0.], [0.; 2]],
         }
     }
+
+    /// Range of the transported flux minus slope × release over the reference
+    /// domain. Each interval is quadratic, with extrema at its endpoints
+    /// or the stationary point.
+    pub(crate) fn affine_residual_bounds(&self, slope: f64) -> crate::Bounds {
+        let mut lower = f64::INFINITY;
+        let mut upper = f64::NEG_INFINITY;
+        for (q, weights) in self.references.windows(2).zip(self.coefficients.windows(2)) {
+            let a = (weights[1] - weights[0]) / (q[1] - q[0]);
+            let stationary = if a == 0. {
+                q[0]
+            } else {
+                (0.5 * (q[0] + (slope - weights[0]) / a)).clamp(q[0], q[1])
+            };
+            for release in [q[0], q[1], stationary] {
+                let residual = release * (weights[0] + a * (release - q[0]) - slope);
+                lower = lower.min(residual);
+                upper = upper.max(residual);
+            }
+        }
+        crate::Bounds::new(lower, upper)
+    }
 }
 
 #[cfg(test)]
