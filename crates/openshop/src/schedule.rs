@@ -99,6 +99,7 @@ impl<'a> SchedulingProblem<'a> {
         options.validate()?;
         let started = Instant::now();
         let mut excluded = Vec::new();
+        let mut dispatched = Vec::new();
         let mut best: Option<Schedule> = None;
         let mut last = None;
         while options.time_limit - started.elapsed().as_secs_f64() > 0.01 {
@@ -112,7 +113,12 @@ impl<'a> SchedulingProblem<'a> {
             else {
                 break;
             };
-            excluded.push(proposal.controls.clone());
+            // Re-solving an unchanged integer assignment adds no new search
+            // direction. Use the remaining allowance to refine its dispatch.
+            if dispatched.contains(&proposal.controls) {
+                break;
+            }
+            dispatched.push(proposal.controls.clone());
             let mut budget = options.clone();
             budget.time_limit =
                 (options.time_limit - started.elapsed().as_secs_f64()).min(options.time_limit / 4.);
@@ -122,10 +128,16 @@ impl<'a> SchedulingProblem<'a> {
             budget.max_iterations = options.max_iterations.min(200);
             let result =
                 self.dispatch(proposal.controls.clone(), Some(&proposal), &budget, backend)?;
-            if result.validation.feasible
-                && best.as_ref().is_none_or(|p| result.objective > p.objective)
-            {
-                best = Some(result.clone());
+            if result.validation.feasible {
+                if best.as_ref().is_none_or(|p| result.objective > p.objective) {
+                    best = Some(result.clone());
+                } else {
+                    break;
+                }
+            } else {
+                // This excludes a failed local trial only from this proposal
+                // search; it is not a proof that the assignment is infeasible.
+                excluded.push(proposal.controls.clone());
             }
             last = Some(result);
         }
