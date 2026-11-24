@@ -4,7 +4,7 @@
 //! interval. At a river junction we retain every arriving interval boundary.
 //! The resulting sparse linear maps are shared by commitment and dispatch.
 
-use crate::{Error, ScheduleCase, model::Topology};
+use crate::{Error, ScheduleCase, model::Topology, time_discretization::TimeDiscretization};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, Default)]
@@ -93,10 +93,10 @@ pub(crate) struct Routing {
     /// Columns are unit flows, tunnel flows, then reservoir river releases;
     /// each block is interval-major. Shared reference fluxes follow these inputs.
     pub releases: Vec<ReleaseSeries>,
-    /// Mean downstream arrival rate, reach by control interval, m³/s.
+    /// Mean downstream arrival rate, reach by hydraulic cell, m³/s.
     pub arrivals: Vec<Vec<LinearForm>>,
     pub arrival_limits: Vec<crate::flow_requirements::FlowRow>,
-    /// River inventory at each control vertex, m³.
+    /// River inventory at each hydraulic vertex, m³.
     pub inventory: Vec<Vec<LinearForm>>,
     /// River contributions to reservoir balances, m³/s.
     pub reservoir_net: Vec<Vec<LinearForm>>,
@@ -110,10 +110,11 @@ impl Routing {
         case: &ScheduleCase,
         topology: &Topology,
         operating: &crate::operating_data::OperatingData,
+        hydraulic: &TimeDiscretization,
     ) -> Result<Self, Error> {
         let s = &case.system;
-        let nt = case.prices.len();
-        let (start, end) = (case.grid[0], case.grid[nt]);
+        let nt = hydraulic.dt.len();
+        let (start, end) = (hydraulic.grid[0], hydraulic.grid[nt]);
         let reservoirs: HashMap<_, _> = s
             .reservoirs
             .iter()
@@ -259,6 +260,7 @@ impl Routing {
                 case,
                 topology,
                 operating,
+                hydraulic,
                 outlets,
                 outlet_index,
                 upstream,
@@ -274,7 +276,7 @@ impl Routing {
             .collect();
         for i in order {
             let river = &s.rivers[i];
-            let mut grid = case.grid.clone();
+            let mut grid = hydraulic.grid.clone();
             for &j in &upstream[i] {
                 for &t in releases[j].grid.iter().chain(&history[j].grid) {
                     let arrival = t + s.rivers[j].transport.fixed_delay().unwrap();
@@ -289,9 +291,9 @@ impl Routing {
                 .windows(2)
                 .map(|w| {
                     let time = w[0] + (w[1] - w[0]) / 2.;
-                    let t = case.grid.partition_point(|&v| v <= time) - 1;
+                    let t = hydraulic.grid.partition_point(|&v| v <= time) - 1;
                     let mut rate = LinearForm {
-                        constant: operating.river_inflow[i][t],
+                        constant: operating.river_inflow[i][hydraulic.interval[t]],
                         ..Default::default()
                     };
                     if let Some(k) = outlet_index[i] {
@@ -339,7 +341,7 @@ impl Routing {
                 (&releases[i], &flux),
                 (&history[i], &past_flux),
             ));
-            let arrived: Vec<_> = case
+            let arrived: Vec<_> = hydraulic
                 .grid
                 .windows(2)
                 .map(|w| {
@@ -359,7 +361,7 @@ impl Routing {
                     mean
                 })
                 .collect();
-            let transit = case
+            let transit = hydraulic
                 .grid
                 .iter()
                 .map(|&time| {
@@ -399,7 +401,7 @@ impl Routing {
                 .enumerate()
                 .filter_map(|(i, e)| (e.target == reservoir.name).then_some(i))
                 .collect();
-            for (t, w) in case.grid.windows(2).enumerate() {
+            for (t, w) in hydraulic.grid.windows(2).enumerate() {
                 let mut times = vec![w[0], w[1]];
                 for &i in &incoming {
                     for &release in releases[i].grid.iter().chain(&history[i].grid) {
@@ -461,6 +463,7 @@ impl Routing {
         case: &ScheduleCase,
         topology: &Topology,
         operating: &crate::operating_data::OperatingData,
+        hydraulic: &TimeDiscretization,
         outlets: Vec<usize>,
         outlet_index: Vec<Option<usize>>,
         upstream: Vec<Vec<usize>>,
@@ -468,11 +471,11 @@ impl Routing {
         history: Vec<ReleaseSeries>,
     ) -> Result<Self, Error> {
         let s = &case.system;
-        let nt = case.prices.len();
+        let nt = hydraulic.dt.len();
         let nr = s.rivers.len();
         let primary_columns = (s.units.len() + s.tunnels.len() + outlets.len()) * nt;
         let mut transfers = Vec::new();
-        let mesh = if case.routing_grid.is_empty() {
+        let mut mixing_grid = if case.routing_grid.is_empty() {
             let mut grid = Vec::new();
             for w in case.grid.windows(2) {
                 for k in 0..4 {
@@ -484,6 +487,9 @@ impl Routing {
         } else {
             case.routing_grid.clone()
         };
+        mixing_grid.extend(hydraulic.grid.iter().copied());
+        mixing_grid.sort_by(f64::total_cmp);
+        mixing_grid.dedup();
         let mut releases = vec![
             ReleaseSeries {
                 grid: vec![],
@@ -498,19 +504,19 @@ impl Routing {
         for i in order {
             let r = &s.rivers[i];
             let grid = if upstream[i].is_empty() {
-                case.grid.clone()
+                hydraulic.grid.clone()
             } else {
-                mesh.clone()
+                mixing_grid.clone()
             };
             let mut rates = Vec::new();
             for (k, w) in grid.windows(2).enumerate() {
-                let t = case
+                let t = hydraulic
                     .grid
                     .partition_point(|v| *v <= w[0])
                     .saturating_sub(1)
                     .min(nt - 1);
                 let mut q = LinearForm {
-                    constant: operating.river_inflow[i][t],
+                    constant: operating.river_inflow[i][hydraulic.interval[t]],
                     ..Default::default()
                 };
                 if let Some(j) = outlet_index[i] {
@@ -546,7 +552,7 @@ impl Routing {
                 (&releases[i], &flux),
                 (&history[i], &past_flux),
             ));
-            mesh_arrival[i] = mesh
+            mesh_arrival[i] = mixing_grid
                 .windows(2)
                 .map(|w| {
                     let observation = crate::river_transport::Observation::Arrival(w[0], w[1]);
@@ -559,12 +565,12 @@ impl Routing {
                     mean.scaled(1. / (w[1] - w[0]))
                 })
                 .collect();
-            arrivals[i] = case
+            arrivals[i] = hydraulic
                 .grid
                 .windows(2)
                 .map(|w| {
                     let mut mean = LinearForm::default();
-                    for (k, cell) in mesh.windows(2).enumerate() {
+                    for (k, cell) in mixing_grid.windows(2).enumerate() {
                         if w[0] <= cell[0] && cell[1] <= w[1] {
                             mean.add_scaled(
                                 &mesh_arrival[i][k],
@@ -575,7 +581,7 @@ impl Routing {
                     mean
                 })
                 .collect();
-            inventory[i] = case
+            inventory[i] = hydraulic
                 .grid
                 .iter()
                 .map(|&time| {
@@ -614,10 +620,10 @@ impl Routing {
                     }
                 }
             }
-            for (t, w) in case.grid.windows(2).enumerate() {
+            for (t, w) in hydraulic.grid.windows(2).enumerate() {
                 let mut vertices = vec![(0., LinearForm::default())];
                 let mut correction = LinearForm::default();
-                for (k, cell) in mesh.windows(2).enumerate() {
+                for (k, cell) in mixing_grid.windows(2).enumerate() {
                     if cell[0] < w[0] || cell[1] > w[1] {
                         continue;
                     }
@@ -785,18 +791,20 @@ mod tests {
         }
     }
 
+    fn prepare_routing(case: &ScheduleCase) -> Result<Routing, Error> {
+        let topology = case.topology()?;
+        let operating = crate::operating_data::OperatingData::new(case, &topology)?;
+        let mesh = TimeDiscretization::new(&case.grid, &case.grid)?;
+        Routing::new(case, &topology, &operating, &mesh)
+    }
+
     #[test]
     fn delayed_pulse_and_history_conserve_water_on_unequal_intervals() {
         let mut river = reach("River", "Lake", "Sea", 0.75);
         river.history_grid = vec![-1., 0.];
         river.history_release = vec![2.];
         let case = case(vec![river]);
-        let routing = Routing::new(
-            &case,
-            &case.topology().unwrap(),
-            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
-        )
-        .unwrap();
+        let routing = prepare_routing(&case).unwrap();
         let flow = [4., 8., 0.];
         let arrivals: Vec<_> = routing.arrivals[0]
             .iter()
@@ -826,12 +834,7 @@ mod tests {
             reach("Combined", "Merge", "Fork", 0.),
             reach("B", "Lake", "Merge", 0.75),
         ]);
-        let routing = Routing::new(
-            &case,
-            &case.topology().unwrap(),
-            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
-        )
-        .unwrap();
+        let routing = prepare_routing(&case).unwrap();
         let flow = [4., 0., 8., 0., 6., 0.];
         let merged = &routing.releases[3];
         for (time, expected) in [(0.6, 4.), (0.9, 0.), (1.4, 6.), (2., 14.)] {
@@ -856,28 +859,12 @@ mod tests {
         let mut a = reach("A", "Fork", "Sea", 1.);
         a.allocation = 0.4;
         let case = case(vec![a]);
-        assert!(matches!(
-            Routing::new(
-                &case,
-                &case.topology().unwrap(),
-                &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap())
-                    .unwrap()
-            ),
-            Err(Error::Input(_))
-        ));
+        assert!(matches!(prepare_routing(&case), Err(Error::Input(_))));
         let case = super::tests::case(vec![
             reach("A", "One", "Two", 1.),
             reach("B", "Two", "One", 1.),
         ]);
-        assert!(matches!(
-            Routing::new(
-                &case,
-                &case.topology().unwrap(),
-                &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap())
-                    .unwrap()
-            ),
-            Err(Error::Input(_))
-        ));
+        assert!(matches!(prepare_routing(&case), Err(Error::Input(_))));
     }
 
     #[test]
@@ -886,14 +873,129 @@ mod tests {
             reach("Return", "Bend", "Lake", 0.),
             reach("Outlet", "Lake", "Bend", 0.),
         ]);
-        let routing = Routing::new(
-            &case,
-            &case.topology().unwrap(),
-            &crate::operating_data::OperatingData::new(&case, &case.topology().unwrap()).unwrap(),
-        )
-        .unwrap();
+        let routing = prepare_routing(&case).unwrap();
         for row in &routing.reservoir_net[0] {
             assert!(row.value(&[4., 7., 2.]).abs() < 1e-12);
+        }
+    }
+    #[test]
+    fn hydraulic_refinement_preserves_delayed_history_and_terminal_transit() {
+        let mut river = reach("River", "Lake", "Sea", 0.75);
+        river.history_grid = vec![-1., 0.];
+        river.history_release = vec![2.];
+        let c = case(vec![river]);
+        let topology = c.topology().unwrap();
+        let operating = crate::operating_data::OperatingData::new(&c, &topology).unwrap();
+        let mut refined = Vec::new();
+        for w in c.grid.windows(2) {
+            refined.extend([w[0], w[0] + (w[1] - w[0]) * 0.5]);
+        }
+        refined.push(*c.grid.last().unwrap());
+        let original = TimeDiscretization::new(&c.grid, &c.grid).unwrap();
+        let fine = TimeDiscretization::new(&c.grid, &refined).unwrap();
+        let calculate = |mesh: &TimeDiscretization| {
+            let routing = Routing::new(&c, &topology, &operating, mesh).unwrap();
+            let mut values: Vec<_> = mesh
+                .hold(&[vec![4., 8., 0.]])
+                .unwrap()
+                .into_iter()
+                .flatten()
+                .collect();
+            routing.complete_columns(&mut values);
+            let volume: f64 = routing.arrivals[0]
+                .iter()
+                .zip(&mesh.dt)
+                .map(|(q, dt)| q.value(&values) * 3600. * dt)
+                .sum();
+            (volume, routing.inventory[0].last().unwrap().value(&values))
+        };
+        let (arrived, transit) = calculate(&original);
+        let (fine_arrived, fine_transit) = calculate(&fine);
+        assert!((arrived - fine_arrived).abs() < 1e-8);
+        assert!((transit - fine_transit).abs() < 1e-8);
+        assert!((5400. + 36000. - fine_arrived - fine_transit).abs() < 1e-8);
+    }
+
+    #[test]
+    fn split_merge_transport_retains_volume_when_only_hydraulic_cells_are_refined() {
+        for distributed in [false, true] {
+            let mut left = reach("Left", "Fork", "Sea", 0.25);
+            left.allocation = 0.4;
+            let mut right = reach("Right", "Fork", "Sea", 0.5);
+            right.allocation = 0.6;
+            let mut c = case(vec![
+                reach("A", "Lake", "Merge", 0.25),
+                reach("B", "Lake", "Merge", 0.75),
+                reach("Combined", "Merge", "Fork", 0.25),
+                left,
+                right,
+            ]);
+            if distributed {
+                for r in &mut c.system.rivers {
+                    r.transport = crate::RiverTransport::Distributed {
+                        curves: vec![
+                            crate::DelayCurve::new(0., vec![0., 0.25, 0.75], vec![0.3, 0.7])
+                                .unwrap(),
+                            crate::DelayCurve::new(
+                                r.capacity,
+                                vec![0., 0.125, 0.5],
+                                vec![0.6, 0.4],
+                            )
+                            .unwrap(),
+                        ],
+                    };
+                }
+            }
+            let topology = c.topology().unwrap();
+            let operating = crate::operating_data::OperatingData::new(&c, &topology).unwrap();
+            let source = vec![vec![4., 8., 0.], vec![3., 0., 6.]];
+            let mut refined = Vec::new();
+            for w in c.grid.windows(2) {
+                refined.extend([w[0], w[0] + (w[1] - w[0]) * 0.5]);
+            }
+            refined.push(*c.grid.last().unwrap());
+            let calculate = |grid: &[f64]| {
+                let mesh = TimeDiscretization::new(&c.grid, grid).unwrap();
+                let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+                let mut columns: Vec<_> =
+                    mesh.hold(&source).unwrap().into_iter().flatten().collect();
+                routing.complete_columns(&mut columns);
+                let rates: Vec<Vec<_>> = routing
+                    .arrivals
+                    .iter()
+                    .map(|row| row.iter().map(|q| q.value(&columns)).collect())
+                    .collect();
+                let rates = mesh.means(&rates, 0.).unwrap();
+                let arrived: f64 = [3, 4]
+                    .into_iter()
+                    .flat_map(|r| {
+                        rates[r]
+                            .iter()
+                            .zip(&mesh.duration)
+                            .map(|(q, dt)| 3600. * q * dt)
+                    })
+                    .sum();
+                let transit: f64 = routing
+                    .inventory
+                    .iter()
+                    .map(|row| row.last().unwrap().value(&columns))
+                    .sum();
+                (arrived, transit)
+            };
+            let (arrived, transit) = calculate(&c.grid);
+            let (fine_arrived, fine_transit) = calculate(&refined);
+            let released: f64 = source
+                .iter()
+                .flat_map(|row| {
+                    row.iter()
+                        .zip(c.grid.windows(2))
+                        .map(|(q, w)| 3600. * q * (w[1] - w[0]))
+                })
+                .sum();
+            assert!((arrived + transit - released).abs() < 1e-7);
+            assert!((fine_arrived + fine_transit - released).abs() < 1e-7);
+            assert!((arrived - fine_arrived).abs() < 1e-7);
+            assert!((transit - fine_transit).abs() < 1e-7);
         }
     }
 }

@@ -135,6 +135,7 @@ impl FlowEquations {
         case: &ScheduleCase,
         routing: &Routing,
         operating: &crate::operating_data::OperatingData,
+        mesh: &crate::time_discretization::TimeDiscretization,
     ) -> Result<Self, Error> {
         let mut data = Self {
             rows: routing.arrival_limits.clone(),
@@ -143,7 +144,8 @@ impl FlowEquations {
         let s = &case.system;
         let nt = case.prices.len();
         let (start, end) = (case.grid[0], case.grid[nt]);
-        let tunnel_offset = s.units.len() * nt;
+        let nf = mesh.dt.len();
+        let tunnel_offset = s.units.len() * nf;
         let mut names = HashSet::new();
         // Environmental release minima constrain the control-interval average,
         // including natural inflow and routed arrivals at a river junction.
@@ -278,7 +280,12 @@ impl FlowEquations {
                         ..Default::default()
                     };
                     for &u in &units {
-                        rate.add_scaled(&LinearForm::variable(u * nt + t, 1.), 1.);
+                        for k in mesh.cells[t].clone() {
+                            rate.add_scaled(
+                                &LinearForm::variable(u * nf + k, 1.),
+                                mesh.dt[k] / mesh.duration[t],
+                            );
+                        }
                     }
                     for &e in &rivers {
                         rate.add_scaled(
@@ -287,10 +294,17 @@ impl FlowEquations {
                         );
                     }
                     for &e in &arrivals {
-                        rate.add_scaled(&routing.arrivals[e][t], 1.);
+                        for k in mesh.cells[t].clone() {
+                            rate.add_scaled(&routing.arrivals[e][k], mesh.dt[k] / mesh.duration[t]);
+                        }
                     }
                     for &e in &tunnels {
-                        rate.add_scaled(&LinearForm::variable(tunnel_offset + e * nt + t, 1.), 1.);
+                        for k in mesh.cells[t].clone() {
+                            rate.add_scaled(
+                                &LinearForm::variable(tunnel_offset + e * nf + k, 1.),
+                                mesh.dt[k] / mesh.duration[t],
+                            );
+                        }
                     }
                     rate
                 })
@@ -553,5 +567,68 @@ impl FlowEquations {
             cost = cost + change[[k]] * (coefficient * scale);
         }
         cost
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Boundary, Efficiency, HydroSystem, Plant, Reservoir, StorageCurve, Tunnel, Unit};
+    #[test]
+    fn flow_observations_keep_their_original_windows_on_finer_hydraulic_cells() {
+        let system = HydroSystem {
+            reservoirs: vec![Reservoir {
+                name: "Lake".into(),
+                storage: Bounds::new(0., 1e6),
+                initial_storage: 5e5,
+                water_value: 0.,
+                operation: Default::default(),
+                level: StorageCurve::Polynomial {
+                    reference_volume: 0.,
+                    elevation: 100.,
+                    slope: 0.,
+                    curvature: 0.,
+                },
+            }],
+            boundaries: vec![Boundary {
+                name: "Sea".into(),
+                head: 0.,
+            }],
+            plants: vec![Plant::new("Station", "Lake", "Sea")],
+            units: vec![Unit::new(
+                "Unit",
+                "Station",
+                Bounds::new(0., 30.),
+                Bounds::new(0., 100.),
+                Bounds::new(1., 100.),
+                Efficiency::constant(0.9),
+            )],
+            tunnels: vec![Tunnel::new("Link", "Lake", "Sea", 100., 1.)],
+            ..Default::default()
+        };
+        let mut c = ScheduleCase::new(system, vec![0., 1., 3.], vec![100.; 2]);
+        let mut rule = FlowRequirement::new("Combined");
+        rule.units.push("Unit".into());
+        rule.tunnels.push("Link".into());
+        c.flow_requirements.push(rule);
+        let topology = c.topology().unwrap();
+        let operating = crate::operating_data::OperatingData::new(&c, &topology).unwrap();
+        let mesh =
+            crate::time_discretization::TimeDiscretization::new(&c.grid, &[0., 0.25, 1., 2., 3.])
+                .unwrap();
+        let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+        let equations = FlowEquations::new(&c, &routing, &operating, &mesh).unwrap();
+        let values = [4., 8., 12., 20., 1., 1., 2., 2.];
+        let rates: Vec<_> = equations.rates[0]
+            .iter()
+            .map(|q| q.value(&values))
+            .collect();
+        assert!((rates[0] - 8.).abs() < 1e-12 && (rates[1] - 18.).abs() < 1e-12);
+        let water: f64 = rates
+            .iter()
+            .zip(&mesh.duration)
+            .map(|(q, dt)| 3600. * q * dt)
+            .sum();
+        assert!((water - 3600. * 44.).abs() < 1e-8);
     }
 }

@@ -36,7 +36,11 @@ pub(crate) struct LevelEquations {
     pub bands: Vec<LevelBand>,
 }
 impl LevelEquations {
-    pub fn new(case: &ScheduleCase, routing: &Routing) -> Result<Self, Error> {
+    pub fn new(
+        case: &ScheduleCase,
+        routing: &Routing,
+        mesh: &crate::time_discretization::TimeDiscretization,
+    ) -> Result<Self, Error> {
         let mut bands = Vec::new();
         let (start, end) = (case.grid[0], *case.grid.last().unwrap());
         for (i, r) in case.system.reservoirs.iter().enumerate() {
@@ -133,11 +137,11 @@ impl LevelEquations {
                 for (t, path) in routing.storage_shape[i].iter().enumerate() {
                     for (fraction, correction) in path {
                         let time = if *fraction == 0. {
-                            case.grid[t]
+                            mesh.grid[t]
                         } else if *fraction == 1. {
-                            case.grid[t + 1]
+                            mesh.grid[t + 1]
                         } else {
-                            case.grid[t] + fraction * (case.grid[t + 1] - case.grid[t])
+                            mesh.grid[t] + fraction * (mesh.grid[t + 1] - mesh.grid[t])
                         };
                         if time < start.max(w.start_time)
                             || time > end.min(w.end_time)
@@ -198,5 +202,48 @@ impl StoragePoint {
         storage[t] * (1. - self.fraction)
             + storage[t + 1] * self.fraction
             + self.correction.value(columns)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{HydroSystem, Reservoir, StorageCurve};
+    #[test]
+    fn level_windows_check_intermediate_storage_after_hydraulic_refinement() {
+        let mut reservoir = Reservoir {
+            name: "Pool".into(),
+            storage: Bounds::new(0., 1e6),
+            initial_storage: 5e5,
+            water_value: 0.,
+            operation: Default::default(),
+            level: StorageCurve::Polynomial {
+                reference_volume: 0.,
+                elevation: 0.,
+                slope: 1e-4,
+                curvature: 0.,
+            },
+        };
+        reservoir.operation.level_windows.push(LevelWindow {
+            start_time: 0.,
+            end_time: 1.,
+            max_change: 5.,
+        });
+        let c = ScheduleCase::new(
+            HydroSystem {
+                reservoirs: vec![reservoir],
+                ..Default::default()
+            },
+            vec![0., 1.],
+            vec![0.],
+        );
+        let topology = c.topology().unwrap();
+        let operating = crate::operating_data::OperatingData::new(&c, &topology).unwrap();
+        let mesh =
+            crate::time_discretization::TimeDiscretization::new(&c.grid, &[0., 0.5, 1.]).unwrap();
+        let routing = Routing::new(&c, &topology, &operating, &mesh).unwrap();
+        let equations = LevelEquations::new(&c, &routing, &mesh).unwrap();
+        assert!(equations.residual(&c, &[vec![5e5, 6e5, 5e5]], &[]) > 0.);
+        assert_eq!(equations.residual(&c, &[vec![5e5, 5e5, 5e5]], &[]), 0.);
     }
 }

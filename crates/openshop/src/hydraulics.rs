@@ -800,7 +800,7 @@ impl SchedulingProblem<'_> {
         let s = &self.case.system;
         let nt = self.case.prices.len();
         let mut schedule = Schedule {
-            grid: self.case.grid.clone(),
+            grid: self.mesh.grid.clone(),
             operating_grid: self.case.grid.clone(),
             storage: s
                 .reservoirs
@@ -842,7 +842,7 @@ impl SchedulingProblem<'_> {
                 controls,
                 t,
                 &previous,
-                3600. * (self.case.grid[t + 1] - self.case.grid[t]),
+                3600. * self.mesh.dt[t],
                 &columns,
                 reference.as_ref(),
             )?;

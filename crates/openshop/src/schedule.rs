@@ -8,7 +8,7 @@ use crate::{
     nlp::{self, Backend},
     river::Routing,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 /// Optimize unit states and tunnel gates with SCIP proposals and nonlinear dispatch.
 /// Prescribed commitments remain fixed; other units can change commitment
@@ -17,32 +17,37 @@ use std::time::Instant;
 /// a solver's success flag alone does not establish physical feasibility.
 pub struct SchedulingProblem<'a> {
     pub(crate) case: &'a ScheduleCase,
-    pub(crate) topology: Topology,
+    pub(crate) mesh: crate::time_discretization::TimeDiscretization,
+    pub(crate) topology: Arc<Topology>,
     pub(crate) routing: Routing,
-    pub(crate) operating: crate::operating_data::OperatingData,
+    pub(crate) operating: Arc<crate::operating_data::OperatingData>,
     pub(crate) observations: crate::flow_requirements::FlowEquations,
     pub(crate) level_windows: crate::level_windows::LevelEquations,
-    pub(crate) interlocks: crate::gate_interlocks::GateInterlocks,
+    pub(crate) interlocks: Arc<crate::gate_interlocks::GateInterlocks>,
     pub(crate) operating_points: crate::operating_points::OperatingPoints,
-    pub(crate) soft_limits: crate::soft_constraints::SoftLimits,
+    pub(crate) soft_limits: Arc<crate::soft_constraints::SoftLimits>,
     pub(crate) water_value: crate::river::LinearForm,
 }
 
 impl<'a> SchedulingProblem<'a> {
     /// Validate inputs and prepare network incidence and transport once.
     pub fn new(case: &'a ScheduleCase) -> Result<Self, Error> {
-        let topology = case.topology()?;
-        let soft_limits = crate::soft_constraints::SoftLimits::new(case, &topology)?;
-        let operating = crate::operating_data::OperatingData::new(case, &topology)?;
-        let routing = Routing::new(case, &topology, &operating)?;
+        let topology = Arc::new(case.topology()?);
+        let mesh = crate::time_discretization::TimeDiscretization::new(&case.grid, &case.grid)?;
+        let soft_limits = Arc::new(crate::soft_constraints::SoftLimits::new(case, &topology)?);
+        let operating = Arc::new(crate::operating_data::OperatingData::new(case, &topology)?);
+        let routing = Routing::new(case, &topology, &operating, &mesh)?;
         let observations =
-            crate::flow_requirements::FlowEquations::new(case, &routing, &operating)?;
-        let level_windows = crate::level_windows::LevelEquations::new(case, &routing)?;
-        let interlocks = crate::gate_interlocks::GateInterlocks::new(case, &topology)?;
+            crate::flow_requirements::FlowEquations::new(case, &routing, &operating, &mesh)?;
+        let level_windows = crate::level_windows::LevelEquations::new(case, &routing, &mesh)?;
+        let interlocks = Arc::new(crate::gate_interlocks::GateInterlocks::new(
+            case, &topology,
+        )?);
         let operating_points = crate::operating_points::OperatingPoints::new(case, &routing);
         let water_value =
             crate::trajectory::water_value_change(case, &topology, &routing, &operating);
         Ok(Self {
+            mesh,
             soft_limits,
             water_value,
             operating_points,
