@@ -44,7 +44,7 @@ impl SchedulingProblem<'_> {
             ));
         }
         let problem = self.on_mesh(&schedule.grid, &schedule.routing_grid)?;
-        let controls = schedule.controls()?;
+        let controls = problem.held_controls(schedule, &problem.mesh)?;
         let physical = problem.reconstruct(&controls)?;
         if !physical.validation.feasible {
             return Err(Error::Input(

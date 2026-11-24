@@ -795,6 +795,38 @@ pub(crate) fn hydraulic_step(
 }
 
 impl SchedulingProblem<'_> {
+    /// Recover controls from a trajectory on this problem's mesh. Adjustable
+    /// discharge is held, while fixed-speed pump discharge is a state.
+    pub(crate) fn held_controls(
+        &self,
+        schedule: &Schedule,
+        mesh: &crate::time_discretization::TimeDiscretization,
+    ) -> Result<Controls, Error> {
+        let controls = schedule.controls()?;
+        if schedule.grid != mesh.grid
+            || schedule.operating_grid != self.case.grid
+            || schedule.unit_flow.len() != self.case.system.units.len()
+        {
+            return Err(Error::Input(
+                "schedule and model time or unit axes differ".into(),
+            ));
+        }
+        for (unit, row) in self.case.system.units.iter().zip(&schedule.unit_flow) {
+            if unit.pump_characteristic.is_none()
+                && mesh.cells.iter().any(|cells| {
+                    let q = row[cells.start];
+                    row[cells.clone()].iter().any(|v| *v != q)
+                })
+            {
+                return Err(Error::Input(format!(
+                    "{}: adjustable discharge must be held on each operating interval",
+                    unit.name
+                )));
+            }
+        }
+        Ok(controls)
+    }
+
     /// Reconstruct physical states from controls without an optimization solver.
     /// The returned validation reports operating violations; reconstruction does
     /// not clip storage, heads, capacities or controls to make a schedule feasible.

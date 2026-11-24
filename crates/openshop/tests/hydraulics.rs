@@ -888,6 +888,18 @@ fn finer_state_arrays_recover_held_controls_and_original_energy_windows() {
         .map(|((p, price), w)| p * price * (w[1] - w[0]))
         .sum();
     assert!((energy_revenue - fine.objective).abs() < 1e-7);
+    let problem = SchedulingProblem::new(&c).unwrap();
+    let mut variable_release = fine.clone();
+    variable_release.unit_flow[0][0] += 3.;
+    variable_release.unit_flow[0][1] -= 1.;
+    assert!(matches!(
+        problem.validate_replay(&variable_release, &TimeAccuracy::default()),
+        Err(Error::Input(_))
+    ));
+    assert!(matches!(
+        problem.restart_case(&variable_release, 1.),
+        Err(Error::Input(_))
+    ));
     fine.commitment[0][1] = false;
     assert!(matches!(fine.controls(), Err(Error::Input(_))));
 }

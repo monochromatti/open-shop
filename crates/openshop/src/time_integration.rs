@@ -360,14 +360,15 @@ impl SchedulingProblem<'_> {
             )?;
             bisect(&schedule.routing_grid)
         };
+        let controls = self.held_controls(schedule, &mesh)?;
         let problem = self.on_mesh(&grid, &mixing)?;
-        let replay = problem.reconstruct(&schedule.controls()?)?;
+        let replay = problem.reconstruct(&controls)?;
         let mut error = TimeIntegrationError::between(self.case, schedule, &replay, accuracy)?;
         if !mixing.is_empty() {
             // Isolate river-mixing error so it cannot cancel a hydraulic error.
             let transport = self
                 .on_mesh(&schedule.grid, &mixing)?
-                .reconstruct(&schedule.controls()?)?;
+                .reconstruct(&controls)?;
             let transport_error =
                 TimeIntegrationError::between(self.case, schedule, &transport, accuracy)?;
             for (a, b) in error
