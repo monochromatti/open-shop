@@ -1,5 +1,8 @@
 # Working on OpenSHOP
 
+The project goal is a competitive open-source Rust implementation of SHOP.
+The Rust API is a primary user interface. Python client development is out of scope.
+
 OpenSHOP is a scientific library for hydropower scheduling. Its code should
 read like the physical equations and numerical methods it implements.
 
@@ -39,12 +42,21 @@ read like the physical equations and numerical methods it implements.
 - Let physical dependencies and the numerical method determine control flow.
   Do not introduce managers, registries, candidate-ranking systems or decisions
   driven by diagnostic labels around the equations.
+- Use a functional numerical core and an imperative shell: physical functions
+  evaluate quantities and equations; solver adapters coordinate mutable solver
+  state; examples and applications read and write data. Prefer substantial modules
+  with narrow mathematical interfaces over chains of small preparation helpers.
 - Separate input/output and solver statistics from physical calculations.
   Validation evaluates the model; it must not silently change the model or
   relax its physical restrictions.
 - Use idiomatic Julia arrays, views, in-place operations and structured linear
   algebra where they improve clarity and measured performance. Preserve the
   distinction between control intervals, hydraulic steps and transport cells.
+- In Rust, assemble topology and derivative structure once, use owned contiguous
+  buffers, and keep allocation out of repeated numerical evaluations. Keep unsafe
+  code at documented native-library boundaries. Keep the Julia reference runnable
+  until the Rust implementation covers the complete model; small examples cannot
+  establish that a solver or formulation is superior.
 - A terminology refactor must preserve equations, tolerances, solver settings,
   physical units and numerical behavior. Avoid combining it with algorithm changes.
 
@@ -56,8 +68,12 @@ read like the physical equations and numerical methods it implements.
 - Run the relevant Julia tests and the complete suite for changes spanning
   numerical modules. The normal package command is
   `./scripts/julia.sh -e 'using Pkg; Pkg.test()'`.
+- For Rust changes, use `nix develop .#rust`; run `cargo nextest run -p openshop`,
+  `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check`.
+  Exercise both native Rust construction and external-data examples.
 - If formal statements change, build `test/formal` with `lake build --wfail`
-  and run `lake env lean CheckAxioms.lean`. State proof assumptions and limits.
+  and run `lake env lean CheckAxioms.lean` (use `nix develop .#formal` if needed).
+  State proof assumptions and limits.
 - Update examples and documentation with public API changes. Keep the paper's
   terminology aligned with the implementation, while preserving its equations
   and the meaning of cited research.

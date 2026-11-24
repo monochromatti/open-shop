@@ -1,0 +1,190 @@
+{
+  "system": {
+    "reservoirs": [
+      {
+        "name": "Upper A",
+        "storage": {"min": 3000000.0, "max": 6000000.0},
+        "initial_storage": 5000000.0,
+        "water_value": 0.005,
+        "level": {
+          "kind": "table",
+          "x": [3000000.0, 4000000.0, 5000000.0, 5500000.0, 6000000.0],
+          "y": [450.0, 478.0, 500.0, 508.0, 520.0]
+        }
+      },
+      {
+        "name": "Upper B",
+        "storage": {"min": 1000000.0, "max": 4000000.0},
+        "initial_storage": 3000000.0,
+        "water_value": 0.004,
+        "level": {
+          "kind": "table",
+          "x": [1000000.0, 2000000.0, 3000000.0, 4000000.0],
+          "y": [400.0, 430.0, 450.0, 465.0]
+        }
+      },
+      {
+        "name": "Forebay",
+        "storage": {"min": 0.0, "max": 1000.0},
+        "initial_storage": 500.0,
+        "level": {
+          "kind": "table",
+          "x": [0.0, 250.0, 500.0, 750.0, 1000.0],
+          "y": [100.0, 103.0, 105.0, 108.0, 110.0]
+        }
+      }
+    ],
+    "junctions": [{"name": "Intake", "head": {"min": 350.0, "max": 550.0}}],
+    "boundaries": [{"name": "Tailwater", "head": 350.0}, {"name": "Sea", "head": 20.0}],
+    "tunnels": [
+      {
+        "name": "Main",
+        "source": "Upper A",
+        "target": "Intake",
+        "capacity": 35.0,
+        "loss_factor": 0.015,
+        "opening": 0.5,
+        "gate_loss_factor_curve": {"x": [0.0, 0.5, 1.0], "y": [0.2, 0.03, 0.0]}
+      },
+      {
+        "name": "Parallel",
+        "source": "Intake",
+        "target": "Upper A",
+        "capacity": 20.0,
+        "loss_factor": 0.06,
+        "opening": 1.0
+      }
+    ],
+    "units": [
+      {
+        "name": "A",
+        "flow": {"min": 8.0, "max": 30.0},
+        "power": {"min": 1.0, "max": 50.0},
+        "head": {"min": 50.0, "max": 200.0},
+        "efficiency": {
+          "kind": "table",
+          "heads": [50.0, 125.0, 200.0],
+          "curves": [
+            {"x": [8.0, 13.5, 22.3, 30.0], "y": [0.8252, 0.872225, 0.909713, 0.9044000000000001]},
+            {
+              "x": [8.0, 15.7, 23.400000000000002, 30.0],
+              "y": [0.833075, 0.893828, 0.919007, 0.9122750000000001]
+            },
+            {"x": [8.0, 17.9, 24.5, 30.0], "y": [0.8297, 0.901277, 0.916325, 0.9089]}
+          ],
+          "flow": [{"min": 8.0, "max": 28.5}, {"min": 8.0, "max": 29.25}, {"min": 8.0, "max": 30.0}],
+          "options": {"interpolation": "pchip"}
+        },
+        "loss_factor": 0.002,
+        "operation": {"startup_cost": 100.0, "initial_on": true, "power_ramp": {"up": 50, "down": 50}},
+        "plant": "A"
+      },
+      {
+        "name": "B",
+        "flow": {"min": 5.0, "max": 15.0},
+        "power": {"min": 1.0, "max": 25.0},
+        "head": {"min": 40.0, "max": 150.0},
+        "efficiency": {
+          "kind": "table",
+          "heads": [40.0, 95.0, 150.0],
+          "curves": [
+            {"x": [5.0, 7.5, 11.5, 15.0], "y": [0.8904000000000001, 0.9019, 0.9099, 0.9064]},
+            {"x": [5.0, 8.5, 12.0, 15.0], "y": [0.8904000000000001, 0.9051, 0.91, 0.9064]},
+            {
+              "x": [5.0, 9.5, 12.5, 15.0],
+              "y": [0.8904000000000001, 0.9075000000000001, 0.9099, 0.9064]
+            }
+          ],
+          "flow": [{"min": 5.0, "max": 14.25}, {"min": 5.0, "max": 14.625}, {"min": 5.0, "max": 15.0}],
+          "options": {"interpolation": "pchip"}
+        },
+        "operation": {"startup_cost": 60.0, "initial_on": true, "power_ramp": {"up": 50, "down": 50}},
+        "plant": "B"
+      },
+      {
+        "name": "Lower",
+        "flow": {"min": 5.0, "max": 45.0},
+        "power": {"min": 1.0, "max": 50.0},
+        "head": {"min": 70.0, "max": 100.0},
+        "efficiency": {
+          "kind": "table",
+          "heads": [70.0, 85.0, 100.0],
+          "curves": [
+            {
+              "x": [5.0, 15.0, 31.0, 45.0],
+              "y": [0.8552500000000001, 0.8952500000000001, 0.9176500000000001, 0.8952500000000001]
+            },
+            {"x": [5.0, 19.0, 33.0, 45.0], "y": [0.8575, 0.9079, 0.9191, 0.8975000000000001]},
+            {
+              "x": [5.0, 23.0, 35.0, 45.0],
+              "y": [0.8552500000000001, 0.91285, 0.9152500000000001, 0.8952500000000001]
+            }
+          ],
+          "flow": [{"min": 5.0, "max": 42.75}, {"min": 5.0, "max": 43.875}, {"min": 5.0, "max": 45.0}],
+          "options": {"interpolation": "pchip"}
+        },
+        "operation": {"startup_cost": 80.0, "initial_on": true, "power_ramp": {"up": 50, "down": 50}},
+        "plant": "Lower"
+      }
+    ],
+    "rivers": [
+      {
+        "name": "River A",
+        "source": "Outfall A",
+        "target": "Merge",
+        "capacity": 35.0,
+        "transport": {"kind":"fixed", "delay":0.25},
+        "history_grid": [-4.0, 0.0],
+        "history_release": [10.0]
+      },
+      {
+        "name": "River B",
+        "source": "Outfall B",
+        "target": "Merge",
+        "capacity": 20.0,
+        "transport": {"kind":"fixed", "delay":0.75},
+        "history_grid": [-4.0, 0.0],
+        "history_release": [5.0]
+      },
+      {
+        "name": "Combined",
+        "source": "Merge",
+        "target": "Fork",
+        "capacity": 50.0,
+        "transport": {"kind":"fixed", "delay":0.25},
+        "history_grid": [-4.0, 0.0],
+        "history_release": [15.0]
+      },
+      {
+        "name": "Left",
+        "source": "Fork",
+        "target": "Forebay",
+        "capacity": 30.0,
+        "transport": {"kind":"fixed", "delay":0.5},
+        "allocation": 0.6,
+        "history_grid": [-4.0, 0.0],
+        "history_release": [9.0],
+        "water_value": 0.002
+      },
+      {
+        "name": "Right",
+        "source": "Fork",
+        "target": "Forebay",
+        "capacity": 20.0,
+        "transport": {"kind":"fixed", "delay":1.25},
+        "allocation": 0.4,
+        "history_grid": [-4.0, 0.0],
+        "history_release": [6.0],
+        "water_value": 0.002
+      }
+    ],
+    "plants": [
+      {"source": "Intake", "target": "Tailwater", "name": "A", "discharge_river": "River A"},
+      {"source": "Upper B", "target": "Tailwater", "name": "B", "discharge_river": "River B"},
+      {"source": "Forebay", "target": "Sea", "name": "Lower"}
+    ]
+  },
+  "grid": [0.0, 0.5, 1.0, 2.0, 3.0],
+  "prices": [-20.0, 35.0, 150.0, 90.0],
+  "inflows": {"Upper A": [5.0, 5.0, 8.0, 8.0], "Upper B": [2.0, 2.0, 3.0, 3.0]}
+}

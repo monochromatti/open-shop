@@ -2,6 +2,15 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- First-order errors give the conservative coarse-grid factor two. The
+expansion is an assumption; it does not bound a computed mixing trajectory. -/
+theorem first_order_coarse_error (coarse fine reference coefficient step : ℝ)
+    (hc : coarse = reference + coefficient * step)
+    (hf : fine = reference + coefficient * (step/2)) :
+    coarse - reference = 2 * (coarse - fine) := by
+  rw [hc, hf]
+  ring
+
 /-- The leading second-order errors give the coarse-grid Richardson factor.
 The expansion is a hypothesis, not a bound on a computed trajectory. -/
 theorem second_order_coarse_error (coarse fine reference coefficient step : ℝ)
@@ -130,5 +139,59 @@ theorem closed_network_energy {N E : Type*}
   simp_rw [balance]
   rw [weighted_incidence]
   exact neg_nonpos.mpr (Finset.sum_nonneg fun e _ => passive e)
+
+/-- Chain-rule coefficients for composing a two-input constitutive function
+with affine storage paths. The supplied Hessian is a hypothesis; this does not
+assert differentiability at a measured curve's knots or verify floating point. -/
+theorem constitutive_hessian_pullback
+    (aa ab bb aj ak bj bk u v : ℝ) :
+    aa * (aj*u+ak*v)^2 + 2*ab*(aj*u+ak*v)*(bj*u+bk*v) + bb*(bj*u+bk*v)^2 =
+      (aa*aj^2+2*ab*aj*bj+bb*bj^2)*u^2 +
+      2*(aa*aj*ak+ab*(aj*bk+bj*ak)+bb*bj*bk)*u*v +
+      (aa*ak^2+2*ab*ak*bk+bb*bk^2)*v^2 := by ring
+
+/-- Differentiating the first integral-mean partial gives the implemented
+same-endpoint curvature, assuming its first-partial identity and nonzero width. -/
+theorem integral_mean_curvature_before (width mean head g slope : ℝ)
+    (hw : width ≠ 0) (hg : mean-head = g*width) :
+    ((g-slope)*width+(mean-head))/(width*width) = (2*g-slope)/width := by
+  rw [hg]
+  field_simp [hw]
+  ring
+
+/-- The analogous curvature at the other endpoint. -/
+theorem integral_mean_curvature_after (width mean head g slope : ℝ)
+    (hw : width ≠ 0) (hg : head-mean = g*width) :
+    ((slope-g)*width-(head-mean))/(width*width) = (slope-2*g)/width := by
+  rw [hg]
+  field_simp [hw]
+  ring
+
+/-- The mixed partial follows from the two first-partial identities. -/
+theorem integral_mean_curvature_mixed (width mean head ga gb : ℝ)
+    (hw : width ≠ 0) (hg : mean-head = ga*width) :
+    (gb*width-(mean-head))/(width*width) = (gb-ga)/width := by
+  rw [hg]
+  field_simp [hw]
+
+/-- Duration-weighted operating averages preserve integrated flow or energy.
+The cells partition a positive-duration interval; arithmetic here is exact. -/
+theorem duration_weighted_integral {K : Type*} [Fintype K]
+    (duration : ℝ) (dt rate : K → ℝ) (nonzero : duration ≠ 0) :
+    duration * (∑ k, rate k * (dt k / duration)) = ∑ k, dt k * rate k := by
+  rw [Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro k _
+  field_simp [nonzero]
+
+/-- Holding a control on smaller cells and taking its original-window mean
+returns the same control. Refining a state grid adds no discharge decision. -/
+theorem held_control_mean {K : Type*} [Fintype K]
+    (duration control : ℝ) (dt : K → ℝ) (nonzero : duration ≠ 0)
+    (partition : ∑ k, dt k = duration) :
+    (∑ k, control * (dt k / duration)) = control := by
+  apply mul_left_cancel₀ nonzero
+  rw [duration_weighted_integral duration dt (fun _ => control) nonzero]
+  rw [← Finset.sum_mul, partition]
 
 end OpenSHOP

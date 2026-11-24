@@ -68,6 +68,18 @@ theorem negative_head_idle_counterexample :
       p=(981/100000)*q*h*eta := by
   refine ⟨1,0,0,-5,9/10,?_,?_,?_,?_,?_,?_⟩ <;> norm_num
 
+/-- Nonnegative hydraulic work excludes uphill transfer at positive discharge,
+while leaving the head unrestricted when discharge is zero. -/
+theorem positive_discharge_requires_nonnegative_work_head (q h : ℝ)
+    (flow : 0 < q) (work : 0 ≤ q*h) : 0 ≤ h := by
+  nlinarith
+
+/-- Electrical work balance alone cannot exclude uphill transfer when hydraulic
+efficiency vanishes. The separate hydraulic-work domain is necessary. -/
+theorem zero_efficiency_reverse_work_counterexample :
+    ∃ q h eta p : ℝ, 0<q ∧ h<0 ∧ eta=0 ∧ p=0 ∧ p=q*h*eta ∧ q*h<0 := by
+  refine ⟨20,-10,0,0,?_,?_,?_,?_,?_,?_⟩ <;> norm_num
+
 /-- The transition rows uniquely identify startup and shutdown with binary
 adjacent states, even though transition variables need only be continuous. -/
 theorem binary_transitions (previous current startup shutdown : ℝ)
@@ -126,5 +138,77 @@ theorem signed_onhead_bounds (u head lo hi : ℝ)
   · simp only [zero_mul]; exact ⟨min_le_left _ _,le_max_left _ _⟩
   · simp only [one_mul]
     exact ⟨le_trans (min_le_right _ _) bounds.1,le_trans bounds.2 (le_max_right _ _)⟩
+
+/-- A gate closure is previous-open AND current-closed. The three linear
+rows and nonnegativity determine it exactly without another binary variable. -/
+theorem gate_closure_transition (previous current closed : ℝ)
+    (hp : previous=0 ∨ previous=1) (hc : current=0 ∨ current=1)
+    (nonnegative : 0 ≤ closed) (lower : previous-current ≤ closed)
+    (prior : closed ≤ previous) (now : closed ≤ 1-current) :
+    closed=max 0 (previous-current) := by
+  rcases hp with hp | hp <;> rcases hc with hc | hc <;>
+    subst previous <;> subst current <;> norm_num at * <;> linarith
+
+/-- A recorded closure forces a protected unit to remain stopped on every
+interval in its waiting window. No flow or later gate position is involved. -/
+theorem closure_wait_stops_unit (running closed : ℝ)
+    (nonnegative : 0 ≤ running) (closure : closed=1)
+    (waiting : running+closed ≤ 1) : running=0 := by
+  rw [closure] at waiting
+  linarith
+
+/-- Conditional pressure rows impose zero residual when selected and leave
+its declared affine residual domain unrestricted when the position is inactive. -/
+theorem selected_pressure_equation (residual lower upper selected : ℝ)
+    (domain : lower ≤ residual ∧ residual ≤ upper)
+    (binary : selected=0 ∨ selected=1) :
+    (min 0 lower*(1-selected) ≤ residual ∧
+      residual ≤ max 0 upper*(1-selected)) ↔ (selected=1 → residual=0) := by
+  rcases binary with h | h <;> subst selected <;>
+    simp only [sub_zero, sub_self, mul_one, mul_zero]
+  · constructor
+    · intro _ impossible; norm_num at impossible
+    · intro _
+      exact ⟨le_trans (min_le_right _ _) domain.1,
+        le_trans domain.2 (le_max_right _ _)⟩
+  · constructor
+    · rintro ⟨lo,hi⟩ _; exact le_antisymm hi lo
+    · intro h
+      have hz := h True.intro
+      rw [hz]
+      exact ⟨le_refl _,le_refl _⟩
+
+/-- A bounded lower slack permits exactly the stated maximum shortfall. -/
+theorem bounded_lower_penalty (value target allowance : ℝ) :
+    (∃ slack : ℝ, 0 ≤ slack ∧ slack ≤ allowance ∧ target ≤ value + slack) ↔
+    max 0 (target-value) ≤ allowance := by
+  constructor
+  · rintro ⟨slack, nonnegative, bounded, lower⟩
+    exact max_le (by linarith) (by linarith)
+  · intro bounded
+    refine ⟨max 0 (target-value), le_max_left _ _, bounded, ?_⟩
+    have shortfall := le_max_right (0 : ℝ) (target-value)
+    linarith
+
+/-- The corresponding upper target uses the positive excess above its limit. -/
+theorem bounded_upper_penalty (value target allowance : ℝ) :
+    (∃ slack : ℝ, 0 ≤ slack ∧ slack ≤ allowance ∧ value-slack ≤ target) ↔
+    max 0 (value-target) ≤ allowance := by
+  constructor
+  · rintro ⟨slack, nonnegative, bounded, upper⟩
+    exact max_le (by linarith) (by linarith)
+  · intro bounded
+    refine ⟨max 0 (value-target), le_max_left _ _, bounded, ?_⟩
+    have excess := le_max_right (0 : ℝ) (value-target)
+    linarith
+
+/-- With a nonnegative price, the physical shortfall gives the smallest
+possible slack cost, independently of the optimizer's auxiliary variable. -/
+theorem minimum_lower_penalty_cost (value target slack price : ℝ)
+    (nonnegative : 0 ≤ slack) (lower : target ≤ value+slack)
+    (priced : 0 ≤ price) :
+    price * max 0 (target-value) ≤ price * slack := by
+  apply mul_le_mul_of_nonneg_left _ priced
+  exact max_le nonnegative (by linarith)
 
 end OpenSHOP

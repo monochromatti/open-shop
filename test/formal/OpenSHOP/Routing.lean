@@ -2,6 +2,85 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- The difference from an affine slope on one release-reference interval is
+a quadratic. Its extremum on the interval occurs at an endpoint or at the
+stationary point, clamped to the interval. -/
+theorem quadratic_flux_enclosure (a b lo hi q stationary : ℝ)
+    (hlo : lo ≤ q) (hhi : q ≤ hi) (vertex : a = 0 ∨ 2*a*stationary + b = 0) :
+    let f := fun z : ℝ => a*z^2 + b*z
+    let z := max lo (min hi stationary)
+    min (min (f lo) (f hi)) (f z) ≤ f q ∧
+      f q ≤ max (max (f lo) (f hi)) (f z) := by
+  intro f z
+  rcases vertex with zero | critical
+  · have hl : min (f lo) (f hi) ≤ f q := by
+      by_cases hb : 0 ≤ b
+      · exact (min_le_left _ _).trans (by simpa [f, zero] using mul_le_mul_of_nonneg_left hlo hb)
+      · apply (min_le_right _ _).trans
+        simpa [f, zero] using mul_le_mul_of_nonpos_left hhi (le_of_lt (lt_of_not_ge hb))
+    have hu : f q ≤ max (f lo) (f hi) := by
+      by_cases hb : 0 ≤ b
+      · exact le_trans (by simpa [f, zero] using mul_le_mul_of_nonneg_left hhi hb) (le_max_right _ _)
+      · apply le_trans _ (le_max_left _ _)
+        simpa [f, zero] using mul_le_mul_of_nonpos_left hlo (le_of_lt (lt_of_not_ge hb))
+    exact ⟨(min_le_left _ _).trans hl, hu.trans (le_max_left _ _)⟩
+  have width : lo ≤ hi := hlo.trans hhi
+  have zl : lo ≤ z := le_max_left _ _
+  have zh : z ≤ hi := max_le width (min_le_left _ _)
+  have closest : (z-stationary)^2 ≤ (q-stationary)^2 := by
+    by_cases left : stationary ≤ lo
+    · have eq : z = lo := max_eq_left ((min_le_right _ _).trans left)
+      rw [eq]
+      nlinarith [mul_nonneg (sub_nonneg.mpr hlo) (show 0 ≤ q+lo-2*stationary by linarith)]
+    · by_cases right : hi ≤ stationary
+      · have eq : z = hi := by simp [z, min_eq_left right, max_eq_right width]
+        rw [eq]
+        nlinarith [mul_nonneg (sub_nonneg.mpr hhi) (show 0 ≤ 2*stationary-q-hi by linarith)]
+      · have eq : z = stationary := by
+          simp [z, min_eq_right (le_of_lt (lt_of_not_ge right)),
+            max_eq_right (le_of_lt (lt_of_not_ge left))]
+        rw [eq]
+        simpa using sq_nonneg (q-stationary)
+  have farthest :
+      (q-stationary)^2 ≤ max ((lo-stationary)^2) ((hi-stationary)^2) := by
+    by_cases side : q ≤ stationary
+    · apply le_trans _ (le_max_left _ _)
+      nlinarith [mul_nonneg (sub_nonneg.mpr hlo) (show 0 ≤ 2*stationary-q-lo by linarith)]
+    · apply le_trans _ (le_max_right _ _)
+      nlinarith [mul_nonneg (sub_nonneg.mpr hhi)
+        (show 0 ≤ hi+q-2*stationary by linarith [le_of_lt (lt_of_not_ge side)])]
+  have diff (x y : ℝ) : f x - f y =
+      a * ((x-stationary)^2 - (y-stationary)^2) := by
+    have hb : b = -(2*a*stationary) := by linarith
+    dsimp [f]
+    rw [hb]
+    ring
+  by_cases convex : 0 ≤ a
+  · constructor
+    · apply (min_le_right _ _).trans
+      have sign := mul_nonneg convex (sub_nonneg.mpr closest)
+      linarith [diff q z]
+    · apply le_trans _ (le_max_left _ _)
+      rcases max_choice ((lo-stationary)^2) ((hi-stationary)^2) with h | h
+      · rw [h] at farthest
+        apply le_trans _ (le_max_left _ _)
+        linarith [diff lo q, mul_nonneg convex (sub_nonneg.mpr farthest)]
+      · rw [h] at farthest
+        apply le_trans _ (le_max_right _ _)
+        linarith [diff hi q, mul_nonneg convex (sub_nonneg.mpr farthest)]
+  · have concave : a ≤ 0 := le_of_lt (lt_of_not_ge convex)
+    constructor
+    · apply (min_le_left _ _).trans
+      rcases max_choice ((lo-stationary)^2) ((hi-stationary)^2) with h | h
+      · rw [h] at farthest
+        apply (min_le_left _ _).trans
+        linarith [diff lo q, mul_nonpos_of_nonpos_of_nonneg concave (sub_nonneg.mpr farthest)]
+      · rw [h] at farthest
+        apply (min_le_right _ _).trans
+        linarith [diff hi q, mul_nonpos_of_nonpos_of_nonneg concave (sub_nonneg.mpr farthest)]
+    · apply le_trans _ (le_max_right _ _)
+      linarith [diff q z, mul_nonpos_of_nonpos_of_nonneg concave (sub_nonneg.mpr closest)]
+
 /-- Each release retains its own mixture. Convex interpolation of reference
 transfer fractions remains a fraction. -/
 theorem transfer_fraction_bounds (a b w : ℝ)

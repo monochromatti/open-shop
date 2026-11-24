@@ -1,8 +1,54 @@
 import Mathlib
 
 /-! Real-arithmetic identities for the declared discrete hydraulic model.
-These theorems do not verify the Julia program or floating-point evaluation. -/
+These theorems do not verify program implementations or floating-point evaluation. -/
 namespace OpenSHOP
+
+/-- If the source and target heads lie in given intervals, the inverse tunnel
+law gives lower and upper discharge bounds for a fixed positive resistance. -/
+theorem tunnel_discharge_enclosure (r source target a b c d : ℝ)
+    (hr : 0 < r) (ha : a ≤ source) (hb : source ≤ b)
+    (hc : c ≤ target) (hd : target ≤ d) :
+    let discharge := fun h : ℝ =>
+      if h < 0 then -Real.sqrt (-h / r) else Real.sqrt (h / r)
+    discharge (a-d) ≤ discharge (source-target) ∧
+      discharge (source-target) ≤ discharge (b-c) := by
+  intro discharge
+  have monotone : Monotone discharge := by
+    intro x y hxy
+    dsimp [discharge]
+    split_ifs with hx hy hy
+    · exact neg_le_neg (Real.sqrt_le_sqrt (div_le_div_of_nonneg_right (by linarith) hr.le))
+    · exact le_trans (neg_nonpos.mpr (Real.sqrt_nonneg _)) (Real.sqrt_nonneg _)
+    · exact (hx (hy.trans_le' hxy)).elim
+    · exact Real.sqrt_le_sqrt (div_le_div_of_nonneg_right hxy hr.le)
+  exact ⟨monotone (by linarith), monotone (by linarith)⟩
+
+/-- An interior stationary head is the global maximum of a concave quadratic
+work curve. This is one segment of the head-span operating-limit calculation;
+it does not verify floating-point root selection or a complete trajectory. -/
+theorem quadratic_work_stationary_max (a b c stationary head : ℝ)
+    (concave : c ≤ 0) (critical : b + 2*c*stationary = 0) :
+    a+b*head+c*head^2 ≤ a+b*stationary+c*stationary^2 := by
+  have hb : b = -(2*c*stationary) := by linarith
+  have identity : (a+b*head+c*head^2) - (a+b*stationary+c*stationary^2) =
+      c*(head-stationary)^2 := by rw [hb]; ring
+  have negative := mul_nonpos_of_nonpos_of_nonneg concave (sq_nonneg (head-stationary))
+  linarith
+
+/-- Conservation permits terminal storage value to be expressed through net
+water fluxes. This changes numerical gradients, not the value at a feasible
+trajectory. Durations include the chosen physical unit conversion. -/
+theorem water_value_flux_substitution {R T : Type*} [Fintype R] [Fintype T]
+    (value initial final : R → ℝ) (duration : T → ℝ) (net : R → T → ℝ)
+    (balance : ∀ r, final r-initial r = ∑ t, duration t*net r t) :
+    (∑ r, value r*(final r-initial r)) = ∑ r, ∑ t, duration t*(value r*net r t) := by
+  simp_rw [balance, Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro r _
+  apply Finset.sum_congr rfl
+  intro t _
+  ring
 
 /-- Every signed internal edge credits exactly the water it withdraws. -/
 theorem incidence_cancels {N E : Type*} [Fintype N] [Fintype E] [DecidableEq N]
@@ -34,6 +80,40 @@ theorem junction_allocation {B : Type*} [Fintype B]
     ∑ b, (localWater b + share b * upstream) = (∑ b, localWater b) + upstream := by
   rw [Finset.sum_add_distrib, ← Finset.sum_mul, shares, one_mul]
 
+/-- A positive opening multiplies head, equivalently dividing the resistance.
+The closed-gate case is deliberately excluded. -/
+theorem tunnel_opening_head_form (opening resistance dh q : ℝ)
+    (ho : 0 < opening) :
+    opening * dh - resistance * q * |q| = 0 ↔
+      dh = (resistance / opening) * q * |q| := by
+  have hn : opening ≠ 0 := ne_of_gt ho
+  constructor
+  · intro h
+    calc
+      dh = (resistance * q * |q|) / opening :=
+        (eq_div_iff hn).mpr (by nlinarith [h])
+      _ = (resistance / opening) * q * |q| := by ring
+  · intro h
+    have hdiv : dh = (resistance * q * |q|) / opening := by
+      rw [h]
+      ring
+    have hmul := (eq_div_iff hn).mp hdiv
+    nlinarith
+
+/-- Dividing the scaled pressure residual by a positive head multiplier reports
+head error in metres, without hiding errors at small openings. -/
+theorem tunnel_pressure_error (opening resistance dh q : ℝ)
+    (ho : 0 < opening) :
+    abs (opening * dh - resistance * q * |q|) / opening =
+      abs (dh - (resistance / opening) * q * |q|) := by
+  calc
+    abs (opening * dh - resistance * q * |q|) / opening =
+        abs ((opening * dh - resistance * q * |q|) / opening) := by
+      rw [abs_div, abs_of_pos ho]
+    _ = abs (dh - (resistance / opening) * q * |q|) := by
+      congr 1
+      field_simp [ne_of_gt ho]
+
 /-- A passive open tunnel dissipates hydraulic work for either flow direction.
 A closed gate instead imposes q=0 and need not impose equality of heads. -/
 theorem tunnel_dissipation (resistance q dh : ℝ) (hr : 0 ≤ resistance)
@@ -46,6 +126,36 @@ theorem tunnel_dissipation (resistance q dh : ℝ) (hr : 0 ≤ resistance)
       resistance * q * |q| * q = resistance * |q| * q ^ 2 := by ring
       _ = resistance * |q| ^ 3 := by rw [hsq]; ring
   exact ⟨heq, heq ▸ mul_nonneg hr (pow_nonneg (abs_nonneg q) 3)⟩
+
+/-- The work balance for a pump is the reciprocal-efficiency formula on its
+physical domain. The balance itself needs no division at numerical trial points. -/
+theorem pumping_work_balance (work power efficiency motor : ℝ)
+    (he : 0 < efficiency) (hm : 0 < motor) :
+    work = power * efficiency * motor ↔
+      power = work / (efficiency * motor) := by
+  have hn : efficiency * motor ≠ 0 := ne_of_gt (mul_pos he hm)
+  constructor
+  · intro h
+    apply (eq_div_iff hn).mpr
+    nlinarith [h]
+  · intro h
+    have hmul := (eq_div_iff hn).mp h
+    nlinarith
+
+/-- On a linear electrical-efficiency segment, the work equation has this
+unique root when the denominator is positive. -/
+theorem electrical_conversion_root (shaft intercept slope power : ℝ)
+    (hd : 0 < 1 - shaft * slope) :
+    power = shaft * (intercept + slope * power) ↔
+      power = shaft * intercept / (1 - shaft * slope) := by
+  have hn : 1 - shaft * slope ≠ 0 := ne_of_gt hd
+  constructor
+  · intro h
+    apply (eq_div_iff hn).mpr
+    nlinarith [h]
+  · intro h
+    have hmul := (eq_div_iff hn).mp h
+    nlinarith
 
 /-- A monotone delta-head curve through zero cannot send water uphill. -/
 theorem channel_dissipation (flow : ℝ → ℝ) (monotone : Monotone flow)
@@ -301,5 +411,42 @@ theorem controlled_outlet_off (capacity opening : ℝ) (positive : 0 < capacity)
     exact (mul_eq_zero.mp zeroFlow).resolve_left (ne_of_gt positive)
   · intro zeroOpening
     simp [zeroOpening]
+
+/-- Between consecutive arrival-wave knots, the rate is a linear interpolant.
+Checking both endpoint limits therefore enforces the lower bound on the entire
+segment. At a jump, the adjacent segments use their own one-sided limits. -/
+theorem linear_arrival_minimum (left right fraction minimum : ℝ)
+    (nonnegativeFraction : 0 ≤ fraction) (unitFraction : fraction ≤ 1)
+    (leftLimit : minimum ≤ left) (rightLimit : minimum ≤ right) :
+    minimum ≤ (1-fraction)*left + fraction*right := by
+  have leftWeight : 0 ≤ 1-fraction := by linarith
+  have leftExcess := mul_nonneg leftWeight (sub_nonneg.mpr leftLimit)
+  have rightExcess := mul_nonneg nonnegativeFraction (sub_nonneg.mpr rightLimit)
+  nlinarith
+
+/-- Pressure allocation between serial machines affects their combined power
+when the two hydraulic efficiencies differ, even at the same discharge. -/
+theorem serial_machine_pressure_difference
+    (coefficient discharge upstream downstream efficiencyUp efficiencyDown first second : ℝ) :
+    coefficient*discharge*((upstream-first)*efficiencyUp+(first-downstream)*efficiencyDown) -
+      coefficient*discharge*((upstream-second)*efficiencyUp+(second-downstream)*efficiencyDown) =
+    coefficient*discharge*(efficiencyDown-efficiencyUp)*(first-second) := by ring
+
+/-- For constant efficiencies, allocate available head to the more efficient
+upstream machine by choosing the smallest admissible intermediate head. -/
+theorem serial_machine_lower_pressure_maximizes_power
+    (coefficient discharge upstream downstream efficiencyUp efficiencyDown head lower : ℝ)
+    (conversion : 0 ≤ coefficient) (forward : 0 ≤ discharge)
+    (efficiencies : efficiencyDown ≤ efficiencyUp) (pressure : lower ≤ head) :
+    coefficient*discharge*((upstream-head)*efficiencyUp+(head-downstream)*efficiencyDown) ≤
+      coefficient*discharge*((upstream-lower)*efficiencyUp+(lower-downstream)*efficiencyDown) := by
+  have factor := mul_nonneg conversion forward
+  have slope : efficiencyDown-efficiencyUp ≤ 0 := sub_nonpos.mpr efficiencies
+  have delta : 0 ≤ head-lower := sub_nonneg.mpr pressure
+  have gain := mul_nonpos_of_nonpos_of_nonneg
+    (mul_nonpos_of_nonneg_of_nonpos factor slope) delta
+  rw [← serial_machine_pressure_difference coefficient discharge upstream downstream
+    efficiencyUp efficiencyDown head lower] at gain
+  linarith
 
 end OpenSHOP

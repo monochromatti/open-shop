@@ -1,0 +1,39 @@
+name: Rust
+on:
+  push:
+    branches: [main]
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', '.github/workflows/rust.yml']
+  pull_request:
+    paths: ['Cargo.*', 'rust-toolchain.toml', 'flake.*', 'crates/**', '.github/workflows/rust.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: cachix/install-nix-action@v32.0.0
+      - uses: nix-community/cache-nix-action@v7.0.2
+        with:
+          primary-key: rust-${{ runner.os }}-${{ hashFiles('flake.lock', 'rust-toolchain.toml', 'Cargo.lock') }}-${{ github.sha }}
+          restore-prefixes-first-match: rust-${{ runner.os }}-${{ hashFiles('flake.lock', 'rust-toolchain.toml', 'Cargo.lock') }}-
+          paths: target
+      - name: Format
+        run: nix develop .#rust -c cargo fmt --all --check
+      - name: Clippy
+        run: nix develop .#rust -c cargo clippy --workspace --all-targets -- -D warnings
+      - name: Physical and derivative tests
+        run: nix develop .#rust -c cargo nextest run -p openshop
+      - name: Native Rust API
+        run: nix develop .#rust -c cargo run -p openshop --example reservoir
+      - name: Connected watercourse
+        run: nix develop .#rust -c cargo run -p openshop --example schedule -- crates/openshop/examples/data/cascade.json 10 > "$RUNNER_TEMP/schedule.json"
