@@ -58,7 +58,11 @@ cells. Check both `fine.validation.feasible` and `error.converged()`. The first
 checks physical equations and restrictions; the second compares storage, levels,
 cumulative river arrivals, water in transit and revenue between the two grids.
 These differences estimate numerical convergence, without bounding continuous-time
-error. The current optimizer does not yet select its hydraulic grid automatically.
+error. Both `solve` and `refine` use this comparison to check their results.
+`SolveOptions.time_accuracy` sets the comparison tolerances. When the error
+is too large, the solver refines river mixing or uses two half steps to locate
+the hydraulic intervals that need subdivision. It restores feasibility on
+the resulting grid and checks the full trajectory again.
 
 `Schedule.grid` contains hydraulic time edges; `Schedule.operating_grid` retains
 the original decision times. `Schedule.routing_grid` records the river mixing
@@ -298,8 +302,8 @@ are linear expressions of interval endpoints and incoming releases, so storage
 bounds can be checked throughout an interval without adding storage variables.
 Mean reservoir heads are integrated over those segments. This prevents an
 arrival pulse from overflowing a small reservoir between control times.
-Tunnel pressure equations still apply to interval mean heads; adaptive hydraulic
-stepping and finer chronological replay remain to be ported.
+Tunnel pressure equations use mean heads over each hydraulic step. Subdivision
+keeps operating decisions fixed and resolves the pressure equations on the new grid.
 
 Oximo builds the equations. The stable POUNCE expression evaluator supplies sparse
 first and second derivatives directly in memory, including constraint curvature.
@@ -324,15 +328,16 @@ Nonlinear dispatch evaluates the integer proposals, and search can change earlie
 commitments. The proposal objective is **not a global bound**. POUNCE's optimizer
 is exercised in comparison tests, rather than exposed as a user option.
 
-`validation` evaluates water balance, pressure losses and operating limits in
-physical units. It checks this interval model, not the finer replay or global
-optimality provided by the complete Julia package. A feasible result alone says
-nothing about optimality. `solver_status` contains Ipopt's termination code for an optimized result and
-is absent for pure physical reconstruction. `iterations` describes the final nonlinear solve, not the entire commitment search.
+`validation` reports water balance, pressure and operating residuals on the
+returned grid. An optimized schedule is marked feasible after it passes both
+physical checks and independent finer replay. `time_error` records the numerical
+comparison. A schedule returned by `reconstruct` alone reports feasibility on
+its own grid. `solver_status` is Ipopt's termination code, and `iterations`
+counts iterations in the reported solve. The feasibility checks establish
+neither continuous-time error bounds nor global optimality.
 
-Still required are adaptive hydraulic integration and
-finer independent replay, reserves, restart/rolling horizons and
-global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
+Remaining work includes priced minimum releases, reserves, rolling-horizon
+restart and global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
 speed and solution comparison.

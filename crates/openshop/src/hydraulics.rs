@@ -834,6 +834,7 @@ impl SchedulingProblem<'_> {
             solver_status: None,
             iterations: 0,
             validation: Default::default(),
+            time_error: None,
         };
         let mut columns: Vec<_> = schedule.unit_flow.iter().flatten().copied().collect();
         columns.resize(self.routing.primary_columns, 0.);

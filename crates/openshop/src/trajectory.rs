@@ -50,6 +50,9 @@ pub struct Schedule {
     pub solver_status: Option<i32>,
     pub iterations: usize,
     pub validation: Validation,
+    /// Independent finer-grid differences for an optimized schedule. None means
+    /// that time convergence has not been checked for these controls and states.
+    pub time_error: Option<crate::TimeIntegrationError>,
 }
 
 impl Schedule {
@@ -170,6 +173,7 @@ pub(crate) fn evaluate(
     junction_head: Vec<Vec<f64>>,
     tolerance: f64,
 ) -> Result<Schedule, crate::Error> {
+    schedule.time_error = None;
     let mesh = &problem.mesh;
     let (case, topology, routing, operating) = (
         problem.case,

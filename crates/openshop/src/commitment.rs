@@ -16,6 +16,7 @@ pub(crate) struct DiscreteControls {
 #[derive(Clone)]
 pub(crate) struct Proposal {
     pub grid: Vec<f64>,
+    pub routing_grid: Vec<f64>,
     pub controls: DiscreteControls,
     pub storage: Vec<Vec<f64>>,
     pub flow: Vec<Vec<f64>>,
@@ -129,6 +130,7 @@ impl Proposal {
                     .collect(),
             },
             grid: result.grid.clone(),
+            routing_grid: result.routing_grid.clone(),
             storage: result.storage.clone(),
             flow: result.unit_flow.clone(),
             tunnel_flow: result.tunnel_flow.clone(),
@@ -185,6 +187,7 @@ impl Proposal {
             };
         Ok(Cow::Owned(Self {
             grid: grid.to_vec(),
+            routing_grid: self.routing_grid.clone(),
             controls: self.controls.clone(),
             storage,
             flow,
@@ -1028,6 +1031,7 @@ pub(crate) fn propose(
     );
     Ok(Some(Proposal {
         grid: case.grid.clone(),
+        routing_grid: routing.mixing_grid.clone(),
         controls: DiscreteControls {
             unit_on: commitment,
             gate_position,

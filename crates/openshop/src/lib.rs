@@ -79,6 +79,7 @@ pub struct SolveOptions {
     pub time_limit: f64,
     pub max_iterations: i32,
     pub tolerance: f64,
+    pub time_accuracy: TimeAccuracy,
 }
 
 impl Default for SolveOptions {
@@ -87,12 +88,14 @@ impl Default for SolveOptions {
             time_limit: 60.0,
             max_iterations: 1000,
             tolerance: 1e-8,
+            time_accuracy: TimeAccuracy::default(),
         }
     }
 }
 
 impl SolveOptions {
     fn validate(&self) -> Result<(), Error> {
+        self.time_accuracy.validate()?;
         if !self.time_limit.is_finite()
             || self.time_limit <= 0.0
             || std::time::Duration::try_from_secs_f64(self.time_limit).is_err()

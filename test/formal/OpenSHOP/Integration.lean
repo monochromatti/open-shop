@@ -2,6 +2,15 @@ import Mathlib
 
 namespace OpenSHOP
 
+/-- First-order errors give the conservative coarse-grid factor two. The
+expansion is an assumption; it does not bound a computed mixing trajectory. -/
+theorem first_order_coarse_error (coarse fine reference coefficient step : ℝ)
+    (hc : coarse = reference + coefficient * step)
+    (hf : fine = reference + coefficient * (step/2)) :
+    coarse - reference = 2 * (coarse - fine) := by
+  rw [hc, hf]
+  ring
+
 /-- The leading second-order errors give the coarse-grid Richardson factor.
 The expansion is a hypothesis, not a bound on a computed trajectory. -/
 theorem second_order_coarse_error (coarse fine reference coefficient step : ℝ)

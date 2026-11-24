@@ -106,11 +106,12 @@ impl<'a> SchedulingProblem<'a> {
     ) -> Result<Schedule, Error> {
         options.validate()?;
         let started = Instant::now();
-        let physical = self.reconstruct(controls)?;
+        let mut physical = self.reconstruct(controls)?;
         let start = crate::commitment::Proposal::from_schedule(self, &physical)?;
         let mut budget = options.clone();
         budget.time_limit -= started.elapsed().as_secs_f64();
         if budget.time_limit <= 0.01 {
+            physical.validation.feasible = false;
             return Ok(physical);
         }
         let refined = self.dispatch(
@@ -119,13 +120,7 @@ impl<'a> SchedulingProblem<'a> {
             &budget,
             Backend::Ipopt,
         )?;
-        if physical.validation.feasible
-            && (!refined.validation.feasible || refined.objective < physical.objective)
-        {
-            Ok(physical)
-        } else {
-            Ok(refined)
-        }
+        Ok(refined)
     }
 
     fn solve_with_backend(
@@ -261,59 +256,182 @@ impl SchedulingProblem<'_> {
         backend: Backend,
     ) -> Result<Schedule, Error> {
         let started = Instant::now();
-        let physical = if let Some(start) = start {
-            match self.reconstruct(&start.physical_controls(self)?) {
-                Ok(s) => Some(s),
-                Err(Error::Input(_) | Error::Solver(_)) => None,
-                Err(error) => return Err(error),
-            }
-        } else {
-            None
-        };
-        let projected = physical
-            .as_ref()
-            .map(|s| crate::commitment::Proposal::from_schedule(self, s))
+        let mut mesh = start
+            .filter(|p| p.grid != self.mesh.grid || p.routing_grid != self.routing.mixing_grid)
+            .map(|p| self.on_mesh(&p.grid, &p.routing_grid))
             .transpose()?;
-        let already_feasible = physical.as_ref().is_some_and(|s| s.validation.feasible)
-            && projected.as_ref().is_some_and(|p| p.controls == controls);
-        let mut budget = options.clone();
-        budget.time_limit -= started.elapsed().as_secs_f64();
-        if budget.time_limit <= 0. {
-            return physical.ok_or_else(|| {
-                Error::Solver(
-                    "dispatch time allowance expired during initial reconstruction".into(),
-                )
-            });
-        }
-        let feasible = if already_feasible {
-            physical.unwrap()
-        } else {
-            // Phase I finds a nearby feasible water plan. It uses the same
-            // hard equations and stops once their original residuals pass.
-            self.dispatch_with_objective(
-                controls.clone(),
-                projected.as_ref().or(start),
-                &budget,
-                backend,
-                DispatchObjective::FlowDistance,
-            )?
-        };
-        budget.time_limit = options.time_limit - started.elapsed().as_secs_f64();
-        if !feasible.validation.feasible || budget.time_limit <= 0.01 {
-            return Ok(feasible);
-        }
-        let warm = crate::commitment::Proposal::from_schedule(self, &feasible)?;
-        let refined = self.dispatch_with_objective(
-            controls,
-            Some(&warm),
-            &budget,
-            backend,
-            DispatchObjective::Revenue,
-        )?;
-        if refined.validation.feasible && refined.objective >= feasible.objective {
-            Ok(refined)
-        } else {
-            Ok(feasible)
+        let mut warm = None;
+        let mut current: Option<Schedule> = None;
+        let mut best: Option<Schedule> = None;
+        let mut last = None;
+        let mut polished = false;
+        loop {
+            let problem = mesh.as_ref().unwrap_or(self);
+            let mut budget = options.clone();
+            budget.time_limit -= started.elapsed().as_secs_f64();
+            let restoring = current.is_none();
+            if restoring {
+                if budget.time_limit <= 0.01 {
+                    return best.or(last).ok_or_else(|| Error::Solver("dispatch time allowance expired before a physical trajectory was available".into()));
+                }
+                let initial = warm.as_ref().or(start);
+                let physical = if let Some(point) = initial {
+                    match problem.reconstruct(&point.physical_controls(problem)?) {
+                        Ok(s) => Some(s),
+                        Err(Error::Input(_) | Error::Solver(_)) => None,
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    None
+                };
+                let projected = physical
+                    .as_ref()
+                    .map(|s| crate::commitment::Proposal::from_schedule(problem, s))
+                    .transpose()?;
+                let feasible = physical.as_ref().is_some_and(|s| s.validation.feasible)
+                    && projected.as_ref().is_some_and(|p| p.controls == controls);
+                budget.time_limit = options.time_limit - started.elapsed().as_secs_f64();
+                current = if feasible {
+                    physical
+                } else if budget.time_limit > 0.01 {
+                    // Restore the water plan before optimizing revenue or
+                    // interpreting integration differences as mesh error.
+                    Some(problem.dispatch_with_objective(
+                        controls.clone(),
+                        projected.as_ref().or(initial),
+                        &budget,
+                        backend,
+                        DispatchObjective::FlowDistance,
+                    )?)
+                } else {
+                    physical
+                };
+            }
+            let Some(mut result) = current.take() else {
+                return best.or(last).ok_or_else(|| {
+                    Error::Solver("dispatch time allowance expired during reconstruction".into())
+                });
+            };
+            // Step differences estimate discretization error only after the
+            // algebraic water and pressure equations have been solved. A
+            // violated operating bound alone does not prevent that estimate.
+            let tolerance = options.tolerance.max(1e-7);
+            if result.validation.water_balance > tolerance
+                || result.validation.pressure_balance > 100. * tolerance
+            {
+                return Ok(best.unwrap_or(result));
+            }
+            if !result.validation.feasible
+                && !restoring
+                && options.time_limit - started.elapsed().as_secs_f64() > 0.01
+            {
+                // Restore the improved water plan with its current crossing
+                // observations before accepting or discarding its revenue.
+                warm = Some(crate::commitment::Proposal::from_schedule(
+                    problem, &result,
+                )?);
+                last = Some(result);
+                continue;
+            }
+            let replay = match problem.validate_replay(&result, &options.time_accuracy) {
+                Ok((fine, error)) => {
+                    let converged =
+                        result.validation.feasible && fine.validation.feasible && error.converged();
+                    if !result.validation.feasible && !fine.validation.feasible && error.converged()
+                    {
+                        return Ok(best.unwrap_or(result));
+                    }
+                    result.time_error = Some(error);
+                    Some((fine, converged))
+                }
+                Err(Error::Solver(_)) => None,
+                Err(error) => return Err(error),
+            };
+            let converged = replay.as_ref().is_some_and(|(_, converged)| *converged);
+            if converged {
+                let improved = best.as_ref().is_none_or(|s| {
+                    result.objective > s.objective + options.tolerance * s.objective.abs().max(1.)
+                });
+                if best
+                    .as_ref()
+                    .is_none_or(|s| result.objective >= s.objective)
+                {
+                    best = Some(result.clone());
+                }
+                budget.time_limit = options.time_limit - started.elapsed().as_secs_f64();
+                if budget.time_limit <= 0.01
+                    || (polished && (!improved || matches!(result.solver_status, Some(0 | 1))))
+                {
+                    return Ok(best.unwrap());
+                }
+                let point = crate::commitment::Proposal::from_schedule(problem, &result)?;
+                // Revenue solves yield checkpoints while time remains to
+                // reconstruct their controls and restore finer-grid feasibility.
+                budget.time_limit /= 2.;
+                current = match problem.dispatch_with_objective(
+                    controls.clone(),
+                    Some(&point),
+                    &budget,
+                    backend,
+                    DispatchObjective::Revenue,
+                ) {
+                    Ok(s) => Some(s),
+                    Err(Error::Solver(_)) => return Ok(best.unwrap()),
+                    Err(error) => return Err(error),
+                };
+                polished = true;
+                continue;
+            }
+            // A finite-grid solution is not an accepted time trajectory until
+            // the independently finer physics and numerical comparison pass.
+            result.validation.feasible = false;
+            if options.time_limit - started.elapsed().as_secs_f64() <= 0.01 {
+                return Ok(best.unwrap_or(result));
+            }
+            let mut grid = if result.time_error.as_ref().is_some_and(|e| !e.converged()) {
+                let defects = problem.hydraulic_defects(&result, &options.time_accuracy)?;
+                crate::time_integration::bulk_refined_grid(&result.grid, &defects)
+            } else {
+                crate::time_integration::bisect(&result.grid)
+            };
+            let mut mixing = result.routing_grid.clone();
+            if !mixing.is_empty() && result.time_error.as_ref().is_some_and(|e| !e.converged()) {
+                let finer_mixing = crate::time_integration::bisect(&mixing);
+                let transport = self
+                    .on_mesh(&result.grid, &finer_mixing)?
+                    .reconstruct(&result.controls()?);
+                match transport {
+                    Ok(transport) => {
+                        let error = crate::TimeIntegrationError::between(
+                            self.case,
+                            &result,
+                            &transport,
+                            &options.time_accuracy,
+                        )?;
+                        if !error.converged() {
+                            // Resolve river averaging before adding hydraulic
+                            // states that cannot correct a transport error.
+                            grid.clone_from(&result.grid);
+                            mixing = finer_mixing;
+                        }
+                    }
+                    Err(Error::Solver(_)) => mixing = finer_mixing,
+                    Err(error) => return Err(error),
+                }
+            }
+            if grid == result.grid && mixing == result.routing_grid {
+                grid = crate::time_integration::bisect(&result.grid);
+            }
+            if grid == result.grid && mixing == result.routing_grid {
+                return Ok(best.unwrap_or(result));
+            }
+            let initial = replay.as_ref().map_or(&result, |(fine, _)| fine);
+            warm = Some(crate::commitment::Proposal::from_schedule(
+                problem, initial,
+            )?);
+            mesh = Some(self.on_mesh(&grid, &mixing)?);
+            last = Some(result);
+            polished = false;
         }
     }
 
@@ -348,11 +466,12 @@ impl SchedulingProblem<'_> {
         }
         let mut warm = None;
         let mut last = None;
+        let mut best_trial: Option<Schedule> = None;
         loop {
             let mut budget = options.clone();
             budget.time_limit -= started.elapsed().as_secs_f64();
             if budget.time_limit <= 0. {
-                return last.ok_or_else(|| Error::Solver(
+                return best_trial.or(last).ok_or_else(|| Error::Solver(
                     "nonlinear dispatch exceeded its time allowance before producing a trial point".into()));
             }
             let result = self.dispatch_on_points(
@@ -363,10 +482,25 @@ impl SchedulingProblem<'_> {
                 backend,
                 objective,
             )?;
-            if result.validation.feasible
-                || options.time_limit - started.elapsed().as_secs_f64() <= 0.01
+            let tolerance = options.tolerance.max(1e-7);
+            if objective == DispatchObjective::Revenue
+                && result.validation.water_balance <= tolerance
+                && result.validation.pressure_balance <= 100. * tolerance
+                && result.objective.is_finite()
+                && best_trial
+                    .as_ref()
+                    .is_none_or(|s| result.objective > s.objective)
             {
+                // Keep a useful water plan for restoration if a later solve
+                // with added crossing observations is interrupted. Its physical
+                // validation remains unchanged; this does not accept the trial.
+                best_trial = Some(result.clone());
+            }
+            if result.validation.feasible {
                 return Ok(result);
+            }
+            if options.time_limit - started.elapsed().as_secs_f64() <= 0.01 {
+                return Ok(best_trial.unwrap_or(result));
             }
             let mut columns: Vec<_> = result
                 .unit_flow
@@ -384,7 +518,7 @@ impl SchedulingProblem<'_> {
             self.routing.complete_columns(&mut columns);
             let refined = points.with_level_crossings(self, &result.storage, &columns);
             if refined.len() <= points.len() {
-                return Ok(result);
+                return Ok(best_trial.unwrap_or(result));
             }
             points = refined;
             warm = Some(crate::commitment::Proposal::from_schedule(self, &result)?);
@@ -502,6 +636,7 @@ impl SchedulingProblem<'_> {
             solver_status: Some(point.status),
             iterations: point.iterations,
             validation: Validation::default(),
+            time_error: None,
         };
         for (k, &river) in routing.outlets.iter().enumerate() {
             schedule.river_opening[river] = dispatch.river_opening[k]
@@ -845,6 +980,99 @@ mod tests {
     }
 
     #[test]
+    fn moving_storage_knot_constraints_limit_actual_peak_generation() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.05];
+        case.prices = vec![100.];
+        let upper = &mut case.system.reservoirs[0];
+        upper.storage = Bounds::new(0., 1000.);
+        upper.initial_storage = 1000.;
+        upper.water_value = 0.;
+        upper.level = StorageCurve::Table(
+            crate::TableCurve::new(vec![0., 600., 1000.], vec![30., 90., 92.]).unwrap(),
+        );
+        case.system.reservoirs.push(Reservoir {
+            name: "Lower lake".into(),
+            storage: Bounds::new(0., 1000.),
+            initial_storage: 1000.,
+            water_value: 0.,
+            level: StorageCurve::Polynomial {
+                reference_volume: 0.,
+                elevation: 20.,
+                slope: 0.03,
+                curvature: 0.,
+            },
+            operation: Default::default(),
+        });
+        case.system.plants[0].target = "Lower lake".into();
+        case.system
+            .plants
+            .push(Plant::new("Lower station", "Lower lake", "Sea"));
+        let unit = &mut case.system.units[0];
+        unit.flow = Bounds::new(2., 5.);
+        unit.power = Bounds::new(0., 1.6);
+        unit.head = Bounds::new(1., 100.);
+        case.system.units.push(Unit::new(
+            "Lower unit",
+            "Lower station",
+            Bounds::new(6., 6.),
+            Bounds::new(0., 10.),
+            Bounds::new(1., 100.),
+            Efficiency::constant(0.9),
+        ));
+        case.commitment.insert("Lower unit".into(), vec![true]);
+        let mut controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![vec![true]; 2],
+            unit_flow: vec![vec![4.2], vec![6.]],
+            river_opening: vec![],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        // Both interval endpoints obey the upper machine's power limit, but
+        // its working head peaks when the upper storage crosses 600 m³.
+        let physical = p.reconstruct(&controls).unwrap();
+        for k in [0, physical.grid.len() - 1] {
+            let head = case.system.reservoirs[0]
+                .level
+                .level(physical.storage[0][k])
+                .unwrap()
+                - case.system.reservoirs[1]
+                    .level
+                    .level(physical.storage[1][k])
+                    .unwrap();
+            assert!(
+                case.system.units[0]
+                    .power(controls.unit_flow[0][0], head)
+                    .unwrap()
+                    < case.system.units[0].power.max
+            );
+        }
+        assert!(!physical.validation.feasible);
+        controls.unit_flow[0][0] = 3.;
+        let result = p
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        let q = result.controls().unwrap().unit_flow[0][0];
+        // At the moving crossing, t=400/Q seconds and Q*H=28Q+72.
+        let optimum = (1.6 / (0.00981 * 0.9) - 72.) / 28.;
+        let peak_power = 0.00981 * 0.9 * (28. * q + 72.);
+        assert!(peak_power <= 1.6 + 1e-6, "{peak_power}");
+        assert!((q - optimum).abs() < 1e-3, "Q={q}, expected {optimum}");
+        let (fine, error) = p
+            .validate_replay(&result, &crate::TimeAccuracy::default())
+            .unwrap();
+        assert!(fine.validation.feasible && error.converged());
+    }
+
+    #[test]
     fn small_reservoir_outlet_converges_to_analytic_decay_with_held_gate() {
         let mut case = reservoir_case();
         case.grid = vec![0., 0.5];
@@ -930,6 +1158,47 @@ mod tests {
             );
         }
         assert!(previous_error < 0.2);
+        let optimized = p
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 2.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(optimized.validation.feasible, "{:?}", optimized.validation);
+        assert!(optimized.time_error.as_ref().unwrap().converged());
+        assert!(
+            (optimized.storage[0].last().unwrap() - exact).abs() < 1.,
+            "end {:?}, exact {exact}, error {:?}",
+            optimized.storage[0].last(),
+            optimized.time_error
+        );
+        let (checked, error) = p
+            .validate_replay(&optimized, &crate::TimeAccuracy::default())
+            .unwrap();
+        assert!(checked.validation.feasible && error.converged());
+        // The one-hour midpoint equation has negative final storage although
+        // the continuous outlet law preserves positivity. Grid error must be
+        // resolved before declaring the physical controls infeasible.
+        case.grid[1] = 1.;
+        let p = SchedulingProblem::new(&case).unwrap();
+        assert!(!p.reconstruct(&controls).unwrap().validation.feasible);
+        let result = p
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        assert!(result.time_error.as_ref().unwrap().converged());
+        let exact = 500. * (-3.6f64).exp();
+        assert!((result.storage[0].last().unwrap() - exact).abs() < 1.);
+        assert!(result.storage[0].iter().all(|&v| v > 0.));
     }
 
     #[test]
