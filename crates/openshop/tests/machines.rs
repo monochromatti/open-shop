@@ -51,6 +51,7 @@ fn pumped_case() -> ScheduleCase {
     pump.motor_efficiency = 0.96;
     pump.operation.startup_cost = 10.;
     ScheduleCase {
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
         operations: Default::default(),

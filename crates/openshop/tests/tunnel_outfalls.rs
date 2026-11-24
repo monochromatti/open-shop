@@ -19,6 +19,7 @@ fn case(transport: RiverTransport) -> ScheduleCase {
     let mut tunnel = Tunnel::new("Outlet", "Upper", "Tail", 10., 5.);
     tunnel.discharge_river = Some("Reach".into());
     ScheduleCase {
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],

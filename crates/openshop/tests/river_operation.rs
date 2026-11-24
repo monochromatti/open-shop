@@ -46,6 +46,7 @@ fn case(transport: RiverTransport) -> ScheduleCase {
         inflows: BTreeMap::new(),
         commitment: BTreeMap::new(),
         operations: vec![],
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
     }

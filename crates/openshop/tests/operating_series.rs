@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 fn case() -> ScheduleCase {
     ScheduleCase {
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],

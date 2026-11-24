@@ -72,3 +72,9 @@ a nonzero interval width and the stated first-partial identities; they do not
 assert differentiability at curve knots. The pullback assumes a supplied symmetric
 local Hessian and checks its affine-composition coefficients in real arithmetic.
 These statements do not verify Rust code, floating-point arithmetic or a solver.
+
+The bounded-slack theorems in `Commitment.lean` establish the exact lower and
+upper target domains and the minimal nonnegative-price slack cost. Both language
+implementations use these equations for explicit penalty limits. The proofs
+treat the assessed quantity as an arbitrary real value; they do not verify
+floating-point evaluation, time-window averaging or solver output.

@@ -24,6 +24,7 @@ pub struct SchedulingProblem<'a> {
     pub(crate) level_windows: crate::level_windows::LevelEquations,
     pub(crate) interlocks: crate::gate_interlocks::GateInterlocks,
     pub(crate) operating_points: crate::operating_points::OperatingPoints,
+    pub(crate) soft_limits: crate::soft_constraints::SoftLimits,
     pub(crate) water_value: crate::river::LinearForm,
 }
 
@@ -31,6 +32,7 @@ impl<'a> SchedulingProblem<'a> {
     /// Validate inputs and prepare network incidence and transport once.
     pub fn new(case: &'a ScheduleCase) -> Result<Self, Error> {
         let topology = case.topology()?;
+        let soft_limits = crate::soft_constraints::SoftLimits::new(case, &topology)?;
         let operating = crate::operating_data::OperatingData::new(case, &topology)?;
         let routing = Routing::new(case, &topology, &operating)?;
         let observations =
@@ -41,6 +43,7 @@ impl<'a> SchedulingProblem<'a> {
         let water_value =
             crate::trajectory::water_value_change(case, &topology, &routing, &operating);
         Ok(Self {
+            soft_limits,
             water_value,
             operating_points,
             interlocks,
@@ -452,6 +455,8 @@ impl SchedulingProblem<'_> {
             plant_power: Vec::new(),
             head: Vec::new(),
             commitment: controls.unit_on,
+            soft_slacks: vec![],
+            soft_penalty_cost: 0.,
             objective: 0.,
             solver_status: Some(point.status),
             iterations: point.iterations,
@@ -511,6 +516,7 @@ mod tests {
 
     fn reservoir_case() -> ScheduleCase {
         ScheduleCase {
+            soft_constraints: vec![],
             flow_requirements: vec![],
             routing_grid: vec![],
             operations: Default::default(),

@@ -4,7 +4,6 @@ use openshop::{
     Boundary, Bounds, Efficiency, HydroSystem, Plant, Reservoir, ScheduleCase, SchedulingProblem,
     SolveOptions, StorageCurve, Unit,
 };
-use std::collections::BTreeMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut unit = Unit::new(
@@ -38,16 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         units: vec![unit],
         ..Default::default()
     };
-    let case = ScheduleCase {
-        flow_requirements: vec![],
-        routing_grid: vec![],
-        operations: Vec::new(),
-        system,
-        grid: vec![0., 1., 2.],
-        prices: vec![-100., 150.],
-        inflows: BTreeMap::new(),
-        commitment: BTreeMap::new(),
-    };
+    let case = ScheduleCase::new(system, vec![0., 1., 2.], vec![-100., 150.]);
     let problem = SchedulingProblem::new(&case)?;
     let schedule = problem.solve(&SolveOptions {
         time_limit: 5.,

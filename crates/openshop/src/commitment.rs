@@ -739,6 +739,42 @@ pub(crate) fn propose(
     problem
         .interlocks
         .constrain(&m, &all_on, &gate_on, zero(), nt);
+    if !case.soft_constraints.is_empty() {
+        let volumes: Vec<Vec<Expr<'_>>> = s
+            .reservoirs
+            .iter()
+            .enumerate()
+            .map(|(r, reservoir)| {
+                let range = reservoir.storage.max - reservoir.storage.min;
+                (0..=nt)
+                    .map(|t| (v[[r, t]] * range + reservoir.storage.min).into())
+                    .collect()
+            })
+            .collect();
+        let levels: Vec<Vec<Expr<'_>>> = s
+            .reservoirs
+            .iter()
+            .enumerate()
+            .map(|(r, reservoir)| {
+                (0..=nt)
+                    .map(|t| {
+                        let v0 = previous.map_or(reservoir.initial_storage, |p| p.storage[r][t]);
+                        let d = reservoir.level.mean_data(v0, v0);
+                        (volumes[r][t] - v0) * (d.gradient[0] + d.gradient[1]) + d.value
+                    })
+                    .collect()
+            })
+            .collect();
+        revenue = revenue
+            - problem.soft_limits.constrain(
+                &m,
+                &volumes,
+                &levels,
+                &all_power,
+                &all_flow,
+                zero(),
+            )?;
+    }
     crate::operating_equations::constrain(
         &m,
         case,

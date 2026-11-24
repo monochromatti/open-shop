@@ -17,7 +17,9 @@ The example has two headwater stations, a pressure loop, rivers that merge and
 split, and a downstream station with a 1000 m³ forebay. The final argument is the
 optimization time allowance in seconds. Output is JSON in physical units.
 
-Construct a `ScheduleCase` with native Rust structs and prepare a
+Construct case data with `ScheduleCase::new(system, grid, prices)`, then add
+inflows, prescribed commitments and operating targets through its public fields.
+Prepare a
 `SchedulingProblem::new(&case)`. Preparation validates data and resolves network
 incidence and transport once. Call `problem.solve(&options)` to optimize; the
 prepared problem can be reused for another solve. It borrows immutable inputs,
@@ -305,7 +307,7 @@ nothing about optimality. `solver_status` contains Ipopt's termination code for 
 is absent for pure physical reconstruction. `iterations` describes the final nonlinear solve, not the entire commitment search.
 
 Still required are adaptive hydraulic integration and
-finer independent replay, soft constraints and reserves, restart/rolling horizons and
+finer independent replay, reserves, restart/rolling horizons and
 global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
@@ -611,3 +613,47 @@ execution or prove the optimization result globally optimal.
 m³/s averaged over a control interval. Natural inflow counts toward the minimum;
 a reservoir supplies only the remaining withdrawal. At a river junction, the
 bound applies to its interval-average outgoing release, including delayed water.
+
+## Priced operating targets
+
+`ScheduleCase.soft_constraints` declares targets whose deviations have a price
+and an explicit maximum. Reservoir storage or level is assessed at one control
+vertex. Unit or plant power and discharge are averaged over a specified window
+whose endpoints must lie on the control grid. Unequal interval durations retain
+their weights. A window crossing the scheduling horizon is rejected; an
+assessment entirely outside the horizon is inactive.
+
+For a lower target `L`, the equations are `value + slack >= L` and
+`0 <= slack <= allowance`. An upper target uses `value - slack <= U`.
+These inequalities apply only to the named target. Reservoir safety bounds,
+machine operating ranges, conservation and pressure equations remain hard.
+A zero allowance gives a hard target. A positive allowance requires an explicit
+positive cost.
+
+```rust
+use openshop::{PenaltyLimit, SoftConstraint, SoftTarget};
+
+case.soft_constraints.push(SoftConstraint {
+    name: "Terminal storage".into(),
+    target: SoftTarget::Storage { reservoir: "Lake".into(), time: 24.0 },
+    lower: Some(PenaltyLimit {
+        value: 3_000_000.0, // m³
+        allowance: 20_000.0, // m³
+        cost: 0.02, // currency/m³
+    }),
+    upper: None,
+});
+```
+
+Storage costs are currency/m³, level costs currency/m, and power costs
+currency/MWh. Discharge costs are currency/m³ of missing or excess water;
+the average rate deviation is multiplied by the window duration in seconds.
+Power targets use the positive generation or pumping magnitude, matching
+`unit_power` and `plant_power`. The same target equations and costs enter the integer proposal and nonlinear
+dispatch models; measured reservoir levels use the actual storage curve during
+nonlinear dispatch.
+
+Returned `soft_slacks` contain the minimal physical shortfalls and excesses,
+computed again from the returned schedule rather than copied from optimization
+variables. `soft_penalty_cost` is their total cost and is subtracted from
+`objective`. A permitted deviation is feasible; exceeding its allowance is not.

@@ -597,6 +597,8 @@ fn one() -> f64 {
 #[serde(deny_unknown_fields)]
 pub struct ScheduleCase {
     #[serde(default)]
+    pub soft_constraints: Vec<crate::SoftConstraint>,
+    #[serde(default)]
     pub flow_requirements: Vec<crate::FlowRequirement>,
     /// Optional transport mesh: must retain all control vertices.
     #[serde(default)]
@@ -638,6 +640,22 @@ pub(crate) struct Topology {
 }
 
 impl ScheduleCase {
+    /// Construct case data from a watercourse, control grid and electricity prices.
+    /// Add inflows, prescribed commitments and operating restrictions through the
+    /// public fields. `SchedulingProblem::new` validates the complete case.
+    pub fn new(system: HydroSystem, grid: Vec<f64>, prices: Vec<f64>) -> Self {
+        Self {
+            system,
+            grid,
+            prices,
+            inflows: BTreeMap::new(),
+            commitment: BTreeMap::new(),
+            operations: vec![],
+            routing_grid: vec![],
+            flow_requirements: vec![],
+            soft_constraints: vec![],
+        }
+    }
     pub(crate) fn topology(&self) -> Result<Topology, Error> {
         let s = &self.system;
         let periods = self.prices.len();

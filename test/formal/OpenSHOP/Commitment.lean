@@ -178,4 +178,37 @@ theorem selected_pressure_equation (residual lower upper selected : ℝ)
       rw [hz]
       exact ⟨le_refl _,le_refl _⟩
 
+/-- A bounded lower slack permits exactly the stated maximum shortfall. -/
+theorem bounded_lower_penalty (value target allowance : ℝ) :
+    (∃ slack : ℝ, 0 ≤ slack ∧ slack ≤ allowance ∧ target ≤ value + slack) ↔
+    max 0 (target-value) ≤ allowance := by
+  constructor
+  · rintro ⟨slack, nonnegative, bounded, lower⟩
+    exact max_le (by linarith) (by linarith)
+  · intro bounded
+    refine ⟨max 0 (target-value), le_max_left _ _, bounded, ?_⟩
+    have shortfall := le_max_right (0 : ℝ) (target-value)
+    linarith
+
+/-- The corresponding upper target uses the positive excess above its limit. -/
+theorem bounded_upper_penalty (value target allowance : ℝ) :
+    (∃ slack : ℝ, 0 ≤ slack ∧ slack ≤ allowance ∧ value-slack ≤ target) ↔
+    max 0 (value-target) ≤ allowance := by
+  constructor
+  · rintro ⟨slack, nonnegative, bounded, upper⟩
+    exact max_le (by linarith) (by linarith)
+  · intro bounded
+    refine ⟨max 0 (value-target), le_max_left _ _, bounded, ?_⟩
+    have excess := le_max_right (0 : ℝ) (value-target)
+    linarith
+
+/-- With a nonnegative price, the physical shortfall gives the smallest
+possible slack cost, independently of the optimizer's auxiliary variable. -/
+theorem minimum_lower_penalty_cost (value target slack price : ℝ)
+    (nonnegative : 0 ≤ slack) (lower : target ≤ value+slack)
+    (priced : 0 ≤ price) :
+    price * max 0 (target-value) ≤ price * slack := by
+  apply mul_le_mul_of_nonneg_left _ priced
+  exact max_le nonnegative (by linarith)
+
 end OpenSHOP

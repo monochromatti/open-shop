@@ -80,10 +80,11 @@ pub(crate) fn build_dispatch(
         .enumerate()
         .filter_map(|(r, reservoir)| {
             if matches!(reservoir.level, crate::StorageCurve::Table(_))
-                && operating.reservoirs[r]
-                    .level_change
-                    .iter()
-                    .any(|c| c.up.is_some() || c.down.is_some())
+                && (problem.soft_limits.needs_level(r)
+                    || operating.reservoirs[r]
+                        .level_change
+                        .iter()
+                        .any(|c| c.up.is_some() || c.down.is_some()))
             {
                 Some(r)
             } else {
@@ -281,11 +282,13 @@ pub(crate) fn build_dispatch(
             );
         }
     }
+    let mut vertex_levels = vec![vec![zero(); nt + 1]; nr];
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
         if !operating.reservoirs[r]
             .level_change
             .iter()
             .any(|c| c.up.is_some() || c.down.is_some())
+            && !problem.soft_limits.needs_level(r)
         {
             continue;
         }
@@ -342,6 +345,7 @@ pub(crate) fn build_dispatch(
             };
             levels.push(level);
         }
+        vertex_levels[r].clone_from(&levels);
         for t in 0..nt {
             let change = (levels[t + 1] - levels[t]) / 100.;
             if let Some(up) = operating.reservoirs[r].level_change[t].up {
@@ -960,6 +964,15 @@ pub(crate) fn build_dispatch(
         start,
         &mut laws,
     )?;
+    revenue = revenue
+        - problem.soft_limits.constrain(
+            &m,
+            &volumes,
+            &vertex_levels,
+            &all_power,
+            &all_flow,
+            zero(),
+        )?;
     crate::operating_equations::constrain(
         &m,
         case,

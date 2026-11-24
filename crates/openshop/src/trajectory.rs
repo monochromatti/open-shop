@@ -35,6 +35,10 @@ pub struct Schedule {
     pub observed_flow: Vec<Vec<f64>>,
     /// Previously counted water plus integrated observations, m³, at vertices.
     pub observed_volume: Vec<Vec<f64>>,
+    /// Minimal deviations from the declared operating targets, in physical units.
+    pub soft_slacks: Vec<crate::SoftSlack>,
+    /// Total target-deviation cost, already subtracted from the objective.
+    pub soft_penalty_cost: f64,
     pub objective: f64,
     /// Ipopt termination code for an optimized result; None for pure reconstruction.
     pub solver_status: Option<i32>,
@@ -248,8 +252,13 @@ pub(crate) fn evaluate(
         })
         .collect();
     schedule.gate_adjustment_cost = gate_adjustment_cost(&s.tunnels, &schedule.tunnel_opening);
+    let (slacks, penalty_cost, soft_excess) = problem.soft_limits.assess(case, &schedule);
+    schedule.soft_slacks = slacks;
+    schedule.soft_penalty_cost = penalty_cost;
     schedule.objective = objective(case, &schedule, operating);
     schedule.validation = validate(problem, &schedule, tolerance);
+    schedule.validation.operating_limits = schedule.validation.operating_limits.max(soft_excess);
+    schedule.validation.feasible &= soft_excess <= tolerance;
     schedule
 }
 
@@ -320,7 +329,7 @@ fn objective(
                 .sum::<f64>()
         })
         .sum();
-    revenue - schedule.gate_adjustment_cost - river_cost
+    revenue - schedule.gate_adjustment_cost - river_cost - schedule.soft_penalty_cost
         + case
             .system
             .rivers
@@ -988,6 +997,7 @@ mod tests {
             inflows: BTreeMap::from([("Lake".into(), vec![3.; 2])]),
             commitment: Default::default(),
             operations: vec![],
+            soft_constraints: vec![],
             flow_requirements: vec![],
             routing_grid: vec![],
         };

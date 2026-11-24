@@ -21,6 +21,7 @@ fn case() -> ScheduleCase {
     e.gate_positions = vec![0., 0.25, 1.];
     e.gate_adjustment_cost = 10.;
     ScheduleCase {
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],

@@ -753,6 +753,7 @@ mod tests {
     }
     fn case(rivers: Vec<River>) -> ScheduleCase {
         ScheduleCase {
+            soft_constraints: vec![],
             flow_requirements: vec![],
             routing_grid: vec![],
             operations: Default::default(),

@@ -121,6 +121,7 @@ fn network(cells: usize) -> ScheduleCase {
         },
         grid,
         prices: vec![0.; 3],
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid,
         operations,

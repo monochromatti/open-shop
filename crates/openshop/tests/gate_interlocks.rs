@@ -18,6 +18,7 @@ fn lake() -> Reservoir {
 fn case() -> ScheduleCase {
     let e = Tunnel::new("Link", "Lake", "Sea", 10., 5.);
     ScheduleCase {
+        soft_constraints: vec![],
         flow_requirements: vec![],
         routing_grid: vec![],
         operations: vec![],

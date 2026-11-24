@@ -714,6 +714,8 @@ impl SchedulingProblem<'_> {
             plant_flow: vec![],
             plant_power: vec![],
             head: vec![],
+            soft_slacks: vec![],
+            soft_penalty_cost: 0.,
             objective: 0.,
             solver_status: None,
             iterations: 0,

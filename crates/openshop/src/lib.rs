@@ -27,6 +27,7 @@ mod river_laws;
 mod river_operation;
 mod river_transport;
 mod schedule;
+mod soft_constraints;
 mod trajectory;
 mod turbine;
 
@@ -46,6 +47,7 @@ pub use river_laws::{LevelFlowCurve, ReferenceLevel, RiverLaw};
 pub use river_operation::{ArrivalPolicy, RiverOperation};
 pub use river_transport::{DelayCurve, RiverTransport, TimeSide};
 pub use schedule::SchedulingProblem;
+pub use soft_constraints::{PenaltyLimit, SoftConstraint, SoftSlack, SoftTarget};
 pub use trajectory::{Schedule, Validation};
 pub use turbine::{DischargeInterpolation, Extrapolation, TurbineOptions, TurbineTable};
 
