@@ -296,13 +296,25 @@ impl SchedulingProblem<'_> {
                 } else if budget.time_limit > 0.01 {
                     // Restore the water plan before optimizing revenue or
                     // interpreting integration differences as mesh error.
-                    Some(problem.dispatch_with_objective(
+                    let restored = problem.dispatch_with_objective(
                         controls.clone(),
                         projected.as_ref().or(initial),
                         &budget,
                         backend,
                         DispatchObjective::FlowDistance,
-                    )?)
+                    )?;
+                    let remaining = options.time_limit - started.elapsed().as_secs_f64();
+                    let restored = match physical.as_ref() {
+                        Some(target)
+                            if restored.validation.feasible
+                                && restored.objective < target.objective
+                                && remaining > 0.01 =>
+                        {
+                            problem.restore_on_segment(restored, target, &controls, remaining)?
+                        }
+                        _ => restored,
+                    };
+                    Some(restored)
                 } else {
                     physical
                 };
@@ -433,6 +445,59 @@ impl SchedulingProblem<'_> {
             last = Some(result);
             polished = false;
         }
+    }
+
+    /// Continue a feasible water plan toward the starting controls. Phase I
+    /// stops at its first feasible point, so its barriers can move controls
+    /// much farther than necessary. This search keeps the better feasible
+    /// endpoint and checks the original hydraulic equations at every trial.
+    fn restore_on_segment(
+        &self,
+        mut best: Schedule,
+        target: &Schedule,
+        choices: &crate::commitment::DiscreteControls,
+        seconds: f64,
+    ) -> Result<Schedule, Error> {
+        let started = Instant::now();
+        let from = best.controls()?;
+        let to = target.controls()?;
+        if from.commitment != to.commitment || from.tunnel_opening != to.tunnel_opening {
+            return Ok(best);
+        }
+        let mut controls = to.clone();
+        let mut bracket = (0., 1.);
+        while bracket.1 - bracket.0 > 1e-3 && started.elapsed().as_secs_f64() < seconds {
+            let step = (bracket.0 + bracket.1) * 0.5;
+            for (trial, base, target) in [
+                (&mut controls.unit_flow, &from.unit_flow, &to.unit_flow),
+                (
+                    &mut controls.river_opening,
+                    &from.river_opening,
+                    &to.river_opening,
+                ),
+            ] {
+                for ((row, a), b) in trial.iter_mut().zip(base).zip(target) {
+                    for ((v, &a), &b) in row.iter_mut().zip(a).zip(b) {
+                        *v = (1. - step) * a + step * b;
+                    }
+                }
+            }
+            match self.reconstruct(&controls) {
+                Ok(s)
+                    if s.validation.feasible
+                        && crate::commitment::Proposal::from_schedule(self, &s)?.controls
+                            == *choices =>
+                {
+                    bracket.0 = step;
+                    if s.objective > best.objective {
+                        best = s;
+                    }
+                }
+                Ok(_) | Err(Error::Solver(_)) => bracket.1 = step,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(best)
     }
 
     fn dispatch_with_objective(

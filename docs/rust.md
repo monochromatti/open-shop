@@ -63,6 +63,11 @@ error. Both `solve` and `refine` use this comparison to check their results.
 is too large, the solver refines river mixing or uses two half steps to locate
 the hydraulic intervals that need subdivision. It restores feasibility on
 the resulting grid and checks the full trajectory again.
+When the first feasible repair gives up revenue, dispatch also checks points
+between the repaired controls and the higher-revenue starting controls. Each
+point must pass hydraulic reconstruction and operating limits. This can
+recover most of the revenue when a small violation near a binding limit
+causes a large change in the initial repair.
 
 `Schedule.grid` contains hydraulic time edges; `Schedule.operating_grid` retains
 the original decision times. `Schedule.routing_grid` records the river mixing
