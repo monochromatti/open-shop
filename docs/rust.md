@@ -280,7 +280,21 @@ first and second derivatives directly in memory, including constraint curvature.
 Measured storage means and turbine production supply local derivatives through
 the same sparse nonlinear interface. Native Ipopt solves continuous dispatch. SCIP proposes on/off schedules using
 linear generation estimates and the same water balances and river transport.
-Nonlinear dispatch evaluates those proposals, and search can change earlier
+For a cold or physically infeasible start, dispatch first finds a feasible water
+plan by minimizing duration-weighted squared discharge changes under the same
+hard equations. It stops this first solve when the original constraints pass,
+then maximizes revenue. An already feasible supplied plan skips that first solve
+and is retained if revenue refinement fails or makes it worse. No conservation
+or operating constraint is softened during this initialization.
+
+Affine terms are separated from nonlinear expressions before derivative
+preparation. The Ipopt adapter identifies variables that occur only linearly
+and restricts its limited-memory curvature approximation to the remaining
+coordinates. This uses a prepared variable permutation; physical variable IDs
+and returned array order are unchanged. The sparse derivative callbacks reuse
+allocated buffers.
+
+Nonlinear dispatch evaluates the integer proposals, and search can change earlier
 commitments. The proposal objective is **not a global bound**. POUNCE's optimizer
 is exercised in comparison tests, rather than exposed as a user option.
 

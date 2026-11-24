@@ -11,7 +11,7 @@ use crate::constitutive::{Equation, Nlp};
 use oximo::{
     Model,
     core::{Domain, ObjectiveSense},
-    expr::{ExprArena, ExprId, ExprNode, UnaryOp as OximoUnary, extract_linear},
+    expr::{ExprArena, ExprId, ExprNode, UnaryOp as OximoUnary, extract_linear, split_linear},
 };
 use pounce_nl::nl_reader::{BinOp, Expr, NlBody, NlProblem, NlProblemParts, NlTnlp, UnaryOp};
 #[cfg(test)]
@@ -24,6 +24,12 @@ pub(crate) enum Backend {
     Ipopt,
     #[cfg(test)]
     Pounce,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Termination {
+    Optimality,
+    Feasibility,
 }
 
 pub(crate) struct NlpSolution {
@@ -127,20 +133,41 @@ pub(crate) fn prepare(model: &Model, laws: Vec<Equation>) -> Result<Nlp, Error> 
         con_names: rows.iter().map(|row| row.name.to_string()).collect(),
     })
     .map_err(Error::Model)?;
+    // Keep affine terms out of the nonlinear expression graph, including
+    // heads in a pressure-loss equation such as H_a - H_b - R Q |Q| = 0.
     for (i, row) in rows.iter().enumerate() {
-        if let Some(linear) = extract_linear(&arena, row.lhs) {
-            problem.con_linear[i] = linear.coeffs.iter().map(|(v, c)| (v.index(), *c)).collect();
-            problem.con_nonlinear[i] = NlBody::Tree(Expr::Const(0.0));
-            problem.g_l[i] -= linear.constant;
-            problem.g_u[i] -= linear.constant;
-        }
+        let (linear, residual) = split_linear(&arena, row.lhs);
+        problem.con_linear[i] = linear.coeffs.iter().map(|(v, c)| (v.index(), *c)).collect();
+        problem.con_nonlinear[i] =
+            NlBody::Tree(lower_residual(&arena, residual, &mut expressions)?);
+        problem.g_l[i] -= linear.constant;
+        problem.g_u[i] -= linear.constant;
     }
-    if let Some(linear) = extract_linear(&arena, objective.expr) {
-        problem.obj_linear = linear.coeffs.iter().map(|(v, c)| (v.index(), *c)).collect();
-        problem.obj_nonlinear = NlBody::Tree(Expr::Const(0.0));
-        problem.obj_constant = linear.constant;
-    }
+    let (linear, residual) = split_linear(&arena, objective.expr);
+    problem.obj_linear = linear.coeffs.iter().map(|(v, c)| (v.index(), *c)).collect();
+    problem.obj_nonlinear = NlBody::Tree(lower_residual(&arena, residual, &mut expressions)?);
+    problem.obj_constant = linear.constant;
     Nlp::new(NlTnlp::try_new(problem).map_err(Error::Model)?, laws)
+}
+
+fn lower_residual(
+    arena: &ExprArena,
+    residual: Vec<oximo::expr::SignedExpr>,
+    memo: &mut [Option<Arc<Expr>>],
+) -> Result<Expr, Error> {
+    Ok(Expr::Sum(
+        residual
+            .into_iter()
+            .map(|term| {
+                let value = lower(arena, term.id, memo)?;
+                Ok(if term.neg {
+                    Expr::Unary(UnaryOp::Neg, Box::new(value))
+                } else {
+                    value
+                })
+            })
+            .collect::<Result<_, Error>>()?,
+    ))
 }
 
 fn lower(arena: &ExprArena, id: ExprId, memo: &mut [Option<Arc<Expr>>]) -> Result<Expr, Error> {
@@ -236,10 +263,11 @@ pub(crate) fn solve(
     mut problem: Nlp,
     options: &SolveOptions,
     backend: Backend,
+    termination: Termination,
 ) -> Result<NlpSolution, Error> {
     options.validate()?;
     match backend {
-        Backend::Ipopt => crate::native_ipopt::solve(&mut problem, options),
+        Backend::Ipopt => crate::native_ipopt::solve(&mut problem, options, termination),
         #[cfg(test)]
         Backend::Pounce => {
             let mut app = pounce_rs::IpoptApplication::new();
@@ -285,6 +313,39 @@ mod tests {
     use pounce_nlp::tnlp::SparsityRequest;
 
     #[test]
+    fn mixed_affine_and_nonlinear_equations_return_original_physical_coordinates() {
+        for fixed in [None, Some((0, 1.)), Some((1, 0.))] {
+            let m = Model::new("mixed pressure and flow coordinates");
+            // Nonlinear flow precedes the affine head coordinate in model order.
+            variable!(m, 0. <= flow <= 4., initial = 0.5);
+            variable!(m, 0. <= head <= 4., initial = 0.5);
+            if let Some((coordinate, value)) = fixed {
+                m.fix(if coordinate == 0 { flow } else { head }, value)
+                    .unwrap();
+            }
+            constraint!(m, head + flow.square() <= 4.);
+            objective!(m, Max, head + 3. * flow + 7.);
+            let point = solve(
+                prepare(&m, vec![]).unwrap(),
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+                Backend::Ipopt,
+                Termination::Optimality,
+            )
+            .unwrap();
+            let (q, h) = match fixed {
+                None => (1.5, 1.75),
+                Some((0, _)) => (1., 3.),
+                _ => (2., 0.),
+            };
+            assert!((point.x[flow.var_id().unwrap().index()] - q).abs() < 1e-5);
+            assert!((point.x[head.var_id().unwrap().index()] - h).abs() < 1e-5);
+        }
+    }
+
+    #[test]
     fn interrupted_barrier_iterations_do_not_discard_a_better_feasible_initial_point() {
         let m = Model::new("feasible nonlinear start");
         variable!(m,0.1<=x<=10.,initial=1.);
@@ -298,12 +359,36 @@ mod tests {
                 ..Default::default()
             },
             Backend::Ipopt,
+            Termination::Optimality,
         )
         .unwrap();
         let a = point.x[x.var_id().unwrap().index()];
         let b = point.x[y.var_id().unwrap().index()];
         assert!(a * b >= 1. - 1e-8);
         assert!(a + b <= 2. + 1e-8);
+    }
+
+    #[test]
+    fn feasibility_termination_returns_a_point_satisfying_original_nonlinear_rows() {
+        let m = Model::new("nearest feasible controls");
+        variable!(m, 0.1 <= x <= 10., initial = 0.2);
+        variable!(m, 0.1 <= y <= 10., initial = 0.2);
+        constraint!(m, x * y >= 1.);
+        objective!(m, Min, (x - 0.2).square() + (y - 0.2).square());
+        let result = solve(
+            prepare(&m, vec![]).unwrap(),
+            &SolveOptions {
+                time_limit: 3.,
+                ..Default::default()
+            },
+            Backend::Ipopt,
+            Termination::Feasibility,
+        )
+        .unwrap();
+        let a = result.x[x.var_id().unwrap().index()];
+        let b = result.x[y.var_id().unwrap().index()];
+        assert!(a * b >= 1. - 1e-8);
+        assert!((0.1..=10.).contains(&a) && (0.1..=10.).contains(&b));
     }
 
     #[test]
@@ -423,6 +508,7 @@ mod tests {
                     ..Default::default()
                 },
                 Backend::Ipopt,
+                Termination::Optimality,
             )
             .unwrap();
             let solved = matches!(result.status, 0 | 1 | 6);

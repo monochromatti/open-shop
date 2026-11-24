@@ -23,8 +23,61 @@ impl Drop for Problem {
     }
 }
 
+/// Ipopt's C API accepts a linear prefix, rather than an arbitrary nonlinear
+/// index set. This permutation changes coordinates only; model IDs stay fixed.
+struct VariableOrder {
+    original: Vec<usize>,
+    solver: Vec<usize>,
+    linear_count: i32,
+    x: Vec<f64>,
+    gradient: Vec<f64>,
+}
+impl VariableOrder {
+    fn new(evaluator: &mut dyn TNLP, n: usize) -> Result<Self, Error> {
+        let mut nonlinear = vec![true; n];
+        let count = evaluator.get_number_of_nonlinear_variables();
+        if count >= 0 {
+            let mut indices = vec![0; count as usize];
+            if !evaluator.get_list_of_nonlinear_variables(&mut indices) {
+                return Err(Error::Model("invalid nonlinear variable list".into()));
+            }
+            nonlinear.fill(false);
+            for i in indices {
+                let Some(v) = nonlinear.get_mut(i as usize) else {
+                    return Err(Error::Model("invalid nonlinear variable index".into()));
+                };
+                *v = true;
+            }
+        }
+        let original: Vec<_> = (0..n)
+            .filter(|&i| !nonlinear[i])
+            .chain((0..n).filter(|&i| nonlinear[i]))
+            .collect();
+        let mut solver = vec![0; n];
+        for (i, &j) in original.iter().enumerate() {
+            solver[j] = i;
+        }
+        Ok(Self {
+            linear_count: nonlinear.iter().filter(|&&v| !v).count() as i32,
+            original,
+            solver,
+            x: vec![0.; n],
+            gradient: vec![0.; n],
+        })
+    }
+    fn to_solver(&self, values: &[f64]) -> Vec<f64> {
+        self.original.iter().map(|&i| values[i]).collect()
+    }
+    fn set_x(&mut self, values: &[f64]) {
+        for (&i, &v) in self.original.iter().zip(values) {
+            self.x[i] = v;
+        }
+    }
+}
+
 struct Callbacks<'a> {
     evaluator: &'a mut dyn TNLP,
+    order: VariableOrder,
     problem: ffi::IpoptProblem,
     panicked: bool,
     iterations: usize,
@@ -35,11 +88,13 @@ struct Callbacks<'a> {
     upper_violation: Vec<f64>,
     constraint_violation: Vec<f64>,
     tolerance: f64,
+    termination: crate::nlp::Termination,
 }
 
 pub(crate) fn solve(
     evaluator: &mut dyn TNLP,
     options: &SolveOptions,
+    termination: crate::nlp::Termination,
 ) -> Result<NlpSolution, Error> {
     let info = evaluator
         .get_nlp_info()
@@ -66,6 +121,11 @@ pub(crate) fn solve(
     }) {
         return Err(Error::Model("invalid nonlinear start".into()));
     }
+    let mut order = VariableOrder::new(evaluator, n)?;
+    let original_x = x;
+    let mut x = order.to_solver(&original_x);
+    xl = order.to_solver(&xl);
+    xu = order.to_solver(&xu);
     // SAFETY: The declared lengths match all bound buffers, and every callback
     // follows Ipopt's C signatures generated from this installation's headers.
     let raw = unsafe {
@@ -104,7 +164,11 @@ pub(crate) fn solve(
             )));
         }
     }
-    for (name, value) in [(c"print_level", 0), (c"max_iter", options.max_iterations)] {
+    for (name, value) in [
+        (c"print_level", 0),
+        (c"max_iter", options.max_iterations),
+        (c"num_linear_variables", order.linear_count),
+    ] {
         // SAFETY: The handle is live and the option name is NUL terminated.
         if !unsafe { ffi::AddIpoptIntOption(problem.0, name.as_ptr().cast_mut(), value) } {
             return Err(Error::Solver(format!(
@@ -131,11 +195,16 @@ pub(crate) fn solve(
             v.is_finite() && v >= lo - options.tolerance && v <= hi + options.tolerance
         })
     };
-    let initial_objective = evaluator.eval_f(&x, true).filter(|v| v.is_finite());
-    let initial_feasible =
-        initial_objective.is_some() && evaluator.eval_g(&x, false, &mut g) && feasible(&x, &g);
+    let initial_objective = evaluator
+        .eval_f(&original_x, true)
+        .filter(|v| v.is_finite());
+    let initial_feasible = initial_objective.is_some()
+        && evaluator.eval_g(&original_x, false, &mut g)
+        && feasible(&x, &g);
+    order.set_x(&x);
     let mut callbacks = Callbacks {
         evaluator,
+        order,
         problem: problem.0,
         panicked: false,
         iterations: 0,
@@ -150,6 +219,7 @@ pub(crate) fn solve(
         upper_violation: vec![0.; n],
         constraint_violation: vec![0.; m],
         tolerance: options.tolerance,
+        termination,
     };
     let mut objective = 0.0;
     // SAFETY: All buffers match CreateIpoptProblem dimensions. The context and
@@ -169,16 +239,21 @@ pub(crate) fn solve(
     if callbacks.panicked {
         return Err(Error::Solver("a nonlinear callback panicked".into()));
     }
-    let final_objective = callbacks.evaluator.eval_f(&x, true);
-    let final_feasible = callbacks.evaluator.eval_g(&x, false, &mut g) && feasible(&x, &g);
+    callbacks.order.set_x(&x);
+    let final_objective = callbacks.evaluator.eval_f(&callbacks.order.x, true);
+    let final_feasible = callbacks
+        .evaluator
+        .eval_g(&callbacks.order.x, false, &mut g)
+        && feasible(&x, &g);
     if callbacks.best_objective.is_finite()
         && (!final_feasible
             || final_objective.is_none_or(|v| !v.is_finite() || callbacks.best_objective < v))
     {
         x.copy_from_slice(&callbacks.best_x);
     }
+    callbacks.order.set_x(&x);
     Ok(NlpSolution {
-        x,
+        x: callbacks.order.x,
         status,
         iterations: callbacks.iterations,
     })
@@ -245,12 +320,15 @@ unsafe extern "C" fn eval_f(
 ) -> bool {
     // SAFETY: Ipopt provides valid buffers and the context for this callback.
     unsafe {
-        callback(data, |c| match c.evaluator.eval_f(input(x, n), new_x) {
-            Some(v) if v.is_finite() => {
-                *value = v;
-                true
+        callback(data, |c| {
+            c.order.set_x(input(x, n));
+            match c.evaluator.eval_f(&c.order.x, new_x) {
+                Some(v) if v.is_finite() => {
+                    *value = v;
+                    true
+                }
+                _ => false,
             }
-            _ => false,
         })
     }
 }
@@ -265,7 +343,17 @@ unsafe extern "C" fn eval_grad(
     unsafe {
         callback(data, |c| {
             let out = output(grad, n);
-            c.evaluator.eval_grad_f(input(x, n), new_x, out) && out.iter().all(|v| v.is_finite())
+            c.order.set_x(input(x, n));
+            if !c
+                .evaluator
+                .eval_grad_f(&c.order.x, new_x, &mut c.order.gradient)
+            {
+                return false;
+            }
+            for (v, &i) in out.iter_mut().zip(&c.order.original) {
+                *v = c.order.gradient[i];
+            }
+            out.iter().all(|v| v.is_finite())
         })
     }
 }
@@ -281,7 +369,8 @@ unsafe extern "C" fn eval_g(
     unsafe {
         callback(data, |c| {
             let out = output(g, m);
-            c.evaluator.eval_g(input(x, n), new_x, out) && out.iter().all(|v| v.is_finite())
+            c.order.set_x(input(x, n));
+            c.evaluator.eval_g(&c.order.x, new_x, out) && out.iter().all(|v| v.is_finite())
         })
     }
 }
@@ -301,18 +390,26 @@ unsafe extern "C" fn eval_jac(
     unsafe {
         callback(data, |c| {
             if values.is_null() {
-                c.evaluator.eval_jac_g(
+                let columns = output(cols, nz);
+                let ok = c.evaluator.eval_jac_g(
                     None,
                     new_x,
                     SparsityRequest::Structure {
                         irow: output(rows, nz),
-                        jcol: output(cols, nz),
+                        jcol: columns,
                     },
-                )
+                );
+                if ok {
+                    for column in columns {
+                        *column = c.order.solver[*column as usize] as i32;
+                    }
+                }
+                ok
             } else {
                 let out = output(values, nz);
+                c.order.set_x(input(x, n));
                 c.evaluator.eval_jac_g(
-                    Some(input(x, n)),
+                    Some(&c.order.x),
                     new_x,
                     SparsityRequest::Values { values: out },
                 ) && out.iter().all(|v| v.is_finite())
@@ -338,21 +435,35 @@ unsafe extern "C" fn eval_h(
     unsafe {
         callback(data, |c| {
             if values.is_null() {
-                c.evaluator.eval_h(
+                let rows = output(rows, nz);
+                let columns = output(cols, nz);
+                let ok = c.evaluator.eval_h(
                     None,
                     new_x,
                     factor,
                     None,
                     new_lambda,
                     SparsityRequest::Structure {
-                        irow: output(rows, nz),
-                        jcol: output(cols, nz),
+                        irow: rows,
+                        jcol: columns,
                     },
-                )
+                );
+                if ok {
+                    for (row, column) in rows.iter_mut().zip(columns) {
+                        let (r, c) = (
+                            c.order.solver[*row as usize] as i32,
+                            c.order.solver[*column as usize] as i32,
+                        );
+                        *row = r.max(c);
+                        *column = r.min(c);
+                    }
+                }
+                ok
             } else {
                 let out = output(values, nz);
+                c.order.set_x(input(x, n));
                 c.evaluator.eval_h(
-                    Some(input(x, n)),
+                    Some(&c.order.x),
                     new_x,
                     factor,
                     Some(input(lambda, m)),
@@ -381,7 +492,11 @@ unsafe extern "C" fn intermediate(
     unsafe {
         callback(data, |c| {
             c.iterations = iter.max(0) as usize;
-            if mode != 0 || !objective.is_finite() || objective >= c.best_objective {
+            if mode != 0
+                || !objective.is_finite()
+                || (c.termination == crate::nlp::Termination::Optimality
+                    && objective >= c.best_objective)
+            {
                 return true;
             }
             let n = c.current_x.len() as i32;
@@ -424,8 +539,11 @@ unsafe extern "C" fn intermediate(
                 std::ptr::null_mut(),
             );
             if read && c.current_x.iter().all(|v| v.is_finite()) {
-                c.best_x.copy_from_slice(&c.current_x);
-                c.best_objective = objective;
+                if objective < c.best_objective {
+                    c.best_x.copy_from_slice(&c.current_x);
+                    c.best_objective = objective;
+                }
+                return c.termination != crate::nlp::Termination::Feasibility;
             }
             true
         })

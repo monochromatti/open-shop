@@ -20,11 +20,18 @@ pub(crate) struct Dispatch {
     pub river_flow_scale: Vec<f64>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DispatchObjective {
+    Revenue,
+    FlowDistance,
+}
+
 pub(crate) fn build_dispatch(
     problem: &crate::SchedulingProblem<'_>,
     controls: &crate::commitment::DiscreteControls,
     start: Option<&crate::commitment::Proposal>,
     points: &crate::operating_points::OperatingPoints,
+    objective: DispatchObjective,
 ) -> Result<Dispatch, Error> {
     let (case, topology, routing, operating) = (
         problem.case,
@@ -982,7 +989,43 @@ pub(crate) fn build_dispatch(
         })
         .collect();
     revenue = revenue - crate::trajectory::gate_adjustment_cost(&s.tunnels, &openings);
-    objective!(m, Max, revenue / 1000.);
+    match objective {
+        DispatchObjective::Revenue => {
+            objective!(m, Max, revenue / 1000.);
+        }
+        DispatchObjective::FlowDistance => {
+            // The closest water plan is measured in one common discharge unit.
+            // A spillway's large capacity must not make spilling inexpensive.
+            let mut distance = zero();
+            for t in 0..nt {
+                let duration = case.grid[t + 1] - case.grid[t];
+                for (g, u) in s.units.iter().enumerate() {
+                    let target = start.map_or_else(
+                        || {
+                            if controls.unit_on[g][t] {
+                                (u.flow.min + u.flow.max) / 2.
+                            } else {
+                                0.
+                            }
+                        },
+                        |p| p.flow[g][t],
+                    );
+                    let change = (river_columns[g * nt + t] - target) / 50.;
+                    distance = distance + change.square() * duration;
+                }
+                for series in &routing.releases {
+                    let rate = series
+                        .integral(case.grid[t], case.grid[t + 1])
+                        .scaled(1. / duration);
+                    let target = rate.value(&reference_columns);
+                    let change =
+                        (nlp::linear_expression(&rate, &river_columns, zero()) - target) / 50.;
+                    distance = distance + change.square() * duration;
+                }
+            }
+            objective!(m, Min, distance);
+        }
+    }
     let storage = (0..nr)
         .map(|r| (0..=nt).map(|t| v[[r, t]].var_id().unwrap()).collect())
         .collect();

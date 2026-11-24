@@ -260,6 +260,7 @@ struct PreparedEquation {
 pub(crate) struct Nlp {
     base: NlTnlp,
     base_info: NlpInfo,
+    nonlinear_variables: Vec<i32>,
     equations: Vec<PreparedEquation>,
     jacobian_size: usize,
     hessian_coordinates: Vec<(i32, i32)>,
@@ -275,6 +276,19 @@ impl Nlp {
             .ok_or_else(|| Error::Model("invalid nonlinear dimensions".into()))?;
         if info.index_style != IndexStyle::C {
             return Err(Error::Model("zero-based sparse indices required".into()));
+        }
+        let count = base.get_number_of_nonlinear_variables();
+        let mut nonlinear = vec![false; info.n as usize];
+        if count < 0 {
+            nonlinear.fill(true);
+        } else {
+            let mut indices = vec![0; count as usize];
+            if !base.get_list_of_nonlinear_variables(&mut indices) {
+                return Err(Error::Model("invalid nonlinear variable indices".into()));
+            }
+            for i in indices {
+                nonlinear[i as usize] = true;
+            }
         }
         let nh = info.nnz_h_lag as usize;
         let mut rows = vec![0; nh];
@@ -331,6 +345,9 @@ impl Nlp {
                     .map(|&i| (i, ()))
                     .collect();
                 let vars: Vec<_> = variables.keys().copied().collect();
+                for &i in &vars {
+                    nonlinear[i] = true;
+                }
                 for (j, &a) in vars.iter().enumerate() {
                     for &b in &vars[..=j] {
                         coordinates.insert((a as i32, b as i32), 0);
@@ -425,6 +442,11 @@ impl Nlp {
         Ok(Self {
             base,
             base_info: info,
+            nonlinear_variables: nonlinear
+                .iter()
+                .enumerate()
+                .filter_map(|(i, &v)| v.then_some(i as i32))
+                .collect(),
             equations: compiled,
             jacobian_size,
             hessian_coordinates: coordinates.keys().copied().collect(),
@@ -440,6 +462,16 @@ impl Nlp {
     }
 }
 impl TNLP for Nlp {
+    fn get_number_of_nonlinear_variables(&mut self) -> i32 {
+        self.nonlinear_variables.len() as i32
+    }
+    fn get_list_of_nonlinear_variables(&mut self, indices: &mut [i32]) -> bool {
+        if indices.len() != self.nonlinear_variables.len() {
+            return false;
+        }
+        indices.copy_from_slice(&self.nonlinear_variables);
+        true
+    }
     fn get_nlp_info(&mut self) -> Option<NlpInfo> {
         Some(NlpInfo {
             m: self.base_info.m + self.equations.len() as i32,
@@ -711,10 +743,15 @@ mod tests {
             gate_position: vec![vec![0; case.prices.len()]; case.system.tunnels.len()],
             river_on: vec![],
         };
-        let mut problem =
-            crate::dispatch::build_dispatch(&prepared, &controls, None, &prepared.operating_points)
-                .unwrap()
-                .problem;
+        let mut problem = crate::dispatch::build_dispatch(
+            &prepared,
+            &controls,
+            None,
+            &prepared.operating_points,
+            crate::dispatch::DispatchObjective::Revenue,
+        )
+        .unwrap()
+        .problem;
         let info = problem.get_nlp_info().unwrap();
         let (n, m) = (info.n as usize, info.m as usize);
         let (mut lo, mut hi, mut gl, mut gu) = (vec![0.; n], vec![0.; n], vec![0.; m], vec![0.; m]);

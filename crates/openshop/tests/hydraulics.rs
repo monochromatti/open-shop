@@ -641,3 +641,35 @@ fn continuous_refinement_cannot_remove_a_commitment_time_restriction() {
     assert!(!result.validation.feasible);
     assert_eq!(result.commitment, controls.commitment);
 }
+
+#[test]
+fn continuous_refinement_restores_infeasible_flows_before_improving_revenue() {
+    let mut case = pressure_loop();
+    case.system.units[0].power = Bounds::new(10., 20.);
+    let controls = Controls {
+        commitment: vec![vec![true; 2]],
+        unit_flow: vec![vec![40.; 2]],
+        river_opening: vec![],
+        tunnel_opening: vec![vec![1.; 2]; 2],
+    };
+    let problem = SchedulingProblem::new(&case).unwrap();
+    assert!(!problem.reconstruct(&controls).unwrap().validation.feasible);
+    let result = problem
+        .refine(
+            &controls,
+            &SolveOptions {
+                time_limit: 5.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(result.validation.feasible, "{:?}", result.validation);
+    assert!(
+        result.unit_power[0]
+            .iter()
+            .all(|p| *p >= 10. - 1e-5 && *p <= 20. + 1e-5)
+    );
+    assert!(result.unit_flow[0].iter().all(|q| *q < 40.));
+    assert_eq!(result.commitment, controls.commitment);
+    assert_eq!(result.tunnel_opening, controls.tunnel_opening);
+}

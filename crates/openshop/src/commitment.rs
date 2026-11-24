@@ -6,7 +6,7 @@ use crate::{Error, Schedule};
 use oximo::{ScipOptions, prelude::*, solvers::Scip};
 use std::time::Duration;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct DiscreteControls {
     pub unit_on: Vec<Vec<bool>>,
     pub gate_position: Vec<Vec<usize>>,
@@ -24,6 +24,59 @@ pub(crate) struct Proposal {
 }
 
 impl Proposal {
+    /// Bounded physical control guesses for reconstruction. This initializes a
+    /// nonlinear solve; acceptance still checks the original physical limits.
+    pub fn physical_controls(&self, p: &crate::SchedulingProblem<'_>) -> crate::Controls {
+        crate::Controls {
+            commitment: self.controls.unit_on.clone(),
+            unit_flow: self
+                .flow
+                .iter()
+                .enumerate()
+                .map(|(g, row)| {
+                    row.iter()
+                        .enumerate()
+                        .map(|(t, &q)| {
+                            if self.controls.unit_on[g][t] {
+                                let limits = p.operating.units[g][t].flow;
+                                q.clamp(limits.min, limits.max)
+                            } else {
+                                0.
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+            river_opening: self
+                .river_opening
+                .iter()
+                .enumerate()
+                .map(|(e, row)| {
+                    row.iter()
+                        .enumerate()
+                        .map(|(t, &a)| {
+                            let limits = p.operating.river_gate[e][t];
+                            a.clamp(limits.min, limits.max)
+                        })
+                        .collect()
+                })
+                .collect(),
+            tunnel_opening: p
+                .operating
+                .tunnels
+                .iter()
+                .enumerate()
+                .map(|(e, row)| {
+                    row.iter()
+                        .enumerate()
+                        .map(|(t, interval)| {
+                            interval.positions[self.controls.gate_position[e][t]].opening
+                        })
+                        .collect()
+                })
+                .collect(),
+        }
+    }
     pub fn from_schedule(
         problem: &crate::SchedulingProblem<'_>,
         result: &Schedule,

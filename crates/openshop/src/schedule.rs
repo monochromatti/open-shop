@@ -1,6 +1,6 @@
 //! Nonlinear dispatch and independent evaluation of its physical equations.
 
-use crate::dispatch::build_dispatch;
+use crate::dispatch::{DispatchObjective, build_dispatch};
 use crate::trajectory::{Schedule, Validation};
 use crate::{
     Error, ScheduleCase, SolveOptions,
@@ -212,6 +212,71 @@ impl SchedulingProblem<'_> {
         backend: Backend,
     ) -> Result<Schedule, Error> {
         let started = Instant::now();
+        let physical = if let Some(start) = start {
+            match self.reconstruct(&start.physical_controls(self)) {
+                Ok(s) => Some(s),
+                Err(Error::Input(_) | Error::Solver(_)) => None,
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
+        let projected = physical
+            .as_ref()
+            .map(|s| crate::commitment::Proposal::from_schedule(self, s))
+            .transpose()?;
+        let already_feasible = physical.as_ref().is_some_and(|s| s.validation.feasible)
+            && projected.as_ref().is_some_and(|p| p.controls == controls);
+        let mut budget = options.clone();
+        budget.time_limit -= started.elapsed().as_secs_f64();
+        if budget.time_limit <= 0. {
+            return physical.ok_or_else(|| {
+                Error::Solver(
+                    "dispatch time allowance expired during initial reconstruction".into(),
+                )
+            });
+        }
+        let feasible = if already_feasible {
+            physical.unwrap()
+        } else {
+            // Phase I finds a nearby feasible water plan. It uses the same
+            // hard equations and stops once their original residuals pass.
+            self.dispatch_with_objective(
+                controls.clone(),
+                projected.as_ref().or(start),
+                &budget,
+                backend,
+                DispatchObjective::FlowDistance,
+            )?
+        };
+        budget.time_limit = options.time_limit - started.elapsed().as_secs_f64();
+        if !feasible.validation.feasible || budget.time_limit <= 0.01 {
+            return Ok(feasible);
+        }
+        let warm = crate::commitment::Proposal::from_schedule(self, &feasible)?;
+        let refined = self.dispatch_with_objective(
+            controls,
+            Some(&warm),
+            &budget,
+            backend,
+            DispatchObjective::Revenue,
+        )?;
+        if refined.validation.feasible && refined.objective >= feasible.objective {
+            Ok(refined)
+        } else {
+            Ok(feasible)
+        }
+    }
+
+    fn dispatch_with_objective(
+        &self,
+        controls: crate::commitment::DiscreteControls,
+        start: Option<&crate::commitment::Proposal>,
+        options: &SolveOptions,
+        backend: Backend,
+        objective: DispatchObjective,
+    ) -> Result<Schedule, Error> {
+        let started = Instant::now();
         let mut points = self.operating_points.clone();
         if let Some(start) = start {
             let mut columns: Vec<_> = start
@@ -245,6 +310,7 @@ impl SchedulingProblem<'_> {
                 &points,
                 &budget,
                 backend,
+                objective,
             )?;
             if result.validation.feasible
                 || options.time_limit - started.elapsed().as_secs_f64() <= 0.01
@@ -282,10 +348,15 @@ impl SchedulingProblem<'_> {
         points: &crate::operating_points::OperatingPoints,
         options: &SolveOptions,
         backend: Backend,
+        objective: DispatchObjective,
     ) -> Result<Schedule, Error> {
         let (case, routing) = (self.case, &self.routing);
-        let dispatch = build_dispatch(self, &controls, start, points)?;
-        let point = nlp::solve(dispatch.problem, options, backend)?;
+        let dispatch = build_dispatch(self, &controls, start, points, objective)?;
+        let termination = match objective {
+            DispatchObjective::Revenue => nlp::Termination::Optimality,
+            DispatchObjective::FlowDistance => nlp::Termination::Feasibility,
+        };
+        let point = nlp::solve(dispatch.problem, options, backend, termination)?;
         let storage = dispatch
             .storage
             .iter()
