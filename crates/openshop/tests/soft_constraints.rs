@@ -56,7 +56,7 @@ fn lower(target: SoftTarget, value: f64, allowance: f64, cost: f64) -> SoftConst
 }
 fn controls() -> Controls {
     Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![5., 15.]],
         river_opening: vec![],
@@ -189,7 +189,7 @@ fn measured_level_targets_use_actual_storage_curve_and_bounded_deviations() {
     c.soft_constraints[0].lower.as_mut().unwrap().allowance = 0.5;
     let failed = SchedulingProblem::new(&c)
         .unwrap()
-        .reconstruct(&s.controls())
+        .reconstruct(&s.controls().unwrap())
         .unwrap();
     assert!(!failed.validation.feasible);
     assert!(failed.validation.operating_limits > 0.);
@@ -343,7 +343,7 @@ fn zero_allowance_is_a_hard_target_and_large_allowance_cannot_relax_reservoir_sa
     });
     let failed = SchedulingProblem::new(&c)
         .unwrap()
-        .reconstruct(&s.controls())
+        .reconstruct(&s.controls().unwrap())
         .unwrap();
     assert!(!failed.validation.feasible);
     assert!(failed.storage[0][2] < c.system.reservoirs[0].storage.min);

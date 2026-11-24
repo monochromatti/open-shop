@@ -28,7 +28,10 @@ impl Proposal {
     /// nonlinear solve; acceptance still checks the original physical limits.
     pub fn physical_controls(&self, p: &crate::SchedulingProblem<'_>) -> crate::Controls {
         crate::Controls {
-            head_guess: self.head.clone(),
+            head_guess: Some(crate::HeadGuess {
+                grid: p.case.grid.clone(),
+                head: self.head.clone(),
+            }),
             commitment: self.controls.unit_on.clone(),
             unit_flow: self
                 .flow
@@ -82,6 +85,10 @@ impl Proposal {
         problem: &crate::SchedulingProblem<'_>,
         result: &Schedule,
     ) -> Result<Self, Error> {
+        let mesh =
+            crate::time_discretization::TimeDiscretization::new(&problem.case.grid, &result.grid)?;
+        let physical_controls = result.controls()?;
+        let release = mesh.means(&result.river_release, 0.)?;
         let gate_position = problem
             .operating
             .tunnels
@@ -93,7 +100,7 @@ impl Proposal {
                     .map(|(t, v)| {
                         v.positions
                             .iter()
-                            .position(|p| p.opening == result.tunnel_opening[e][t])
+                            .position(|p| p.opening == physical_controls.tunnel_opening[e][t])
                     })
                     .collect::<Option<Vec<_>>>()
             })
@@ -101,26 +108,26 @@ impl Proposal {
             .ok_or_else(|| Error::Model("result contains an undeclared tunnel opening".into()))?;
         Ok(Self {
             controls: DiscreteControls {
-                unit_on: result.commitment.clone(),
+                unit_on: physical_controls.commitment,
                 gate_position,
                 river_on: problem
                     .observations
                     .domains
                     .iter()
                     .map(|d| {
-                        result.river_release[d.river]
+                        release[d.river]
                             .iter()
                             .map(|&q| problem.case.system.rivers[d.river].flow_on(q))
                             .collect()
                     })
                     .collect(),
             },
-            storage: result.storage.clone(),
-            flow: result.unit_flow.clone(),
-            tunnel_flow: result.tunnel_flow.clone(),
-            river_withdrawal: result.river_withdrawal.clone(),
-            river_opening: result.river_opening.clone(),
-            head: result.head.clone(),
+            storage: mesh.states(&result.storage)?,
+            flow: physical_controls.unit_flow,
+            tunnel_flow: mesh.means(&result.tunnel_flow, 0.)?,
+            river_withdrawal: mesh.means(&result.river_withdrawal, 0.)?,
+            river_opening: physical_controls.river_opening,
+            head: mesh.means(&result.head, 0.)?,
         })
     }
 }

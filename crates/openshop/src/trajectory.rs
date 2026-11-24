@@ -5,13 +5,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Schedule {
+    /// Hydraulic time edges, hours; state and power arrays use these cells.
+    pub grid: Vec<f64>,
+    /// Original decision times, hours; controls remain held on these intervals.
+    pub operating_grid: Vec<f64>,
     /// Reservoir by grid vertex, m³.
     pub storage: Vec<Vec<f64>>,
-    /// Unit by control interval, m³/s.
+    /// Unit by hydraulic cell, m³/s.
     pub unit_flow: Vec<Vec<f64>>,
-    /// Unit by control interval, MW.
+    /// Unit by hydraulic cell, MW.
     pub unit_power: Vec<Vec<f64>>,
-    /// Net working head or pumping lift, unit by control interval, m.
+    /// Net working head or pumping lift, unit by hydraulic cell, m.
     /// An idle generating unit can have negative head if its declared range permits it.
     pub unit_head: Vec<Vec<f64>>,
     pub plant_flow: Vec<Vec<f64>>,
@@ -19,16 +23,16 @@ pub struct Schedule {
     pub tunnel_flow: Vec<Vec<f64>>,
     pub tunnel_opening: Vec<Vec<f64>>,
     pub gate_adjustment_cost: f64,
-    /// River by control interval. Withdrawal excludes local river inflow/outfalls.
+    /// River by hydraulic cell. Withdrawal excludes local river inflow/outfalls.
     pub river_withdrawal: Vec<Vec<f64>>,
-    /// Reservoir outlet gate fraction, river by control interval; zero for signed channels and river junctions.
+    /// Reservoir outlet gate fraction, river by hydraulic cell; zero for signed channels and river junctions.
     pub river_opening: Vec<Vec<f64>>,
     pub river_release: Vec<Vec<f64>>,
-    /// Downstream arrival volume, m³, by river and control interval.
+    /// Downstream arrival volume, m³, by river and hydraulic cell.
     pub river_arrival_volume: Vec<Vec<f64>>,
     /// Water in transit, m³, by river and grid vertex.
     pub river_storage: Vec<Vec<f64>>,
-    /// Node by control interval, mean head in metres.
+    /// Node by hydraulic cell, mean head in metres.
     pub head: Vec<Vec<f64>>,
     pub commitment: Vec<Vec<bool>>,
     /// Named flow requirement by control interval, m³/s.
@@ -49,23 +53,27 @@ pub struct Schedule {
 impl Schedule {
     /// Production minus pumping consumption, MW, in control-interval order.
     pub fn net_power(&self, case: &ScheduleCase) -> Result<Vec<f64>, crate::Error> {
+        let mesh = crate::time_discretization::TimeDiscretization::new(&case.grid, &self.grid)?;
+        if self.operating_grid != case.grid {
+            return Err(crate::Error::Input(
+                "schedule operating grid does not match the case".into(),
+            ));
+        }
         if self.unit_power.len() != case.system.units.len()
-            || self
-                .unit_power
-                .iter()
-                .any(|row| row.len() != case.prices.len())
+            || self.unit_power.iter().any(|row| row.len() != mesh.dt.len())
         {
             return Err(crate::Error::Input(
                 "unit power axes do not match the case".into(),
             ));
         }
+        let power = mesh.means(&self.unit_power, 0.)?;
         Ok((0..case.prices.len())
             .map(|t| {
                 case.system
                     .units
                     .iter()
                     .enumerate()
-                    .map(|(g, u)| u.mode.power_sign() * self.unit_power[g][t])
+                    .map(|(g, u)| u.mode.power_sign() * power[g][t])
                     .sum()
             })
             .collect())
@@ -1004,7 +1012,7 @@ mod tests {
         let problem = SchedulingProblem::new(&case).unwrap();
         let physical = problem
             .reconstruct(&Controls {
-                head_guess: vec![],
+                head_guess: None,
                 commitment: vec![vec![true; 2]],
                 unit_flow: vec![vec![10.; 2]],
                 river_opening: vec![vec![0.25, 0.75]],

@@ -193,7 +193,10 @@ impl OperatingPoints {
         variable!(m,up[k in 0..np,g in 0..nu]);
         variable!(m,tw[k in 0..np,j in 0..s.plants.len()]);
         let initial_controls = start.map(|v| crate::Controls {
-            head_guess: v.head.clone(),
+            head_guess: Some(crate::HeadGuess {
+                grid: p.case.grid.clone(),
+                head: v.head.clone(),
+            }),
             commitment: controls.unit_on.clone(),
             unit_flow: v
                 .flow
@@ -592,7 +595,7 @@ impl OperatingPoints {
 
     pub fn residual(&self, p: &SchedulingProblem<'_>, schedule: &Schedule) -> Result<f64, Error> {
         let s = &p.case.system;
-        let controls = schedule.controls();
+        let controls = schedule.controls()?;
         let mut columns: Vec<_> = schedule
             .unit_flow
             .iter()

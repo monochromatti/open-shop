@@ -10,6 +10,45 @@ use nalgebra::{Const, DMatrix, DVector, U1};
 use num_dual::{DualNum, DualSVec64};
 use serde::{Deserialize, Serialize};
 
+/// Initial interval-mean node heads, metres, on an explicit time grid.
+/// Reservoir and boundary heads are calculated from their physical data.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeadGuess {
+    pub grid: Vec<f64>,
+    pub head: Vec<Vec<f64>>,
+}
+impl HeadGuess {
+    fn validate(&self, p: &SchedulingProblem<'_>) -> Result<(), Error> {
+        crate::time_discretization::check_grid(&self.grid)?;
+        let system = &p.case.system;
+        let nodes = system.reservoirs.len() + system.junctions.len() + system.boundaries.len();
+        if self.grid.first() != p.case.grid.first()
+            || self.grid.last() != p.case.grid.last()
+            || self.head.len() != nodes
+            || self
+                .head
+                .iter()
+                .any(|row| row.len() + 1 != self.grid.len() || row.iter().any(|h| !h.is_finite()))
+        {
+            return Err(Error::Input(
+                "head guesses must span the horizon with finite node-by-interval values".into(),
+            ));
+        }
+        Ok(())
+    }
+    fn mean_head(&self, node: usize, begin: f64, end: f64) -> f64 {
+        let first = self.grid.partition_point(|&t| t <= begin).saturating_sub(1);
+        (first..self.grid.len() - 1)
+            .take_while(|&k| self.grid[k] < end)
+            .map(|k| {
+                self.head[node][k]
+                    * ((self.grid[k + 1].min(end) - self.grid[k].max(begin)) / (end - begin))
+            })
+            .sum()
+    }
+}
+
 /// Physical controls and numerical starting values, with objects as rows and
 /// operating intervals as columns.
 /// Adjustable unit discharge is in m³/s. For a running fixed-speed pump its
@@ -17,12 +56,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Controls {
-    /// Optional node-by-interval head guesses, metres; empty uses the hydraulic
+    /// Optional time-dependent head guesses, metres; None uses the hydraulic
     /// initialization. Only junction entries are used. These choose a pressure
     /// solution when the equations leave it undetermined, and never replace a
     /// pressure or conservation equation.
     #[serde(default)]
-    pub head_guess: Vec<Vec<f64>>,
+    pub head_guess: Option<HeadGuess>,
     pub commitment: Vec<Vec<bool>>,
     pub unit_flow: Vec<Vec<f64>>,
     pub river_opening: Vec<Vec<f64>>,
@@ -33,14 +72,56 @@ impl Schedule {
     /// Copy physical controls and head guesses for independent reconstruction.
     /// The guesses preserve an optimized pressure allocation between machines
     /// when discharges alone do not determine the intermediate pressure.
-    pub fn controls(&self) -> Controls {
-        Controls {
-            head_guess: self.head.clone(),
-            commitment: self.commitment.clone(),
-            unit_flow: self.unit_flow.clone(),
-            river_opening: self.river_opening.clone(),
-            tunnel_opening: self.tunnel_opening.clone(),
+    pub fn controls(&self) -> Result<Controls, Error> {
+        let mesh =
+            crate::time_discretization::TimeDiscretization::new(&self.operating_grid, &self.grid)?;
+        let held = |values: &[Vec<f64>]| -> Result<Vec<Vec<f64>>, Error> {
+            if values
+                .iter()
+                .any(|row| row.len() != mesh.dt.len() || row.iter().any(|x| !x.is_finite()))
+            {
+                return Err(Error::Input(
+                    "gate values must match hydraulic cells and be finite".into(),
+                ));
+            }
+            let original: Vec<_> = values
+                .iter()
+                .map(|row| mesh.cells.iter().map(|cells| row[cells.start]).collect())
+                .collect();
+            if mesh.hold(&original)? != values {
+                return Err(Error::Input(
+                    "gate settings must be held over their operating intervals".into(),
+                ));
+            }
+            Ok(original)
+        };
+        if self.commitment.len() != self.unit_flow.len()
+            || self.commitment.iter().any(|row| row.len() != mesh.dt.len())
+        {
+            return Err(Error::Input(
+                "unit controls must match hydraulic cells".into(),
+            ));
         }
+        let commitment: Vec<_> = self
+            .commitment
+            .iter()
+            .map(|row| mesh.cells.iter().map(|cells| row[cells.start]).collect())
+            .collect();
+        if mesh.hold(&commitment)? != self.commitment {
+            return Err(Error::Input(
+                "unit states must be held over their operating intervals".into(),
+            ));
+        }
+        Ok(Controls {
+            head_guess: Some(HeadGuess {
+                grid: self.grid.clone(),
+                head: self.head.clone(),
+            }),
+            commitment,
+            unit_flow: mesh.means(&self.unit_flow, 0.)?,
+            river_opening: held(&self.river_opening)?,
+            tunnel_opening: held(&self.tunnel_opening)?,
+        })
     }
 }
 
@@ -67,17 +148,8 @@ impl Controls {
                     .into(),
             ));
         }
-        let nodes = s.reservoirs.len() + s.junctions.len() + s.boundaries.len();
-        if !self.head_guess.is_empty()
-            && (self.head_guess.len() != nodes
-                || self
-                    .head_guess
-                    .iter()
-                    .any(|row| row.len() != nt || row.iter().any(|h| !h.is_finite())))
-        {
-            return Err(Error::Input(
-                "head guesses must be finite node-by-interval arrays, or empty".into(),
-            ));
+        if let Some(guess) = &self.head_guess {
+            guess.validate(p)?;
         }
         for (g, row) in self.unit_flow.iter().enumerate() {
             for (t, &q) in row.iter().enumerate() {
@@ -510,8 +582,8 @@ fn pressure_references(
         }
         let desired = controls
             .head_guess
-            .get(first)
-            .map(|row| row[interval])
+            .as_ref()
+            .map(|guess| guess.mean_head(first, p.case.grid[interval], p.case.grid[interval + 1]))
             .or_else(|| reference.map(|v| v.head[first]));
         let shift = desired.map_or(lo / 2. + hi / 2., |h| (h - head[first]).clamp(lo, hi));
         for j in nodes {
@@ -563,8 +635,14 @@ pub(crate) fn hydraulic_step(
             // the original equations and can reveal a bound violation.
             controls
                 .head_guess
-                .get(s.reservoirs.len() + j)
-                .map(|row| row[interval])
+                .as_ref()
+                .map(|guess| {
+                    guess.mean_head(
+                        s.reservoirs.len() + j,
+                        p.case.grid[interval],
+                        p.case.grid[interval + 1],
+                    )
+                })
                 .or_else(|| reference.map(|v| v.head[s.reservoirs.len() + j]))
                 .unwrap_or(mean)
                 .clamp(junction.head.min, junction.head.max)
@@ -722,6 +800,8 @@ impl SchedulingProblem<'_> {
         let s = &self.case.system;
         let nt = self.case.prices.len();
         let mut schedule = Schedule {
+            grid: self.case.grid.clone(),
+            operating_grid: self.case.grid.clone(),
             storage: s
                 .reservoirs
                 .iter()

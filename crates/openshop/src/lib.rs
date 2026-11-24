@@ -28,13 +28,14 @@ mod river_operation;
 mod river_transport;
 mod schedule;
 mod soft_constraints;
+mod time_discretization;
 mod trajectory;
 mod turbine;
 
 pub use curve::TableCurve;
 pub use flow_requirements::{FlowRequirement, PeriodRamp, RollingRamp, VolumeWindow};
 pub use gate_interlocks::{ClosureWait, TunnelInterlock};
-pub use hydraulics::Controls;
+pub use hydraulics::{Controls, HeadGuess};
 pub use level_windows::{LevelWindow, StorageHistory};
 pub use machine::PumpCharacteristic;
 pub use model::{

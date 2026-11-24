@@ -426,6 +426,8 @@ impl SchedulingProblem<'_> {
             })
             .collect();
         let mut schedule = Schedule {
+            grid: case.grid.clone(),
+            operating_grid: case.grid.clone(),
             storage,
             unit_flow,
             tunnel_flow,
@@ -482,7 +484,7 @@ impl SchedulingProblem<'_> {
             .collect();
         let mut schedule =
             crate::trajectory::evaluate(self, schedule, junction_head, options.tolerance.max(1e-7));
-        match self.reconstruct(&schedule.controls()) {
+        match self.reconstruct(&schedule.controls()?) {
             Ok(mut physical) => {
                 physical.solver_status = schedule.solver_status;
                 physical.iterations = schedule.iterations;

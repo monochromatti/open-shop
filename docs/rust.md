@@ -26,13 +26,13 @@ prepared problem can be reused for another solve. It borrows immutable inputs,
 so Rust prevents the inputs changing while its numerical structure is in use.
 Collection order determines result axes. Names identify connections.
 
-`let physical = problem.reconstruct(&schedule.controls())?` independently solves
+`let physical = problem.reconstruct(&schedule.controls()?)?` independently solves
 water balance, pressure losses, reservoir outlets and fixed-speed pump
 characteristics from physical controls. It uses damped Newton iteration with
 chunked automatic derivatives and a rank-revealing linear solve when necessary.
 It does not invoke Ipopt or SCIP. `Controls.head_guess` optionally supplies finite
-node-by-interval initial heads; reservoir and boundary heads still follow their
-physical data. These guesses matter when discharges do not determine all
+initial node heads through `HeadGuess { grid, head }`. Reservoir and boundary
+heads still follow their physical data. These guesses matter when discharges do not determine all
 intermediate pressures, for example between two turbines in series.
 `Schedule::controls()` includes the optimized heads so reconstruction preserves
 that pressure allocation. A head guess never replaces a pressure or conservation
@@ -666,3 +666,23 @@ Returned `soft_slacks` contain the minimal physical shortfalls and excesses,
 computed again from the returned schedule rather than copied from optimization
 variables. `soft_penalty_cost` is their total cost and is subtracted from
 `objective`. A permitted deviation is feasible; exceeding its allowance is not.
+
+## Time axes
+
+`Schedule.grid` records hydraulic time edges; storage and river inventory use
+its vertices, and discharge, head and power arrays use its cells.
+`Schedule.operating_grid` records the original decision times.
+`net_power(&case)` returns duration-weighted net power on those operating
+intervals. `schedule.controls()?` extracts held commitments and gate settings,
+with average unit discharges as the corresponding control or fixed-speed-pump
+starting value. It rejects unit switches or gate changes inside an operating
+interval.
+
+`HeadGuess` carries its own grid and node-by-interval head values. Its grid must
+span the horizon, and each value must be finite. Reconstruction takes the
+duration-weighted mean of this starting profile over each hydraulic step.
+Returned controls retain the solution's complete head profile and time grid.
+
+The current optimization and reconstruction still use the input grid for
+hydraulic steps. The separate axes and projection operators support adaptive integration.
+Automatic refinement remains to be implemented.

@@ -55,7 +55,7 @@ fn pressure_loop() -> ScheduleCase {
 fn prescribed_controls_reconstruct_pressure_loops_energy_and_reversed_flows() {
     let case = pressure_loop();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![30.; 2]],
         river_opening: vec![],
@@ -87,7 +87,7 @@ fn reconstruction_reports_overdraw_instead_of_clipping_storage() {
     case.system.reservoirs[0].storage = Bounds::new(0., 1000.);
     case.system.reservoirs[0].initial_storage = 500.;
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![30.; 2]],
         river_opening: vec![],
@@ -107,7 +107,7 @@ fn inconsistent_injection_at_a_disconnected_junction_cannot_be_hidden_by_a_press
     let mut case = pressure_loop();
     case.system.tunnels.clear();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![1.; 2]],
         river_opening: vec![],
@@ -133,7 +133,7 @@ fn optimized_storage_and_transport_agree_with_independent_reconstruction() {
         })
         .unwrap();
     assert!(solution.validation.feasible, "{:?}", solution.validation);
-    let reconstructed = problem.reconstruct(&solution.controls()).unwrap();
+    let reconstructed = problem.reconstruct(&solution.controls().unwrap()).unwrap();
     assert!(
         reconstructed.validation.feasible,
         "{:?}",
@@ -163,7 +163,7 @@ fn invalid_axes_and_off_unit_flows_are_rejected_before_reconstruction() {
     let case = pressure_loop();
     let problem = SchedulingProblem::new(&case).unwrap();
     let mut controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![30.; 2]],
         river_opening: vec![],
@@ -187,7 +187,7 @@ fn average_power_below_a_limit_does_not_hide_an_initial_power_peak() {
     let mut case = pressure_loop();
     case.system.units[0].power.max = 13.1;
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![10.; 2]],
         river_opening: vec![],
@@ -222,7 +222,7 @@ fn optimization_respects_instantaneous_power_as_well_as_interval_average_power()
     assert!(solution.unit_power[0][0] < initial_power - 0.1);
     assert!(
         problem
-            .reconstruct(&solution.controls())
+            .reconstruct(&solution.controls().unwrap())
             .unwrap()
             .validation
             .feasible
@@ -266,7 +266,7 @@ fn turbine_table_power_peaks_between_observed_heads_without_extra_time_steps() {
     case.commitment.insert("Unit".into(), vec![true]);
     let problem = SchedulingProblem::new(&case).unwrap();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true]],
         unit_flow: vec![vec![10.]],
         river_opening: vec![],
@@ -363,7 +363,7 @@ fn a_measured_level_knot_cannot_hide_a_head_peak_between_control_edges() {
     case.commitment.insert("Downstream unit".into(), vec![true]);
     let problem = SchedulingProblem::new(&case).unwrap();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true]; 2],
         unit_flow: vec![vec![10.], vec![20.]],
         river_opening: vec![],
@@ -383,7 +383,7 @@ fn a_measured_level_knot_cannot_hide_a_head_peak_between_control_edges() {
     assert!((solution.unit_flow[0][0] - 12. / (0.00981 * 150. * 0.9)).abs() < 1e-5);
     assert!(
         problem
-            .reconstruct(&solution.controls())
+            .reconstruct(&solution.controls().unwrap())
             .unwrap()
             .validation
             .feasible
@@ -407,7 +407,7 @@ fn floating_pressure_reference_respects_absolute_bounds_without_changing_flow() 
     ];
     case.system.tunnels = vec![Tunnel::new("Link", "A", "B", 20., 0.1)];
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![],
         unit_flow: vec![],
         river_opening: vec![],
@@ -467,7 +467,7 @@ fn crossing_an_outlet_head_floor_cannot_hide_an_interior_power_peak() {
     case.commitment.insert("Downstream unit".into(), vec![true]);
     let problem = SchedulingProblem::new(&case).unwrap();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true]; 2],
         unit_flow: vec![vec![10.], vec![20.]],
         river_opening: vec![],
@@ -504,7 +504,7 @@ fn reconstruction_checks_prescribed_commitment_in_addition_to_water_and_pressure
     let mut case = pressure_loop();
     case.commitment.insert("Unit".into(), vec![true; 2]);
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![false; 2]],
         unit_flow: vec![vec![0.; 2]],
         river_opening: vec![],
@@ -577,7 +577,7 @@ fn zero_efficiency_cannot_hide_uphill_transfer_through_a_generating_unit() {
     };
     case.commitment.insert("Unit".into(), vec![true; 2]);
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![20.; 2]],
         river_opening: vec![],
@@ -596,7 +596,7 @@ fn continuous_refinement_improves_revenue_without_changing_discrete_controls() {
     let case = pressure_loop();
     let problem = SchedulingProblem::new(&case).unwrap();
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![2.; 2]],
         river_opening: vec![],
@@ -619,7 +619,7 @@ fn continuous_refinement_improves_revenue_without_changing_discrete_controls() {
     assert_eq!(result.tunnel_opening, controls.tunnel_opening);
     let interrupted = problem
         .refine(
-            &result.controls(),
+            &result.controls().unwrap(),
             &SolveOptions {
                 max_iterations: 0,
                 time_limit: 5.,
@@ -636,7 +636,7 @@ fn continuous_refinement_cannot_remove_a_commitment_time_restriction() {
     let mut case = pressure_loop();
     case.system.units[0].operation.minimum_up_time = 2.;
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true, false]],
         unit_flow: vec![vec![5., 0.]],
         river_opening: vec![],
@@ -661,7 +661,7 @@ fn continuous_refinement_restores_infeasible_flows_before_improving_revenue() {
     let mut case = pressure_loop();
     case.system.units[0].power = Bounds::new(10., 20.);
     let controls = Controls {
-        head_guess: vec![],
+        head_guess: None,
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![40.; 2]],
         river_opening: vec![],
@@ -745,7 +745,7 @@ fn optimized_serial_turbines_retain_their_pressure_allocation_during_reconstruct
         "revenue {} instead of {expected}",
         s.objective
     );
-    let replay = p.reconstruct(&s.controls()).unwrap();
+    let replay = p.reconstruct(&s.controls().unwrap()).unwrap();
     assert!(replay.validation.feasible);
     assert!((replay.objective - s.objective).abs() < 1e-7);
 }
@@ -756,7 +756,7 @@ fn specified_intermediate_pressure_is_retained_when_series_discharge_does_not_de
         let mut c = serial_turbines();
         c.system.junctions[0].head = Bounds::new(pressure, pressure);
         let input = Controls {
-            head_guess: vec![],
+            head_guess: None,
             commitment: vec![vec![true]; 2],
             unit_flow: vec![vec![20.]; 2],
             river_opening: vec![],
@@ -777,7 +777,10 @@ fn specified_intermediate_pressure_is_retained_when_series_discharge_does_not_de
 fn pressure_guesses_select_a_free_allocation_without_overriding_fixed_heads() {
     let c = serial_turbines();
     let input = Controls {
-        head_guess: vec![vec![999.], vec![40.], vec![-999.]],
+        head_guess: Some(HeadGuess {
+            grid: c.grid.clone(),
+            head: vec![vec![999.], vec![40.], vec![-999.]],
+        }),
         commitment: vec![vec![true]; 2],
         unit_flow: vec![vec![20.]; 2],
         river_opening: vec![],
@@ -796,7 +799,10 @@ fn pressure_guesses_select_a_free_allocation_without_overriding_fixed_heads() {
 fn an_incorrect_pressure_guess_cannot_replace_an_anchored_tunnel_pressure_equation() {
     let c = pressure_loop();
     let input = Controls {
-        head_guess: vec![vec![1000.; 2]; 3],
+        head_guess: Some(HeadGuess {
+            grid: c.grid.clone(),
+            head: vec![vec![1000.; 2]; 3],
+        }),
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![30.; 2]],
         river_opening: vec![],
@@ -827,9 +833,89 @@ fn an_incorrect_pressure_guess_cannot_replace_an_anchored_tunnel_pressure_equati
         "the solved state must not be clipped to the initial guess bounds"
     );
     let mut invalid = input;
-    invalid.head_guess[0][0] = f64::NAN;
+    invalid.head_guess.as_mut().unwrap().head[0][0] = f64::NAN;
     assert!(matches!(
         SchedulingProblem::new(&c).unwrap().reconstruct(&invalid),
         Err(Error::Input(_))
     ));
+}
+
+#[test]
+fn finer_state_arrays_recover_held_controls_and_original_energy_windows() {
+    let c = pressure_loop();
+    let coarse_controls = Controls {
+        head_guess: None,
+        commitment: vec![vec![true; 2]],
+        unit_flow: vec![vec![30.; 2]],
+        river_opening: vec![],
+        tunnel_opening: vec![vec![1.; 2]; 2],
+    };
+    let coarse = SchedulingProblem::new(&c)
+        .unwrap()
+        .reconstruct(&coarse_controls)
+        .unwrap();
+    let mut fine_case = c.clone();
+    fine_case.grid = vec![0., 0.25, 1., 1.25, 1.5];
+    fine_case.prices = vec![100., 100., 20., 20.];
+    let fine_controls = Controls {
+        head_guess: None,
+        commitment: vec![vec![true; 4]],
+        unit_flow: vec![vec![30.; 4]],
+        river_opening: vec![],
+        tunnel_opening: vec![vec![1.; 4]; 2],
+    };
+    let mut fine = SchedulingProblem::new(&fine_case)
+        .unwrap()
+        .reconstruct(&fine_controls)
+        .unwrap();
+    assert!(coarse.validation.feasible && fine.validation.feasible);
+    fine.operating_grid = c.grid.clone();
+    let controls = fine.controls().unwrap();
+    let replay = SchedulingProblem::new(&c)
+        .unwrap()
+        .reconstruct(&controls)
+        .unwrap();
+    assert!(replay.validation.feasible);
+    assert!((replay.objective - coarse.objective).abs() < 1e-7);
+    let mean_power = fine.net_power(&c).unwrap();
+    for (mean, expected) in mean_power.iter().zip(&coarse.unit_power[0]) {
+        assert!((mean - expected).abs() < 1e-9);
+    }
+    let energy_revenue: f64 = mean_power
+        .iter()
+        .zip(&c.prices)
+        .zip(c.grid.windows(2))
+        .map(|((p, price), w)| p * price * (w[1] - w[0]))
+        .sum();
+    assert!((energy_revenue - fine.objective).abs() < 1e-7);
+    fine.commitment[0][1] = false;
+    assert!(matches!(fine.controls(), Err(Error::Input(_))));
+}
+
+#[test]
+fn head_starting_profiles_use_time_window_means_on_different_partitions() {
+    let mut c = serial_turbines();
+    c.grid = vec![0., 0.5, 1.];
+    c.prices = vec![100.; 2];
+    c.commitment = BTreeMap::from([
+        ("Upper".into(), vec![true; 2]),
+        ("Lower".into(), vec![true; 2]),
+    ]);
+    let mut input = Controls {
+        head_guess: Some(HeadGuess {
+            grid: vec![0., 0.25, 1.],
+            head: vec![vec![100.; 2], vec![21., 73.], vec![20.; 2]],
+        }),
+        commitment: vec![vec![true; 2]; 2],
+        unit_flow: vec![vec![20.; 2]; 2],
+        river_opening: vec![],
+        tunnel_opening: vec![],
+    };
+    let p = SchedulingProblem::new(&c).unwrap();
+    let s = p.reconstruct(&input).unwrap();
+    assert!(s.validation.feasible, "{:?}", s.validation);
+    assert!((s.head[1][0] - 47.).abs() < 1e-9 && (s.head[1][1] - 73.).abs() < 1e-9);
+    assert!((s.objective - 1334.16).abs() < 1e-8);
+    input.head_guess.as_mut().unwrap().grid[1] = 1.;
+    assert!(matches!(p.reconstruct(&input), Err(Error::Input(_))));
 }
