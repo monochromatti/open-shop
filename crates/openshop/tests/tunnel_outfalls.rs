@@ -152,3 +152,67 @@ fn commitment_and_flow_observations_include_tunnel_outfalls() {
     assert!((s.observed_flow[0][0] - 6.).abs() < 1e-5);
     assert!((s.observed_flow[0][1] - 8.).abs() < 1e-5);
 }
+
+#[test]
+fn restarting_preserves_delayed_arrivals_and_counted_observation_water() {
+    for transport in [
+        RiverTransport::Fixed { delay: 0.5 },
+        RiverTransport::Distributed {
+            curves: vec![
+                DelayCurve::new(0., vec![0.25, 1.75], vec![1.]).unwrap(),
+                DelayCurve::new(10., vec![0.25, 1.25], vec![1.]).unwrap(),
+            ],
+        },
+    ] {
+        let mut original = case(transport);
+        original.system.rivers[0].history_grid = vec![-1., -0.5];
+        original.system.rivers[0].history_release = vec![2.];
+        original.system.reservoirs[1]
+            .operation
+            .level_windows
+            .push(LevelWindow {
+                start_time: 0.,
+                end_time: 3.,
+                max_change: 1.,
+            });
+        let mut observed = FlowRequirement::new("Downstream gauge");
+        observed.river_arrivals.push("Reach".into());
+        observed.initial_volume = 3000.;
+        observed.min_volume = Some(3000.);
+        observed.volume_windows.push(VolumeWindow {
+            start_time: 0.5,
+            end_time: 3.,
+            min_volume: Some(0.),
+            max_volume: Some(60_000.),
+        });
+        original.flow_requirements.push(observed);
+        let problem = SchedulingProblem::new(&original).unwrap();
+        let full = solve(&original);
+        let next = problem.restart_case(&full, 1.).unwrap();
+        let restarted = SchedulingProblem::new(&next).unwrap();
+        let suffix = restarted
+            .reconstruct(&Controls {
+                head_guess: None,
+                commitment: vec![],
+                unit_flow: vec![],
+                river_opening: vec![vec![0.]],
+                tunnel_opening: vec![vec![1.]],
+            })
+            .unwrap();
+        assert!(suffix.validation.feasible, "{:?}", suffix.validation);
+        for (expected, actual) in full.storage.iter().zip(&suffix.storage) {
+            assert!((expected.last().unwrap() - actual.last().unwrap()).abs() < 1e-6);
+        }
+        assert!(
+            (full.river_storage[0].last().unwrap() - suffix.river_storage[0].last().unwrap()).abs()
+                < 1e-6
+        );
+        assert!(
+            (full.observed_volume[0].last().unwrap() - suffix.observed_volume[0].last().unwrap())
+                .abs()
+                < 1e-6
+        );
+        assert!(problem.restart_case(&full, 0.5).is_err());
+        assert!(problem.restart_case(&full, 3.).is_err());
+    }
+}

@@ -110,6 +110,17 @@ Cargo uses incremental compilation and modest optimization in development.
 which caches dependencies independently of the package source. Native solver
 libraries come from Nix. No nightly Rust compiler is needed.
 
+## Continue a schedule
+
+Use `problem.restart_case(&schedule, time)?` to continue from an interior
+operating boundary. Reconstruction on the schedule's hydraulic and river
+grids supplies the executed reservoir states, interval releases, operating
+histories and pending gate closure waits. The continuation retains absolute
+times and accounts for water already counted by flow observations. Restart
+at a boundary of every declared arrival averaging window and outside the
+interior of any priced target window. The continuation's objective measures
+water value changes from the new initial state.
+
 ## Storage curves
 
 Use `StorageCurve::Polynomial { reference_volume, elevation, slope, curvature }`
@@ -336,8 +347,7 @@ its own grid. `solver_status` is Ipopt's termination code, and `iterations`
 counts iterations in the reported solve. The feasibility checks establish
 neither continuous-time error bounds nor global optimality.
 
-Remaining work includes reserves, rolling-horizon
-restart and global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
+Remaining work includes reserves and global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
 speed and solution comparison.

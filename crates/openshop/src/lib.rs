@@ -22,6 +22,7 @@ mod operating_equations;
 mod operating_points;
 mod operation;
 mod physics;
+mod restart;
 mod river;
 mod river_laws;
 mod river_operation;

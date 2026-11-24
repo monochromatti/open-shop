@@ -225,3 +225,20 @@ fn prescribed_units_cannot_bypass_a_gate_closure_wait() {
         .unwrap();
     assert!(!s.validation.feasible);
 }
+
+#[test]
+fn restart_carries_a_pending_closure_wait_and_gate_adjustment_cost() {
+    let mut c = case();
+    series(&mut c, "Link", vec![0.5, 1.], vec![0., 1.]);
+    wait(&mut c, 1., 0.);
+    c.system.tunnels[0].gate_adjustment_cost = 12.;
+    let full = solve(&c);
+    let problem = SchedulingProblem::new(&c).unwrap();
+    let next = problem.restart_case(&full, 1.).unwrap();
+    let suffix = solve(&next);
+    assert_eq!(suffix.commitment[0], vec![false, true]);
+    assert_eq!(suffix.tunnel_opening[0], vec![1., 1.]);
+    assert!((suffix.gate_adjustment_cost - 12.).abs() < 1e-10);
+    let expected_storage = full.storage[0].last().unwrap();
+    assert!((suffix.storage[0].last().unwrap() - expected_storage).abs() < 1e-4);
+}
