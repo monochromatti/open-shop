@@ -255,6 +255,47 @@ fn minimum_release_includes_natural_water_before_reservoir_withdrawal() {
     assert!((s.river_withdrawal[0][1] - 4.).abs() < 1e-5);
 }
 #[test]
+fn priced_release_deficits_trade_missing_volume_against_stored_water() {
+    let mut c = case(
+        vec![reservoir("Lake", 100., 1e6, 0.)],
+        river("Lake", "Sea", RiverLaw::Controlled),
+    );
+    c.system.reservoirs[0].water_value = 0.001;
+    c.system.rivers[0].inflow = 1.;
+    let object = Object::River("Reach".into());
+    c.operations.extend([
+        OperationalSeries {
+            object: object.clone(),
+            attribute: Attribute::MinRelease,
+            times: vec![0.],
+            values: vec![3.],
+        },
+        OperationalSeries {
+            object,
+            attribute: Attribute::ReleasePenalty,
+            times: vec![0., 0.5],
+            values: vec![0.0001, 0.002],
+        },
+    ]);
+    let schedule = solve(&c);
+    assert!((schedule.river_release[0][0] - 1.).abs() < 1e-5);
+    assert!((schedule.river_release[0][1] - 3.).abs() < 1e-5);
+    assert!((schedule.release_shortfall_volume[0][0] - 3600.).abs() < 0.04);
+    assert!(schedule.release_shortfall_volume[0][1] < 0.04);
+    assert!((schedule.release_penalty_cost - 0.36).abs() < 1e-4);
+    let expected = -0.36 - 0.001 * 2. * (c.grid[2] - c.grid[1]) * 3600.;
+    assert!((schedule.objective - expected).abs() < 1e-4);
+    let (fine, error) = SchedulingProblem::new(&c)
+        .unwrap()
+        .validate_replay(&schedule, &TimeAccuracy::default())
+        .unwrap();
+    assert!(fine.validation.feasible && error.converged());
+    assert!((fine.release_penalty_cost - schedule.release_penalty_cost).abs() < 1e-8);
+    c.operations[1].values[0] = -0.01;
+    assert!(SchedulingProblem::new(&c).is_err());
+}
+
+#[test]
 fn a_river_junction_release_minimum_is_an_interval_average() {
     let mut c = case(
         vec![reservoir("Lake", 100., 1e6, 0.)],

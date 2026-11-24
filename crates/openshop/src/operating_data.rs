@@ -49,6 +49,7 @@ pub enum Attribute {
     StartupGrossHeadMin,
     MinOpen,
     MinRelease,
+    ReleasePenalty,
     MinArrival,
     FlowChangeCost,
     MaxOpen,
@@ -149,6 +150,7 @@ pub(crate) struct OperatingData {
     pub river_capacity: Vec<Vec<f64>>,
     pub river_inflow: Vec<Vec<f64>>,
     pub river_min_release: Vec<Vec<f64>>,
+    pub river_release_penalty: Vec<Vec<f64>>,
     pub river_min_arrival: Vec<Vec<f64>>,
     pub river_flow_change: Vec<Vec<ChangeLimit>>,
     pub river_change_cost: Vec<Vec<f64>>,
@@ -302,6 +304,7 @@ impl OperatingData {
                             | GateMin
                             | GateMax
                             | MinRelease
+                            | ReleasePenalty
                             | MinArrival
                             | FlowRampUp
                             | FlowRampDown
@@ -390,7 +393,7 @@ impl OperatingData {
                     let r = system.rivers.iter().find(|r| &r.name == name).unwrap();
                     match s.attribute {
                         MinRelease => Some((0., r.capacity)),
-                        MinArrival => Some((0., f64::INFINITY)),
+                        MinArrival | ReleasePenalty => Some((0., f64::INFINITY)),
                         Capacity => Some((0., r.capacity)),
                         GateMin => Some((r.gate.min, 1.)),
                         GateMax => Some((0., r.gate.max)),
@@ -840,6 +843,7 @@ impl OperatingData {
         let mut river_capacity = Vec::new();
         let mut river_inflow = Vec::new();
         let mut river_min_release = Vec::new();
+        let mut river_release_penalty = Vec::new();
         let mut river_min_arrival = Vec::new();
         let mut river_flow_change = Vec::new();
         let mut river_change_cost = Vec::new();
@@ -853,6 +857,7 @@ impl OperatingData {
             let mut cap = Vec::new();
             let mut inflow = Vec::new();
             let mut minimum = Vec::new();
+            let mut penalties = Vec::new();
             let mut arrival = Vec::new();
             let mut ramps = Vec::new();
             let mut costs = Vec::new();
@@ -875,7 +880,13 @@ impl OperatingData {
                 let c = value(m, Capacity, time, Some(river.capacity), false).unwrap();
                 let q = value(m, Inflow, time, Some(river.inflow), false).unwrap();
                 let minimum_release = value(m, MinRelease, time, Some(0.), false).unwrap();
-                if c > river.capacity || q > c || minimum_release > c {
+                let penalty = value(m, ReleasePenalty, time, Some(0.), false).unwrap();
+                let seconds = (case.grid[t + 1] - time) * 3600.;
+                if c > river.capacity
+                    || q > c
+                    || (minimum_release > c && penalty == 0.)
+                    || !(penalty * seconds * river.capacity).is_finite()
+                {
                     return Err(Error::Input(format!(
                         "{}: invalid river capacity/inflow",
                         river.name
@@ -899,6 +910,7 @@ impl OperatingData {
                     Bounds::new(lo, hi)
                 });
                 minimum.push(minimum_release);
+                penalties.push(penalty);
                 arrival.push(
                     value(
                         m,
@@ -966,6 +978,7 @@ impl OperatingData {
             river_capacity.push(cap);
             river_inflow.push(inflow);
             river_min_release.push(minimum);
+            river_release_penalty.push(penalties);
             river_min_arrival.push(arrival);
             river_flow_change.push(ramps);
             river_change_cost.push(costs);
@@ -1006,6 +1019,7 @@ impl OperatingData {
             river_capacity,
             river_inflow,
             river_min_release,
+            river_release_penalty,
             river_min_arrival,
             river_flow_change,
             river_change_cost,

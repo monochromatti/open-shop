@@ -632,6 +632,8 @@ impl SchedulingProblem<'_> {
             commitment: self.mesh.hold(&controls.unit_on)?,
             soft_slacks: vec![],
             soft_penalty_cost: 0.,
+            release_shortfall_volume: vec![],
+            release_penalty_cost: 0.,
             objective: 0.,
             solver_status: Some(point.status),
             iterations: point.iterations,

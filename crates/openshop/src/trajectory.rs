@@ -45,6 +45,11 @@ pub struct Schedule {
     pub soft_slacks: Vec<crate::SoftSlack>,
     /// Total target-deviation cost, already subtracted from the objective.
     pub soft_penalty_cost: f64,
+    /// Missing release volume, m³, by river and original operating interval.
+    /// Only priced minimum releases are included here.
+    pub release_shortfall_volume: Vec<Vec<f64>>,
+    /// Shortfall cost subtracted from the objective.
+    pub release_penalty_cost: f64,
     pub objective: f64,
     /// Ipopt termination code for an optimized result; None for pure reconstruction.
     pub solver_status: Option<i32>,
@@ -312,6 +317,31 @@ pub(crate) fn evaluate(
             .assess(case, &values.storage, &values.unit_power, &values.unit_flow);
     schedule.soft_slacks = slacks;
     schedule.soft_penalty_cost = penalty_cost;
+    schedule.release_shortfall_volume = operating
+        .river_release_penalty
+        .iter()
+        .enumerate()
+        .map(|(r, prices)| {
+            prices
+                .iter()
+                .enumerate()
+                .map(|(t, &price)| {
+                    if price == 0. {
+                        0.
+                    } else {
+                        (operating.river_min_release[r][t] - values.river_release[r][t]).max(0.)
+                            * (3600. * mesh.duration[t])
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    schedule.release_penalty_cost = schedule
+        .release_shortfall_volume
+        .iter()
+        .zip(&operating.river_release_penalty)
+        .flat_map(|(volumes, prices)| volumes.iter().zip(prices).map(|(v, p)| v * p))
+        .sum();
     schedule.objective = objective(case, &schedule, &values, operating);
     schedule.validation = validate(problem, &schedule, &values, tolerance);
     schedule.validation.operating_limits = schedule.validation.operating_limits.max(soft_excess);
@@ -387,7 +417,11 @@ fn objective(
                 .sum::<f64>()
         })
         .sum();
-    revenue - schedule.gate_adjustment_cost - river_cost - schedule.soft_penalty_cost
+    revenue
+        - schedule.gate_adjustment_cost
+        - river_cost
+        - schedule.soft_penalty_cost
+        - schedule.release_penalty_cost
         + case
             .system
             .rivers

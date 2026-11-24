@@ -113,11 +113,19 @@ pub(crate) struct FlowDomain {
     startup_cost: Vec<f64>,
     shutdown_cost: Vec<f64>,
 }
+struct ReleasePenalty {
+    rate: LinearForm,
+    minimum: f64,
+    cost_per_rate: f64,
+    scale: f64,
+}
+
 #[derive(Default)]
 pub(crate) struct FlowEquations {
     pub rates: Vec<Vec<LinearForm>>,
     pub rows: Vec<FlowRow>,
     changes: Vec<(LinearForm, f64, f64)>,
+    release_penalties: Vec<ReleasePenalty>,
     pub domains: Vec<FlowDomain>,
 }
 fn ordered(a: f64, b: f64) -> bool {
@@ -169,7 +177,15 @@ impl FlowEquations {
             }
             for t in 0..nt {
                 let lower = operating.river_min_release[e][t];
-                if lower > 0. {
+                let penalty = operating.river_release_penalty[e][t];
+                if lower > 0. && penalty > 0. {
+                    data.release_penalties.push(ReleasePenalty {
+                        rate: rates[t].clone(),
+                        minimum: lower,
+                        cost_per_rate: penalty * (3600. * mesh.duration[t]),
+                        scale: river.capacity.max(1.),
+                    });
+                } else if lower > 0. {
                     data.rows.push(FlowRow {
                         expression: rates[t].clone(),
                         bounds: Bounds::new(lower, f64::INFINITY),
@@ -549,8 +565,8 @@ impl FlowEquations {
         cost
     }
 
-    /// Convex epigraph of total variation. A change is charged once, without
-    /// multiplying by an interval duration. Zero-cost changes add no unknowns.
+    /// Linear epigraphs for total variation and priced release deficits.
+    /// Variation is charged once per change. Deficits are priced by volume.
     pub fn cost<'a>(
         &self,
         model: &'a oximo::Model,
@@ -559,7 +575,16 @@ impl FlowEquations {
     ) -> oximo::expr::Expr<'a> {
         use oximo::prelude::*;
         variable!(model, change[k in 0..self.changes.len()] >= 0.);
+        variable!(model, deficit[k in 0..self.release_penalties.len()] >= 0.);
         let mut cost = zero;
+        for (k, penalty) in self.release_penalties.iter().enumerate() {
+            let rate = crate::nlp::linear_expression(&penalty.rate, columns, zero);
+            constraint!(
+                model,
+                rate / penalty.scale + deficit[[k]] >= penalty.minimum / penalty.scale
+            );
+            cost = cost + deficit[[k]] * (penalty.scale * penalty.cost_per_rate);
+        }
         for (k, (difference, coefficient, scale)) in self.changes.iter().enumerate() {
             let delta = crate::nlp::linear_expression(difference, columns, zero) / *scale;
             constraint!(model, change[[k]] >= delta);

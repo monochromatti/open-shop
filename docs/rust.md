@@ -336,7 +336,7 @@ its own grid. `solver_status` is Ipopt's termination code, and `iterations`
 counts iterations in the reported solve. The feasibility checks establish
 neither continuous-time error bounds nor global optimality.
 
-Remaining work includes priced minimum releases, reserves, rolling-horizon
+Remaining work includes reserves, rolling-horizon
 restart and global bounds. Complete synthetic watercourses and Tokke–Vinje must exercise
 those capabilities before the Rust implementation can replace Julia. Small
 examples establish correctness of their equations; they cannot settle the final
@@ -642,6 +642,12 @@ execution or prove the optimization result globally optimal.
 m³/s averaged over a control interval. Natural inflow counts toward the minimum;
 a reservoir supplies only the remaining withdrawal. At a river junction, the
 bound applies to its interval-average outgoing release, including delayed water.
+A positive `ReleasePenalty` prices the deficit in currency per m³. Zero or
+omitted price makes `MinRelease` a hard minimum. A priced deficit is measured
+on the original operating interval, independently of the hydraulic grid.
+`Schedule.release_shortfall_volume` gives the missing volume and
+`Schedule.release_penalty_cost` gives the total charge already deducted
+from the objective.
 
 ## Priced operating targets
 
