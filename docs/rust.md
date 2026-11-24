@@ -228,6 +228,12 @@ solver. `schedule` coordinates discrete proposals and nonlinear solves. Native
 solver ownership, callbacks and mutable workspaces stay in their adapters.
 File access and JSON conversion belong to the executable examples.
 
+Preparation substitutes fixed variable values when checking affine constraints.
+A satisfied constant row is omitted; a contradictory one remains infeasible.
+This removes inequalities such as zero generation being at least zero at a
+stopped plant. Such a tight constant row has no strict interior for the
+nonlinear solver's barrier equations.
+
 ## Equations and current coverage
 
 Reservoir storage obeys `V_next − V = 3600 Δt (inflow + incoming − outgoing)`.

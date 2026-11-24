@@ -76,9 +76,26 @@ pub(crate) fn prepare(model: &Model, laws: Vec<Equation>) -> Result<Nlp, Error> 
         .filter(|row| {
             row.active
                 && !extract_linear(&arena, row.lhs).is_some_and(|linear| {
-                    linear.coeffs.iter().all(|(_, c)| *c == 0.)
-                        && row.lower <= linear.constant
-                        && linear.constant <= row.upper
+                    // Stopped equipment can turn a row into a constant even
+                    // when the expression still names its fixed variables.
+                    // Keeping a tight constant inequality introduces a slack
+                    // with no strict interior. Keep contradictory constants.
+                    let constant = linear
+                        .coeffs
+                        .iter()
+                        .try_fold(linear.constant, |sum, (v, c)| {
+                            let variable = &variables[v.index()];
+                            if *c == 0. {
+                                Some(sum)
+                            } else if variable.lb == variable.ub {
+                                Some(sum + c * variable.lb)
+                            } else {
+                                None
+                            }
+                        });
+                    constant.is_some_and(|value| {
+                        value.is_finite() && row.lower <= value && value <= row.upper
+                    })
                 })
         })
         .collect();
@@ -385,6 +402,36 @@ mod tests {
             let mut gradient = [0.];
             assert!(evaluator.eval_grad_f(&[x], true, &mut gradient));
             assert!((gradient[0] - expected_gradient).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn fixed_equipment_constraints_preserve_optima_and_reject_contradictions() {
+        for consistent in [true, false] {
+            let m = Model::new("fixed equipment and free dispatch");
+            variable!(m, 0. <= x <= 10., initial = 1.);
+            variable!(m, fixed);
+            m.fix(fixed, 3.).unwrap();
+            constraint!(m, fixed >= 3.);
+            constraint!(m, fixed <= if consistent { 3. } else { 2. });
+            constraint!(m, x + fixed <= 5.);
+            objective!(m, Max, x);
+            let result = solve(
+                prepare(&m, vec![]).unwrap(),
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+                Backend::Ipopt,
+            )
+            .unwrap();
+            let solved = matches!(result.status, 0 | 1 | 6);
+            if consistent {
+                assert!(solved, "solver status {}", result.status);
+                assert!((result.x[x.var_id().unwrap().index()] - 2.).abs() < 1e-6);
+            } else {
+                assert!(!solved, "contradictory fixed constraint was accepted");
+            }
         }
     }
 }
