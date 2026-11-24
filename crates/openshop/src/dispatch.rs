@@ -115,11 +115,16 @@ pub(crate) fn build_dispatch(
             } else {
                 0.
             };
-            m.set_bounds(
-                qr[[k, t]],
-                lower,
-                operating.river_capacity[e][t] / river_scale[e],
-            )?;
+            if s.rivers[e].law.is_delta() {
+                m.set_bounds(
+                    qr[[k, t]],
+                    lower,
+                    operating.river_capacity[e][t] / river_scale[e],
+                )?;
+            }
+            // A nonnegative gate and rating already give nonnegative outlet
+            // withdrawal. Total-release bounds below impose capacity. Repeating
+            // these as withdrawal bounds makes closed outlets degenerate.
             m.set_initial(
                 qr[[k, t]],
                 start
