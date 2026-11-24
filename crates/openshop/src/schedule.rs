@@ -609,13 +609,47 @@ impl SchedulingProblem<'_> {
         backend: Backend,
         objective: DispatchObjective,
     ) -> Result<Schedule, Error> {
-        let (case, routing) = (self.case, &self.routing);
-        let dispatch = build_dispatch(self, &controls, start, points, objective)?;
+        let crate::dispatch::Dispatch { problem, variables } =
+            build_dispatch(self, &controls, start, points, objective)?;
         let termination = match objective {
             DispatchObjective::Revenue => nlp::Termination::Optimality,
             DispatchObjective::FlowDistance => nlp::Termination::Feasibility,
         };
-        let point = nlp::solve(dispatch.problem, options, backend, termination)?;
+        let mut verified = None;
+        let mut check = |x: &[f64]| {
+            if let Ok(schedule) =
+                self.reconstruct_iterate(&variables, &controls, x, options.tolerance)
+                && schedule.validation.feasible
+                && (controls.river_on.is_empty()
+                    || crate::commitment::Proposal::from_schedule(self, &schedule)
+                        .is_ok_and(|p| p.controls == controls))
+            {
+                verified = Some(schedule);
+                true
+            } else {
+                false
+            }
+        };
+        let physical_check = (objective == DispatchObjective::FlowDistance)
+            .then_some(&mut check as &mut nlp::PhysicalFeasibility<'_>);
+        let point = nlp::solve(problem, options, backend, termination, physical_check)?;
+        let mut schedule = match verified {
+            Some(s) => s,
+            None => self.reconstruct_iterate(&variables, &controls, &point.x, options.tolerance)?,
+        };
+        schedule.solver_status = Some(point.status);
+        schedule.iterations = point.iterations;
+        Ok(schedule)
+    }
+
+    fn reconstruct_iterate(
+        &self,
+        dispatch: &crate::dispatch::DispatchVariables,
+        controls: &crate::commitment::DiscreteControls,
+        x: &[f64],
+        tolerance: f64,
+    ) -> Result<Schedule, Error> {
+        let (case, routing) = (self.case, &self.routing);
         let storage = dispatch
             .storage
             .iter()
@@ -623,16 +657,14 @@ impl SchedulingProblem<'_> {
             .map(|(r, row)| {
                 let bounds = case.system.reservoirs[r].storage;
                 row.iter()
-                    .map(|i| bounds.min + (bounds.max - bounds.min) * point.x[i.index()])
+                    .map(|i| bounds.min + (bounds.max - bounds.min) * x[i.index()])
                     .collect()
             })
             .collect();
         // Project only solver-sized bound roundoff in the physical controls.
         // Independent reconstruction then checks all equations and restrictions.
         let roundoff_to_bounds = |x: f64, bounds: crate::Bounds, scale: f64| {
-            if x >= bounds.min - options.tolerance * scale
-                && x <= bounds.max + options.tolerance * scale
-            {
+            if x >= bounds.min - tolerance * scale && x <= bounds.max + tolerance * scale {
                 x.clamp(bounds.min, bounds.max)
             } else {
                 x
@@ -648,7 +680,7 @@ impl SchedulingProblem<'_> {
                     .map(|(t, i)| {
                         if controls.unit_on[g][self.mesh.interval[t]] {
                             roundoff_to_bounds(
-                                dispatch.unit_flow_scale[g] * point.x[i.index()],
+                                dispatch.unit_flow_scale[g] * x[i.index()],
                                 self.operating.units[g][self.mesh.interval[t]].flow,
                                 dispatch.unit_flow_scale[g],
                             )
@@ -665,7 +697,7 @@ impl SchedulingProblem<'_> {
             .enumerate()
             .map(|(e, row)| {
                 row.iter()
-                    .map(|i| dispatch.tunnel_flow_scale[e] * point.x[i.index()])
+                    .map(|i| dispatch.tunnel_flow_scale[e] * x[i.index()])
                     .collect()
             })
             .collect();
@@ -709,8 +741,8 @@ impl SchedulingProblem<'_> {
             release_shortfall_volume: vec![],
             release_penalty_cost: 0.,
             objective: 0.,
-            solver_status: Some(point.status),
-            iterations: point.iterations,
+            solver_status: None,
+            iterations: 0,
             validation: Validation::default(),
             time_error: None,
         };
@@ -720,7 +752,7 @@ impl SchedulingProblem<'_> {
                 .enumerate()
                 .map(|(t, i)| {
                     roundoff_to_bounds(
-                        point.x[i.index()],
+                        x[i.index()],
                         self.operating.river_gate[river][self.mesh.interval[t]],
                         1.,
                     )
@@ -728,26 +760,18 @@ impl SchedulingProblem<'_> {
                 .collect();
             schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
                 .iter()
-                .map(|i| dispatch.river_flow_scale[river] * point.x[i.index()])
+                .map(|i| dispatch.river_flow_scale[river] * x[i.index()])
                 .collect();
         }
         let junction_head = dispatch
             .junction_head
             .iter()
-            .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
+            .map(|row| row.iter().map(|i| 100. * x[i.index()]).collect())
             .collect();
-        let mut schedule = crate::trajectory::evaluate(
-            self,
-            schedule,
-            junction_head,
-            options.tolerance.max(1e-7),
-        )?;
+        let mut schedule =
+            crate::trajectory::evaluate(self, schedule, junction_head, tolerance.max(1e-7))?;
         match self.reconstruct(&schedule.controls()?) {
-            Ok(mut physical) => {
-                physical.solver_status = schedule.solver_status;
-                physical.iterations = schedule.iterations;
-                Ok(physical)
-            }
+            Ok(physical) => Ok(physical),
             Err(Error::Solver(_) | Error::Input(_)) => {
                 schedule.validation.feasible = false;
                 Ok(schedule)

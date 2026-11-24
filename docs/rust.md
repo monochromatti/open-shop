@@ -98,8 +98,10 @@ commitment-search entry point. Both use the same nonlinear dispatch equations.
 The nonlinear solver uses exact sparse first derivatives and a limited-memory
 BFGS approximation to curvature. Local second derivatives remain available for
 mathematical checks. At an iteration or time limit, the solver retains its best
-point satisfying the original nonlinear constraints; independent hydraulic
-reconstruction must still accept the resulting controls. Solver settings are
+point satisfying the original nonlinear constraints. During feasibility
+restoration, a periodic physical reconstruction can stop the search early
+when the controls already produce a valid trajectory. Revenue refinement
+still uses the nonlinear solver's ordinary stopping criteria. Solver settings are
 set by the library, without reading a working-directory `ipopt.opt` file.
 
 `crates/openshop/examples/reservoir.rs` constructs and solves a case entirely

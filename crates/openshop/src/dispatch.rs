@@ -9,6 +9,10 @@ use oximo::{
 
 pub(crate) struct Dispatch {
     pub problem: crate::constitutive::Nlp,
+    pub variables: DispatchVariables,
+}
+
+pub(crate) struct DispatchVariables {
     pub storage: Vec<Vec<VarId>>,
     pub flow: Vec<Vec<VarId>>,
     pub tunnel_flow: Vec<Vec<VarId>>,
@@ -1120,16 +1124,18 @@ pub(crate) fn build_dispatch(
         .collect();
     Ok(Dispatch {
         problem: nlp::prepare(&m, laws)?,
-        storage,
-        flow,
-        tunnel_flow,
-        junction_head,
-        river_withdrawal,
-        river_opening: (0..routing.outlets.len())
-            .map(|k| (0..nt).map(|t| ga[k][t].var_id().unwrap()).collect())
-            .collect(),
-        unit_flow_scale: unit_scale,
-        tunnel_flow_scale: tunnel_scale,
-        river_flow_scale: river_scale,
+        variables: DispatchVariables {
+            storage,
+            flow,
+            tunnel_flow,
+            junction_head,
+            river_withdrawal,
+            river_opening: (0..routing.outlets.len())
+                .map(|k| (0..nt).map(|t| ga[k][t].var_id().unwrap()).collect())
+                .collect(),
+            unit_flow_scale: unit_scale,
+            tunnel_flow_scale: tunnel_scale,
+            river_flow_scale: river_scale,
+        },
     })
 }

@@ -259,15 +259,21 @@ fn lower(arena: &ExprArena, id: ExprId, memo: &mut [Option<Arc<Expr>>]) -> Resul
     Ok(Expr::Cse(result))
 }
 
+/// A physical feasibility check on an iterate in the original variable order.
+pub(crate) type PhysicalFeasibility<'a> = dyn FnMut(&[f64]) -> bool + 'a;
+
 pub(crate) fn solve(
     mut problem: Nlp,
     options: &SolveOptions,
     backend: Backend,
     termination: Termination,
+    physical_feasibility: Option<&mut PhysicalFeasibility<'_>>,
 ) -> Result<NlpSolution, Error> {
     options.validate()?;
     match backend {
-        Backend::Ipopt => crate::native_ipopt::solve(&mut problem, options, termination),
+        Backend::Ipopt => {
+            crate::native_ipopt::solve(&mut problem, options, termination, physical_feasibility)
+        }
         #[cfg(test)]
         Backend::Pounce => {
             let mut app = pounce_rs::IpoptApplication::new();
@@ -333,6 +339,7 @@ mod tests {
                 },
                 Backend::Ipopt,
                 Termination::Optimality,
+                None,
             )
             .unwrap();
             let (q, h) = match fixed {
@@ -360,6 +367,7 @@ mod tests {
             },
             Backend::Ipopt,
             Termination::Optimality,
+            None,
         )
         .unwrap();
         let a = point.x[x.var_id().unwrap().index()];
@@ -383,6 +391,7 @@ mod tests {
             },
             Backend::Ipopt,
             Termination::Feasibility,
+            None,
         )
         .unwrap();
         let a = result.x[x.var_id().unwrap().index()];
@@ -509,6 +518,7 @@ mod tests {
                 },
                 Backend::Ipopt,
                 Termination::Optimality,
+                None,
             )
             .unwrap();
             let solved = matches!(result.status, 0 | 1 | 6);

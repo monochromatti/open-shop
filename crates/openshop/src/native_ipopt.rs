@@ -75,7 +75,7 @@ impl VariableOrder {
     }
 }
 
-struct Callbacks<'a> {
+struct Callbacks<'a, 'f> {
     evaluator: &'a mut dyn TNLP,
     order: VariableOrder,
     problem: ffi::IpoptProblem,
@@ -89,12 +89,15 @@ struct Callbacks<'a> {
     constraint_violation: Vec<f64>,
     tolerance: f64,
     termination: crate::nlp::Termination,
+    physical_feasibility: Option<&'a mut crate::nlp::PhysicalFeasibility<'f>>,
+    physical_x: Vec<f64>,
 }
 
-pub(crate) fn solve(
-    evaluator: &mut dyn TNLP,
+pub(crate) fn solve<'a, 'f>(
+    evaluator: &'a mut dyn TNLP,
     options: &SolveOptions,
     termination: crate::nlp::Termination,
+    physical_feasibility: Option<&'a mut crate::nlp::PhysicalFeasibility<'f>>,
 ) -> Result<NlpSolution, Error> {
     let info = evaluator
         .get_nlp_info()
@@ -220,6 +223,12 @@ pub(crate) fn solve(
         constraint_violation: vec![0.; m],
         tolerance: options.tolerance,
         termination,
+        physical_x: if physical_feasibility.is_some() {
+            vec![0.; n]
+        } else {
+            vec![]
+        },
+        physical_feasibility,
     };
     let mut objective = 0.0;
     // SAFETY: All buffers match CreateIpoptProblem dimensions. The context and
@@ -233,7 +242,7 @@ pub(crate) fn solve(
             lambda.as_mut_ptr(),
             zl.as_mut_ptr(),
             zu.as_mut_ptr(),
-            (&mut callbacks as *mut Callbacks<'_>).cast(),
+            (&mut callbacks as *mut Callbacks<'_, '_>).cast(),
         )
     };
     if callbacks.panicked {
@@ -279,9 +288,9 @@ fn set_string(problem: &Problem, name: &CStr, value: &CStr) -> Result<(), Error>
 
 // SAFETY: Called only by Ipopt with the live exclusive context passed to
 // IpoptSolve; f cannot retain references to that context or to C buffers.
-unsafe fn callback(data: *mut c_void, f: impl FnOnce(&mut Callbacks<'_>) -> bool) -> bool {
+unsafe fn callback(data: *mut c_void, f: impl FnOnce(&mut Callbacks<'_, '_>) -> bool) -> bool {
     // SAFETY: The caller upholds the context ownership contract above.
-    let context = unsafe { &mut *data.cast::<Callbacks<'_>>() };
+    let context = unsafe { &mut *data.cast::<Callbacks<'_, '_>>() };
     if context.panicked {
         return false;
     }
@@ -474,6 +483,26 @@ unsafe extern "C" fn eval_h(
         })
     }
 }
+impl Callbacks<'_, '_> {
+    fn read_iterate(&mut self) -> bool {
+        // SAFETY: The synchronous callback owns the live problem and the
+        // primal buffer has its declared dimension. Other outputs are optional.
+        (unsafe {
+            ffi::GetIpoptCurrentIterate(
+                self.problem,
+                false,
+                self.current_x.len() as i32,
+                self.current_x.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                self.constraint_violation.len() as i32,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        }) && self.current_x.iter().all(|v| v.is_finite())
+    }
+}
+
 unsafe extern "C" fn intermediate(
     mode: i32,
     iter: i32,
@@ -498,6 +527,19 @@ unsafe extern "C" fn intermediate(
                     && objective >= c.best_objective)
             {
                 return true;
+            }
+            // A physical reconstruction is costlier than a row test. Probe
+            // periodically and let the usual algebraic stopping test run on
+            // every iteration. Keep its coordinates out of the AD workspace.
+            if iter % 32 == 0 && c.physical_feasibility.is_some() && c.read_iterate() {
+                for (&i, &value) in c.order.original.iter().zip(&c.current_x) {
+                    c.physical_x[i] = value;
+                }
+                if c.physical_feasibility.as_mut().unwrap()(&c.physical_x) {
+                    c.best_x.copy_from_slice(&c.current_x);
+                    c.best_objective = objective;
+                    return false;
+                }
             }
             let n = c.current_x.len() as i32;
             let m = c.constraint_violation.len() as i32;
@@ -525,20 +567,7 @@ unsafe extern "C" fn intermediate(
             {
                 return true;
             }
-            // SAFETY: This is the same live problem and n-sized buffer. Reading
-            // the iterate does not change the solver or retain its C storage.
-            let read = ffi::GetIpoptCurrentIterate(
-                c.problem,
-                false,
-                n,
-                c.current_x.as_mut_ptr(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                m,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            );
-            if read && c.current_x.iter().all(|v| v.is_finite()) {
+            if c.read_iterate() {
                 if objective < c.best_objective {
                     c.best_x.copy_from_slice(&c.current_x);
                     c.best_objective = objective;
