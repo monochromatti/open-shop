@@ -56,6 +56,7 @@ fn lower(target: SoftTarget, value: f64, allowance: f64, cost: f64) -> SoftConst
 }
 fn controls() -> Controls {
     Controls {
+        head_guess: vec![],
         commitment: vec![vec![true; 2]],
         unit_flow: vec![vec![5., 15.]],
         river_opening: vec![],

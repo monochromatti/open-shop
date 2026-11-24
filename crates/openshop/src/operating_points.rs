@@ -193,6 +193,7 @@ impl OperatingPoints {
         variable!(m,up[k in 0..np,g in 0..nu]);
         variable!(m,tw[k in 0..np,j in 0..s.plants.len()]);
         let initial_controls = start.map(|v| crate::Controls {
+            head_guess: v.head.clone(),
             commitment: controls.unit_on.clone(),
             unit_flow: v
                 .flow

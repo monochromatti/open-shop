@@ -10,12 +10,19 @@ use nalgebra::{Const, DMatrix, DVector, U1};
 use num_dual::{DualNum, DualSVec64};
 use serde::{Deserialize, Serialize};
 
-/// Physical controls, with objects as rows and operating intervals as columns.
+/// Physical controls and numerical starting values, with objects as rows and
+/// operating intervals as columns.
 /// Adjustable unit discharge is in m³/s. For a running fixed-speed pump its
 /// discharge entry is only an initial guess; the characteristic determines flow.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Controls {
+    /// Optional node-by-interval head guesses, metres; empty uses the hydraulic
+    /// initialization. Only junction entries are used. These choose a pressure
+    /// solution when the equations leave it undetermined, and never replace a
+    /// pressure or conservation equation.
+    #[serde(default)]
+    pub head_guess: Vec<Vec<f64>>,
     pub commitment: Vec<Vec<bool>>,
     pub unit_flow: Vec<Vec<f64>>,
     pub river_opening: Vec<Vec<f64>>,
@@ -23,9 +30,12 @@ pub struct Controls {
 }
 
 impl Schedule {
-    /// Copy the controls needed for independent physical reconstruction.
+    /// Copy physical controls and head guesses for independent reconstruction.
+    /// The guesses preserve an optimized pressure allocation between machines
+    /// when discharges alone do not determine the intermediate pressure.
     pub fn controls(&self) -> Controls {
         Controls {
+            head_guess: self.head.clone(),
             commitment: self.commitment.clone(),
             unit_flow: self.unit_flow.clone(),
             river_opening: self.river_opening.clone(),
@@ -55,6 +65,18 @@ impl Controls {
             return Err(Error::Input(
                 "control arrays must have the case's object and interval axes and finite values"
                     .into(),
+            ));
+        }
+        let nodes = s.reservoirs.len() + s.junctions.len() + s.boundaries.len();
+        if !self.head_guess.is_empty()
+            && (self.head_guess.len() != nodes
+                || self
+                    .head_guess
+                    .iter()
+                    .any(|row| row.len() != nt || row.iter().any(|h| !h.is_finite())))
+        {
+            return Err(Error::Input(
+                "head guesses must be finite node-by-interval arrays, or empty".into(),
             ));
         }
         for (g, row) in self.unit_flow.iter().enumerate() {
@@ -486,9 +508,12 @@ fn pressure_references(
         if lo > hi {
             continue;
         }
-        let shift = reference.map_or(lo / 2. + hi / 2., |v| {
-            (v.head[first] - head[first]).clamp(lo, hi)
-        });
+        let desired = controls
+            .head_guess
+            .get(first)
+            .map(|row| row[interval])
+            .or_else(|| reference.map(|v| v.head[first]));
+        let shift = desired.map_or(lo / 2. + hi / 2., |h| (h - head[first]).clamp(lo, hi));
         for j in nodes {
             head[j] += shift;
         }
@@ -533,12 +558,17 @@ pub(crate) fn hydraulic_step(
     let head: Vec<_> = known_head[..s.reservoirs.len()]
         .iter()
         .copied()
-        .chain(
-            s.junctions
-                .iter()
-                .enumerate()
-                .map(|(j, _)| reference.map_or(mean, |v| v.head[s.reservoirs.len() + j])),
-        )
+        .chain(s.junctions.iter().enumerate().map(|(j, junction)| {
+            // Bounds initialize the numerical guess; Newton still solves
+            // the original equations and can reveal a bound violation.
+            controls
+                .head_guess
+                .get(s.reservoirs.len() + j)
+                .map(|row| row[interval])
+                .or_else(|| reference.map(|v| v.head[s.reservoirs.len() + j]))
+                .unwrap_or(mean)
+                .clamp(junction.head.min, junction.head.max)
+        }))
         .chain(s.boundaries.iter().map(|b| b.head))
         .collect();
     let resistance: Vec<_> = p

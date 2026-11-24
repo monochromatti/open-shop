@@ -1263,16 +1263,22 @@ shorter than the interval, some current release arrives before the interval
 ends and belongs in the same hydraulic
 solve. Equation @eq:power then gives electrical output.
 
-In some isolated pressure components, the equations determine only head
-differences. A common shift in all heads leaves the flows unchanged.
-We choose one reference head for the numerical solve and keep every water
-balance. We can then shift the recovered heads to satisfy the junction
-bounds if the bounds admit such a shift.
-Replay retains the solution's pressure reference where the equations permit
-this freedom. An idle committed unit can still have an operating head bound
-relative to another component, so choosing a different reference can wrongly
-make its operating point appear inadmissible. The reference does not replace
-any hydraulic equation or absolute head restriction.
+A group of junctions containing no prescribed head can admit a common head
+shift. We use this freedom only when the shift preserves tunnel head differences
+and every machine's working head. The chosen reference must satisfy the
+absolute junction bounds, and every water balance is retained.
+
+An intermediate head can also remain undetermined by the flow equations.
+Its value affects generation. Two turbines in series carry the same discharge $Q$.
+With constant overall efficiencies $eta_1$ and $eta_2$, upstream head $H_u$,
+downstream head $H_d$ and intermediate head $h$, their combined power is
+
+$ P_1 + P_2 = gamma Q (eta_1 (H_u-h) + eta_2 (h-H_d)). $
+
+If the efficiencies differ, discharge alone does not determine this power.
+The optimization selects the intermediate head as well as the discharge.
+Replay uses the optimized junction heads as Newton starting values. It solves
+the original hydraulic equations and checks the absolute head restrictions.
 
 The nonlinear step need not have a unique solution. For example, a channel
 can be passive at each reference level while its conductance decreases so

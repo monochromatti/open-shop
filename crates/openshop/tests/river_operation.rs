@@ -54,6 +54,7 @@ fn case(transport: RiverTransport) -> ScheduleCase {
 
 fn controls(opening: Vec<f64>) -> Controls {
     Controls {
+        head_guess: vec![],
         commitment: vec![],
         unit_flow: vec![],
         river_opening: vec![opening],

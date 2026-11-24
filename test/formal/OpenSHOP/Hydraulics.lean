@@ -404,4 +404,29 @@ theorem linear_arrival_minimum (left right fraction minimum : ℝ)
   have rightExcess := mul_nonneg nonnegativeFraction (sub_nonneg.mpr rightLimit)
   nlinarith
 
+/-- Pressure allocation between serial machines affects their combined power
+when the two hydraulic efficiencies differ, even at the same discharge. -/
+theorem serial_machine_pressure_difference
+    (coefficient discharge upstream downstream efficiencyUp efficiencyDown first second : ℝ) :
+    coefficient*discharge*((upstream-first)*efficiencyUp+(first-downstream)*efficiencyDown) -
+      coefficient*discharge*((upstream-second)*efficiencyUp+(second-downstream)*efficiencyDown) =
+    coefficient*discharge*(efficiencyDown-efficiencyUp)*(first-second) := by ring
+
+/-- For constant efficiencies, allocate available head to the more efficient
+upstream machine by choosing the smallest admissible intermediate head. -/
+theorem serial_machine_lower_pressure_maximizes_power
+    (coefficient discharge upstream downstream efficiencyUp efficiencyDown head lower : ℝ)
+    (conversion : 0 ≤ coefficient) (forward : 0 ≤ discharge)
+    (efficiencies : efficiencyDown ≤ efficiencyUp) (pressure : lower ≤ head) :
+    coefficient*discharge*((upstream-head)*efficiencyUp+(head-downstream)*efficiencyDown) ≤
+      coefficient*discharge*((upstream-lower)*efficiencyUp+(lower-downstream)*efficiencyDown) := by
+  have factor := mul_nonneg conversion forward
+  have slope : efficiencyDown-efficiencyUp ≤ 0 := sub_nonpos.mpr efficiencies
+  have delta : 0 ≤ head-lower := sub_nonneg.mpr pressure
+  have gain := mul_nonpos_of_nonpos_of_nonneg
+    (mul_nonpos_of_nonneg_of_nonpos factor slope) delta
+  rw [← serial_machine_pressure_difference coefficient discharge upstream downstream
+    efficiencyUp efficiencyDown head lower] at gain
+  linarith
+
 end OpenSHOP

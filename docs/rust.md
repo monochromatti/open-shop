@@ -30,7 +30,16 @@ Collection order determines result axes. Names identify connections.
 water balance, pressure losses, reservoir outlets and fixed-speed pump
 characteristics from physical controls. It uses damped Newton iteration with
 chunked automatic derivatives and a rank-revealing linear solve when necessary.
-It does not invoke Ipopt or SCIP. Reconstruction reports operating violations;
+It does not invoke Ipopt or SCIP. `Controls.head_guess` optionally supplies finite
+node-by-interval initial heads; reservoir and boundary heads still follow their
+physical data. These guesses matter when discharges do not determine all
+intermediate pressures, for example between two turbines in series.
+`Schedule::controls()` includes the optimized heads so reconstruction preserves
+that pressure allocation. A head guess never replaces a pressure or conservation
+equation. An initial guess is placed within junction head bounds; the solved
+state can still violate an operating limit and is reported accordingly.
+
+Reconstruction reports operating violations;
 it never clips storage or discharge to hide an infeasible control schedule.
 The current reconstruction uses the case's hydraulic intervals. At hydraulic
 vertices, river-arrival changes, measured storage-curve crossings and

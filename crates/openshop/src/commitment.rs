@@ -28,6 +28,7 @@ impl Proposal {
     /// nonlinear solve; acceptance still checks the original physical limits.
     pub fn physical_controls(&self, p: &crate::SchedulingProblem<'_>) -> crate::Controls {
         crate::Controls {
+            head_guess: self.head.clone(),
             commitment: self.controls.unit_on.clone(),
             unit_flow: self
                 .flow

@@ -1004,6 +1004,7 @@ mod tests {
         let problem = SchedulingProblem::new(&case).unwrap();
         let physical = problem
             .reconstruct(&Controls {
+                head_guess: vec![],
                 commitment: vec![vec![true; 2]],
                 unit_flow: vec![vec![10.; 2]],
                 river_opening: vec![vec![0.25, 0.75]],

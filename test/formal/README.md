@@ -78,3 +78,9 @@ upper target domains and the minimal nonnegative-price slack cost. Both language
 implementations use these equations for explicit penalty limits. The proofs
 treat the assessed quantity as an arbitrary real value; they do not verify
 floating-point evaluation, time-window averaging or solver output.
+
+The serial-machine statements in `Hydraulics.lean` show that intermediate
+pressure changes combined power at fixed discharge when constant efficiencies
+differ. They establish the maximizing pressure endpoint under stated signs.
+A pressure shift across active machines is therefore not a passive gauge choice.
+These statements do not assume that a nonlinear solver finds that endpoint.
