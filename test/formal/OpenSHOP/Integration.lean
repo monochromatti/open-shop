@@ -165,4 +165,24 @@ theorem integral_mean_curvature_mixed (width mean head ga gb : ℝ)
   rw [hg]
   field_simp [hw]
 
+/-- Duration-weighted operating averages preserve integrated flow or energy.
+The cells partition a positive-duration interval; arithmetic here is exact. -/
+theorem duration_weighted_integral {K : Type*} [Fintype K]
+    (duration : ℝ) (dt rate : K → ℝ) (nonzero : duration ≠ 0) :
+    duration * (∑ k, rate k * (dt k / duration)) = ∑ k, dt k * rate k := by
+  rw [Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro k _
+  field_simp [nonzero]
+
+/-- Holding a control on smaller cells and taking its original-window mean
+returns the same control. Refining a state grid adds no discharge decision. -/
+theorem held_control_mean {K : Type*} [Fintype K]
+    (duration control : ℝ) (dt : K → ℝ) (nonzero : duration ≠ 0)
+    (partition : ∑ k, dt k = duration) :
+    (∑ k, control * (dt k / duration)) = control := by
+  apply mul_left_cancel₀ nonzero
+  rw [duration_weighted_integral duration dt (fun _ => control) nonzero]
+  rw [← Finset.sum_mul, partition]
+
 end OpenSHOP

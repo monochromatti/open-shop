@@ -13,7 +13,9 @@ pub(crate) struct DiscreteControls {
     /// Only reaches with a positive on-state minimum, in prepared domain order.
     pub river_on: Vec<Vec<bool>>,
 }
+#[derive(Clone)]
 pub(crate) struct Proposal {
+    pub grid: Vec<f64>,
     pub controls: DiscreteControls,
     pub storage: Vec<Vec<f64>>,
     pub flow: Vec<Vec<f64>>,
@@ -26,15 +28,20 @@ pub(crate) struct Proposal {
 impl Proposal {
     /// Bounded physical control guesses for reconstruction. This initializes a
     /// nonlinear solve; acceptance still checks the original physical limits.
-    pub fn physical_controls(&self, p: &crate::SchedulingProblem<'_>) -> crate::Controls {
-        crate::Controls {
+    pub fn physical_controls(
+        &self,
+        p: &crate::SchedulingProblem<'_>,
+    ) -> Result<crate::Controls, Error> {
+        let mesh = crate::time_discretization::TimeDiscretization::new(&p.case.grid, &self.grid)?;
+        let flow = mesh.means(&self.flow, 0.)?;
+        let opening = mesh.means(&self.river_opening, 0.)?;
+        Ok(crate::Controls {
             head_guess: Some(crate::HeadGuess {
-                grid: p.case.grid.clone(),
+                grid: self.grid.clone(),
                 head: self.head.clone(),
             }),
             commitment: self.controls.unit_on.clone(),
-            unit_flow: self
-                .flow
+            unit_flow: flow
                 .iter()
                 .enumerate()
                 .map(|(g, row)| {
@@ -51,8 +58,7 @@ impl Proposal {
                         .collect()
                 })
                 .collect(),
-            river_opening: self
-                .river_opening
+            river_opening: opening
                 .iter()
                 .enumerate()
                 .map(|(e, row)| {
@@ -79,7 +85,7 @@ impl Proposal {
                         .collect()
                 })
                 .collect(),
-        }
+        })
     }
     pub fn from_schedule(
         problem: &crate::SchedulingProblem<'_>,
@@ -122,13 +128,71 @@ impl Proposal {
                     })
                     .collect(),
             },
-            storage: mesh.states(&result.storage)?,
-            flow: physical_controls.unit_flow,
-            tunnel_flow: mesh.means(&result.tunnel_flow, 0.)?,
-            river_withdrawal: mesh.means(&result.river_withdrawal, 0.)?,
-            river_opening: physical_controls.river_opening,
-            head: mesh.means(&result.head, 0.)?,
+            grid: result.grid.clone(),
+            storage: result.storage.clone(),
+            flow: result.unit_flow.clone(),
+            tunnel_flow: result.tunnel_flow.clone(),
+            river_withdrawal: result.river_withdrawal.clone(),
+            river_opening: result.river_opening.clone(),
+            head: result.head.clone(),
         })
+    }
+    /// Transfer a starting trajectory between nested grids. Rates use volume-
+    /// preserving means when coarsened and held values when refined; storage
+    /// uses original vertices or linear interpolation. No model data changes.
+    pub fn on_grid(&self, grid: &[f64]) -> Result<std::borrow::Cow<'_, Self>, Error> {
+        use crate::time_discretization::TimeDiscretization;
+        use std::borrow::Cow;
+        if self.grid == grid {
+            return Ok(Cow::Borrowed(self));
+        }
+        let (storage, flow, tunnel_flow, river_withdrawal, river_opening, head) =
+            if grid.len() < self.grid.len() {
+                let mesh = TimeDiscretization::new(grid, &self.grid)?;
+                (
+                    mesh.states(&self.storage)?,
+                    mesh.means(&self.flow, 0.)?,
+                    mesh.means(&self.tunnel_flow, 0.)?,
+                    mesh.means(&self.river_withdrawal, 0.)?,
+                    mesh.means(&self.river_opening, 0.)?,
+                    mesh.means(&self.head, 0.)?,
+                )
+            } else {
+                let mesh = TimeDiscretization::new(&self.grid, grid)?;
+                let storage = self
+                    .storage
+                    .iter()
+                    .map(|row| {
+                        let mut values: Vec<_> = (0..mesh.dt.len())
+                            .map(|k| {
+                                let j = mesh.interval[k];
+                                let f = (grid[k] - self.grid[j]) / mesh.duration[j];
+                                row[j] * (1. - f) + row[j + 1] * f
+                            })
+                            .collect();
+                        values.push(*row.last().unwrap());
+                        values
+                    })
+                    .collect();
+                (
+                    storage,
+                    mesh.hold(&self.flow)?,
+                    mesh.hold(&self.tunnel_flow)?,
+                    mesh.hold(&self.river_withdrawal)?,
+                    mesh.hold(&self.river_opening)?,
+                    mesh.hold(&self.head)?,
+                )
+            };
+        Ok(Cow::Owned(Self {
+            grid: grid.to_vec(),
+            controls: self.controls.clone(),
+            storage,
+            flow,
+            tunnel_flow,
+            river_withdrawal,
+            river_opening,
+            head,
+        }))
     }
 }
 
@@ -147,6 +211,20 @@ pub(crate) fn propose(
     let s = &case.system;
     let (nr, nu, nt) = (s.reservoirs.len(), s.units.len(), case.prices.len());
     let m = Model::new("unit commitment");
+    let previous_power = previous
+        .map(|s| {
+            crate::time_discretization::TimeDiscretization::new(&case.grid, &s.grid)?
+                .means(&s.unit_power, 0.)
+        })
+        .transpose()?;
+    let previous_point = previous
+        .map(|s| {
+            Proposal::from_schedule(problem, s)?
+                .on_grid(&case.grid)
+                .map(|p| p.into_owned())
+        })
+        .transpose()?;
+    let previous = previous_point.as_ref();
     variable!(m,0.0<=v[r in 0..nr,t in 0..nt+1]<=1.0);
     variable!(m,q[g in 0..nu,t in 0..nt]>=0.0);
     variable!(m,qt[e in 0..s.tunnels.len(),t in 0..nt]);
@@ -192,7 +270,7 @@ pub(crate) fn propose(
     }
     variable!(m,rf[k in 0..routing.transfers.len()]);
     let mut reference_columns: Vec<_> = previous.map_or(vec![0.; routing.primary_columns], |p| {
-        p.unit_flow
+        p.flow
             .iter()
             .flatten()
             .copied()
@@ -463,7 +541,9 @@ pub(crate) fn propose(
                     continue;
                 }
                 let q0 = previous
-                    .filter(|p| p.tunnel_opening[e][t] == law.opening)
+                    .filter(|p| {
+                        interval.positions[p.controls.gate_position[e][t]].opening == law.opening
+                    })
                     .map_or_else(
                         || dh.signum() * (dh.abs() / law.resistance).sqrt(),
                         |p| p.tunnel_flow[e][t],
@@ -592,7 +672,7 @@ pub(crate) fn propose(
                 .iter()
                 .map(|&j| {
                     previous.map_or((s.units[j].flow.min + s.units[j].flow.max) / 2., |p| {
-                        p.unit_flow[j][t]
+                        p.flow[j][t]
                     })
                 })
                 .sum::<f64>();
@@ -604,7 +684,7 @@ pub(crate) fn propose(
                 .as_ref()
                 .map_or(0., |c| c.extended_value(total_flow));
             let flow = previous
-                .map_or((unit.flow.min + unit.flow.max) / 2., |p| p.unit_flow[g][t])
+                .map_or((unit.flow.min + unit.flow.max) / 2., |p| p.flow[g][t])
                 .clamp(unit.flow.min, unit.flow.max);
             let head = ((previous.map_or(initial_head[a], |p| p.head[a][t])
                 - outlet
@@ -616,10 +696,9 @@ pub(crate) fn propose(
             let coefficient = match unit.mode {
                 crate::UnitMode::Pump => 0.00981 * head / (eta * unit.motor_efficiency),
                 crate::UnitMode::Generate => {
-                    let p_ref = previous
-                        .map_or((unit.power.min + unit.power.max) / 2., |p| {
-                            p.unit_power[g][t]
-                        })
+                    let p_ref = previous_power
+                        .as_ref()
+                        .map_or((unit.power.min + unit.power.max) / 2., |p| p[g][t])
                         .clamp(unit.power.min, unit.power.max);
                     let electrical = unit
                         .generator_efficiency_curve
@@ -939,8 +1018,16 @@ pub(crate) fn propose(
         )
         .collect();
     routing.complete_columns(&mut columns);
-    let head = crate::trajectory::hydraulic_heads(case, routing, &storage, &columns, junction_head);
+    let head = crate::trajectory::hydraulic_heads(
+        case,
+        routing,
+        &problem.mesh,
+        &storage,
+        &columns,
+        junction_head,
+    );
     Ok(Some(Proposal {
+        grid: case.grid.clone(),
         controls: DiscreteControls {
             unit_on: commitment,
             gate_position,

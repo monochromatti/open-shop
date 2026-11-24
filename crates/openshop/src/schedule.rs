@@ -43,9 +43,9 @@ impl<'a> SchedulingProblem<'a> {
         let interlocks = Arc::new(crate::gate_interlocks::GateInterlocks::new(
             case, &topology,
         )?);
-        let operating_points = crate::operating_points::OperatingPoints::new(case, &routing);
+        let operating_points = crate::operating_points::OperatingPoints::new(case, &routing, &mesh);
         let water_value =
-            crate::trajectory::water_value_change(case, &topology, &routing, &operating);
+            crate::trajectory::water_value_change(case, &topology, &routing, &operating, &mesh);
         Ok(Self {
             mesh,
             soft_limits,
@@ -58,6 +58,36 @@ impl<'a> SchedulingProblem<'a> {
             topology,
             routing,
             operating,
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn on_grid(&self, grid: &[f64]) -> Result<Self, Error> {
+        let case = self.case;
+        let mesh = crate::time_discretization::TimeDiscretization::new(&case.grid, grid)?;
+        let routing = Routing::new(case, &self.topology, &self.operating, &mesh)?;
+        let observations =
+            crate::flow_requirements::FlowEquations::new(case, &routing, &self.operating, &mesh)?;
+        let level_windows = crate::level_windows::LevelEquations::new(case, &routing, &mesh)?;
+        let operating_points = crate::operating_points::OperatingPoints::new(case, &routing, &mesh);
+        let water_value = crate::trajectory::water_value_change(
+            case,
+            &self.topology,
+            &routing,
+            &self.operating,
+            &mesh,
+        );
+        Ok(Self {
+            case,
+            mesh,
+            routing,
+            observations,
+            level_windows,
+            operating_points,
+            water_value,
+            topology: Arc::clone(&self.topology),
+            operating: Arc::clone(&self.operating),
+            interlocks: Arc::clone(&self.interlocks),
+            soft_limits: Arc::clone(&self.soft_limits),
         })
     }
     pub fn case(&self) -> &ScheduleCase {
@@ -233,7 +263,7 @@ impl SchedulingProblem<'_> {
     ) -> Result<Schedule, Error> {
         let started = Instant::now();
         let physical = if let Some(start) = start {
-            match self.reconstruct(&start.physical_controls(self)) {
+            match self.reconstruct(&start.physical_controls(self)?) {
                 Ok(s) => Some(s),
                 Err(Error::Input(_) | Error::Solver(_)) => None,
                 Err(error) => return Err(error),
@@ -297,6 +327,8 @@ impl SchedulingProblem<'_> {
         objective: DispatchObjective,
     ) -> Result<Schedule, Error> {
         let started = Instant::now();
+        let initial = start.map(|s| s.on_grid(&self.mesh.grid)).transpose()?;
+        let start = initial.as_deref();
         let mut points = self.operating_points.clone();
         if let Some(start) = start {
             let mut columns: Vec<_> = start
@@ -407,10 +439,10 @@ impl SchedulingProblem<'_> {
                 row.iter()
                     .enumerate()
                     .map(|(t, i)| {
-                        if controls.unit_on[g][t] {
+                        if controls.unit_on[g][self.mesh.interval[t]] {
                             roundoff_to_bounds(
                                 dispatch.unit_flow_scale[g] * point.x[i.index()],
-                                self.operating.units[g][t].flow,
+                                self.operating.units[g][self.mesh.interval[t]].flow,
                                 dispatch.unit_flow_scale[g],
                             )
                         } else {
@@ -431,26 +463,28 @@ impl SchedulingProblem<'_> {
             })
             .collect();
         let mut schedule = Schedule {
-            grid: case.grid.clone(),
+            grid: self.mesh.grid.clone(),
             operating_grid: case.grid.clone(),
             storage,
             unit_flow,
             tunnel_flow,
-            tunnel_opening: self
-                .operating
-                .tunnels
-                .iter()
-                .enumerate()
-                .map(|(e, row)| {
-                    row.iter()
-                        .enumerate()
-                        .map(|(t, p)| p.positions[controls.gate_position[e][t]].opening)
-                        .collect()
-                })
-                .collect(),
+            tunnel_opening: self.mesh.hold(
+                &self
+                    .operating
+                    .tunnels
+                    .iter()
+                    .enumerate()
+                    .map(|(e, row)| {
+                        row.iter()
+                            .enumerate()
+                            .map(|(t, p)| p.positions[controls.gate_position[e][t]].opening)
+                            .collect()
+                    })
+                    .collect::<Vec<_>>(),
+            )?,
             gate_adjustment_cost: 0.,
-            river_withdrawal: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
-            river_opening: vec![vec![0.; case.prices.len()]; case.system.rivers.len()],
+            river_withdrawal: vec![vec![0.; self.mesh.dt.len()]; case.system.rivers.len()],
+            river_opening: vec![vec![0.; self.mesh.dt.len()]; case.system.rivers.len()],
             observed_flow: Vec::new(),
             observed_volume: Vec::new(),
             river_release: Vec::new(),
@@ -461,7 +495,7 @@ impl SchedulingProblem<'_> {
             plant_flow: Vec::new(),
             plant_power: Vec::new(),
             head: Vec::new(),
-            commitment: controls.unit_on,
+            commitment: self.mesh.hold(&controls.unit_on)?,
             soft_slacks: vec![],
             soft_penalty_cost: 0.,
             objective: 0.,
@@ -474,7 +508,11 @@ impl SchedulingProblem<'_> {
                 .iter()
                 .enumerate()
                 .map(|(t, i)| {
-                    roundoff_to_bounds(point.x[i.index()], self.operating.river_gate[river][t], 1.)
+                    roundoff_to_bounds(
+                        point.x[i.index()],
+                        self.operating.river_gate[river][self.mesh.interval[t]],
+                        1.,
+                    )
                 })
                 .collect();
             schedule.river_withdrawal[river] = dispatch.river_withdrawal[k]
@@ -487,8 +525,12 @@ impl SchedulingProblem<'_> {
             .iter()
             .map(|row| row.iter().map(|i| 100. * point.x[i.index()]).collect())
             .collect();
-        let mut schedule =
-            crate::trajectory::evaluate(self, schedule, junction_head, options.tolerance.max(1e-7));
+        let mut schedule = crate::trajectory::evaluate(
+            self,
+            schedule,
+            junction_head,
+            options.tolerance.max(1e-7),
+        )?;
         match self.reconstruct(&schedule.controls()?) {
             Ok(mut physical) => {
                 physical.solver_status = schedule.solver_status;
@@ -561,6 +603,309 @@ mod tests {
             inflows: BTreeMap::new(),
             commitment: BTreeMap::from([("Unit".into(), vec![true])]),
         }
+    }
+
+    #[test]
+    fn refined_hydraulics_preserve_original_setpoints_ramps_targets_and_energy() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5, 2.];
+        case.prices = vec![80., 160.];
+        case.commitment.insert("Unit".into(), vec![true; 2]);
+        case.system.units[0].operation.initial_on = true;
+        case.system.units[0].operation.initial_flow = Some(5.);
+        case.system.units[0].operation.flow_ramp.up = Some(10.);
+        case.system.units[0].operation.startup_cost = 100.;
+        case.operations.push(crate::OperationalSeries {
+            object: crate::Object::Unit("Unit".into()),
+            attribute: crate::Attribute::Discharge,
+            times: vec![0., 0.5],
+            values: vec![5., 15.],
+        });
+        case.soft_constraints.push(crate::SoftConstraint {
+            name: "Final storage".into(),
+            target: crate::SoftTarget::Storage {
+                reservoir: "Lake".into(),
+                time: 2.,
+            },
+            lower: Some(crate::PenaltyLimit {
+                value: 3e6,
+                allowance: 1e5,
+                cost: 0.001,
+            }),
+            upper: None,
+        });
+        case.soft_constraints.push(crate::SoftConstraint {
+            name: "Mean power".into(),
+            target: crate::SoftTarget::UnitPower {
+                unit: "Unit".into(),
+                start_time: 0.,
+                end_time: 2.,
+            },
+            lower: Some(crate::PenaltyLimit {
+                value: 10.,
+                allowance: 10.,
+                cost: 2.,
+            }),
+            upper: None,
+        });
+        let controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![vec![true; 2]],
+            unit_flow: vec![vec![5., 15.]],
+            river_opening: vec![],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        let coarse = p.reconstruct(&controls).unwrap();
+        let fine = p
+            .on_grid(&[0., 0.125, 0.5, 0.75, 1.5, 2.])
+            .unwrap()
+            .reconstruct(&controls)
+            .unwrap();
+        assert!(coarse.validation.feasible, "{:?}", coarse.validation);
+        assert!(fine.validation.feasible, "{:?}", fine.validation);
+        assert!((coarse.objective - fine.objective).abs() < 1e-7);
+        assert!((fine.storage[0].last().unwrap() - (3e6 - 90000.)).abs() < 1e-7);
+        for (a, b) in coarse
+            .net_power(&case)
+            .unwrap()
+            .iter()
+            .zip(fine.net_power(&case).unwrap())
+        {
+            assert!((a - b).abs() < 1e-9);
+        }
+        for (a, b) in coarse.soft_slacks.iter().zip(&fine.soft_slacks) {
+            assert!(
+                (a.lower - b.lower).abs() < 1e-8 && (a.penalty_cost - b.penalty_cost).abs() < 1e-8
+            );
+        }
+        assert_eq!(fine.controls().unwrap().unit_flow, controls.unit_flow);
+        case.system.units[0].operation.flow_ramp.up = Some(9.);
+        let p = SchedulingProblem::new(&case).unwrap();
+        let invalid = p
+            .on_grid(&fine.grid)
+            .unwrap()
+            .reconstruct(&controls)
+            .unwrap();
+        assert!(!invalid.validation.feasible);
+    }
+
+    #[test]
+    fn refined_dispatch_holds_discharge_and_charges_startup_once() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 1., 2.];
+        case.prices = vec![50., 100.];
+        case.commitment.insert("Unit".into(), vec![false, true]);
+        case.system.units[0].startup_gross_head_min = Some(79.9);
+        case.system.units[0].operation.startup_cost = 123.;
+        // Running flow is ten m³/s. Head decreases from 80 to 79.28 m,
+        // so the original interval's requested power is its integrated mean.
+        let expected_power = 0.00981 * 10. * 0.9 * (80. - 0.72 / 2.);
+        case.operations.push(crate::OperationalSeries {
+            object: crate::Object::Unit("Unit".into()),
+            attribute: crate::Attribute::Power,
+            times: vec![0., 1.],
+            values: vec![0., expected_power],
+        });
+        let controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![vec![false, true]],
+            unit_flow: vec![vec![0., 10.]],
+            river_opening: vec![],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        let fine = p.on_grid(&[0., 0.3, 1., 1.2, 1.5, 2.]).unwrap();
+        let result = fine
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        for &q in &result.unit_flow[0][2..] {
+            assert!((q - 10.).abs() < 1e-5);
+        }
+        let power = result.net_power(&case).unwrap();
+        assert!(power[0].abs() < 1e-8 && (power[1] - expected_power).abs() < 1e-6);
+        assert!((result.unit_power[0][2] - result.unit_power[0][4]).abs() > 0.01);
+        let expected = expected_power * 100. - 123. - 36.;
+        assert!(
+            (result.objective - expected).abs() < 1e-4,
+            "{} vs {expected}",
+            result.objective
+        );
+        let replay = fine.reconstruct(&result.controls().unwrap()).unwrap();
+        assert!(replay.validation.feasible, "{:?}", replay.validation);
+        assert!((replay.objective - result.objective).abs() < 1e-7);
+    }
+
+    #[test]
+    fn fixed_speed_pump_flows_follow_each_hydraulic_step_without_new_controls() {
+        let mut case = reservoir_case();
+        case.system.plants[0].source = "Sea".into();
+        case.system.plants[0].target = "Lake".into();
+        let pump = &mut case.system.units[0];
+        pump.mode = crate::UnitMode::Pump;
+        pump.head = Bounds::new(60., 100.);
+        pump.flow = Bounds::new(8., 12.);
+        pump.pump_characteristic = Some(
+            crate::PumpCharacteristic::new(
+                vec![60., 80., 100.],
+                vec![11., 10., 9.],
+                vec![0.85; 3],
+                crate::Extrapolation::Error,
+            )
+            .unwrap(),
+        );
+        let controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![vec![true]],
+            unit_flow: vec![vec![10.]],
+            river_opening: vec![],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        let fine = p.on_grid(&[0., 0.1, 0.4, 1.]).unwrap();
+        let result = fine
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 3.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        let mut storage = 3e6;
+        for (t, w) in result.grid.windows(2).enumerate() {
+            let h0 = 20. + 20e-6 * storage;
+            let q = (14. - 0.05 * h0) / (1. + 0.05 * 20e-6 * 3600. * (w[1] - w[0]) / 2.);
+            assert!((result.unit_flow[0][t] - q).abs() < 1e-6);
+            storage += q * 3600. * (w[1] - w[0]);
+            assert!((result.storage[0][t + 1] - storage).abs() < 1e-5);
+        }
+        assert!((result.unit_flow[0][0] - result.unit_flow[0][2]).abs() > 0.01);
+        assert!(result.objective < 0.);
+    }
+
+    #[test]
+    fn refined_dispatch_restores_feasibility_in_a_small_reservoir_with_delayed_arrivals() {
+        let mut case = delayed_forebay_case();
+        case.system.reservoirs[1].level = StorageCurve::Table(
+            crate::TableCurve::new(vec![0., 400., 600., 1000.], vec![45., 48., 51., 55.]).unwrap(),
+        );
+        let controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![vec![true; 2]; 2],
+            unit_flow: vec![vec![20.; 2], vec![10.; 2]],
+            river_opening: vec![vec![0.; 2]],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        let fine = p.on_grid(&[0., 0.1, 0.5, 0.75, 1., 1.25, 1.5]).unwrap();
+        let initial = fine.reconstruct(&controls).unwrap();
+        assert!(!initial.validation.feasible);
+        let result = fine
+            .refine(
+                &controls,
+                &SolveOptions {
+                    time_limit: 4.,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(result.validation.feasible, "{:?}", result.validation);
+        assert!(
+            result.storage[1]
+                .iter()
+                .all(|v| (-1e-4..=1000.0001).contains(v))
+        );
+        let held = fine
+            .mesh
+            .hold(&result.controls().unwrap().unit_flow)
+            .unwrap();
+        for (row, expected) in result.unit_flow.iter().zip(held) {
+            for (q, value) in row.iter().zip(expected) {
+                assert!((q - value).abs() < 1e-9);
+            }
+        }
+        let replay = fine.reconstruct(&result.controls().unwrap()).unwrap();
+        assert!(replay.validation.feasible, "{:?}", replay.validation);
+        assert!((replay.objective - result.objective).abs() < 1e-6);
+    }
+
+    #[test]
+    fn small_reservoir_outlet_converges_to_analytic_decay_with_held_gate() {
+        let mut case = reservoir_case();
+        case.grid = vec![0., 0.5];
+        case.prices = vec![0.];
+        case.commitment.clear();
+        case.system.units.clear();
+        case.system.plants.clear();
+        let r = &mut case.system.reservoirs[0];
+        r.storage = Bounds::new(0., 1000.);
+        r.initial_storage = 500.;
+        r.water_value = 0.;
+        r.level = StorageCurve::Polynomial {
+            reference_volume: 0.,
+            elevation: 10.,
+            slope: 0.01,
+            curvature: 0.,
+        };
+        case.system.rivers.push(crate::River {
+            name: "Outlet".into(),
+            source: "Lake".into(),
+            target: "Sea".into(),
+            capacity: 5.,
+            law: crate::RiverLaw::Level {
+                curve: crate::TableCurve::new(vec![10., 20.], vec![0., 1.]).unwrap(),
+            },
+            gate: Bounds::new(1., 1.),
+            operation: Default::default(),
+            transport: Default::default(),
+            allocation: 1.,
+            inflow: 0.,
+            water_value: 0.,
+            history_grid: vec![],
+            history_release: vec![],
+        });
+        let controls = crate::Controls {
+            head_guess: None,
+            commitment: vec![],
+            unit_flow: vec![],
+            river_opening: vec![vec![1.]],
+            tunnel_opening: vec![],
+        };
+        let p = SchedulingProblem::new(&case).unwrap();
+        let exact = 500. * (-1.8f64).exp();
+        let mut previous_error = f64::INFINITY;
+        for steps in [1, 2, 4, 8, 16] {
+            let grid: Vec<_> = (0..=steps).map(|k| 0.5 * k as f64 / steps as f64).collect();
+            let result = p.on_grid(&grid).unwrap().reconstruct(&controls).unwrap();
+            assert!(result.validation.feasible, "{:?}", result.validation);
+            let end = *result.storage[0].last().unwrap();
+            let error = (end - exact).abs();
+            assert!(error < previous_error);
+            if steps >= 4 {
+                assert!(previous_error / error > 3.5);
+            }
+            previous_error = error;
+            let released: f64 = result.river_release[0]
+                .iter()
+                .zip(grid.windows(2))
+                .map(|(q, w)| 3600. * q * (w[1] - w[0]))
+                .sum();
+            assert!((released + end - 500.).abs() < 1e-6);
+            assert_eq!(
+                result.controls().unwrap().river_opening,
+                controls.river_opening
+            );
+        }
+        assert!(previous_error < 0.2);
     }
 
     #[test]
@@ -1510,7 +1855,7 @@ mod tests {
         assert!(result.validation.feasible, "{:?}", result.validation);
         result.tunnel_flow[0][0] += 1e-5;
         result.storage[0][1] -= 3600. * 1e-5;
-        let checked = crate::trajectory::evaluate(&problem, result, vec![], 1e-7);
+        let checked = crate::trajectory::evaluate(&problem, result, vec![], 1e-7).unwrap();
         assert!(!checked.validation.feasible);
         assert!(checked.validation.water_balance < 1e-8);
         assert!(checked.validation.pressure_balance > 0.01);

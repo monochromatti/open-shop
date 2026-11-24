@@ -247,16 +247,17 @@ impl HydraulicStep<'_, '_> {
     ) {
         let p = self.p;
         let (s, topology, routing) = (&p.case.system, &p.topology, &p.routing);
-        let (nr, nj, nt) = (s.reservoirs.len(), s.junctions.len(), p.case.prices.len());
+        let (nr, nj, nt) = (s.reservoirs.len(), s.junctions.len(), p.mesh.dt.len());
         let nv = self.storage_count();
         let tunnel = nv + nj;
         let outlet = tunnel + s.tunnels.len();
         let pump = outlet + routing.outlets.len();
         let t = self.interval;
+        let j = p.mesh.interval[t];
         w.columns.clear();
         w.columns.extend(self.columns.iter().map(|&v| D::from(v)));
         for (g, q) in w.flow.iter_mut().enumerate() {
-            *q = D::from(self.controls.unit_flow[g][t]);
+            *q = D::from(self.controls.unit_flow[g][j]);
         }
         for (k, &g) in self.pumps.iter().enumerate() {
             w.flow[g] = x[pump + k] * self.scales[pump + k];
@@ -308,7 +309,7 @@ impl HydraulicStep<'_, '_> {
                 continue;
             }
             let mut net = D::from(if node < nr {
-                p.operating.reservoirs[node].inflow[t]
+                p.operating.reservoirs[node].inflow[j]
             } else {
                 0.
             });
@@ -344,10 +345,10 @@ impl HydraulicStep<'_, '_> {
                 .position(|r| r.name == river.source)
                 .unwrap();
             let h = w.head[source];
-            let g = self.controls.river_opening[e][t];
+            let g = self.controls.river_opening[e][j];
             let rate = match &river.law {
                 crate::RiverLaw::Controlled => {
-                    D::from(g * (p.operating.river_capacity[e][t] - p.operating.river_inflow[e][t]))
+                    D::from(g * (p.operating.river_capacity[e][j] - p.operating.river_inflow[e][j]))
                 }
                 crate::RiverLaw::Level { curve } => crate::machine::table_value(curve, h) * g,
                 crate::RiverLaw::Delta { curve, reference } => {
@@ -532,11 +533,12 @@ fn pressure_references(
     reference: Option<&HydraulicState>,
 ) {
     let s = &p.case.system;
+    let j = p.mesh.interval[interval];
     let nr = s.reservoirs.len();
     let nj = s.junctions.len();
     let mut component: Vec<_> = (0..head.len()).collect();
     for (e, &(a, b)) in p.topology.tunnel_nodes.iter().enumerate() {
-        if controls.tunnel_opening[e][interval] == 0. {
+        if controls.tunnel_opening[e][j] == 0. {
             continue;
         }
         let (a, b) = (component[a], component[b]);
@@ -551,7 +553,7 @@ fn pressure_references(
         anchored[component[node]] = true;
     }
     for (g, &(a, b)) in p.topology.unit_nodes.iter().enumerate() {
-        if !controls.commitment[g][interval] {
+        if !controls.commitment[g][j] {
             continue;
         }
         let plant = &s.plants[p.topology.unit_plants[g]];
@@ -583,7 +585,7 @@ fn pressure_references(
         let desired = controls
             .head_guess
             .as_ref()
-            .map(|guess| guess.mean_head(first, p.case.grid[interval], p.case.grid[interval + 1]))
+            .map(|guess| guess.mean_head(first, p.mesh.grid[interval], p.mesh.grid[interval + 1]))
             .or_else(|| reference.map(|v| v.head[first]));
         let shift = desired.map_or(lo / 2. + hi / 2., |h| (h - head[first]).clamp(lo, hi));
         for j in nodes {
@@ -603,6 +605,7 @@ pub(crate) fn hydraulic_step(
     reference: Option<&HydraulicState>,
 ) -> Result<HydraulicState, Error> {
     let s = &p.case.system;
+    let j = p.mesh.interval[interval];
     let topology = &p.topology;
     let nr = if duration == 0. {
         0
@@ -616,7 +619,7 @@ pub(crate) fn hydraulic_step(
         .iter()
         .enumerate()
         .filter_map(|(g, u)| {
-            (u.pump_characteristic.is_some() && controls.commitment[g][interval]).then_some(g)
+            (u.pump_characteristic.is_some() && controls.commitment[g][j]).then_some(g)
         })
         .collect();
     let known_head: Vec<_> = s
@@ -639,8 +642,8 @@ pub(crate) fn hydraulic_step(
                 .map(|guess| {
                     guess.mean_head(
                         s.reservoirs.len() + j,
-                        p.case.grid[interval],
-                        p.case.grid[interval + 1],
+                        p.mesh.grid[interval],
+                        p.mesh.grid[interval + 1],
                     )
                 })
                 .or_else(|| reference.map(|v| v.head[s.reservoirs.len() + j]))
@@ -655,9 +658,9 @@ pub(crate) fn hydraulic_step(
         .iter()
         .enumerate()
         .map(|(e, row)| {
-            let a = controls.tunnel_opening[e][interval];
+            let a = controls.tunnel_opening[e][j];
             (a > 0.).then(|| {
-                row[interval]
+                row[j]
                     .positions
                     .iter()
                     .find(|v| v.opening == a)
@@ -734,9 +737,9 @@ pub(crate) fn hydraulic_step(
         } else {
             river.law.trial_outlet_flow(
                 head[source],
-                controls.river_opening[e][interval],
-                p.operating.river_capacity[e][interval],
-                p.operating.river_inflow[e][interval],
+                controls.river_opening[e][j],
+                p.operating.river_capacity[e][j],
+                p.operating.river_inflow[e][j],
             )
         };
         x.push(q / scale);
@@ -748,7 +751,7 @@ pub(crate) fn hydraulic_step(
     }
     for (k, &g) in pumps.iter().enumerate() {
         let scale = s.units[g].flow.max.max(1.);
-        let q = reference.map_or(controls.unit_flow[g][interval], |v| v.unit_flow[g]);
+        let q = reference.map_or(controls.unit_flow[g][j], |v| v.unit_flow[g]);
         x.push(q.max(0.) / scale);
         scales.push(scale);
         rows.push(scale);
@@ -798,7 +801,7 @@ impl SchedulingProblem<'_> {
     pub fn reconstruct(&self, controls: &Controls) -> Result<Schedule, Error> {
         controls.validate(self)?;
         let s = &self.case.system;
-        let nt = self.case.prices.len();
+        let nt = self.mesh.dt.len();
         let mut schedule = Schedule {
             grid: self.mesh.grid.clone(),
             operating_grid: self.case.grid.clone(),
@@ -807,10 +810,10 @@ impl SchedulingProblem<'_> {
                 .iter()
                 .map(|r| vec![r.initial_storage; nt + 1])
                 .collect(),
-            unit_flow: controls.unit_flow.clone(),
-            tunnel_opening: controls.tunnel_opening.clone(),
-            river_opening: controls.river_opening.clone(),
-            commitment: controls.commitment.clone(),
+            unit_flow: self.mesh.hold(&controls.unit_flow)?,
+            tunnel_opening: self.mesh.hold(&controls.tunnel_opening)?,
+            river_opening: self.mesh.hold(&controls.river_opening)?,
+            commitment: self.mesh.hold(&controls.commitment)?,
             tunnel_flow: vec![vec![0.; nt]; s.tunnels.len()],
             river_withdrawal: vec![vec![0.; nt]; s.rivers.len()],
             gate_adjustment_cost: 0.,
@@ -831,7 +834,7 @@ impl SchedulingProblem<'_> {
             iterations: 0,
             validation: Default::default(),
         };
-        let mut columns: Vec<_> = controls.unit_flow.iter().flatten().copied().collect();
+        let mut columns: Vec<_> = schedule.unit_flow.iter().flatten().copied().collect();
         columns.resize(self.routing.primary_columns, 0.);
         let mut previous: Vec<_> = s.reservoirs.iter().map(|r| r.initial_storage).collect();
         let mut reference = None;
@@ -868,7 +871,7 @@ impl SchedulingProblem<'_> {
             previous.clone_from(&state.storage);
             reference = Some(state);
         }
-        let mut physical = crate::trajectory::evaluate(self, schedule, junctions, 1e-7);
+        let mut physical = crate::trajectory::evaluate(self, schedule, junctions, 1e-7)?;
         self.routing.complete_columns(&mut columns);
         let points = self
             .operating_points

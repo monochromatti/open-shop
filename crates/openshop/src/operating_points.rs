@@ -48,9 +48,13 @@ impl OperatingPoint {
 }
 
 impl OperatingPoints {
-    pub fn new(case: &crate::ScheduleCase, routing: &Routing) -> Self {
+    pub fn new(
+        case: &crate::ScheduleCase,
+        routing: &Routing,
+        mesh: &crate::time_discretization::TimeDiscretization,
+    ) -> Self {
         let mut points = Vec::new();
-        for t in 0..case.prices.len() {
+        for t in 0..mesh.dt.len() {
             let mut fractions: Vec<_> = routing
                 .storage_shape
                 .iter()
@@ -86,7 +90,7 @@ impl OperatingPoints {
         storage: &[Vec<f64>],
         columns: &[f64],
     ) -> Self {
-        let mut fractions = vec![Vec::new(); p.case.prices.len()];
+        let mut fractions = vec![Vec::new(); p.mesh.dt.len()];
         for point in &self.points {
             fractions[point.interval].push(point.fraction);
         }
@@ -192,37 +196,32 @@ impl OperatingPoints {
         variable!(m,uh[k in 0..np,g in 0..nu]);
         variable!(m,up[k in 0..np,g in 0..nu]);
         variable!(m,tw[k in 0..np,j in 0..s.plants.len()]);
-        let initial_controls = start.map(|v| crate::Controls {
-            head_guess: Some(crate::HeadGuess {
-                grid: p.case.grid.clone(),
-                head: v.head.clone(),
-            }),
-            commitment: controls.unit_on.clone(),
-            unit_flow: v
-                .flow
-                .iter()
-                .enumerate()
-                .map(|(g, row)| {
-                    row.iter()
-                        .enumerate()
-                        .map(|(t, &q)| if controls.unit_on[g][t] { q } else { 0. })
-                        .collect()
-                })
-                .collect(),
-            river_opening: v.river_opening.clone(),
-            tunnel_opening: p
-                .operating
-                .tunnels
-                .iter()
-                .enumerate()
-                .map(|(e, row)| {
-                    row.iter()
-                        .enumerate()
-                        .map(|(t, v)| v.positions[controls.gate_position[e][t]].opening)
-                        .collect()
-                })
-                .collect(),
-        });
+        let initial_controls = start
+            .map(|v| -> Result<crate::Controls, Error> {
+                let mut initial = v.physical_controls(p)?;
+                initial.commitment.clone_from(&controls.unit_on);
+                for (g, row) in initial.unit_flow.iter_mut().enumerate() {
+                    for (t, q) in row.iter_mut().enumerate() {
+                        if !controls.unit_on[g][t] {
+                            *q = 0.;
+                        }
+                    }
+                }
+                initial.tunnel_opening = p
+                    .operating
+                    .tunnels
+                    .iter()
+                    .enumerate()
+                    .map(|(e, row)| {
+                        row.iter()
+                            .enumerate()
+                            .map(|(t, v)| v.positions[controls.gate_position[e][t]].opening)
+                            .collect()
+                    })
+                    .collect();
+                Ok(initial)
+            })
+            .transpose()?;
         let initial_columns = start.map(|v| {
             let mut columns: Vec<_> = v
                 .flow
@@ -242,6 +241,7 @@ impl OperatingPoints {
         });
         for (k, point) in self.points.iter().enumerate() {
             let (t, f) = (point.interval, point.fraction);
+            let operating_t = p.mesh.interval[t];
             let initial = if let (Some(start), Some(controls), Some(columns)) =
                 (start, initial_controls.as_ref(), initial_columns.as_ref())
             {
@@ -349,8 +349,8 @@ impl OperatingPoints {
                     unit_flow.push(flow[g][t]);
                     continue;
                 };
-                let on = controls.unit_on[g][t];
-                let limits = &p.operating.units[g][t];
+                let on = controls.unit_on[g][operating_t];
+                let limits = &p.operating.units[g][operating_t];
                 let scale = u.flow.max.max(1.);
                 m.set_bounds(
                     uq[[k, j]],
@@ -372,8 +372,8 @@ impl OperatingPoints {
                 unit_flow.push(Expr::from(uq[[k, j]] * scale));
             }
             for (e, &(a, b)) in p.topology.tunnel_nodes.iter().enumerate() {
-                let interval = &p.operating.tunnels[e][t];
-                let law = &interval.positions[controls.gate_position[e][t]];
+                let interval = &p.operating.tunnels[e][operating_t];
+                let law = &interval.positions[controls.gate_position[e][operating_t]];
                 let scale = s.tunnels[e].capacity.max(1.);
                 let cap = if law.opening == 0. {
                     0.
@@ -462,9 +462,9 @@ impl OperatingPoints {
                 }
             }
             for (g, u) in s.units.iter().enumerate() {
-                let limits = &p.operating.units[g][t];
+                let limits = &p.operating.units[g][operating_t];
                 let scale = u.power.max.max(1.);
-                if controls.unit_on[g][t] {
+                if controls.unit_on[g][operating_t] {
                     let plant = p.topology.unit_plants[g];
                     let spec = &s.plants[plant];
                     let (a, b) = p.topology.unit_nodes[g];
@@ -517,8 +517,8 @@ impl OperatingPoints {
                 power.push(Expr::from(up[[k, g]] * scale));
             }
             for (j, members) in p.topology.plant_units.iter().enumerate() {
-                let limits = &p.operating.plants[j][t];
-                let on = members.iter().any(|&g| controls.unit_on[g][t]);
+                let limits = &p.operating.plants[j][p.mesh.interval[t]];
+                let on = members.iter().any(|&g| controls.unit_on[g][operating_t]);
                 let total_q = members.iter().fold(mzero, |v, &g| v + unit_flow[g]);
                 let total_p = members.iter().fold(mzero, |v, &g| v + power[g]);
                 let qs = members
@@ -545,14 +545,15 @@ impl OperatingPoints {
         }
         for k in 0..self.points.len().saturating_sub(1) {
             let t = self.points[k].interval;
+            let operating_t = p.mesh.interval[t];
             if self.points[k + 1].interval != t {
                 continue;
             }
             for (g, u) in s.units.iter().enumerate() {
-                if !controls.unit_on[g][t] {
+                if !controls.unit_on[g][operating_t] {
                     continue;
                 }
-                let limits = &p.operating.units[g][t];
+                let limits = &p.operating.units[g][operating_t];
                 let envelope = Arc::new(crate::head_limits::HeadEnvelope {
                     unit: Arc::new(u.clone()),
                     power: limits.power,
@@ -621,6 +622,7 @@ impl OperatingPoints {
         let mut observed_heads = vec![vec![0.; s.units.len()]; self.points.len()];
         for (k, point) in self.points.iter().enumerate() {
             let (t, f) = (point.interval, point.fraction);
+            let operating_t = p.mesh.interval[t];
             let volume: Vec<_> = schedule
                 .storage
                 .iter()
@@ -648,8 +650,8 @@ impl OperatingPoints {
                 })
                 .collect();
             for (g, u) in s.units.iter().enumerate() {
-                let on = controls.commitment[g][t];
-                let limits = &p.operating.units[g][t];
+                let on = controls.commitment[g][operating_t];
+                let limits = &p.operating.units[g][operating_t];
                 let q = state.unit_flow[g];
                 observed_heads[k][g] =
                     crate::hydraulics::machine_head(p, g, &state.head, &state.unit_flow);
@@ -691,8 +693,8 @@ impl OperatingPoints {
                 }
             }
             for (j, members) in p.topology.plant_units.iter().enumerate() {
-                let limits = &p.operating.plants[j][t];
-                let on = members.iter().any(|&g| controls.commitment[g][t]);
+                let limits = &p.operating.plants[j][p.mesh.interval[t]];
+                let on = members.iter().any(|&g| controls.commitment[g][operating_t]);
                 let q = members.iter().map(|&g| state.unit_flow[g]).sum();
                 let power_sum = members.iter().map(|&g| power[g]).sum();
                 let qs = members
@@ -720,10 +722,10 @@ impl OperatingPoints {
                     ));
             }
             for (e, &q) in state.tunnel_flow.iter().enumerate() {
-                let cap = if controls.tunnel_opening[e][t] == 0. {
+                let cap = if controls.tunnel_opening[e][operating_t] == 0. {
                     0.
                 } else {
-                    p.operating.tunnels[e][t].capacity
+                    p.operating.tunnels[e][operating_t].capacity
                 };
                 excess = excess.max(violation(
                     q,
@@ -747,6 +749,7 @@ impl OperatingPoints {
         }
         for k in 0..self.points.len().saturating_sub(1) {
             let t = self.points[k].interval;
+            let operating_t = p.mesh.interval[t];
             if self.points[k + 1].interval != t {
                 continue;
             }
@@ -754,7 +757,7 @@ impl OperatingPoints {
                 if !schedule.commitment[g][t] {
                     continue;
                 }
-                let limits = &p.operating.units[g][t];
+                let limits = &p.operating.units[g][operating_t];
                 let envelope = crate::head_limits::HeadEnvelope {
                     unit: Arc::new(u.clone()),
                     power: limits.power,

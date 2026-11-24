@@ -338,7 +338,9 @@ impl SoftLimits {
     pub fn assess(
         &self,
         case: &ScheduleCase,
-        schedule: &crate::Schedule,
+        storage: &[Vec<f64>],
+        power: &[Vec<f64>],
+        flow: &[Vec<f64>],
     ) -> (Vec<SoftSlack>, f64, f64) {
         if self.limits.is_empty() {
             return (vec![], 0., 0.);
@@ -347,7 +349,7 @@ impl SoftLimits {
             .system
             .reservoirs
             .iter()
-            .zip(&schedule.storage)
+            .zip(storage)
             .map(|(r, row)| row.iter().map(|&v| r.level.trial_level(v)).collect())
             .collect();
         let mut cost = 0.;
@@ -356,15 +358,10 @@ impl SoftLimits {
             .limits
             .iter()
             .map(|l| {
-                let value = l.target.as_ref().map(|t| {
-                    t.value(
-                        &schedule.storage,
-                        &levels,
-                        &schedule.unit_power,
-                        &schedule.unit_flow,
-                        0.,
-                    )
-                });
+                let value = l
+                    .target
+                    .as_ref()
+                    .map(|t| t.value(storage, &levels, power, flow, 0.));
                 let lower = value
                     .zip(l.lower)
                     .map_or(0., |(v, b)| (b.value - v).max(0.));

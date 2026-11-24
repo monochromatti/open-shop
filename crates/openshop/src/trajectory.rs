@@ -80,6 +80,36 @@ impl Schedule {
     }
 }
 
+/// Original-window quantities used by operating equations. Nonlinear physical
+/// laws are evaluated on hydraulic cells, before these averages are taken.
+struct OperatingValues {
+    storage: Vec<Vec<f64>>,
+    unit_flow: Vec<Vec<f64>>,
+    unit_power: Vec<Vec<f64>>,
+    plant_flow: Vec<Vec<f64>>,
+    plant_power: Vec<Vec<f64>>,
+    river_release: Vec<Vec<f64>>,
+    head: Vec<Vec<f64>>,
+    controls: crate::Controls,
+}
+impl OperatingValues {
+    fn new(
+        mesh: &crate::time_discretization::TimeDiscretization,
+        s: &Schedule,
+    ) -> Result<Self, crate::Error> {
+        Ok(Self {
+            storage: mesh.states(&s.storage)?,
+            unit_flow: mesh.means(&s.unit_flow, 0.)?,
+            unit_power: mesh.means(&s.unit_power, 0.)?,
+            plant_flow: mesh.means(&s.plant_flow, 0.)?,
+            plant_power: mesh.means(&s.plant_power, 0.)?,
+            river_release: mesh.means(&s.river_release, 0.)?,
+            head: mesh.means(&s.head, 0.)?,
+            controls: s.controls()?,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Validation {
     pub feasible: bool,
@@ -95,6 +125,7 @@ pub struct Validation {
 pub(crate) fn hydraulic_heads(
     case: &ScheduleCase,
     routing: &crate::river::Routing,
+    mesh: &crate::time_discretization::TimeDiscretization,
     storage: &[Vec<f64>],
     columns: &[f64],
     junction_head: Vec<Vec<f64>>,
@@ -126,7 +157,7 @@ pub(crate) fn hydraulic_heads(
             case.system
                 .boundaries
                 .iter()
-                .map(|b| vec![b.head; case.prices.len()]),
+                .map(|b| vec![b.head; mesh.dt.len()]),
         )
         .collect()
 }
@@ -136,7 +167,8 @@ pub(crate) fn evaluate(
     mut schedule: Schedule,
     junction_head: Vec<Vec<f64>>,
     tolerance: f64,
-) -> Schedule {
+) -> Result<Schedule, crate::Error> {
+    let mesh = &problem.mesh;
     let (case, topology, routing, operating) = (
         problem.case,
         &problem.topology,
@@ -182,7 +214,7 @@ pub(crate) fn evaluate(
         .releases
         .iter()
         .map(|series| {
-            case.grid
+            mesh.grid
                 .windows(2)
                 .map(|w| series.integral(w[0], w[1]).value(&columns) / (w[1] - w[0]))
                 .collect()
@@ -194,7 +226,7 @@ pub(crate) fn evaluate(
         .map(|row| {
             row.iter()
                 .enumerate()
-                .map(|(t, rate)| 3600. * (case.grid[t + 1] - case.grid[t]) * rate.value(&columns))
+                .map(|(t, rate)| 3600. * mesh.dt[t] * rate.value(&columns))
                 .collect()
         })
         .collect();
@@ -203,12 +235,19 @@ pub(crate) fn evaluate(
         .iter()
         .map(|row| row.iter().map(|v| v.value(&columns)).collect())
         .collect();
-    schedule.head = hydraulic_heads(case, routing, &schedule.storage, &columns, junction_head);
+    schedule.head = hydraulic_heads(
+        case,
+        routing,
+        mesh,
+        &schedule.storage,
+        &columns,
+        junction_head,
+    );
     schedule.plant_flow = topology
         .plant_units
         .iter()
         .map(|members| {
-            (0..case.prices.len())
+            (0..mesh.dt.len())
                 .map(|t| members.iter().map(|&g| schedule.unit_flow[g][t]).sum())
                 .collect()
         })
@@ -221,7 +260,7 @@ pub(crate) fn evaluate(
             let (source, target) = topology.unit_nodes[g];
             let p = topology.unit_plants[g];
             let plant = &s.plants[p];
-            (0..case.prices.len())
+            (0..mesh.dt.len())
                 .map(|t| {
                     let outlet = schedule.head[target][t]
                         .max(plant.outlet_head_floor.unwrap_or(f64::NEG_INFINITY));
@@ -254,25 +293,30 @@ pub(crate) fn evaluate(
         .plant_units
         .iter()
         .map(|members| {
-            (0..case.prices.len())
+            (0..mesh.dt.len())
                 .map(|t| members.iter().map(|&g| schedule.unit_power[g][t]).sum())
                 .collect()
         })
         .collect();
     schedule.gate_adjustment_cost = gate_adjustment_cost(&s.tunnels, &schedule.tunnel_opening);
-    let (slacks, penalty_cost, soft_excess) = problem.soft_limits.assess(case, &schedule);
+    let values = OperatingValues::new(mesh, &schedule)?;
+    let (slacks, penalty_cost, soft_excess) =
+        problem
+            .soft_limits
+            .assess(case, &values.storage, &values.unit_power, &values.unit_flow);
     schedule.soft_slacks = slacks;
     schedule.soft_penalty_cost = penalty_cost;
-    schedule.objective = objective(case, &schedule, operating);
-    schedule.validation = validate(problem, &schedule, tolerance);
+    schedule.objective = objective(case, &schedule, &values, operating);
+    schedule.validation = validate(problem, &schedule, &values, tolerance);
     schedule.validation.operating_limits = schedule.validation.operating_limits.max(soft_excess);
     schedule.validation.feasible &= soft_excess <= tolerance;
-    schedule
+    Ok(schedule)
 }
 
 fn objective(
     case: &ScheduleCase,
     schedule: &Schedule,
+    values: &OperatingValues,
     operating: &crate::operating_data::OperatingData,
 ) -> f64 {
     let revenue = case
@@ -285,10 +329,10 @@ fn objective(
                 .iter()
                 .enumerate()
                 .map(|(t, &price)| {
-                    let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
+                    let (start, stop) = u.operation.transitions(&values.controls.commitment[i], t);
                     price
                         * u.mode.power_sign()
-                        * schedule.unit_power[i][t]
+                        * values.unit_power[i][t]
                         * (case.grid[t + 1] - case.grid[t])
                         - if start {
                             operating.units[i][t].startup_cost
@@ -315,10 +359,10 @@ fn objective(
                     let prior = if t == 0 {
                         r.previous_release().map(|(q, _)| q)
                     } else {
-                        Some(schedule.river_release[e][t - 1])
+                        Some(values.river_release[e][t - 1])
                     };
                     prior.map_or(0., |q| {
-                        let release = schedule.river_release[e][t];
+                        let release = values.river_release[e][t];
                         let before = r.flow_on(q);
                         let after = r.flow_on(release);
                         operating.river_change_cost[e][t] * (release - q).abs()
@@ -345,7 +389,8 @@ fn objective(
             .enumerate()
             .map(|(r, river)| {
                 river.water_value
-                    * (schedule.river_storage[r][case.prices.len()] - schedule.river_storage[r][0])
+                    * (schedule.river_storage[r][schedule.grid.len() - 1]
+                        - schedule.river_storage[r][0])
             })
             .sum::<f64>()
         + case
@@ -354,7 +399,7 @@ fn objective(
             .iter()
             .enumerate()
             .map(|(r, res)| {
-                res.water_value * (schedule.storage[r][case.prices.len()] - res.initial_storage)
+                res.water_value * (values.storage[r][case.prices.len()] - res.initial_storage)
             })
             .sum::<f64>()
 }
@@ -368,14 +413,15 @@ pub(crate) fn water_value_change(
     topology: &crate::model::Topology,
     routing: &crate::river::Routing,
     operating: &crate::operating_data::OperatingData,
+    mesh: &crate::time_discretization::TimeDiscretization,
 ) -> crate::river::LinearForm {
     let s = &case.system;
-    let nt = case.prices.len();
+    let nt = mesh.dt.len();
     let mut value = crate::river::LinearForm::default();
     for (r, reservoir) in s.reservoirs.iter().enumerate() {
         for t in 0..nt {
             let mut net = routing.reservoir_net[r][t].clone();
-            net.constant += operating.reservoirs[r].inflow[t];
+            net.constant += operating.reservoirs[r].inflow[mesh.interval[t]];
             for &(g, sign) in &topology.incidence[r] {
                 *net.coefficients.entry(g * nt + t).or_default() += sign;
             }
@@ -384,10 +430,7 @@ pub(crate) fn water_value_change(
                     .entry((s.units.len() + e) * nt + t)
                     .or_default() += sign;
             }
-            value.add_scaled(
-                &net,
-                3600. * (case.grid[t + 1] - case.grid[t]) * reservoir.water_value,
-            );
+            value.add_scaled(&net, 3600. * mesh.dt[t] * reservoir.water_value);
         }
     }
     for (r, river) in s.rivers.iter().enumerate() {
@@ -400,6 +443,7 @@ pub(crate) fn water_value_change(
 fn validate(
     problem: &crate::SchedulingProblem<'_>,
     schedule: &Schedule,
+    values: &OperatingValues,
     tolerance: f64,
 ) -> Validation {
     let (case, topology, routing, operating) = (
@@ -408,6 +452,7 @@ fn validate(
         &problem.routing,
         &problem.operating,
     );
+    let mesh = &problem.mesh;
     let mut result = Validation {
         feasible: true,
         ..Default::default()
@@ -439,7 +484,7 @@ fn validate(
         .max(
             problem
                 .interlocks
-                .residual(&schedule.commitment, &schedule.tunnel_opening),
+                .residual(&values.controls.commitment, &values.controls.tunnel_opening),
         )
         .max(
             problem
@@ -464,8 +509,8 @@ fn validate(
                 case.system.rivers[r].capacity.max(1.),
             ));
         }
-        for t in 0..case.prices.len() {
-            let seconds = 3600. * (case.grid[t + 1] - case.grid[t]);
+        for t in 0..mesh.dt.len() {
+            let seconds = 3600. * mesh.dt[t];
             let balance = (schedule.river_storage[r][t + 1] - schedule.river_storage[r][t])
                 / seconds
                 - schedule.river_release[r][t]
@@ -485,7 +530,8 @@ fn validate(
             .iter()
             .position(|r| r.name == river.source)
             .unwrap();
-        for t in 0..case.prices.len() {
+        for t in 0..mesh.dt.len() {
+            let j = mesh.interval[t];
             let h = schedule.head[source][t];
             let gate = schedule.river_opening[e][t];
             let expected = match &river.law {
@@ -508,15 +554,15 @@ fn validate(
                 _ => river.law.trial_outlet_flow(
                     h,
                     gate,
-                    operating.river_capacity[e][t],
-                    operating.river_inflow[e][t],
+                    operating.river_capacity[e][j],
+                    operating.river_inflow[e][j],
                 ),
             };
             result.water_balance = result
                 .water_balance
                 .max((schedule.river_withdrawal[e][t] - expected).abs());
             if !river.law.is_delta() {
-                let limits = operating.river_gate[e][t];
+                let limits = operating.river_gate[e][j];
                 result.operating_limits = result
                     .operating_limits
                     .max(violation(gate, limits.min, limits.max, 1.));
@@ -529,19 +575,20 @@ fn validate(
             .operating_limits
             .max((schedule.storage[r][0] - reservoir.initial_storage).abs() / scale);
         for (t, &volume) in schedule.storage[r].iter().enumerate() {
-            result.operating_limits = result.operating_limits.max(violation(
-                volume,
-                operating.reservoirs[r].storage[t].min,
-                operating.reservoirs[r].storage[t].max,
-                scale,
-            ));
+            let bounds = match mesh.vertices.binary_search(&t) {
+                Ok(j) => operating.reservoirs[r].storage[j],
+                Err(_) => operating.reservoirs[r].interval_storage[mesh.interval[t]],
+            };
+            result.operating_limits = result
+                .operating_limits
+                .max(violation(volume, bounds.min, bounds.max, scale));
         }
         for t in 0..case.prices.len() {
             let volume = operating.reservoirs[r].volume_change[t];
             let level = operating.reservoirs[r].level_change[t];
-            let dv = schedule.storage[r][t + 1] - schedule.storage[r][t];
-            let dz = reservoir.level.trial_level(schedule.storage[r][t + 1])
-                - reservoir.level.trial_level(schedule.storage[r][t]);
+            let dv = values.storage[r][t + 1] - values.storage[r][t];
+            let dz = reservoir.level.trial_level(values.storage[r][t + 1])
+                - reservoir.level.trial_level(values.storage[r][t]);
             result.operating_limits = result.operating_limits.max(violation(
                 dv,
                 volume.down.map_or(f64::NEG_INFINITY, |x| -x),
@@ -562,14 +609,15 @@ fn validate(
                     + c.value(&columns);
                 result.operating_limits = result.operating_limits.max(violation(
                     volume,
-                    operating.reservoirs[r].interval_storage[t].min,
-                    operating.reservoirs[r].interval_storage[t].max,
+                    operating.reservoirs[r].interval_storage[mesh.interval[t]].min,
+                    operating.reservoirs[r].interval_storage[mesh.interval[t]].max,
                     scale,
                 ));
             }
         }
-        for t in 0..case.prices.len() {
-            let net = operating.reservoirs[r].inflow[t]
+        for t in 0..mesh.dt.len() {
+            let j = mesh.interval[t];
+            let net = operating.reservoirs[r].inflow[j]
                 + routing.reservoir_net[r][t].value(&columns)
                 + topology.incidence[r]
                     .iter()
@@ -579,8 +627,7 @@ fn validate(
                     .iter()
                     .map(|&(e, sign)| sign * schedule.tunnel_flow[e][t])
                     .sum::<f64>();
-            let rate = (schedule.storage[r][t + 1] - schedule.storage[r][t])
-                / (3600. * (case.grid[t + 1] - case.grid[t]));
+            let rate = (schedule.storage[r][t + 1] - schedule.storage[r][t]) / (3600. * mesh.dt[t]);
             let error = (rate - net).abs();
             result.water_balance = result.water_balance.max(if error.is_finite() {
                 error
@@ -591,7 +638,7 @@ fn validate(
     }
     let nr = case.system.reservoirs.len();
     for (j, junction) in case.system.junctions.iter().enumerate() {
-        for t in 0..case.prices.len() {
+        for t in 0..mesh.dt.len() {
             let node = nr + j;
             let net = topology.incidence[node]
                 .iter()
@@ -611,8 +658,9 @@ fn validate(
         }
     }
     for (e, tunnel) in case.system.tunnels.iter().enumerate() {
-        for t in 0..case.prices.len() {
-            let interval = &operating.tunnels[e][t];
+        for t in 0..mesh.dt.len() {
+            let j = mesh.interval[t];
+            let interval = &operating.tunnels[e][j];
             let Some(law) = interval
                 .positions
                 .iter()
@@ -652,18 +700,18 @@ fn validate(
         for row in &topology.unit_commitment[i] {
             result.operating_limits = result
                 .operating_limits
-                .max(row.residual(&schedule.commitment[i]).max(0.));
+                .max(row.residual(&values.controls.commitment[i]).max(0.));
         }
         for t in 0..case.prices.len() {
             let limits = &operating.units[i][t];
             let previous_q = if t == 0 {
                 u.operation.previous_flow()
             } else {
-                Some(schedule.unit_flow[i][t - 1])
+                Some(values.unit_flow[i][t - 1])
             };
             if let Some(previous) = previous_q {
                 result.operating_limits = result.operating_limits.max(violation(
-                    schedule.unit_flow[i][t] - previous,
+                    values.unit_flow[i][t] - previous,
                     limits.flow_change.down.map_or(f64::NEG_INFINITY, |x| -x),
                     limits.flow_change.up.unwrap_or(f64::INFINITY),
                     u.flow.max.max(1.),
@@ -672,12 +720,12 @@ fn validate(
             let previous_p = if t == 0 {
                 u.operation.previous_power()
             } else {
-                Some(schedule.unit_power[i][t - 1])
+                Some(values.unit_power[i][t - 1])
             };
             if let Some(previous) = previous_p {
-                let (start, stop) = u.operation.transitions(&schedule.commitment[i], t);
+                let (start, stop) = u.operation.transitions(&values.controls.commitment[i], t);
                 result.operating_limits = result.operating_limits.max(violation(
-                    schedule.unit_power[i][t] - previous,
+                    values.unit_power[i][t] - previous,
                     limits.power_change.down.map_or(f64::NEG_INFINITY, |x| {
                         -x - if stop { limits.stopping_power_min } else { 0. }
                     }),
@@ -689,23 +737,24 @@ fn validate(
             }
             if limits
                 .forced
-                .is_some_and(|state| state != schedule.commitment[i][t])
+                .is_some_and(|state| state != values.controls.commitment[i][t])
             {
                 result.operating_limits = f64::INFINITY;
             }
             if let Some(p) = limits.fixed_power {
                 result.operating_limits = result
                     .operating_limits
-                    .max((schedule.unit_power[i][t] - p).abs() / u.power.max.max(1.));
+                    .max((values.unit_power[i][t] - p).abs() / u.power.max.max(1.));
             }
             if let Some(q) = limits.fixed_flow {
                 result.operating_limits = result
                     .operating_limits
-                    .max((schedule.unit_flow[i][t] - q).abs() / u.flow.max.max(1.));
+                    .max((values.unit_flow[i][t] - q).abs() / u.flow.max.max(1.));
             }
         }
-        for t in 0..case.prices.len() {
-            let limits = &operating.units[i][t];
+        for t in 0..mesh.dt.len() {
+            let j = mesh.interval[t];
+            let limits = &operating.units[i][j];
             let on = schedule.commitment[i][t];
             let q = schedule.unit_flow[i][t];
             let p = schedule.unit_power[i][t];
@@ -748,8 +797,8 @@ fn validate(
                         .operating_limits
                         .max(violation(eta, u.minimum_efficiency, 1., 1.));
                 if let Some(reference) = &topology.gross_heads[i] {
-                    let gross = (schedule.head[reference.source][t]
-                        - schedule.head[reference.target][t])
+                    let gross = (values.head[reference.source][j]
+                        - values.head[reference.target][j])
                         * u.mode.power_sign();
                     result.operating_limits = result.operating_limits.max(violation(
                         gross,
@@ -757,14 +806,15 @@ fn validate(
                         limits.gross_head_max.unwrap_or(f64::INFINITY),
                         100.,
                     ));
-                    if u.operation.transitions(&schedule.commitment[i], t).0
+                    if t == mesh.cells[j].start
+                        && u.operation.transitions(&values.controls.commitment[i], j).0
                         && let Some(lo) = limits.startup_gross_head_min
                     {
                         let at_vertex = |node: usize| {
                             if node < case.system.reservoirs.len() {
                                 case.system.reservoirs[node]
                                     .level
-                                    .trial_level(schedule.storage[node][t])
+                                    .trial_level(values.storage[node][j])
                             } else {
                                 case.system.boundaries[node
                                     - case.system.reservoirs.len()
@@ -796,7 +846,7 @@ fn validate(
     for i in 0..case.system.plants.len() {
         let members = &topology.plant_units[i];
         let on: Vec<_> = (0..case.prices.len())
-            .map(|t| members.iter().any(|&g| schedule.commitment[g][t]))
+            .map(|t| members.iter().any(|&g| values.controls.commitment[g][t]))
             .collect();
         for row in &topology.plant_commitment[i] {
             result.operating_limits = result.operating_limits.max(row.residual(&on).max(0.));
@@ -819,21 +869,21 @@ fn validate(
             if let Some(p) = limits.fixed_power {
                 result.operating_limits = result
                     .operating_limits
-                    .max((schedule.plant_power[i][t] - p).abs() / p_scale);
+                    .max((values.plant_power[i][t] - p).abs() / p_scale);
             }
             if let Some(q) = limits.fixed_flow {
                 result.operating_limits = result
                     .operating_limits
-                    .max((schedule.plant_flow[i][t] - q).abs() / q_scale);
+                    .max((values.plant_flow[i][t] - q).abs() / q_scale);
             }
             result.operating_limits = result.operating_limits.max(violation(
-                schedule.plant_flow[i][t],
+                values.plant_flow[i][t],
                 if running { limits.flow.min } else { 0. },
                 limits.flow.max,
                 q_scale,
             ));
             result.operating_limits = result.operating_limits.max(violation(
-                schedule.plant_power[i][t],
+                values.plant_power[i][t],
                 if running { limits.power.min } else { 0. },
                 limits.power.max,
                 p_scale,
@@ -841,10 +891,10 @@ fn validate(
             let prior_q = if t == 0 {
                 operating.plant_initial_flow[i]
             } else {
-                Some(schedule.plant_flow[i][t - 1])
+                Some(values.plant_flow[i][t - 1])
             };
             if let Some(prior) = prior_q {
-                let change = schedule.plant_flow[i][t] - prior;
+                let change = values.plant_flow[i][t] - prior;
                 result.operating_limits = result.operating_limits.max(violation(
                     change,
                     limits.flow_change.down.map_or(f64::NEG_INFINITY, |x| -x),
@@ -855,7 +905,7 @@ fn validate(
             let prior_p = if t == 0 {
                 operating.plant_initial_power[i]
             } else {
-                Some(schedule.plant_power[i][t - 1])
+                Some(values.plant_power[i][t - 1])
             };
             if let Some(prior) = prior_p {
                 let jump_up: f64 = members
@@ -863,7 +913,7 @@ fn validate(
                     .filter(|&&g| {
                         case.system.units[g]
                             .operation
-                            .transitions(&schedule.commitment[g], t)
+                            .transitions(&values.controls.commitment[g], t)
                             .0
                     })
                     .map(|&g| operating.units[g][t].power.min)
@@ -873,13 +923,13 @@ fn validate(
                     .filter(|&&g| {
                         case.system.units[g]
                             .operation
-                            .transitions(&schedule.commitment[g], t)
+                            .transitions(&values.controls.commitment[g], t)
                             .1
                     })
                     .map(|&g| operating.units[g][t].stopping_power_min)
                     .sum();
                 result.operating_limits = result.operating_limits.max(violation(
-                    schedule.plant_power[i][t] - prior,
+                    values.plant_power[i][t] - prior,
                     limits
                         .power_change
                         .down
@@ -897,7 +947,7 @@ fn validate(
         for t in 0..case.prices.len() {
             if rule
                 .iter()
-                .filter(|group| group.iter().any(|&g| schedule.commitment[g][t]))
+                .filter(|group| group.iter().any(|&g| values.controls.commitment[g][t]))
                 .count()
                 > 1
             {
