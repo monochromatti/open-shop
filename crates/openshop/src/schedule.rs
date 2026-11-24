@@ -236,7 +236,12 @@ impl<'a> SchedulingProblem<'a> {
             let start = crate::commitment::Proposal::from_schedule(self, &result)?;
             let mut budget = options.clone();
             budget.time_limit = remaining;
-            let refined = self.dispatch(start.controls.clone(), Some(&start), &budget, backend)?;
+            let refined =
+                match self.dispatch(start.controls.clone(), Some(&start), &budget, backend) {
+                    Ok(refined) => refined,
+                    Err(Error::Solver(_)) if result.validation.feasible => return Ok(result),
+                    Err(error) => return Err(error),
+                };
             if refined.validation.feasible
                 && (!result.validation.feasible || refined.objective >= result.objective)
             {
@@ -296,13 +301,17 @@ impl SchedulingProblem<'_> {
                 } else if budget.time_limit > 0.01 {
                     // Restore the water plan before optimizing revenue or
                     // interpreting integration differences as mesh error.
-                    let restored = problem.dispatch_with_objective(
+                    let restored = match problem.dispatch_with_objective(
                         controls.clone(),
                         projected.as_ref().or(initial),
                         &budget,
                         backend,
                         DispatchObjective::FlowDistance,
-                    )?;
+                    ) {
+                        Ok(restored) => restored,
+                        Err(Error::Solver(_)) if best.is_some() => return Ok(best.unwrap()),
+                        Err(error) => return Err(error),
+                    };
                     let remaining = options.time_limit - started.elapsed().as_secs_f64();
                     let restored = match physical.as_ref() {
                         Some(target)
